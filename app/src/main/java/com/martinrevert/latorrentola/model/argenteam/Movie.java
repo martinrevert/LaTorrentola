@@ -1,4 +1,4 @@
-package com.martinrevert.latorrentola.model;
+package com.martinrevert.latorrentola.model.argenteam;
 
 /**
  * Created by martin on 19/11/17.
