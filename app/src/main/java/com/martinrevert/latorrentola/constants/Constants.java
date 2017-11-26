@@ -5,5 +5,7 @@ package com.martinrevert.latorrentola.constants;
  */
 
 public class Constants {
-    public static final String BASE_URL = "http://www.argenteam.net/api/v1/";
+    public static final String ARGENTEAM_BASE_URL = "http://www.argenteam.net/api/v1/";
+    public static final String YTS_BASE_URL = "https://yts.ag/api/v2/";
+    public static final String YOUTUBE_API_KEY = "AIzaSyAXhXUDezuVUfmVOzWpyCF1iA0SZHXy2kg";
 }

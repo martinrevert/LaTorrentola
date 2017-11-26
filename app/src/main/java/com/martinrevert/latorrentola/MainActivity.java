@@ -8,9 +8,14 @@ import android.widget.Toast;
 
 
 import com.martinrevert.latorrentola.constants.Constants;
-import com.martinrevert.latorrentola.network.RequestInterface;
+import com.martinrevert.latorrentola.model.YTS.Movie;
+import com.martinrevert.latorrentola.model.YTS.MovieDetails;
+import com.martinrevert.latorrentola.network.RequestArgenteamInterface;
 import com.martinrevert.latorrentola.adapter.DataAdapter;
-import com.martinrevert.latorrentola.model.Results;
+import com.martinrevert.latorrentola.model.argenteam.Results;
+import com.martinrevert.latorrentola.network.RequestYTSInterface;
+
+import java.util.List;
 
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
@@ -24,8 +29,6 @@ public class MainActivity extends AppCompatActivity {
     private RecyclerView mRecyclerView;
 
     private CompositeDisposable mCompositeDisposable;
-
-    private DataAdapter mAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -46,20 +49,23 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadJSON() {
-        RequestInterface requestInterface = new Retrofit.Builder()
-                .baseUrl(Constants.BASE_URL)
+        RequestYTSInterface requestYTSInterface = new Retrofit.Builder()
+                .baseUrl(Constants.YTS_BASE_URL)
                 .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
                 .addConverterFactory(GsonConverterFactory.create())
-                .build().create(RequestInterface.class);
+                .build().create(RequestYTSInterface.class);
 
-        mCompositeDisposable.add(requestInterface.getMovies("on", "2017", "enabled", "on")
+        mCompositeDisposable.add(requestYTSInterface.getMovieDetails("50","6")
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribeOn(Schedulers.io())
                 .subscribe(this::handleResponse, this::handleError));
     }
 
-    private void handleResponse(Results movieList) {
-        mAdapter = new DataAdapter(movieList);
+    private void handleResponse(MovieDetails result) {
+
+        List<Movie> movies = result.getData().getMovies();
+
+        DataAdapter mAdapter = new DataAdapter(movies);
         mRecyclerView.setAdapter(mAdapter);
     }
 
