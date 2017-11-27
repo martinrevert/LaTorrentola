@@ -10,6 +10,7 @@ import android.widget.Toast;
 import com.google.android.youtube.player.YouTubeBaseActivity;
 import com.google.android.youtube.player.YouTubeInitializationResult;
 import com.google.android.youtube.player.YouTubePlayer;
+import com.google.android.youtube.player.YouTubePlayerFragment;
 import com.google.android.youtube.player.YouTubePlayerView;
 
 import com.google.gson.Gson;
@@ -34,28 +35,20 @@ import retrofit2.Retrofit;
 import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory;
 import retrofit2.converter.gson.GsonConverterFactory;
 
-public class PeliActivity extends YouTubeFailureRecoveryActivity implements YouTubePlayer.OnInitializedListener {
+public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnInitializedListener {
 
-    Integer movie_id;
     String imdb;
     String youtube_video_trailer;
     private CompositeDisposable mCompositeDisposable;
-    YouTubePlayerView youTubePlayerView;
+    YouTubePlayerFragment youTubePlayerFragment;
+    Movie movie;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_peli);
-        //Toolbar toolbar = findViewById(R.id.toolbar);
-        //setSupportActionBar(toolbar);
 
-        youTubePlayerView = findViewById(R.id.youtube_player_view);
-
-/*        Bundle bundle = getIntent().getExtras();
-        movie_id = bundle.getInt("id");
-        imdb = bundle.getString("imdb");
-        Log.v("IMDB_INTENT", imdb);
-        */
+        youTubePlayerFragment = (YouTubePlayerFragment) getFragmentManager().findFragmentById(R.id.youtube_player_view);
 
         Bundle bundle = getIntent().getExtras();
         String peliStr = null;
@@ -64,14 +57,20 @@ public class PeliActivity extends YouTubeFailureRecoveryActivity implements YouT
             Gson gson = new Gson();
             Type type = new TypeToken<Movie>() {
             }.getType();
-            Movie movie = gson.fromJson(peliStr, type);
+
+            movie = gson.fromJson(peliStr, type);
 
             imdb = movie.getImdbCode().substring(2);
+
+            Toolbar toolbar = findViewById(R.id.toolbar);
+            toolbar.setTitle(movie.getTitle());
+            setSupportActionBar(toolbar);
+
             youtube_video_trailer = movie.getYtTrailerCode();
 
             Log.v("YTS", movie.getTitleLong());
 
-            youTubePlayerView.initialize(Constants.YOUTUBE_API_KEY, this);
+            youTubePlayerFragment.initialize(Constants.YOUTUBE_API_KEY, this);
 
             mCompositeDisposable = new CompositeDisposable();
 
@@ -95,10 +94,7 @@ public class PeliActivity extends YouTubeFailureRecoveryActivity implements YouT
 
     }
 
-    @Override
-    protected YouTubePlayer.Provider getYouTubePlayerProvider() {
-        return (YouTubePlayerView) findViewById(R.id.youtube_player_view);
-    }
+
 
     private void loadJSON() {
 
