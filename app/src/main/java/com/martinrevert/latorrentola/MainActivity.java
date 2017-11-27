@@ -10,9 +10,7 @@ import android.widget.Toast;
 import com.martinrevert.latorrentola.constants.Constants;
 import com.martinrevert.latorrentola.model.YTS.Movie;
 import com.martinrevert.latorrentola.model.YTS.MovieDetails;
-import com.martinrevert.latorrentola.network.RequestArgenteamInterface;
 import com.martinrevert.latorrentola.adapter.DataAdapter;
-import com.martinrevert.latorrentola.model.argenteam.Results;
 import com.martinrevert.latorrentola.network.RequestYTSInterface;
 
 import java.util.List;
@@ -55,7 +53,7 @@ public class MainActivity extends AppCompatActivity {
                 .addConverterFactory(GsonConverterFactory.create())
                 .build().create(RequestYTSInterface.class);
 
-        mCompositeDisposable.add(requestYTSInterface.getMovieDetails("50","6")
+        mCompositeDisposable.add(requestYTSInterface.getMovieDetails("50", "6")
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribeOn(Schedulers.io())
                 .subscribe(this::handleResponse, this::handleError));
@@ -64,7 +62,6 @@ public class MainActivity extends AppCompatActivity {
     private void handleResponse(MovieDetails result) {
 
         List<Movie> movies = result.getData().getMovies();
-
         DataAdapter mAdapter = new DataAdapter(movies);
         mRecyclerView.setAdapter(mAdapter);
     }
