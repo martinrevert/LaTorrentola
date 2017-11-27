@@ -4,14 +4,10 @@ import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
-import android.widget.Toast;
 
-
-import com.google.android.youtube.player.YouTubeBaseActivity;
 import com.google.android.youtube.player.YouTubeInitializationResult;
 import com.google.android.youtube.player.YouTubePlayer;
 import com.google.android.youtube.player.YouTubePlayerFragment;
-import com.google.android.youtube.player.YouTubePlayerView;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -20,7 +16,6 @@ import com.martinrevert.latorrentola.model.YTS.Movie;
 import com.martinrevert.latorrentola.model.argenteam.MovieDetails;
 import com.martinrevert.latorrentola.model.argenteam.Results;
 import com.martinrevert.latorrentola.network.RequestArgenteamInterface;
-import com.martinrevert.latorrentola.network.RequestYTSInterface;
 
 import java.lang.reflect.Type;
 import java.util.List;
