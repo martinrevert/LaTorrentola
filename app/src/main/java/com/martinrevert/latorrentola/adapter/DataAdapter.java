@@ -43,7 +43,7 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
     @Override
     public void onBindViewHolder(ViewHolder holder, int position) {
 
-        holder.mTitle.setText(movies.get(position).getTitle());
+        holder.mTitle.setText(movies.get(position).getTitleLong());
         holder.mSummary.setText(movies.get(position).getSummary());
         Context context = holder.mPoster.getContext();
         Picasso.with(context).load(movies.get(position).getLargeCoverImage()).into(holder.mPoster);
