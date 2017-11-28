@@ -3,10 +3,10 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:layout_gravity="center"
     android:layout_marginLeft="5dp"
     android:layout_marginRight="5dp"
-    android:layout_marginTop="5dp"
-    card_view:cardCornerRadius="5dp">
+    android:layout_marginTop="5dp">
 
     <android.support.constraint.ConstraintLayout
         android:id="@+id/ConstraintLayout"
@@ -28,6 +28,7 @@
             android:id="@+id/poster"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
             android:contentDescription="poster"
             card_view:layout_constraintEnd_toEndOf="parent"
             card_view:layout_constraintHorizontal_bias="1.0"
