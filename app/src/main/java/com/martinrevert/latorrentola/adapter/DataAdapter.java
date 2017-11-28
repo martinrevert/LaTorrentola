@@ -29,7 +29,7 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
 
         this.movies = resultados;
 
-       // Collections.sort(movies, Comparator.comparingInt(Movie::getId).reversed());
+        // Collections.sort(movies, Comparator.comparingInt(Movie::getId).reversed());
     }
 
 
