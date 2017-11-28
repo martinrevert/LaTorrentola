@@ -7,6 +7,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
+import android.widget.RatingBar;
 import android.widget.TextView;
 
 import com.google.gson.Gson;
@@ -17,8 +18,6 @@ import com.martinrevert.latorrentola.model.YTS.Movie;
 
 import com.squareup.picasso.Picasso;
 
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 
 public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
@@ -32,39 +31,19 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
         // Collections.sort(movies, Comparator.comparingInt(Movie::getId).reversed());
     }
 
+    class ViewHolder extends RecyclerView.ViewHolder {
 
-    @Override
-    public ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
-
-        View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.recycler_row, parent, false);
-        return new ViewHolder(view);
-    }
-
-    @Override
-    public void onBindViewHolder(ViewHolder holder, int position) {
-
-        holder.mTitle.setText(movies.get(position).getTitleLong());
-        holder.mSummary.setText(movies.get(position).getSummary());
-        Context context = holder.mPoster.getContext();
-        Picasso.with(context).load(movies.get(position).getLargeCoverImage()).into(holder.mPoster);
-
-    }
-
-    @Override
-    public int getItemCount() {
-        return movies.size();
-    }
-
-    public class ViewHolder extends RecyclerView.ViewHolder {
-
-        private TextView mTitle, mSummary;
+        private TextView mTitle;
         private ImageView mPoster;
+        private RatingBar mRating;
+        private TextView mGenres;
 
-        public ViewHolder(View view) {
+        ViewHolder(View view) {
             super(view);
             mTitle = view.findViewById(R.id.title);
             mPoster = view.findViewById(R.id.poster);
-            mSummary = view.findViewById(R.id.summary);
+            mRating = view.findViewById(R.id.rating);
+            mGenres = view.findViewById(R.id.genres);
             Context context = view.getContext();
             view.setOnClickListener(view1 -> {
                 int itemPosition = getLayoutPosition();
@@ -78,4 +57,30 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
 
         }
     }
+
+
+    @Override
+    public DataAdapter.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+        View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.recycler_row, parent, false);
+        return new ViewHolder(view);
+    }
+
+    @Override
+    public void onBindViewHolder(ViewHolder holder, int position) {
+        holder.mTitle.setText(movies.get(position).getTitleLong());
+        holder.mRating.setRating(Float.parseFloat(movies.get(position).getRating()));
+        List<String> generos = movies.get(position).getGenres();
+        String genres= generos.toString();
+        holder.mGenres.setText(genres);
+        Context context = holder.mPoster.getContext();
+        Picasso.with(context).load(movies.get(position).getLargeCoverImage()).into(holder.mPoster);
+
+    }
+
+    @Override
+    public int getItemCount() {
+        return movies.size();
+    }
+
+
 }
