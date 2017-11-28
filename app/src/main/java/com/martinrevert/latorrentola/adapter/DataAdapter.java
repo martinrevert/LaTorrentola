@@ -66,23 +66,14 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
             mPoster = view.findViewById(R.id.poster);
             mSummary = view.findViewById(R.id.summary);
             Context context = view.getContext();
-            view.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View view) {
-                 /*   int itemPosition = getLayoutPosition();
-                    int id = movies.get(itemPosition).getId();
-                    final Intent intent = new Intent(context, PeliActivity.class);
-                    intent.putExtra("id", id);
-                    intent.putExtra("imdb", movies.get(itemPosition).getImdb());
-                    context.startActivity(intent); */
-                    int itemPosition = getLayoutPosition();
-                    Movie peli = movies.get(itemPosition);
-                    String strPeli = new Gson().toJson(peli);
-                    Intent intent = new Intent(context, PeliActivity.class);
-                    intent.putExtra("PELI", strPeli);
-                    context.startActivity(intent);
+            view.setOnClickListener(view1 -> {
+                int itemPosition = getLayoutPosition();
+                Movie peli = movies.get(itemPosition);
+                String strPeli = new Gson().toJson(peli);
+                Intent intent = new Intent(context, PeliActivity.class);
+                intent.putExtra("PELI", strPeli);
+                context.startActivity(intent);
 
-                }
             });
 
         }
