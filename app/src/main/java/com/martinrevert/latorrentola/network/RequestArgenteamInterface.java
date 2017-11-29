@@ -16,5 +16,7 @@ public interface RequestArgenteamInterface {
     Observable<Results> getMovie(@Path("imdb") String imdb);
 
     @GET("movie/{id}")
-    Observable<MovieDetails> getMovieDetails(@Path ("id") String id);
+    Observable<MovieDetails> getMovieId(@Path ("id") Integer id);
+
+
 }

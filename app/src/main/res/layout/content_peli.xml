@@ -9,9 +9,31 @@
     tools:showIn="@layout/activity_peli">
 
     <fragment
-        android:name="com.google.android.youtube.player.YouTubePlayerFragment"
         android:id="@+id/youtube_player_view"
+        android:name="com.google.android.youtube.player.YouTubePlayerFragment"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"/>
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <LinearLayout
+        android:id="@+id/linearyts"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintTop_toBottomOf="@+id/youtube_player_view">
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/linearargenteam"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="vertical"
+        app:layout_constraintTop_toBottomOf="@+id/linearyts"
+        tools:layout_editor_absoluteX="16dp">
+
+    </LinearLayout>
 
 </android.support.constraint.ConstraintLayout>
