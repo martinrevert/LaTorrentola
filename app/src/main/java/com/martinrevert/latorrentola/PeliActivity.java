@@ -3,12 +3,14 @@ package com.martinrevert.latorrentola;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.renderscript.Sampler;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import com.google.android.youtube.player.YouTubeInitializationResult;
 import com.google.android.youtube.player.YouTubePlayer;
@@ -48,12 +50,13 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
     YouTubePlayerFragment youTubePlayerFragment;
     Movie movie;
     RequestArgenteamInterface requestArgenteamInterface;
+    TextView emptyargenteam;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_peli);
-
+        emptyargenteam = findViewById(R.id.emptyargenteam);
         youTubePlayerFragment = (YouTubePlayerFragment) getFragmentManager().findFragmentById(R.id.youtube_player_view);
 
         Bundle bundle = getIntent().getExtras();
@@ -173,14 +176,12 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
 
     private void handleResponseId(MovieDetails movieat) {
 
-        //ToDo me parece que este listiterator me está jodiendo la vida
-        //ver si se puede hacer con manipulación normal de pojos y un for
-
         List<Release> releases = movieat.getReleases();
-
+        Integer count = 0;
         for (Release rel : releases) {
 
-            if (rel.getTorrents() != null) {
+            if (!rel.getTorrents().isEmpty()) {
+                count = count + 1;
                 Uri uri = Uri.parse(rel.getTorrents().get(0).getUri());
                 String codec = rel.getCodec();
                 String tags = rel.getTags();
@@ -206,24 +207,34 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                 btntorrent.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
                 linearargenteam.addView(btntorrent);
 
-
+                Log.v("UN RELEASE CON TORRENT", "SI TORRENT");
             } else {
-                Log.v("RELEASE SIN TORRENT", "NO TORRENT");
+                Log.v("UN RELEASE SIN TORRENT", "NO TORRENT");
+
             }
 
         }
-
+        if (count == 0){
+            emptyargenteam.setVisibility(View.VISIBLE);
+        }
 
     }
 
 
     private void handleErrorId(Throwable throwable) {
-        Log.v("ERRORARGENTEAMID", throwable.getLocalizedMessage());
+
+            throwable.printStackTrace();
+
+            Log.v("ERRORARGENTEAMID", throwable.getLocalizedMessage());
+
+
+
     }
 
     private void handleError(Throwable error) {
 
         Log.v("ERRORARGENTEAM", error.getLocalizedMessage());
+        emptyargenteam.setVisibility(View.VISIBLE);
     }
 
     @Override
