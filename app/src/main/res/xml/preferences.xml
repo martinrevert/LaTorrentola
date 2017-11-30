@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <RingtonePreference
+        android:defaultValue=""
+        android:key="ringtone_preference_1"
+        android:title="Ringtone preference" />
+    <SwitchPreference
+        android:defaultValue="false"
+        android:key="switch_preference_1"
+        android:title="Switch preference" />
+
+</PreferenceScreen>

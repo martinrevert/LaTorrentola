@@ -80,14 +80,11 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
 
             mCompositeDisposable = new CompositeDisposable();
 
-            List <Torrent> torrentsyts = movie.getTorrents();
+            List<Torrent> torrentsyts = movie.getTorrents();
 
-            for (Torrent torroyts : torrentsyts){
+            for (Torrent torroyts : torrentsyts) {
 
-
-
-
-                String text = "YTS" + " " + torroyts.getQuality()+ " " + torroyts.getSize();
+                String text = "YTS" + " " + torroyts.getQuality() + " " + torroyts.getSize();
 
                 LinearLayout linearyts = findViewById(R.id.linearyts);
 
@@ -99,7 +96,7 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                         String hash = torroyts.getHash();
                         String uriyts = null;
                         try {
-                            uriyts = "magnet:?xt=urn:btih:" + hash +"&dn="+ URLEncoder.encode(movie.getTitle(),"UTF-8")+"&tr=udp://open.demonii.com:1337/announce&tr=udp://tracker.openbittorrent.com:80";
+                            uriyts = "magnet:?xt=urn:btih:" + hash + "&dn=" + URLEncoder.encode(movie.getTitle(), "UTF-8") + "&tr=udp://open.demonii.com:1337/announce&tr=udp://tracker.openbittorrent.com:80";
                         } catch (UnsupportedEncodingException e) {
                             e.printStackTrace();
                         }
@@ -113,16 +110,6 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                 });
                 btntorrentyts.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
                 linearyts.addView(btntorrentyts);
-
-
-
-
-
-
-
-
-
-
 
             }
 
@@ -145,7 +132,6 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
     public void onInitializationFailure(YouTubePlayer.Provider provider, YouTubeInitializationResult youTubeInitializationResult) {
 
     }
-
 
     private void loadJSONargenteam() {
 
@@ -198,14 +184,14 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                 Uri uri = Uri.parse(rel.getTorrents().get(0).getUri());
                 String codec = rel.getCodec();
                 String tags = rel.getTags();
-                String source = rel. getSource();
+                String source = rel.getSource();
                 String size = rel.getSize();
-                Log.v("CODEC", codec + " " + tags + " " + source + " " +  size);
+                Log.v("CODEC", codec + " " + tags + " " + source + " " + size);
 
                 LinearLayout linearargenteam = findViewById(R.id.linearargenteam);
 
                 Button btntorrent = new Button(PeliActivity.this);
-                btntorrent.setText(source + " " + codec + " " + tags +" " + size);
+                btntorrent.setText(source + " " + codec + " " + tags + " " + size);
                 btntorrent.setOnClickListener(new View.OnClickListener() {
                     @Override
                     public void onClick(View view) {
@@ -246,4 +232,3 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
         mCompositeDisposable.clear();
     }
 }
-

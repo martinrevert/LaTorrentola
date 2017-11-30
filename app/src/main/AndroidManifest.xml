@@ -18,12 +18,29 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- enable the search dialog to send searches to SearchableActivity -->
+            <meta-data
+                android:name="android.app.default_searchable"
+                android:value=".SearchableActivity" />
         </activity>
         <activity
             android:name=".PeliActivity"
             android:label="@string/title_activity_peli"
-            android:screenOrientation="portrait"
-            android:theme="@style/AppTheme.NoActionBar">
+            android:screenOrientation="portrait"></activity>
+        <activity
+            android:name=".SearchableActivity"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.SEARCH" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.app.searchable"
+                android:resource="@xml/searchable" />
+        </activity>
+        <activity android:name="com.martinrevert.latorrentola.OpcionesActivity"
+                    android:screenOrientation="portrait">
 
         </activity>
     </application>

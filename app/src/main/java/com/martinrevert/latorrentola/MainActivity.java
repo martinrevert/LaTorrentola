@@ -1,9 +1,25 @@
 package com.martinrevert.latorrentola;
 
+import android.app.SearchManager;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.support.v7.app.AlertDialog;
+import android.support.v7.widget.SearchView;
+import android.content.Context;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.support.v7.widget.Toolbar;
+import android.text.Spannable;
+import android.text.SpannableString;
+import android.text.util.Linkify;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
+import android.widget.ProgressBar;
+
 import android.widget.Toast;
 
 
@@ -22,9 +38,13 @@ import retrofit2.Retrofit;
 import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory;
 import retrofit2.converter.gson.GsonConverterFactory;
 
+import static android.view.View.GONE;
+import static android.view.View.VISIBLE;
+
 public class MainActivity extends AppCompatActivity {
 
     private RecyclerView mRecyclerView;
+    private ProgressBar progressBar;
 
     private CompositeDisposable mCompositeDisposable;
 
@@ -32,7 +52,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
 
+
+        progressBar = findViewById(R.id.progressBar);
         mCompositeDisposable = new CompositeDisposable();
         initRecyclerView();
         loadJSON();
@@ -47,6 +71,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadJSON() {
+        progressBar.setVisibility(VISIBLE);
         RequestYTSInterface requestYTSInterface = new Retrofit.Builder()
                 .baseUrl(Constants.YTS_BASE_URL)
                 .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
@@ -60,15 +85,53 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void handleResponse(MovieDetails result) {
-
+        progressBar.setVisibility(GONE);
         List<Movie> movies = result.getData().getMovies();
         DataAdapter mAdapter = new DataAdapter(movies);
         mRecyclerView.setAdapter(mAdapter);
     }
 
     private void handleError(Throwable error) {
-
+        progressBar.setVisibility(GONE);
         Toast.makeText(this, "Error " + error.getLocalizedMessage(), Toast.LENGTH_SHORT).show();
+    }
+
+    @Override
+    public boolean onSearchRequested() {
+        return super.onSearchRequested();
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.menu, menu);
+        // Get the SearchView and set the searchable configuration
+        SearchManager searchManager = (SearchManager) getSystemService(Context.SEARCH_SERVICE);
+        SearchView searchView = (SearchView) menu.findItem(R.id.search).getActionView();
+        // Assumes current activity is the searchable activity
+        searchView.setSearchableInfo(searchManager.getSearchableInfo(getComponentName()));
+        searchView.setIconifiedByDefault(true); // Do not iconify the widget; expand it by default
+
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+
+        switch (item.getItemId()) {
+
+            case R.id.search:
+                onSearchRequested();
+                return true;
+            case R.id.settings:
+
+                startActivity(new Intent(this, OpcionesActivity.class));
+
+                return true;
+            default:
+                return super.onOptionsItemSelected(item);
+
+        }
     }
 
     @Override
