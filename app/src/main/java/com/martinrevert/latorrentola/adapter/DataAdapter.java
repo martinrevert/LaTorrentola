@@ -79,7 +79,12 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
 
     @Override
     public int getItemCount() {
-        return movies.size();
+        try {
+            return movies.size();
+        }catch(NullPointerException e){
+            e.printStackTrace();
+            return 0;
+        }
     }
 
 

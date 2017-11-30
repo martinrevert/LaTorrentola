@@ -6,22 +6,19 @@
         android:id="@+id/search"
         android:icon="@drawable/ic_search_white_24dp"
         android:title="Search"
-        app:showAsAction="always"
-        app:actionViewClass="android.support.v7.widget.SearchView"/>
+        app:actionViewClass="android.support.v7.widget.SearchView"
+        app:showAsAction="always" />
 
     <item
         android:id="@+id/grid"
         android:icon="@drawable/ic_view_column_black_24dp"
         android:title="View"
-        app:showAsAction="always"
-       />
+        app:showAsAction="ifRoom" />
 
     <item
         android:id="@+id/settings"
+        android:icon="@drawable/ic_settings_applications_black_24dp"
         android:title="Settings"
-        app:showAsAction="ifRoom"
-        >
-
-    </item>
+        app:showAsAction="never" />
 
 </menu>

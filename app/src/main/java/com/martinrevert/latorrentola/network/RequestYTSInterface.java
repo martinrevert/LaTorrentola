@@ -14,4 +14,8 @@ public interface RequestYTSInterface {
     Observable<MovieDetails> getMovieDetails(@Query("limit") String limit,
                                              @Query("minimum_rating") String minimum_rating);
 
+    @GET("list_movies.json")
+    Observable<MovieDetails> getMovieSearch(@Query("limit") String limit,
+                                             @Query("query_term") String query);
+
 }
