@@ -3,7 +3,6 @@ package com.martinrevert.latorrentola;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
-import android.renderscript.Sampler;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
@@ -18,6 +17,7 @@ import com.google.android.youtube.player.YouTubePlayerFragment;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+
 import com.martinrevert.latorrentola.constants.Constants;
 import com.martinrevert.latorrentola.model.YTS.Movie;
 import com.martinrevert.latorrentola.model.YTS.Torrent;
@@ -52,12 +52,22 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
     RequestArgenteamInterface requestArgenteamInterface;
     TextView emptyargenteam;
 
+    TextView summary;
+    TextView year;
+    TextView language;
+    TextView rating;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_peli);
         emptyargenteam = findViewById(R.id.emptyargenteam);
         youTubePlayerFragment = (YouTubePlayerFragment) getFragmentManager().findFragmentById(R.id.youtube_player_view);
+
+        summary = findViewById(R.id.summary);
+        year = findViewById(R.id.year);
+        language = findViewById(R.id.language);
+        rating = findViewById(R.id.rating);
 
         Bundle bundle = getIntent().getExtras();
         String peliStr = null;
@@ -82,6 +92,15 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
             youTubePlayerFragment.initialize(Constants.YOUTUBE_API_KEY, this);
 
             mCompositeDisposable = new CompositeDisposable();
+
+            String summ = "Summary: " + movie.getSummary();
+            summary.setText(summ);
+            String yr = "Year: " + movie.getYear();
+            year.setText(yr);
+            String lg = "Language: " + movie.getLanguage();
+            language.setText(lg);
+            String rt = "Rating: " + movie.getRating();
+            rating.setText(rt);
 
             List<Torrent> torrentsyts = movie.getTorrents();
 

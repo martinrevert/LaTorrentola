@@ -43,7 +43,7 @@
             android:progressTint="@color/colorAccent"
             android:max="10"
             android:numStars="10"
-            android:stepSize="1"
+            android:stepSize="0.01"
             card_view:layout_constraintStart_toStartOf="parent"
             card_view:layout_constraintTop_toBottomOf="@+id/title" />
 

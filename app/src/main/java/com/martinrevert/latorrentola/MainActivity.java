@@ -1,10 +1,8 @@
 package com.martinrevert.latorrentola;
 
 import android.app.SearchManager;
-import android.content.DialogInterface;
+
 import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.support.v7.app.AlertDialog;
 import android.support.v7.widget.SearchView;
 import android.content.Context;
 import android.os.Bundle;
@@ -12,9 +10,7 @@ import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.Toolbar;
-import android.text.Spannable;
-import android.text.SpannableString;
-import android.text.util.Linkify;
+
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
