@@ -12,6 +12,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.crashlytics.android.Crashlytics;
 import com.martinrevert.latorrentola.adapter.DataAdapter;
 import com.martinrevert.latorrentola.constants.Constants;
 import com.martinrevert.latorrentola.model.YTS.Movie;
@@ -20,6 +21,7 @@ import com.martinrevert.latorrentola.network.RequestYTSInterface;
 
 import java.util.List;
 
+import io.fabric.sdk.android.Fabric;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.schedulers.Schedulers;
@@ -42,6 +44,7 @@ public class SearchableActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_searchable);
+        Fabric.with(this, new Crashlytics());
         progressBar = findViewById(R.id.progressBar);
         empty = findViewById(R.id.empty);
         empty.setText("No encontré movies con ese criterio");

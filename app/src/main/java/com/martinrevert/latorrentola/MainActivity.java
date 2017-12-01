@@ -18,6 +18,7 @@ import android.widget.ProgressBar;
 
 import android.widget.Toast;
 
+import com.crashlytics.android.Crashlytics;
 
 import com.martinrevert.latorrentola.constants.Constants;
 import com.martinrevert.latorrentola.model.YTS.Movie;
@@ -27,6 +28,7 @@ import com.martinrevert.latorrentola.network.RequestYTSInterface;
 
 import java.util.List;
 
+import io.fabric.sdk.android.Fabric;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.schedulers.Schedulers;
@@ -47,6 +49,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Fabric.with(this, new Crashlytics());
         setContentView(R.layout.activity_main);
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
