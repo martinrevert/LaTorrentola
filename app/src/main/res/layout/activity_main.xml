@@ -31,7 +31,7 @@
         android:layout_height="?attr/actionBarSize"
         android:background="?attr/colorPrimary"
         app:layout_constraintTop_toTopOf="parent"
-        app:popupTheme="@style/AppTheme.PopupOverlay"
+        app:popupTheme="@style/Base.V23.Theme.AppCompat.Toolbar"
         app:theme="@style/Base.V23.Theme.AppCompat.Toolbar"
         app:titleTextColor="@color/colorAccent" />
 
