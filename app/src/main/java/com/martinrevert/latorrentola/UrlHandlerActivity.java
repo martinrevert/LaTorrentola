@@ -1,33 +1,30 @@
 package com.martinrevert.latorrentola;
 
-import android.app.SearchManager;
 
+import android.app.TaskStackBuilder;
 import android.content.Intent;
-
-import android.support.v7.widget.SearchView;
-import android.content.Context;
 import android.os.Bundle;
+import android.speech.tts.TextToSpeech;
+import android.support.v4.app.NavUtils;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.Toolbar;
-
-import android.view.Menu;
-import android.view.MenuInflater;
+import android.util.Log;
 import android.view.MenuItem;
 import android.widget.ProgressBar;
 
-import android.widget.Toast;
 
 import com.crashlytics.android.Crashlytics;
-
+import com.martinrevert.latorrentola.adapter.DataAdapter;
 import com.martinrevert.latorrentola.constants.Constants;
 import com.martinrevert.latorrentola.model.YTS.Movie;
 import com.martinrevert.latorrentola.model.YTS.MovieDetails;
-import com.martinrevert.latorrentola.adapter.DataAdapter;
 import com.martinrevert.latorrentola.network.RequestYTSInterface;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 
 import io.fabric.sdk.android.Fabric;
 import io.reactivex.android.schedulers.AndroidSchedulers;
@@ -40,12 +37,13 @@ import retrofit2.converter.gson.GsonConverterFactory;
 import static android.view.View.GONE;
 import static android.view.View.VISIBLE;
 
-public class MainActivity extends AppCompatActivity {
+public class UrlHandlerActivity extends AppCompatActivity implements TextToSpeech.OnInitListener {
 
     private RecyclerView mRecyclerView;
     private ProgressBar progressBar;
 
     private CompositeDisposable mCompositeDisposable;
+    TextToSpeech tts;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,14 +51,33 @@ public class MainActivity extends AppCompatActivity {
         Fabric.with(this, new Crashlytics());
         setContentView(R.layout.activity_main);
         Toolbar toolbar = findViewById(R.id.toolbar);
+        toolbar.setTitle("La Torrentola");
         setSupportActionBar(toolbar);
+        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+
+        tts = new TextToSpeech(this, this);
+        tts.setLanguage(Locale.getDefault());
 
 
         progressBar = findViewById(R.id.progressBar);
         mCompositeDisposable = new CompositeDisposable();
         initRecyclerView();
-        loadJSON();
 
+        String imdb = null;
+        Intent appLinkIntent = getIntent();
+
+        if (Objects.equals(appLinkIntent.getAction(), Intent.ACTION_SEND)) {
+
+            imdb = appLinkIntent.getStringExtra(Intent.EXTRA_TEXT);
+
+        } else {
+
+            imdb = appLinkIntent.getDataString();
+
+        }
+        Log.v("LINK", imdb);
+        imdb = imdb.replaceAll("[^0-9]", "");
+        loadJSON(imdb);
     }
 
     private void initRecyclerView() {
@@ -71,7 +88,7 @@ public class MainActivity extends AppCompatActivity {
         mRecyclerView.setLayoutManager(layoutManager);
     }
 
-    private void loadJSON() {
+    private void loadJSON(String imdb) {
         progressBar.setVisibility(VISIBLE);
         RequestYTSInterface requestYTSInterface = new Retrofit.Builder()
                 .baseUrl(Constants.YTS_BASE_URL)
@@ -79,65 +96,66 @@ public class MainActivity extends AppCompatActivity {
                 .addConverterFactory(GsonConverterFactory.create())
                 .build().create(RequestYTSInterface.class);
 
-        mCompositeDisposable.add(requestYTSInterface.getMovieDetails("50", "6")
+        mCompositeDisposable.add(requestYTSInterface.getMovieSearch("50", "tt" + imdb)
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribeOn(Schedulers.io())
                 .subscribe(this::handleResponse, this::handleError));
     }
 
     private void handleResponse(MovieDetails result) {
+
         progressBar.setVisibility(GONE);
         List<Movie> movies = result.getData().getMovies();
-        DataAdapter mAdapter = new DataAdapter(movies);
-        mRecyclerView.setAdapter(mAdapter);
+
+        if (movies.isEmpty()) {
+            tts.speak("Oh no!. Esta película no está disponible", TextToSpeech.QUEUE_ADD, null);
+
+        } else {
+            tts.speak("Ok. Esta película si está disponible", TextToSpeech.QUEUE_ADD, null);
+            DataAdapter mAdapter = new DataAdapter(movies);
+            mRecyclerView.setAdapter(mAdapter);
+        }
     }
 
     private void handleError(Throwable error) {
+        tts.speak("Oh no!. Esta película no está disponible", TextToSpeech.QUEUE_ADD, null);
         progressBar.setVisibility(GONE);
-        Toast.makeText(this, "Error " + error.getLocalizedMessage(), Toast.LENGTH_SHORT).show();
-    }
-
-    @Override
-    public boolean onSearchRequested() {
-        return super.onSearchRequested();
-    }
-
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        MenuInflater inflater = getMenuInflater();
-        inflater.inflate(R.menu.menu, menu);
-        // Get the SearchView and set the searchable configuration
-        SearchManager searchManager = (SearchManager) getSystemService(Context.SEARCH_SERVICE);
-        SearchView searchView = (SearchView) menu.findItem(R.id.search).getActionView();
-        // Assumes current activity is the searchable activity
-        searchView.setSearchableInfo(searchManager.getSearchableInfo(getComponentName()));
-        searchView.setIconifiedByDefault(true); // Do not iconify the widget; expand it by default
-
-        return true;
+        Log.v("ERROR", error.getLocalizedMessage());
     }
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-
         switch (item.getItemId()) {
-
-            case R.id.search:
-                onSearchRequested();
+            // Respond to the action bar's Up/Home button
+            case android.R.id.home:
+                Intent upIntent = NavUtils.getParentActivityIntent(this);
+                if (NavUtils.shouldUpRecreateTask(this, upIntent) || isTaskRoot()) {
+                    // This activity is NOT part of this app's task, so create a new task
+                    // when navigating up, with a synthesized back stack.
+                    TaskStackBuilder.create(this)
+                            // Add all of this activity's parents to the back stack
+                            .addNextIntentWithParentStack(upIntent)
+                            // Navigate up to the closest parent
+                            .startActivities();
+                } else {
+                    // This activity is part of this app's task, so simply
+                    // navigate up to the logical parent activity.
+                    NavUtils.navigateUpTo(this, upIntent);
+                }
                 return true;
-            case R.id.settings:
-
-                startActivity(new Intent(this, OpcionesActivity.class));
-
-                return true;
-            default:
-                return super.onOptionsItemSelected(item);
-
         }
+        return super.onOptionsItemSelected(item);
     }
+
 
     @Override
     public void onDestroy() {
         super.onDestroy();
         mCompositeDisposable.clear();
+    }
+
+    @Override
+    public void onInit(int i) {
+        tts.speak("Chequeando disponibilidad", TextToSpeech.QUEUE_ADD, null);
     }
 }

@@ -1,11 +1,14 @@
 package com.martinrevert.latorrentola;
 
+import android.app.TaskStackBuilder;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.support.v4.app.NavUtils;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -31,6 +34,7 @@ import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Type;
 import java.net.URLEncoder;
 import java.util.List;
+import java.util.Locale;
 
 
 import io.fabric.sdk.android.Fabric;
@@ -46,18 +50,18 @@ import retrofit2.converter.gson.GsonConverterFactory;
 
 public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnInitializedListener {
 
-    String imdb;
-    String youtube_video_trailer;
+    private String imdb;
+    private String youtube_video_trailer;
     private CompositeDisposable mCompositeDisposable;
-    YouTubePlayerFragment youTubePlayerFragment;
-    Movie movie;
-    RequestArgenteamInterface requestArgenteamInterface;
-    TextView emptyargenteam;
+    private YouTubePlayerFragment youTubePlayerFragment;
+    private Movie movie;
+    private RequestArgenteamInterface requestArgenteamInterface;
+    private TextView emptyargenteam;
 
-    TextView summary;
-    TextView year;
-    TextView language;
-    TextView rating;
+    private TextView summary;
+    private TextView year;
+    private TextView language;
+    private TextView rating;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -87,6 +91,7 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
             Toolbar toolbar = findViewById(R.id.toolbar);
             toolbar.setTitle(movie.getTitle());
             setSupportActionBar(toolbar);
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 
             youtube_video_trailer = movie.getYtTrailerCode();
 
@@ -257,6 +262,30 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
 
         Log.v("ERRORARGENTEAM", error.getLocalizedMessage());
         emptyargenteam.setVisibility(View.VISIBLE);
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()) {
+            // Respond to the action bar's Up/Home button
+            case android.R.id.home:
+                Intent upIntent = NavUtils.getParentActivityIntent(this);
+                if (NavUtils.shouldUpRecreateTask(this, upIntent) || isTaskRoot()) {
+                    // This activity is NOT part of this app's task, so create a new task
+                    // when navigating up, with a synthesized back stack.
+                    TaskStackBuilder.create(this)
+                            // Add all of this activity's parents to the back stack
+                            .addNextIntentWithParentStack(upIntent)
+                            // Navigate up to the closest parent
+                            .startActivities();
+                } else {
+                    // This activity is part of this app's task, so simply
+                    // navigate up to the logical parent activity.
+                    NavUtils.navigateUpTo(this, upIntent);
+                }
+                return true;
+        }
+        return super.onOptionsItemSelected(item);
     }
 
     @Override

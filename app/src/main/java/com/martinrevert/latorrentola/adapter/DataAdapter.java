@@ -37,6 +37,9 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
         private ImageView mPoster;
         private RatingBar mRating;
         private TextView mGenres;
+        private ImageView mImdb;
+        private ImageView mMyList;
+        private ImageView mShare;
 
         ViewHolder(View view) {
             super(view);
@@ -44,7 +47,28 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
             mPoster = view.findViewById(R.id.poster);
             mRating = view.findViewById(R.id.rating);
             mGenres = view.findViewById(R.id.genres);
+            mMyList = view.findViewById(R.id.imageButtonMyList);
+            mShare = view.findViewById(R.id.imageButtonShare);
             Context context = view.getContext();
+
+
+            mShare.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    int itemPosition = getLayoutPosition();
+                    Movie peli = movies.get(itemPosition);
+                    String url = "http://www.imdb.com/title/" + peli.getImdbCode();
+                    Intent sendIntent = new Intent();
+                    sendIntent.setAction(Intent.ACTION_SEND);
+                    sendIntent.putExtra(Intent.EXTRA_TEXT, url);
+                    sendIntent.setType("text/plain");
+                    context.startActivity(Intent.createChooser(sendIntent,"Compartir esta película"));
+
+
+                }
+            });
+
+
             view.setOnClickListener(view1 -> {
                 int itemPosition = getLayoutPosition();
                 Movie peli = movies.get(itemPosition);
@@ -70,7 +94,7 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
         holder.mTitle.setText(movies.get(position).getTitleLong());
         holder.mRating.setRating(Float.parseFloat(movies.get(position).getRating()));
         List<String> generos = movies.get(position).getGenres();
-        String genres= generos.toString();
+        String genres = generos.toString();
         holder.mGenres.setText(genres);
         Context context = holder.mPoster.getContext();
         Picasso.with(context).load(movies.get(position).getLargeCoverImage()).into(holder.mPoster);
@@ -81,7 +105,7 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
     public int getItemCount() {
         try {
             return movies.size();
-        }catch(NullPointerException e){
+        } catch (NullPointerException e) {
             e.printStackTrace();
             return 0;
         }
