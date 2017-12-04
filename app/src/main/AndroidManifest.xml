@@ -34,7 +34,8 @@
             android:screenOrientation="portrait" />
         <activity
             android:name=".SearchableActivity"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait"
+            android:parentActivityName="com.martinrevert.latorrentola.MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.SEARCH" />
             </intent-filter>

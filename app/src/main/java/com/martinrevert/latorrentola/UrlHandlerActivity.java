@@ -108,17 +108,17 @@ public class UrlHandlerActivity extends AppCompatActivity implements TextToSpeec
         List<Movie> movies = result.getData().getMovies();
 
         if (movies.isEmpty()) {
-            tts.speak("Oh no!. Esta película no está disponible", TextToSpeech.QUEUE_ADD, null);
+            tts.speak("Oh no!. Esta película no está disponible", TextToSpeech.QUEUE_ADD, null,null);
 
         } else {
-            tts.speak("Ok. Esta película si está disponible", TextToSpeech.QUEUE_ADD, null);
+            tts.speak("Ok. Esta película si está disponible", TextToSpeech.QUEUE_ADD, null,null);
             DataAdapter mAdapter = new DataAdapter(movies);
             mRecyclerView.setAdapter(mAdapter);
         }
     }
 
     private void handleError(Throwable error) {
-        tts.speak("Oh no!. Esta película no está disponible", TextToSpeech.QUEUE_ADD, null);
+        tts.speak("Oh no!. Esta película no está disponible", TextToSpeech.QUEUE_ADD, null,null);
         progressBar.setVisibility(GONE);
         Log.v("ERROR", error.getLocalizedMessage());
     }
@@ -156,6 +156,6 @@ public class UrlHandlerActivity extends AppCompatActivity implements TextToSpeec
 
     @Override
     public void onInit(int i) {
-        tts.speak("Chequeando disponibilidad", TextToSpeech.QUEUE_ADD, null);
+        tts.speak("Chequeando disponibilidad", TextToSpeech.QUEUE_ADD, null,null);
     }
 }

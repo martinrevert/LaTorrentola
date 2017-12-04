@@ -4,6 +4,7 @@ import android.app.TaskStackBuilder;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.speech.tts.TextToSpeech;
 import android.support.v4.app.NavUtils;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
@@ -25,10 +26,12 @@ import com.google.gson.reflect.TypeToken;
 import com.martinrevert.latorrentola.constants.Constants;
 import com.martinrevert.latorrentola.model.YTS.Movie;
 import com.martinrevert.latorrentola.model.YTS.Torrent;
+import com.martinrevert.latorrentola.model.Yandex.Summary;
 import com.martinrevert.latorrentola.model.argenteam.MovieDetails;
 import com.martinrevert.latorrentola.model.argenteam.Release;
 import com.martinrevert.latorrentola.model.argenteam.Results;
 import com.martinrevert.latorrentola.network.RequestArgenteamInterface;
+import com.martinrevert.latorrentola.network.RequestYandex;
 
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Type;
@@ -48,13 +51,14 @@ import retrofit2.Retrofit;
 import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory;
 import retrofit2.converter.gson.GsonConverterFactory;
 
-public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnInitializedListener {
+public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnInitializedListener, TextToSpeech.OnInitListener {
 
     private String imdb;
     private String youtube_video_trailer;
     private CompositeDisposable mCompositeDisposable;
     private YouTubePlayerFragment youTubePlayerFragment;
     private Movie movie;
+    private RequestYandex requestYandexTranslate;
     private RequestArgenteamInterface requestArgenteamInterface;
     private TextView emptyargenteam;
 
@@ -62,6 +66,9 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
     private TextView year;
     private TextView language;
     private TextView rating;
+
+    private TextToSpeech tts;
+    private String speak;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -75,6 +82,9 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
         year = findViewById(R.id.year);
         language = findViewById(R.id.language);
         rating = findViewById(R.id.rating);
+
+        tts = new TextToSpeech(this, this);
+        tts.setLanguage(Locale.getDefault());
 
         Bundle bundle = getIntent().getExtras();
         String peliStr = null;
@@ -110,6 +120,10 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
             String rt = "Rating: " + movie.getRating();
             rating.setText(rt);
 
+            speak = movie.getTitleLong();
+
+            String texto = movie.getSummary();
+
             List<Torrent> torrentsyts = movie.getTorrents();
 
             for (Torrent torroyts : torrentsyts) {
@@ -142,11 +156,45 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                 linearyts.addView(btntorrentyts);
 
             }
-
+            loadJSONyandextranslate(texto);
             loadJSONargenteam();
         } else {
 
         }
+
+    }
+
+    private void loadJSONyandextranslate(String text) {
+        String lang = "en-es";
+        String api = Constants.YANDEX_API_KEY;
+        HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
+        // set your desired log level
+        logging.setLevel(HttpLoggingInterceptor.Level.BODY);
+        OkHttpClient.Builder httpClient = new OkHttpClient.Builder();
+        // add your other interceptors …
+        // add logging as last interceptor
+        httpClient.addInterceptor(logging);  // <-- this is the important line!
+
+        requestYandexTranslate = new Retrofit.Builder()
+                .baseUrl(Constants.YANDEX_BASE_URL)
+                .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
+                .addConverterFactory(GsonConverterFactory.create())
+                .client(httpClient.build())
+                .build().create(RequestYandex.class);
+
+        mCompositeDisposable.add(requestYandexTranslate.getTranslate(api, text, lang)
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribeOn(Schedulers.io())
+                .subscribe(this::handleResponseYandex, this::handleErrorYandex));
+
+    }
+
+    private void handleResponseYandex(Summary summary) {
+        String talkargento = summary.getText().get(0);
+        tts.speak(talkargento, TextToSpeech.QUEUE_ADD, null, null);
+    }
+
+    private void handleErrorYandex(Throwable error) {
 
     }
 
@@ -241,7 +289,7 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
             }
 
         }
-        if (count == 0){
+        if (count == 0) {
             emptyargenteam.setVisibility(View.VISIBLE);
         }
 
@@ -250,10 +298,9 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
 
     private void handleErrorId(Throwable throwable) {
 
-            throwable.printStackTrace();
+        throwable.printStackTrace();
 
-            Log.v("ERRORARGENTEAMID", throwable.getLocalizedMessage());
-
+        Log.v("ERRORARGENTEAMID", throwable.getLocalizedMessage());
 
 
     }
@@ -292,5 +339,10 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
     public void onDestroy() {
         super.onDestroy();
         mCompositeDisposable.clear();
+    }
+
+    @Override
+    public void onInit(int i) {
+        tts.speak(speak, TextToSpeech.QUEUE_ADD, null, null);
     }
 }
