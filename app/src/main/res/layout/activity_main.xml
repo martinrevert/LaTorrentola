@@ -6,7 +6,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context="com.martinrevert.latorrentola.MainActivity"
-    tools:layout_editor_absoluteY="25dp">
+    tools:layout_editor_absoluteY="25dp"
+    >
 
     <ProgressBar
         android:id="@+id/progressBar"
@@ -41,6 +42,10 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:scrollbars="vertical"
+
+        android:paddingBottom="?attr/actionBarSize"
+        android:clipToPadding="false"
+
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/toolbar" />
