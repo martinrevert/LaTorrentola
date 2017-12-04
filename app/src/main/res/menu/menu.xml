@@ -9,11 +9,6 @@
         app:actionViewClass="android.support.v7.widget.SearchView"
         app:showAsAction="always" />
 
-    <item
-        android:id="@+id/grid"
-        android:icon="@drawable/ic_view_column_black_24dp"
-        android:title="View"
-        app:showAsAction="ifRoom" />
 
     <item
         android:id="@+id/settings"
