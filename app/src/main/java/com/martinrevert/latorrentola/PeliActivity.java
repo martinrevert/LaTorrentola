@@ -339,6 +339,8 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
     public void onDestroy() {
         super.onDestroy();
         mCompositeDisposable.clear();
+        tts.shutdown();
+
     }
 
     @Override

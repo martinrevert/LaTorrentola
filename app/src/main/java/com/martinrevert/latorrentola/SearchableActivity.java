@@ -12,8 +12,6 @@ import android.util.Log;
 import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.widget.Toast;
-
 
 import com.crashlytics.android.Crashlytics;
 import com.martinrevert.latorrentola.adapter.DataAdapter;
@@ -106,20 +104,24 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
         progressBar.setVisibility(GONE);
         List<Movie> movies = result.getData().getMovies();
 
-        if (movies.isEmpty()){
-            tts.speak("No encontramos peliculas como " + query,TextToSpeech.QUEUE_ADD,null,null);
-        }else {
+        if (movies.isEmpty()) {
+            tts.speak("No encontramos peliculas como " + query, TextToSpeech.QUEUE_ADD, null, null);
+            checkAdapterIsEmpty();
+        } else {
             tts.speak("Estos son sus resultados con " + query, TextToSpeech.QUEUE_ADD, null, null);
             mAdapter = new DataAdapter(movies);
             mRecyclerView.setAdapter(mAdapter);
+            checkAdapterIsEmpty();
         }
-        checkAdapterIsEmpty();
+
 
     }
 
     private void handleError(Throwable throwable) {
         progressBar.setVisibility(GONE);
-        Toast.makeText(this, "Error " + throwable.getLocalizedMessage(), Toast.LENGTH_SHORT).show();
+        checkAdapterIsEmpty();
+        tts.speak("No encontramos peliculas como " + query, TextToSpeech.QUEUE_ADD, null, null);
+        Log.v("ERROR BUSQUEDA", throwable.getLocalizedMessage());
     }
 
     private void checkAdapterIsEmpty() {
@@ -140,12 +142,13 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
     public void onDestroy() {
         super.onDestroy();
         compositeDisposable.clear();
+        tts.shutdown();
     }
 
     @Override
     public void onInit(int i) {
 
-        tts.speak("Ok, vamos a buscar" + query,TextToSpeech.QUEUE_ADD,null,null);
+        tts.speak("Ok, vamos a buscar" + query, TextToSpeech.QUEUE_ADD, null, null);
     }
 }
 

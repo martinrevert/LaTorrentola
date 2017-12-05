@@ -152,6 +152,7 @@ public class UrlHandlerActivity extends AppCompatActivity implements TextToSpeec
     public void onDestroy() {
         super.onDestroy();
         mCompositeDisposable.clear();
+        tts.shutdown();
     }
 
     @Override
