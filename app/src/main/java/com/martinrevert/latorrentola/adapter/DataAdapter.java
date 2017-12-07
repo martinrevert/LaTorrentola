@@ -14,6 +14,8 @@ import com.google.gson.Gson;
 
 import com.martinrevert.latorrentola.PeliActivity;
 import com.martinrevert.latorrentola.R;
+import com.martinrevert.latorrentola.database.AppDatabase;
+import com.martinrevert.latorrentola.database.AppDatabase_Impl;
 import com.martinrevert.latorrentola.model.YTS.Movie;
 
 import com.squareup.picasso.Picasso;
@@ -50,6 +52,17 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
             mShare = view.findViewById(R.id.imageButtonShare);
             Context context = view.getContext();
 
+            mMyList.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    AppDatabase db = AppDatabase.getAppDatabase(context);
+                    int itemPosition = getLayoutPosition();
+                    Movie peli = movies.get(itemPosition);
+                    db.movieDao().insertAll(peli);
+
+                }
+            });
+
 
             mShare.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -61,7 +74,7 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
                     sendIntent.setAction(Intent.ACTION_SEND);
                     sendIntent.putExtra(Intent.EXTRA_TEXT, url);
                     sendIntent.setType("text/plain");
-                    context.startActivity(Intent.createChooser(sendIntent,"Compartir esta película"));
+                    context.startActivity(Intent.createChooser(sendIntent, "Compartir esta película"));
 
 
                 }

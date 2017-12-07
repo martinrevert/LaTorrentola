@@ -4,81 +4,109 @@ package com.martinrevert.latorrentola.model.YTS;
  * Created by martin on 22/11/17.
  */
 
+import android.arch.persistence.room.ColumnInfo;
+import android.arch.persistence.room.Entity;
+import android.arch.persistence.room.PrimaryKey;
+
 import java.util.List;
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 
+@Entity
 public class Movie {
-
+    @PrimaryKey
     @SerializedName("id")
     @Expose
     private Integer id;
+    @ColumnInfo
     @SerializedName("url")
     @Expose
     private String url;
+    @ColumnInfo
     @SerializedName("imdb_code")
     @Expose
     private String imdbCode;
+    @ColumnInfo
     @SerializedName("title")
     @Expose
     private String title;
+    @ColumnInfo
     @SerializedName("title_english")
     @Expose
     private String titleEnglish;
+    @ColumnInfo
     @SerializedName("title_long")
     @Expose
     private String titleLong;
+    @ColumnInfo
     @SerializedName("slug")
     @Expose
     private String slug;
+    @ColumnInfo
     @SerializedName("year")
     @Expose
     private Integer year;
+    @ColumnInfo
     @SerializedName("rating")
     @Expose
     private String rating;
+    @ColumnInfo
     @SerializedName("runtime")
     @Expose
     private String runtime;
+    @ColumnInfo
     @SerializedName("genres")
     @Expose
     private List<String> genres = null;
+    @ColumnInfo
     @SerializedName("summary")
     @Expose
     private String summary;
+    @ColumnInfo
     @SerializedName("description_full")
     @Expose
     private String descriptionFull;
+    @ColumnInfo
     @SerializedName("synopsis")
     @Expose
     private String synopsis;
+    @ColumnInfo
     @SerializedName("yt_trailer_code")
     @Expose
     private String ytTrailerCode;
+    @ColumnInfo
     @SerializedName("language")
     @Expose
     private String language;
+    @ColumnInfo
     @SerializedName("mpa_rating")
     @Expose
     private String mpaRating;
+    @ColumnInfo
     @SerializedName("background_image")
     @Expose
     private String backgroundImage;
+    @ColumnInfo
     @SerializedName("background_image_original")
     @Expose
     private String backgroundImageOriginal;
+    @ColumnInfo
     @SerializedName("small_cover_image")
     @Expose
     private String smallCoverImage;
+    @ColumnInfo
     @SerializedName("medium_cover_image")
     @Expose
     private String mediumCoverImage;
+    @ColumnInfo
     @SerializedName("large_cover_image")
     @Expose
     private String largeCoverImage;
+    @ColumnInfo
     @SerializedName("state")
     @Expose
     private String state;
+    @ColumnInfo
     @SerializedName("torrents")
     @Expose
     private List<Torrent> torrents = null;

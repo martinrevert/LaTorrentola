@@ -14,8 +14,10 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import com.crashlytics.android.Crashlytics;
+
 import com.martinrevert.latorrentola.adapter.DataAdapter;
 import com.martinrevert.latorrentola.constants.Constants;
+import com.martinrevert.latorrentola.database.AppDatabase;
 import com.martinrevert.latorrentola.model.YTS.Movie;
 import com.martinrevert.latorrentola.model.YTS.MovieDetails;
 import com.martinrevert.latorrentola.network.RequestYTSInterface;
@@ -24,9 +26,11 @@ import java.util.List;
 import java.util.Locale;
 
 import io.fabric.sdk.android.Fabric;
+
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.schedulers.Schedulers;
+
 import retrofit2.Retrofit;
 import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory;
 import retrofit2.converter.gson.GsonConverterFactory;
@@ -46,6 +50,8 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
     private String query = null;
     private Intent intent;
 
+    private  AppDatabase db;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -59,6 +65,7 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
 
         Toolbar toolbar = findViewById(R.id.toolbar);
 
+        db = AppDatabase.getAppDatabase(this);
         compositeDisposable = new CompositeDisposable();
         // Get the intent, verify the action and get the query
 
@@ -109,6 +116,12 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
                         .observeOn(AndroidSchedulers.mainThread())
                         .subscribeOn(Schedulers.io())
                         .subscribe(this::handleResponse, this::handleError));
+            } else if (query.equals("milista")) {
+                compositeDisposable.add(db.movieDao().getAll()
+                        .observeOn(AndroidSchedulers.mainThread())
+                        .subscribeOn(Schedulers.io())
+                        .subscribe(this::handleDBResponse, this::handleDBError));
+
             } else {
                 compositeDisposable.add(requestYTSInterface.getGenreSearch("50", query)
                         .observeOn(AndroidSchedulers.mainThread())
@@ -116,6 +129,24 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
                         .subscribe(this::handleResponse, this::handleError));
             }
         }
+
+    }
+
+    private void handleDBResponse(List<Movie> pelisdb) {
+
+        if (pelisdb.isEmpty()) {
+            tts.speak("No encontramos peliculas en su lista personal", TextToSpeech.QUEUE_ADD, null, null);
+            checkAdapterIsEmpty();
+        } else {
+            tts.speak("Estas son sus peliclas almacenadas en su lista personal", TextToSpeech.QUEUE_ADD, null, null);
+            mAdapter = new DataAdapter(pelisdb);
+            mRecyclerView.setAdapter(mAdapter);
+            checkAdapterIsEmpty();
+        }
+
+    }
+
+    private void handleDBError (Throwable error){
 
     }
 
