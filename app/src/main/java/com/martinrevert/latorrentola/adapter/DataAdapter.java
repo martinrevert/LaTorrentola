@@ -37,7 +37,6 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
         private ImageView mPoster;
         private RatingBar mRating;
         private TextView mGenres;
-        private ImageView mImdb;
         private ImageView mMyList;
         private ImageView mShare;
 

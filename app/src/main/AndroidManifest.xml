@@ -19,6 +19,7 @@
             android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
+
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
@@ -30,31 +31,27 @@
         <activity
             android:name=".PeliActivity"
             android:label="@string/title_activity_peli"
-            android:parentActivityName="com.martinrevert.latorrentola.MainActivity"
+            android:parentActivityName=".MainActivity"
             android:screenOrientation="portrait" />
         <activity
             android:name=".SearchableActivity"
-            android:screenOrientation="portrait"
-            android:parentActivityName="com.martinrevert.latorrentola.MainActivity">
+            android:parentActivityName=".MainActivity"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.SEARCH" />
             </intent-filter>
+
             <meta-data
                 android:name="android.app.searchable"
                 android:resource="@xml/searchable" />
-
         </activity>
         <activity
-            android:name="com.martinrevert.latorrentola.OpcionesActivity"
-            android:screenOrientation="portrait">
-
-        </activity>
-
+            android:name=".OpcionesActivity"
+            android:screenOrientation="portrait" />
         <activity
             android:name=".UrlHandlerActivity"
-            android:parentActivityName="com.martinrevert.latorrentola.MainActivity"
+            android:parentActivityName=".MainActivity"
             android:screenOrientation="portrait">
-
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
@@ -79,10 +76,14 @@
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
+
                 <category android:name="android.intent.category.DEFAULT" />
+
                 <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
+        <activity android:name=".GenerosActivity" />
+        <activity android:name=".GenericListActivity"></activity>
     </application>
 
 </manifest>

@@ -43,7 +43,8 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
     private TextView empty;
 
     private TextToSpeech tts;
-    String query = null;
+    private String query = null;
+    private Intent intent;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -58,21 +59,24 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
 
         Toolbar toolbar = findViewById(R.id.toolbar);
 
-
         compositeDisposable = new CompositeDisposable();
         // Get the intent, verify the action and get the query
-        Intent intent = getIntent();
+
+        intent = getIntent();
 
         if (Intent.ACTION_SEARCH.equals(intent.getAction())) {
             query = intent.getStringExtra(SearchManager.QUERY);
             toolbar.setTitle(query);
             Log.v("BUSCAR", query);
+        } else {
+            Bundle bundle = getIntent().getExtras();
+            if (bundle != null) {
+                query = bundle.getString("GENRE", "");
+            }
         }
         setSupportActionBar(toolbar);
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         initRecyclerView();
         loadJSON(query);
-
 
     }
 
@@ -94,10 +98,25 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
                 .addConverterFactory(GsonConverterFactory.create())
                 .build().create(RequestYTSInterface.class);
 
-        compositeDisposable.add(requestYTSInterface.getMovieSearch("50", query)
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribeOn(Schedulers.io())
-                .subscribe(this::handleResponse, this::handleError));
+        if (Intent.ACTION_SEARCH.equals(intent.getAction())) {
+            compositeDisposable.add(requestYTSInterface.getMovieSearch("50", query)
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribeOn(Schedulers.io())
+                    .subscribe(this::handleResponse, this::handleError));
+        } else {
+            if (query.equals("3D")) {
+                compositeDisposable.add(requestYTSInterface.getTridiSearch("50", query)
+                        .observeOn(AndroidSchedulers.mainThread())
+                        .subscribeOn(Schedulers.io())
+                        .subscribe(this::handleResponse, this::handleError));
+            } else {
+                compositeDisposable.add(requestYTSInterface.getGenreSearch("50", query)
+                        .observeOn(AndroidSchedulers.mainThread())
+                        .subscribeOn(Schedulers.io())
+                        .subscribe(this::handleResponse, this::handleError));
+            }
+        }
+
     }
 
     private void handleResponse(MovieDetails result) {
@@ -148,7 +167,7 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
     @Override
     public void onInit(int i) {
 
-        tts.speak("Ok, vamos a buscar" + query, TextToSpeech.QUEUE_ADD, null, null);
+        tts.speak("Buscando" + query, TextToSpeech.QUEUE_ADD, null, null);
     }
 }
 

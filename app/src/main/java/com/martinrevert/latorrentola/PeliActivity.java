@@ -101,7 +101,6 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
             Toolbar toolbar = findViewById(R.id.toolbar);
             toolbar.setTitle(movie.getTitle());
             setSupportActionBar(toolbar);
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 
             youtube_video_trailer = movie.getYtTrailerCode();
 

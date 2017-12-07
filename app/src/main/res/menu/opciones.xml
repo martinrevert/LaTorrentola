@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/settings"
+        android:icon="@drawable/ic_settings_applications_black_24dp"
+        android:title="Settings" />
+
+    <item
+        android:id="@+id/milista"
+        android:icon="@drawable/ic_format_list_bulleted_black_24dp"
+        android:title="Mi lista" />
+
+    <item
+        android:id="@+id/tridimensional"
+        android:icon="@drawable/ic_3d_glasses_svgrepo_com"
+        android:title="Buscar solo pelis 3D" />
+
+    <item
+        android:id="@+id/generos"
+        android:icon="@drawable/ic_comedy_and_tragedy_masks_couple"
+        android:title="Buscar por género">
+        <menu>
+            <item
+                android:id="@+id/action"
+                android:title="Action" />
+
+            <item
+                android:id="@+id/adventure"
+                android:title="Adventure" />
+
+            <item
+                android:id="@+id/animation"
+                android:title="Animation" />
+
+            <item
+                android:id="@+id/biography"
+                android:title="Biography" />
+            <item
+                android:id="@+id/comedy"
+                android:title="Comedy" />
+            <item
+                android:id="@+id/crime"
+                android:title="Crime" />
+
+            <item
+                android:id="@+id/documentary"
+                android:title="Documentary" />
+
+
+            <item
+                android:id="@+id/drama"
+                android:title="Drama" />
+
+
+            <item
+                android:id="@+id/family"
+                android:title="Family" />
+
+
+            <item
+                android:id="@+id/fantasy"
+                android:title="Fantasy" />
+
+
+            <item
+                android:id="@+id/filmnoir"
+                android:title="Film-Noir" />
+
+            <item
+                android:id="@+id/history"
+                android:title="History" />
+
+            <item
+                android:id="@+id/horror"
+                android:title="Horror" />
+
+            <item
+                android:id="@+id/music"
+                android:title="Music" />
+
+            <item
+                android:id="@+id/musical"
+                android:title="Musical" />
+
+            <item
+                android:id="@+id/mystery"
+                android:title="Mystery" />
+
+            <item
+                android:id="@+id/romance"
+                android:title="Romance" />
+
+            <item
+                android:id="@+id/scifi"
+                android:title="Sci-Fi" />
+
+
+            <item
+                android:id="@+id/sport"
+                android:title="Sport" />
+
+            <item
+                android:id="@+id/thriller"
+                android:title="Thriller" />
+
+            <item
+                android:id="@+id/war"
+                android:title="War" />
+
+            <item
+                android:id="@+id/western"
+                android:title="Western" />
+
+
+        </menu>
+    </item>
+
+
+
+
+
+
+</menu>
