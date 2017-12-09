@@ -148,6 +148,7 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                         sharingIntent
                                 .addCategory(android.content.Intent.CATEGORY_BROWSABLE);
                         sharingIntent.setData(Uri.parse(uriyts));
+                        //ToDO Acá hay que implementar algo por si no hay apps que reciban magnet links
                         startActivity(sharingIntent);
                     }
                 });

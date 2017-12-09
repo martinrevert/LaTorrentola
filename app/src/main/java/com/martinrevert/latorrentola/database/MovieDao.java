@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola.database;
 import android.arch.persistence.room.Dao;
 import android.arch.persistence.room.Delete;
 import android.arch.persistence.room.Insert;
+import android.arch.persistence.room.OnConflictStrategy;
 import android.arch.persistence.room.Query;
 
 import com.martinrevert.latorrentola.model.YTS.Movie;
@@ -10,6 +11,7 @@ import com.martinrevert.latorrentola.model.YTS.Movie;
 import java.util.List;
 
 import io.reactivex.Flowable;
+import io.reactivex.Maybe;
 import io.reactivex.Single;
 
 
@@ -23,12 +25,11 @@ public interface MovieDao {
     Flowable<List<Movie>> getAll();
 
     @Query("SELECT * FROM movie WHERE id LIKE :id")
-    Single<Movie> isMoviePresent(Integer id);
-
-    @Insert
-    void insertAll(Movie... movies);
+    Single<Movie> getMovie(Integer id);
 
     @Delete
     void delete(Movie movie);
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    void insertMovie(Movie movie);
 }

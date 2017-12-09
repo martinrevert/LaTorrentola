@@ -1,33 +1,53 @@
 package com.martinrevert.latorrentola.adapter;
 
+import android.animation.ObjectAnimator;
+import android.animation.PropertyValuesHolder;
 import android.content.Context;
 import android.content.Intent;
+import android.support.annotation.NonNull;
 import android.support.v7.widget.RecyclerView;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.RatingBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.google.gson.Gson;
 
 import com.martinrevert.latorrentola.PeliActivity;
 import com.martinrevert.latorrentola.R;
 import com.martinrevert.latorrentola.database.AppDatabase;
-import com.martinrevert.latorrentola.database.AppDatabase_Impl;
 import com.martinrevert.latorrentola.model.YTS.Movie;
 
 import com.squareup.picasso.Picasso;
 
 import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+
+import io.reactivex.Completable;
+import io.reactivex.Observable;
+import io.reactivex.Single;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.functions.Action;
+import io.reactivex.schedulers.Schedulers;
+
+import static android.widget.Toast.*;
+import static io.reactivex.Completable.*;
 
 public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
 
     private List<Movie> movies;
+    private AppDatabase db;
+    private CompositeDisposable disposable;
 
     public DataAdapter(List<Movie> resultados) {
-
+        disposable = new CompositeDisposable();
         this.movies = resultados;
 
         // Collections.sort(movies, Comparator.comparingInt(Movie::getId).reversed());
@@ -39,8 +59,9 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
         private ImageView mPoster;
         private RatingBar mRating;
         private TextView mGenres;
-        private ImageView mMyList;
-        private ImageView mShare;
+        private ImageButton mMyList;
+        private ImageButton mShare;
+        private ImageButton mNoMyList;
 
         ViewHolder(View view) {
             super(view);
@@ -49,47 +70,8 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
             mRating = view.findViewById(R.id.rating);
             mGenres = view.findViewById(R.id.genres);
             mMyList = view.findViewById(R.id.imageButtonMyList);
+            mNoMyList = view.findViewById(R.id.imageButtonNoMyList);
             mShare = view.findViewById(R.id.imageButtonShare);
-            Context context = view.getContext();
-
-            mMyList.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View view) {
-                    AppDatabase db = AppDatabase.getAppDatabase(context);
-                    int itemPosition = getLayoutPosition();
-                    Movie peli = movies.get(itemPosition);
-                    db.movieDao().insertAll(peli);
-
-                }
-            });
-
-
-            mShare.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View view) {
-                    int itemPosition = getLayoutPosition();
-                    Movie peli = movies.get(itemPosition);
-                    String url = "http://www.imdb.com/title/" + peli.getImdbCode();
-                    Intent sendIntent = new Intent();
-                    sendIntent.setAction(Intent.ACTION_SEND);
-                    sendIntent.putExtra(Intent.EXTRA_TEXT, url);
-                    sendIntent.setType("text/plain");
-                    context.startActivity(Intent.createChooser(sendIntent, "Compartir esta película"));
-
-
-                }
-            });
-
-
-            view.setOnClickListener(view1 -> {
-                int itemPosition = getLayoutPosition();
-                Movie peli = movies.get(itemPosition);
-                String strPeli = new Gson().toJson(peli);
-                Intent intent = new Intent(context, PeliActivity.class);
-                intent.putExtra("PELI", strPeli);
-                context.startActivity(intent);
-
-            });
 
         }
     }
@@ -103,15 +85,115 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
 
     @Override
     public void onBindViewHolder(ViewHolder holder, int position) {
-        holder.mTitle.setText(movies.get(position).getTitleLong());
-        holder.mRating.setRating(Float.parseFloat(movies.get(position).getRating()));
-        List<String> generos = movies.get(position).getGenres();
+        holder.mTitle.setText(movies.get(holder.getAdapterPosition()).getTitleLong());
+        holder.mRating.setRating(Float.parseFloat(movies.get(holder.getAdapterPosition()).getRating()));
+        List<String> generos = movies.get(holder.getAdapterPosition()).getGenres();
         String genres = generos.toString();
         holder.mGenres.setText(genres);
         Context context = holder.mPoster.getContext();
-        Picasso.with(context).load(movies.get(position).getLargeCoverImage()).into(holder.mPoster);
+        Picasso.with(context).load(movies.get(holder.getAdapterPosition()).getLargeCoverImage()).into(holder.mPoster);
+
+        db = AppDatabase.getAppDatabase(context);
+       /*
+        Completable.fromAction(new Action() {
+            @Override
+            public void run() throws Exception {
+                pelidb = db.movieDao().getMovie(peli.getId());
+            }
+        })
+                .subscribeOn(Schedulers.io())
+                .subscribe();
+*/
+        Movie peliposition = movies.get(holder.getAdapterPosition());
+
+
+        disposable.add(db.movieDao().getMovie(peliposition.getId())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribeOn(Schedulers.io())
+                .subscribe(res ->{
+                                holder.mNoMyList.setVisibility(View.VISIBLE);
+                                holder.mMyList.setVisibility(View.GONE);},
+                           throwable -> { holder.mMyList.setVisibility(View.VISIBLE);
+                    holder.mNoMyList.setVisibility(View.GONE);})
+        );
+
+
+
+
+        holder.mMyList.setOnClickListener(new View.OnClickListener() {
+
+            @Override
+            public void onClick(View view) {
+
+                ObjectAnimator scaleDown = ObjectAnimator.ofPropertyValuesHolder(view,
+                        PropertyValuesHolder.ofFloat("scaleX", 1.5f),
+                        PropertyValuesHolder.ofFloat("scaleY", 1.5f));
+                scaleDown.setDuration(100);
+
+                scaleDown.setRepeatCount(ObjectAnimator.RESTART);
+                scaleDown.setRepeatMode(ObjectAnimator.REVERSE);
+
+                scaleDown.start();
+
+                Movie peli = movies.get(holder.getAdapterPosition());
+                //holder.mMyList.setVisibility(View.GONE);
+                Runnable loadRunnable = new Runnable() {
+                    @Override
+                    public void run() {
+                        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                        db.movieDao().insertMovie(peli);
+
+                    }
+                };
+                Thread insertThread = new Thread(loadRunnable);
+                insertThread.start();
+                //holder.mNoMyList.setVisibility(View.VISIBLE);
+                //notifyDataSetChanged();
+                notifyItemChanged(holder.getAdapterPosition());
+            }
+        });
+
+
+        holder.mShare.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+
+                ObjectAnimator scaleDown = ObjectAnimator.ofPropertyValuesHolder(view,
+                        PropertyValuesHolder.ofFloat("scaleX", 1.2f),
+                        PropertyValuesHolder.ofFloat("scaleY", 1.2f));
+                scaleDown.setDuration(300);
+
+                scaleDown.setRepeatCount(ObjectAnimator.RESTART);
+                scaleDown.setRepeatMode(ObjectAnimator.REVERSE);
+
+                scaleDown.start();
+
+                Movie peli = movies.get(holder.getAdapterPosition());
+                String url = "http://www.imdb.com/title/" + peli.getImdbCode();
+                Intent sendIntent = new Intent();
+                sendIntent.setAction(Intent.ACTION_SEND);
+                sendIntent.putExtra(Intent.EXTRA_TEXT, url);
+                sendIntent.setType("text/plain");
+                context.startActivity(Intent.createChooser(sendIntent, "Compartir esta película"));
+
+
+            }
+        });
+
+
+        holder.itemView.setOnClickListener(view1 -> {
+
+            Movie peli = movies.get(holder.getAdapterPosition());
+            String strPeli = new Gson().toJson(peli);
+            Intent intent = new Intent(context, PeliActivity.class);
+            intent.putExtra("PELI", strPeli);
+            context.startActivity(intent);
+
+        });
+
 
     }
+
 
     @Override
     public int getItemCount() {

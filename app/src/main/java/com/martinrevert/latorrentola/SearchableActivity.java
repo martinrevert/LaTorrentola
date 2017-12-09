@@ -50,7 +50,7 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
     private String query = null;
     private Intent intent;
 
-    private  AppDatabase db;
+    private AppDatabase db;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -111,29 +111,33 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
                     .subscribeOn(Schedulers.io())
                     .subscribe(this::handleResponse, this::handleError));
         } else {
-            if (query.equals("3D")) {
-                compositeDisposable.add(requestYTSInterface.getTridiSearch("50", query)
-                        .observeOn(AndroidSchedulers.mainThread())
-                        .subscribeOn(Schedulers.io())
-                        .subscribe(this::handleResponse, this::handleError));
-            } else if (query.equals("milista")) {
-                compositeDisposable.add(db.movieDao().getAll()
-                        .observeOn(AndroidSchedulers.mainThread())
-                        .subscribeOn(Schedulers.io())
-                        .subscribe(this::handleDBResponse, this::handleDBError));
+            switch (query) {
+                case "3D":
+                    compositeDisposable.add(requestYTSInterface.getTridiSearch("50", query)
+                            .observeOn(AndroidSchedulers.mainThread())
+                            .subscribeOn(Schedulers.io())
+                            .subscribe(this::handleResponse, this::handleError));
+                    break;
+                case "milista":
+                    compositeDisposable.add(db.movieDao().getAll()
+                            .observeOn(AndroidSchedulers.mainThread())
+                            .subscribeOn(Schedulers.io())
+                            .subscribe(this::handleDBResponse, this::handleDBError));
 
-            } else {
-                compositeDisposable.add(requestYTSInterface.getGenreSearch("50", query)
-                        .observeOn(AndroidSchedulers.mainThread())
-                        .subscribeOn(Schedulers.io())
-                        .subscribe(this::handleResponse, this::handleError));
+                    break;
+                default:
+                    compositeDisposable.add(requestYTSInterface.getGenreSearch("50", query)
+                            .observeOn(AndroidSchedulers.mainThread())
+                            .subscribeOn(Schedulers.io())
+                            .subscribe(this::handleResponse, this::handleError));
+                    break;
             }
         }
 
     }
 
     private void handleDBResponse(List<Movie> pelisdb) {
-
+        progressBar.setVisibility(View.GONE);
         if (pelisdb.isEmpty()) {
             tts.speak("No encontramos peliculas en su lista personal", TextToSpeech.QUEUE_ADD, null, null);
             checkAdapterIsEmpty();
@@ -146,7 +150,7 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
 
     }
 
-    private void handleDBError (Throwable error){
+    private void handleDBError(Throwable error) {
 
     }
 
@@ -193,6 +197,7 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
         super.onDestroy();
         compositeDisposable.clear();
         tts.shutdown();
+        AppDatabase.destroyInstance();
     }
 
     @Override
