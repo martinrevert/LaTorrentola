@@ -4,9 +4,7 @@ import android.animation.ObjectAnimator;
 import android.animation.PropertyValuesHolder;
 import android.content.Context;
 import android.content.Intent;
-import android.support.annotation.NonNull;
 import android.support.v7.widget.RecyclerView;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -14,7 +12,6 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.RatingBar;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.google.gson.Gson;
 
@@ -26,29 +23,22 @@ import com.martinrevert.latorrentola.model.YTS.Movie;
 import com.squareup.picasso.Picasso;
 
 import java.util.List;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
 
-import io.reactivex.Completable;
-import io.reactivex.Observable;
-import io.reactivex.Single;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
-import io.reactivex.functions.Action;
 import io.reactivex.schedulers.Schedulers;
-
-import static android.widget.Toast.*;
-import static io.reactivex.Completable.*;
 
 public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
 
     private List<Movie> movies;
     private AppDatabase db;
     private CompositeDisposable disposable;
+    private String type;
 
-    public DataAdapter(List<Movie> resultados) {
+    public DataAdapter(List<Movie> resultados, String type) {
         disposable = new CompositeDisposable();
         this.movies = resultados;
+        this.type = type;
 
         // Collections.sort(movies, Comparator.comparingInt(Movie::getId).reversed());
     }
@@ -75,7 +65,6 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
 
         }
     }
-
 
     @Override
     public DataAdapter.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
@@ -110,15 +99,52 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
         disposable.add(db.movieDao().getMovie(peliposition.getId())
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribeOn(Schedulers.io())
-                .subscribe(res ->{
-                                holder.mNoMyList.setVisibility(View.VISIBLE);
-                                holder.mMyList.setVisibility(View.GONE);},
-                           throwable -> { holder.mMyList.setVisibility(View.VISIBLE);
-                    holder.mNoMyList.setVisibility(View.GONE);})
+                .subscribe(res -> {
+                            holder.mNoMyList.setVisibility(View.VISIBLE);
+                            holder.mMyList.setVisibility(View.GONE);
+                        },
+                        throwable -> {
+                            holder.mMyList.setVisibility(View.VISIBLE);
+                            holder.mNoMyList.setVisibility(View.GONE);
+                        })
         );
 
 
+        holder.mNoMyList.setOnClickListener(new View.OnClickListener() {
 
+            @Override
+            public void onClick(View view) {
+
+                ObjectAnimator scaleDown = ObjectAnimator.ofPropertyValuesHolder(view,
+                        PropertyValuesHolder.ofFloat("scaleX", 1.5f),
+                        PropertyValuesHolder.ofFloat("scaleY", 1.5f));
+                scaleDown.setDuration(100);
+
+                scaleDown.setRepeatCount(ObjectAnimator.RESTART);
+                scaleDown.setRepeatMode(ObjectAnimator.REVERSE);
+
+                scaleDown.start();
+
+                Movie peli = movies.get(holder.getAdapterPosition());
+                Runnable loadRunnable = new Runnable() {
+                    @Override
+                    public void run() {
+                        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                        db.movieDao().delete(peli);
+
+                    }
+                };
+                Thread insertThread = new Thread(loadRunnable);
+                insertThread.start();
+                if (type.equals("milista")) {
+                    movies.remove(holder.getAdapterPosition());
+                    //Todo verificar si el +1 se puede evitar con getLayoutPosition()
+                    notifyItemRemoved(holder.getAdapterPosition() + 1);
+                } else {
+                    notifyItemChanged(holder.getAdapterPosition());
+                }
+            }
+        });
 
         holder.mMyList.setOnClickListener(new View.OnClickListener() {
 
@@ -148,8 +174,8 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
                 Thread insertThread = new Thread(loadRunnable);
                 insertThread.start();
                 //holder.mNoMyList.setVisibility(View.VISIBLE);
-                //notifyDataSetChanged();
                 notifyItemChanged(holder.getAdapterPosition());
+
             }
         });
 
@@ -176,10 +202,8 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
                 sendIntent.setType("text/plain");
                 context.startActivity(Intent.createChooser(sendIntent, "Compartir esta película"));
 
-
             }
         });
-
 
         holder.itemView.setOnClickListener(view1 -> {
 
@@ -193,7 +217,19 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
 
 
     }
+/*
+    @Override
+    public void onViewDetachedFromWindow(ViewHolder holder) {
+        super.onViewDetachedFromWindow(holder);
+        disposable.dispose();
+    }
+*/
 
+    @Override
+    public void onDetachedFromRecyclerView(RecyclerView recyclerView) {
+        super.onDetachedFromRecyclerView(recyclerView);
+        disposable.dispose();
+    }
 
     @Override
     public int getItemCount() {
@@ -204,6 +240,5 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
             return 0;
         }
     }
-
 
 }

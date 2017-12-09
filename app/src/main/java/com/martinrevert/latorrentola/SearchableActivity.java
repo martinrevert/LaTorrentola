@@ -93,6 +93,8 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
         mRecyclerView.setHasFixedSize(true);
         RecyclerView.LayoutManager layoutManager = new LinearLayoutManager(getApplicationContext());
         mRecyclerView.setLayoutManager(layoutManager);
+        mAdapter = new DataAdapter(null, null);
+        mRecyclerView.setAdapter(mAdapter);
 
     }
 
@@ -142,8 +144,8 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
             tts.speak("No encontramos peliculas en su lista personal", TextToSpeech.QUEUE_ADD, null, null);
             checkAdapterIsEmpty();
         } else {
-            tts.speak("Estas son sus peliclas almacenadas en su lista personal", TextToSpeech.QUEUE_ADD, null, null);
-            mAdapter = new DataAdapter(pelisdb);
+            tts.speak("Estas son sus peliculas almacenadas en su lista personal", TextToSpeech.QUEUE_ADD, null, null);
+            mAdapter = new DataAdapter(pelisdb, "milista");
             mRecyclerView.setAdapter(mAdapter);
             checkAdapterIsEmpty();
         }
@@ -163,7 +165,7 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
             checkAdapterIsEmpty();
         } else {
             tts.speak("Estos son sus resultados con " + query, TextToSpeech.QUEUE_ADD, null, null);
-            mAdapter = new DataAdapter(movies);
+            mAdapter = new DataAdapter(movies, "");
             mRecyclerView.setAdapter(mAdapter);
             checkAdapterIsEmpty();
         }
@@ -195,7 +197,7 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
     @Override
     public void onDestroy() {
         super.onDestroy();
-        compositeDisposable.clear();
+        compositeDisposable.dispose();
         tts.shutdown();
         AppDatabase.destroyInstance();
     }

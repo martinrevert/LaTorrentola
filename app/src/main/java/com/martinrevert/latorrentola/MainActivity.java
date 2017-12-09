@@ -56,6 +56,7 @@ public class MainActivity extends AppCompatActivity {
     private ActionBarDrawerToggle mDrawerToggle;
 
     private Toolbar toolbar;
+    private DataAdapter mAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -123,6 +124,8 @@ public class MainActivity extends AppCompatActivity {
         mRecyclerView.setHasFixedSize(true);
         RecyclerView.LayoutManager layoutManager = new LinearLayoutManager(getApplicationContext());
         mRecyclerView.setLayoutManager(layoutManager);
+        mAdapter = new DataAdapter(null,null);
+        mRecyclerView.setAdapter(mAdapter);
     }
 
     private void loadJSON() {
@@ -142,7 +145,7 @@ public class MainActivity extends AppCompatActivity {
     private void handleResponse(MovieDetails result) {
         progressBar.setVisibility(GONE);
         List<Movie> movies = result.getData().getMovies();
-        DataAdapter mAdapter = new DataAdapter(movies);
+        mAdapter = new DataAdapter(movies,"");
         mRecyclerView.setAdapter(mAdapter);
     }
 
@@ -211,7 +214,13 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        mCompositeDisposable.clear();
+        mCompositeDisposable.dispose();
+    }
+
+    @Override
+    public void onResume(){
+        super.onResume();
+        mAdapter.notifyDataSetChanged();
     }
 
     private void setupDrawerContent(NavigationView navigationView) {

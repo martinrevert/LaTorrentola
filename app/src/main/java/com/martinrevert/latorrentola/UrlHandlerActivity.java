@@ -44,6 +44,7 @@ public class UrlHandlerActivity extends AppCompatActivity implements TextToSpeec
 
     private CompositeDisposable mCompositeDisposable;
     TextToSpeech tts;
+    private DataAdapter mAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -86,6 +87,8 @@ public class UrlHandlerActivity extends AppCompatActivity implements TextToSpeec
         mRecyclerView.setHasFixedSize(true);
         RecyclerView.LayoutManager layoutManager = new LinearLayoutManager(getApplicationContext());
         mRecyclerView.setLayoutManager(layoutManager);
+        mAdapter = new DataAdapter(null,null);
+        mRecyclerView.setAdapter(mAdapter);
     }
 
     private void loadJSON(String imdb) {
@@ -112,7 +115,7 @@ public class UrlHandlerActivity extends AppCompatActivity implements TextToSpeec
 
         } else {
             tts.speak("Ok. Esta película si está disponible", TextToSpeech.QUEUE_ADD, null,null);
-            DataAdapter mAdapter = new DataAdapter(movies);
+            mAdapter = new DataAdapter(movies,"");
             mRecyclerView.setAdapter(mAdapter);
         }
     }
@@ -151,7 +154,7 @@ public class UrlHandlerActivity extends AppCompatActivity implements TextToSpeec
     @Override
     public void onDestroy() {
         super.onDestroy();
-        mCompositeDisposable.clear();
+        mCompositeDisposable.dispose();
         tts.shutdown();
     }
 
