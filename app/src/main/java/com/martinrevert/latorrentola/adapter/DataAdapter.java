@@ -162,7 +162,6 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
                 scaleDown.start();
 
                 Movie peli = movies.get(holder.getAdapterPosition());
-                //holder.mMyList.setVisibility(View.GONE);
                 Runnable loadRunnable = new Runnable() {
                     @Override
                     public void run() {
@@ -173,7 +172,6 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
                 };
                 Thread insertThread = new Thread(loadRunnable);
                 insertThread.start();
-                //holder.mNoMyList.setVisibility(View.VISIBLE);
                 notifyItemChanged(holder.getAdapterPosition());
 
             }

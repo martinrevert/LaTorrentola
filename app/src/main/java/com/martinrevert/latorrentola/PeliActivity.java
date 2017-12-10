@@ -1,11 +1,15 @@
 package com.martinrevert.latorrentola;
 
 import android.app.TaskStackBuilder;
+import android.arch.persistence.room.Database;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.speech.tts.TextToSpeech;
 import android.support.v4.app.NavUtils;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
@@ -24,6 +28,7 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import com.martinrevert.latorrentola.constants.Constants;
+import com.martinrevert.latorrentola.database.AppDatabase;
 import com.martinrevert.latorrentola.model.YTS.Movie;
 import com.martinrevert.latorrentola.model.YTS.Torrent;
 import com.martinrevert.latorrentola.model.Yandex.Summary;
@@ -38,11 +43,18 @@ import java.lang.reflect.Type;
 import java.net.URLEncoder;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 
 import io.fabric.sdk.android.Fabric;
+import io.reactivex.Completable;
+import io.reactivex.Maybe;
+import io.reactivex.Single;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.Action;
+import io.reactivex.functions.Consumer;
 import io.reactivex.schedulers.Schedulers;
 
 import okhttp3.OkHttpClient;
@@ -58,6 +70,7 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
     private CompositeDisposable mCompositeDisposable;
     private YouTubePlayerFragment youTubePlayerFragment;
     private Movie movie;
+    private boolean ispresent;
     private RequestYandex requestYandexTranslate;
     private RequestArgenteamInterface requestArgenteamInterface;
     private TextView emptyargenteam;
@@ -69,6 +82,8 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
 
     private TextToSpeech tts;
     private String speak;
+    private AppDatabase db;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -77,6 +92,8 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
         Fabric.with(this, new Crashlytics());
         emptyargenteam = findViewById(R.id.emptyargenteam);
         youTubePlayerFragment = (YouTubePlayerFragment) getFragmentManager().findFragmentById(R.id.youtube_player_view);
+
+        db = AppDatabase.getAppDatabase(this);
 
         summary = findViewById(R.id.summary);
         year = findViewById(R.id.year);
@@ -123,6 +140,19 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
 
             String texto = movie.getSummary();
 
+            Integer id = movie.getId();
+
+            mCompositeDisposable.add(db.movieDao().getMovie(id)
+                    .subscribeOn(Schedulers.io())
+                    .subscribe(peli -> {ispresent = true;Log.v("DB", peli.getTitle());}
+
+                            ,
+                            throwable -> {ispresent = false;
+                            Log.v("DB", "NO DB" + throwable.getLocalizedMessage());}
+
+                            ));
+
+
             List<Torrent> torrentsyts = movie.getTorrents();
 
             for (Torrent torroyts : torrentsyts) {
@@ -134,8 +164,9 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                 Button btntorrentyts = new Button(PeliActivity.this);
                 btntorrentyts.setText(text);
                 btntorrentyts.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View view) {
+
+                    private void sendtorrent() {
+
                         String hash = torroyts.getHash();
                         String uriyts = null;
                         try {
@@ -151,6 +182,42 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                         //ToDO Acá hay que implementar algo por si no hay apps que reciban magnet links
                         startActivity(sharingIntent);
                     }
+                    @Override
+                    public void onClick(View view) {
+                        if (ispresent) {
+                            new AlertDialog.Builder(PeliActivity.this, R.style.Theme_AppCompat_Dialog)
+                                    .setTitle("Enviar torrent")
+                                    .setMessage("Esta peli esta en tu lista de deseos ¿Deseas quitarla de alli?")
+                                    .setPositiveButton("Si", new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface dialog, int which) {
+
+                                            Runnable loadRunnable = new Runnable() {
+                                                @Override
+                                                public void run() {
+                                                    android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                                                    db.movieDao().delete(movie);
+
+                                                }
+                                            };
+                                            Thread insertThread = new Thread(loadRunnable);
+                                            insertThread.start();
+
+                                            sendtorrent();
+                                        }
+                                    })
+                                    .setNegativeButton("No", new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface dialogInterface, int i) {
+                                            sendtorrent();
+                                        }
+                                    }).show();
+                        }else{
+                            sendtorrent();
+                        }
+
+
+                    }
                 });
                 btntorrentyts.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
                 linearyts.addView(btntorrentyts);
@@ -163,6 +230,7 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
         }
 
     }
+
 
     private void loadJSONyandextranslate(String text) {
         String lang = "en-es";
@@ -269,14 +337,51 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                 Button btntorrent = new Button(PeliActivity.this);
                 btntorrent.setText(source + " " + codec + " " + tags + " " + size);
                 btntorrent.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View view) {
+
+                    private void sendtorrent(){
                         Intent sharingIntent = new Intent(
                                 android.content.Intent.ACTION_VIEW);
                         sharingIntent
                                 .addCategory(android.content.Intent.CATEGORY_BROWSABLE);
                         sharingIntent.setData(uri);
                         startActivity(sharingIntent);
+                    }
+
+                    @Override
+                    public void onClick(View view) {
+
+                        if (ispresent) {
+                            new AlertDialog.Builder(PeliActivity.this,R.style.Theme_AppCompat_Dialog)
+                                    .setTitle("Enviar torrent")
+                                    .setMessage("Esta peli esta en tu lista de deseos ¿Deseas quitarla de alli?")
+                                    .setPositiveButton("Si", new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface dialog, int which) {
+
+                                            Runnable loadRunnable = new Runnable() {
+                                                @Override
+                                                public void run() {
+                                                    android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                                                    db.movieDao().delete(movie);
+
+                                                }
+                                            };
+                                            Thread insertThread = new Thread(loadRunnable);
+                                            insertThread.start();
+
+                                            sendtorrent();
+                                        }
+                                    })
+                                    .setNegativeButton("No", new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface dialogInterface, int i) {
+                                            sendtorrent();
+                                        }
+                                    }).show();
+                        }else{
+                            sendtorrent();
+                        }
+
                     }
                 });
                 btntorrent.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
