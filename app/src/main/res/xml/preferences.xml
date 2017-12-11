@@ -2,18 +2,34 @@
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
 
     <SwitchPreference
-        android:defaultValue="false"
-        android:key="switch_preference_1"
-        android:title="blablabla" />
+        android:defaultValue="true"
+        android:key="voice_system"
+        android:title="Emitir guias por voz (TTS)" />
+
+    <SwitchPreference
+        android:defaultValue="true"
+        android:key="voice_summary"
+        android:title="Sumario de peliculas por voz" />
+
 
     <SwitchPreference
         android:defaultValue="false"
-        android:key="switch_preference_2"
-        android:title="blebleble" />
+        android:key="voice_translation"
+        android:title="Traducir sumario de peliculas"
+        android:dependency="voice_summary"/>
 
     <SwitchPreference
         android:defaultValue="false"
-        android:key="switch_preference_3"
-        android:title="bliblibli" />
+        android:key="vibrator"
+        android:title="Vibrar ante eventos"
+    />
+
+
+    <RingtonePreference
+        android:title="Ringtone notificaciones"
+        android:key="system_ringtone"
+        />
+
+
 
 </PreferenceScreen>

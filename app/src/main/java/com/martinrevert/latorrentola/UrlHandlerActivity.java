@@ -3,7 +3,9 @@ package com.martinrevert.latorrentola;
 
 import android.app.TaskStackBuilder;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.speech.tts.TextToSpeech;
 import android.support.v4.app.NavUtils;
 import android.support.v7.app.AppCompatActivity;
@@ -43,8 +45,9 @@ public class UrlHandlerActivity extends AppCompatActivity implements TextToSpeec
     private ProgressBar progressBar;
 
     private CompositeDisposable mCompositeDisposable;
-    TextToSpeech tts;
+    private TextToSpeech tts;
     private DataAdapter mAdapter;
+    private boolean voice_system;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,7 +62,8 @@ public class UrlHandlerActivity extends AppCompatActivity implements TextToSpeec
         tts = new TextToSpeech(this, this);
         tts.setLanguage(Locale.getDefault());
 
-
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        voice_system = sharedPreferences.getBoolean("voice_system", true);
         progressBar = findViewById(R.id.progressBar);
         mCompositeDisposable = new CompositeDisposable();
         initRecyclerView();
@@ -87,7 +91,7 @@ public class UrlHandlerActivity extends AppCompatActivity implements TextToSpeec
         mRecyclerView.setHasFixedSize(true);
         RecyclerView.LayoutManager layoutManager = new LinearLayoutManager(getApplicationContext());
         mRecyclerView.setLayoutManager(layoutManager);
-        mAdapter = new DataAdapter(null,null);
+        mAdapter = new DataAdapter(null, null);
         mRecyclerView.setAdapter(mAdapter);
     }
 
@@ -111,17 +115,22 @@ public class UrlHandlerActivity extends AppCompatActivity implements TextToSpeec
         List<Movie> movies = result.getData().getMovies();
 
         if (movies.isEmpty()) {
-            tts.speak("Oh no!. Esta película no está disponible", TextToSpeech.QUEUE_ADD, null,null);
-
+            if (voice_system) {
+                tts.speak("Oh no!. Esta película no está disponible", TextToSpeech.QUEUE_ADD, null, null);
+            }
         } else {
-            tts.speak("Ok. Esta película si está disponible", TextToSpeech.QUEUE_ADD, null,null);
-            mAdapter = new DataAdapter(movies,"");
+            if (voice_system) {
+                tts.speak("Ok. Esta película si está disponible", TextToSpeech.QUEUE_ADD, null, null);
+            }
+            mAdapter = new DataAdapter(movies, "");
             mRecyclerView.setAdapter(mAdapter);
         }
     }
 
     private void handleError(Throwable error) {
-        tts.speak("Oh no!. Esta película no está disponible", TextToSpeech.QUEUE_ADD, null,null);
+        if (voice_system) {
+            tts.speak("Oh no!. Esta película no está disponible", TextToSpeech.QUEUE_ADD, null, null);
+        }
         progressBar.setVisibility(GONE);
         Log.v("ERROR", error.getLocalizedMessage());
     }
@@ -160,6 +169,8 @@ public class UrlHandlerActivity extends AppCompatActivity implements TextToSpeec
 
     @Override
     public void onInit(int i) {
-        tts.speak("Chequeando disponibilidad", TextToSpeech.QUEUE_ADD, null,null);
+        if (voice_system) {
+            tts.speak("Chequeando disponibilidad", TextToSpeech.QUEUE_ADD, null, null);
+        }
     }
 }

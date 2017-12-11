@@ -1,12 +1,13 @@
 package com.martinrevert.latorrentola;
 
 import android.app.TaskStackBuilder;
-import android.arch.persistence.room.Database;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.speech.tts.TextToSpeech;
 import android.support.v4.app.NavUtils;
 import android.support.v7.app.AlertDialog;
@@ -20,10 +21,10 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.crashlytics.android.Crashlytics;
+import com.github.florent37.rxsharedpreferences.RxSharedPreferences;
 import com.google.android.youtube.player.YouTubeInitializationResult;
 import com.google.android.youtube.player.YouTubePlayer;
 import com.google.android.youtube.player.YouTubePlayerFragment;
-
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
@@ -43,18 +44,13 @@ import java.lang.reflect.Type;
 import java.net.URLEncoder;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
-
 
 import io.fabric.sdk.android.Fabric;
-import io.reactivex.Completable;
-import io.reactivex.Maybe;
-import io.reactivex.Single;
+
+import io.reactivex.Observable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.disposables.Disposable;
-import io.reactivex.functions.Action;
-import io.reactivex.functions.Consumer;
 import io.reactivex.schedulers.Schedulers;
 
 import okhttp3.OkHttpClient;
@@ -83,6 +79,9 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
     private TextToSpeech tts;
     private String speak;
     private AppDatabase db;
+    private boolean voice_translation;
+    private boolean voice_system;
+    private boolean voice_summary;
 
 
     @Override
@@ -92,8 +91,14 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
         Fabric.with(this, new Crashlytics());
         emptyargenteam = findViewById(R.id.emptyargenteam);
         youTubePlayerFragment = (YouTubePlayerFragment) getFragmentManager().findFragmentById(R.id.youtube_player_view);
-
+        mCompositeDisposable = new CompositeDisposable();
         db = AppDatabase.getAppDatabase(this);
+
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        voice_system = sharedPreferences.getBoolean("voice_system", true);
+        voice_summary = sharedPreferences.getBoolean("voice_summary",true);
+        voice_translation = sharedPreferences.getBoolean("voice_translation", false);
+
 
         summary = findViewById(R.id.summary);
         year = findViewById(R.id.year);
@@ -125,7 +130,6 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
 
             youTubePlayerFragment.initialize(Constants.YOUTUBE_API_KEY, this);
 
-            mCompositeDisposable = new CompositeDisposable();
 
             String summ = "Summary: " + movie.getSummary();
             summary.setText(summ);
@@ -136,21 +140,30 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
             String rt = "Rating: " + movie.getRating();
             rating.setText(rt);
 
-            speak = movie.getTitleLong();
+            if(voice_system) {
+                tts.speak(movie.getTitleLong(),TextToSpeech.QUEUE_ADD,null,null);
+            }
 
             String texto = movie.getSummary();
+
+            if(voice_summary && !voice_translation){
+                speak = texto;
+            }
 
             Integer id = movie.getId();
 
             mCompositeDisposable.add(db.movieDao().getMovie(id)
                     .subscribeOn(Schedulers.io())
-                    .subscribe(peli -> {ispresent = true;Log.v("DB", peli.getTitle());}
+                    .subscribe(peli -> {
+                                ispresent = true;
+                                Log.v("DB", peli.getTitle());
+                            },
+                            throwable -> {
+                                ispresent = false;
+                                Log.v("DB", "NO DB" + throwable.getLocalizedMessage());
+                            }
 
-                            ,
-                            throwable -> {ispresent = false;
-                            Log.v("DB", "NO DB" + throwable.getLocalizedMessage());}
-
-                            ));
+                    ));
 
 
             List<Torrent> torrentsyts = movie.getTorrents();
@@ -182,6 +195,7 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                         //ToDO Acá hay que implementar algo por si no hay apps que reciban magnet links
                         startActivity(sharingIntent);
                     }
+
                     @Override
                     public void onClick(View view) {
                         if (ispresent) {
@@ -212,7 +226,7 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                                             sendtorrent();
                                         }
                                     }).show();
-                        }else{
+                        } else {
                             sendtorrent();
                         }
 
@@ -250,17 +264,20 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                 .client(httpClient.build())
                 .build().create(RequestYandex.class);
 
-        mCompositeDisposable.add(requestYandexTranslate.getTranslate(api, text, lang)
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribeOn(Schedulers.io())
-                .subscribe(this::handleResponseYandex, this::handleErrorYandex));
-
+        if(voice_translation) {
+            mCompositeDisposable.add(requestYandexTranslate.getTranslate(api, text, lang)
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribeOn(Schedulers.io())
+                    .subscribe(this::handleResponseYandex, this::handleErrorYandex));
+        }
     }
 
     private void handleResponseYandex(Summary summary) {
         String talkargento = summary.getText().get(0);
-        tts.speak(talkargento, TextToSpeech.QUEUE_ADD, null, null);
-    }
+
+            tts.speak(talkargento, TextToSpeech.QUEUE_ADD, null, null);
+
+        }
 
     private void handleErrorYandex(Throwable error) {
 
@@ -338,12 +355,13 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                 btntorrent.setText(source + " " + codec + " " + tags + " " + size);
                 btntorrent.setOnClickListener(new View.OnClickListener() {
 
-                    private void sendtorrent(){
+                    private void sendtorrent() {
                         Intent sharingIntent = new Intent(
                                 android.content.Intent.ACTION_VIEW);
                         sharingIntent
                                 .addCategory(android.content.Intent.CATEGORY_BROWSABLE);
                         sharingIntent.setData(uri);
+                        //ToDO Acá hay que implementar algo por si no hay apps que reciban magnet links
                         startActivity(sharingIntent);
                     }
 
@@ -351,7 +369,7 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                     public void onClick(View view) {
 
                         if (ispresent) {
-                            new AlertDialog.Builder(PeliActivity.this,R.style.Theme_AppCompat_Dialog)
+                            new AlertDialog.Builder(PeliActivity.this, R.style.Theme_AppCompat_Dialog)
                                     .setTitle("Enviar torrent")
                                     .setMessage("Esta peli esta en tu lista de deseos ¿Deseas quitarla de alli?")
                                     .setPositiveButton("Si", new DialogInterface.OnClickListener() {
@@ -378,7 +396,7 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                                             sendtorrent();
                                         }
                                     }).show();
-                        }else{
+                        } else {
                             sendtorrent();
                         }
 

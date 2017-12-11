@@ -2,6 +2,8 @@ package com.martinrevert.latorrentola;
 
 import android.app.SearchManager;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.preference.PreferenceManager;
 import android.speech.tts.TextToSpeech;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -51,6 +53,7 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
     private Intent intent;
 
     private AppDatabase db;
+    private boolean voice_system;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,6 +62,8 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
         Fabric.with(this, new Crashlytics());
         tts = new TextToSpeech(this, this);
         tts.setLanguage(Locale.getDefault());
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        voice_system = sharedPreferences.getBoolean("voice_system", true);
         progressBar = findViewById(R.id.progressBar);
         empty = findViewById(R.id.empty);
         empty.setText("No encontré movies con ese criterio");
@@ -141,10 +146,14 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
     private void handleDBResponse(List<Movie> pelisdb) {
         progressBar.setVisibility(View.GONE);
         if (pelisdb.isEmpty()) {
-            tts.speak("No encontramos peliculas en su lista personal", TextToSpeech.QUEUE_ADD, null, null);
+            if (voice_system) {
+                tts.speak("No encontramos peliculas en su lista personal", TextToSpeech.QUEUE_ADD, null, null);
+            }
             checkAdapterIsEmpty();
         } else {
-            tts.speak("Estas son sus peliculas almacenadas en su lista personal", TextToSpeech.QUEUE_ADD, null, null);
+            if (voice_system) {
+                tts.speak("Estas son sus peliculas almacenadas en su lista personal", TextToSpeech.QUEUE_ADD, null, null);
+            }
             mAdapter = new DataAdapter(pelisdb, "milista");
             mRecyclerView.setAdapter(mAdapter);
             checkAdapterIsEmpty();
@@ -161,10 +170,14 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
         List<Movie> movies = result.getData().getMovies();
 
         if (movies.isEmpty()) {
-            tts.speak("No encontramos peliculas como " + query, TextToSpeech.QUEUE_ADD, null, null);
+            if (voice_system) {
+                tts.speak("No encontramos peliculas como " + query, TextToSpeech.QUEUE_ADD, null, null);
+            }
             checkAdapterIsEmpty();
         } else {
-            tts.speak("Estos son sus resultados con " + query, TextToSpeech.QUEUE_ADD, null, null);
+            if (voice_system) {
+                tts.speak("Estos son sus resultados con " + query, TextToSpeech.QUEUE_ADD, null, null);
+            }
             mAdapter = new DataAdapter(movies, "");
             mRecyclerView.setAdapter(mAdapter);
             checkAdapterIsEmpty();
@@ -176,7 +189,9 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
     private void handleError(Throwable throwable) {
         progressBar.setVisibility(GONE);
         checkAdapterIsEmpty();
-        tts.speak("No encontramos peliculas como " + query, TextToSpeech.QUEUE_ADD, null, null);
+        if (voice_system) {
+            tts.speak("No encontramos peliculas como " + query, TextToSpeech.QUEUE_ADD, null, null);
+        }
         Log.v("ERROR BUSQUEDA", throwable.getLocalizedMessage());
     }
 
@@ -204,8 +219,9 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
 
     @Override
     public void onInit(int i) {
-
-        tts.speak("Buscando" + query, TextToSpeech.QUEUE_ADD, null, null);
+        if (voice_system) {
+            tts.speak("Buscando" + query, TextToSpeech.QUEUE_ADD, null, null);
+        }
     }
 }
 
