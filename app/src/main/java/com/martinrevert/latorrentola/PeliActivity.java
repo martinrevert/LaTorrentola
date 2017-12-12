@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola;
 
 import android.app.TaskStackBuilder;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -193,7 +194,18 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                                 .addCategory(android.content.Intent.CATEGORY_BROWSABLE);
                         sharingIntent.setData(Uri.parse(uriyts));
                         //ToDO Acá hay que implementar algo por si no hay apps que reciban magnet links
-                        startActivity(sharingIntent);
+                        try {
+                            startActivity(sharingIntent);
+                        } catch (ActivityNotFoundException activityNotFound) {
+
+                            new AlertDialog.Builder(PeliActivity.this, R.style.Theme_AppCompat_Dialog)
+                                    .setTitle("Enviar torrent")
+                                    .setMessage("No tienes ningun torrent player instalado o no tienes una app Android para enviar a descargar tu torrent a otro sitio.")
+                                    .setPositiveButton("Ok", null)
+                                    .show();
+
+                        }
+
                     }
 
                     @Override
@@ -362,7 +374,17 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
                                 .addCategory(android.content.Intent.CATEGORY_BROWSABLE);
                         sharingIntent.setData(uri);
                         //ToDO Acá hay que implementar algo por si no hay apps que reciban magnet links
-                        startActivity(sharingIntent);
+                        try {
+                            startActivity(sharingIntent);
+                        } catch (ActivityNotFoundException activityNotFound) {
+
+                            new AlertDialog.Builder(PeliActivity.this, R.style.Theme_AppCompat_Dialog)
+                                    .setTitle("Enviar torrent")
+                                    .setMessage("No tienes ningun torrent player instalado o no tienes una app Android para enviar a descargar tu torrent a otro sitio.")
+                                    .setPositiveButton("OK", null)
+                                    .show();
+
+                        }
                     }
 
                     @Override
