@@ -1,17 +1,21 @@
 package com.martinrevert.latorrentola.database;
 
+import android.arch.persistence.db.SupportSQLiteDatabase;
 import android.arch.persistence.room.Database;
 import android.arch.persistence.room.Room;
 import android.arch.persistence.room.RoomDatabase;
 import android.arch.persistence.room.TypeConverters;
+import android.arch.persistence.room.migration.Migration;
 import android.content.Context;
 
+
+import com.martinrevert.latorrentola.model.DateLastVisit;
 import com.martinrevert.latorrentola.model.YTS.Movie;
 
 /**
  * Created by martin on 07/12/17.
  */
-@Database(version = 1, entities = {Movie.class})
+@Database(version = 2, entities = {Movie.class, DateLastVisit.class})
 @TypeConverters({Converters.class})
 public abstract class AppDatabase extends RoomDatabase {
 
@@ -19,16 +23,25 @@ public abstract class AppDatabase extends RoomDatabase {
 
     abstract public MovieDao movieDao();
 
+    abstract public DateDao dateDao();
+
     public static AppDatabase getAppDatabase(Context context) {
         if (INSTANCE == null) {
             INSTANCE =
                     Room.databaseBuilder(context.getApplicationContext(), AppDatabase.class, "appdatabase")
+                            .addMigrations(MIGRATION_1_2)
                             .build();
-
         }
 
         return INSTANCE;
     }
+
+    static final Migration MIGRATION_1_2 = new Migration(1, 2) {
+        @Override
+        public void migrate(SupportSQLiteDatabase database) {
+            database.execSQL("CREATE TABLE `date` (`id` INTEGER,`date` LONG, PRIMARY KEY(`id`))");
+        }
+    };
 
     public static void destroyInstance() {
         INSTANCE = null;

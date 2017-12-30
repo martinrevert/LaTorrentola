@@ -4,10 +4,12 @@ import android.arch.persistence.room.TypeConverter;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import com.martinrevert.latorrentola.model.YTS.Movie;
+
 import com.martinrevert.latorrentola.model.YTS.Torrent;
 
+
 import java.lang.reflect.Type;
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -39,6 +41,16 @@ public class Converters {
         Gson gson = new Gson();
         String json = gson.toJson(list);
         return json;
+    }
+
+    @TypeConverter
+    public Date fromTimestamp(Long value) {
+        return value == null ? null : new Date(value);
+    }
+
+    @TypeConverter
+    public Long dateToTimestamp(Date date) {
+        return date == null ? null : date.getTime();
     }
 
 

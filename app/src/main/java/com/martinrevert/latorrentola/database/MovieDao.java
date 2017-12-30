@@ -11,7 +11,6 @@ import com.martinrevert.latorrentola.model.YTS.Movie;
 import java.util.List;
 
 import io.reactivex.Flowable;
-import io.reactivex.Maybe;
 import io.reactivex.Single;
 
 

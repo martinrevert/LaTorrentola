@@ -16,11 +16,11 @@ import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.Toolbar;
 
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.ArrayAdapter;
 import android.widget.ProgressBar;
 
 import android.widget.Toast;
@@ -28,17 +28,24 @@ import android.widget.Toast;
 import com.crashlytics.android.Crashlytics;
 
 import com.martinrevert.latorrentola.constants.Constants;
+import com.martinrevert.latorrentola.database.AppDatabase;
+import com.martinrevert.latorrentola.model.DateLastVisit;
 import com.martinrevert.latorrentola.model.YTS.Movie;
 import com.martinrevert.latorrentola.model.YTS.MovieDetails;
 import com.martinrevert.latorrentola.adapter.DataAdapter;
 import com.martinrevert.latorrentola.network.RequestYTSInterface;
 
+import java.text.DateFormat;
+import java.util.Date;
 import java.util.List;
 
 import io.fabric.sdk.android.Fabric;
+
+import io.reactivex.Completable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.schedulers.Schedulers;
+
 import retrofit2.Retrofit;
 import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory;
 import retrofit2.converter.gson.GsonConverterFactory;
@@ -57,23 +64,23 @@ public class MainActivity extends AppCompatActivity {
 
     private Toolbar toolbar;
     private DataAdapter mAdapter;
+    private AppDatabase db;
+
+    private Date lastvisit;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Fabric.with(this, new Crashlytics());
         setContentView(R.layout.activity_main);
-
+        db = AppDatabase.getAppDatabase(this);
         toolbar = findViewById(R.id.toolbar);
-        // toolbar.setLogo(R.drawable.ic_launcher_foreground_yellow);
-
 
         setSupportActionBar(toolbar);
-        getSupportActionBar().setDisplayShowHomeEnabled(true);
-        getSupportActionBar().setHomeButtonEnabled(true);
 
-        // mOpciones = getResources().getStringArray(R.array.opciones);
-        mDrawerLayout = findViewById(R.id.drawer_layout);
+        getSupportActionBar().setHomeButtonEnabled(true);
+        getSupportActionBar().setDisplayShowHomeEnabled(true);
 
         mDrawerLayout = findViewById(R.id.drawer_layout);
 
@@ -87,8 +94,6 @@ public class MainActivity extends AppCompatActivity {
             header = navigationView.getHeaderView(0);
         }
 
-
-        // mDrawerList = findViewById(R.id.left_drawer);
         mDrawerToggle = new ActionBarDrawerToggle(
                 this,                  /* host Activity */
                 mDrawerLayout,
@@ -110,12 +115,41 @@ public class MainActivity extends AppCompatActivity {
             }
         };
 
-
         progressBar = findViewById(R.id.progressBar);
         mCompositeDisposable = new CompositeDisposable();
-        initRecyclerView();
-        loadJSON();
 
+        mCompositeDisposable.add(db.dateDao().getDate()
+                .observeOn(Schedulers.io())
+                .subscribeOn(Schedulers.io())
+                .subscribe(this::okDate, this::handleErrorDate));
+
+        updateLastVisitDate();
+        initRecyclerView();
+        //ToDo Aqui enviar como parametro "lastvisit" y comparar con cada fecha de peli
+        loadJSON();
+    }
+
+    private void okDate(List<DateLastVisit> dateLastVisits) {
+        if (dateLastVisits.isEmpty()) {
+            Log.v("LAST DATE", "FECHA VACIA");
+        } else {
+            lastvisit = dateLastVisits.get(0).getDate();
+            Log.v("LAST DATE", DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM).format(lastvisit));
+        }
+    }
+
+    private void updateLastVisitDate() {
+        DateLastVisit date = new DateLastVisit();
+        date.setDate(new Date());
+        Completable.fromAction(() -> db.dateDao().setDate(date))
+                .subscribeOn(Schedulers.io())
+                .subscribe(() -> {
+                }, this::handleErrorDate);
+
+    }
+
+    private void handleErrorDate(Throwable throwable) {
+        Log.v("ERROR", throwable.getLocalizedMessage());
     }
 
     private void initRecyclerView() {
@@ -124,8 +158,8 @@ public class MainActivity extends AppCompatActivity {
         mRecyclerView.setHasFixedSize(true);
         RecyclerView.LayoutManager layoutManager = new LinearLayoutManager(getApplicationContext());
         mRecyclerView.setLayoutManager(layoutManager);
-        mAdapter = new DataAdapter(null,null);
-        mRecyclerView.setAdapter(mAdapter);
+        mAdapter = new DataAdapter(null, null);
+        //mRecyclerView.setAdapter(mAdapter);
     }
 
     private void loadJSON() {
@@ -145,7 +179,7 @@ public class MainActivity extends AppCompatActivity {
     private void handleResponse(MovieDetails result) {
         progressBar.setVisibility(GONE);
         List<Movie> movies = result.getData().getMovies();
-        mAdapter = new DataAdapter(movies,"");
+        mAdapter = new DataAdapter(movies, "");
         mRecyclerView.setAdapter(mAdapter);
     }
 
@@ -218,7 +252,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onResume(){
+    public void onResume() {
         super.onResume();
         mAdapter.notifyDataSetChanged();
     }
