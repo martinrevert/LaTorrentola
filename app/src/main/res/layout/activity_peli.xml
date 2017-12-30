@@ -29,7 +29,7 @@
             android:layout_height="?attr/actionBarSize"
             android:background="?attr/colorPrimary"
             app:titleTextColor="@color/colorAccent"
-            app:theme="@style/Base.V23.Theme.AppCompat.Toolbar"
+            android:theme="@style/Base.V23.Theme.AppCompat.Toolbar"
             app:popupTheme="@style/AppTheme.PopupOverlay" />
 
     </android.support.design.widget.AppBarLayout>

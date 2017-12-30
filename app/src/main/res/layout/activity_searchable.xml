@@ -30,7 +30,7 @@
         android:background="?attr/colorPrimary"
         app:layout_constraintTop_toTopOf="parent"
         app:popupTheme="@style/AppTheme.PopupOverlay"
-        app:theme="@style/Base.V23.Theme.AppCompat.Toolbar"
+        android:theme="@style/Base.V23.Theme.AppCompat.Toolbar"
         app:titleTextColor="@color/colorAccent" />
 
     <TextView
