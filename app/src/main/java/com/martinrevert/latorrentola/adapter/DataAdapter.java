@@ -43,6 +43,11 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
         // Collections.sort(movies, Comparator.comparingInt(Movie::getId).reversed());
     }
 
+    public void addMovies(List<Movie> newmovies) {
+        movies.addAll(newmovies);
+        notifyDataSetChanged();
+    }
+
     class ViewHolder extends RecyclerView.ViewHolder {
 
         private TextView mTitle;
@@ -227,6 +232,7 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
     public void onDetachedFromRecyclerView(RecyclerView recyclerView) {
         super.onDetachedFromRecyclerView(recyclerView);
         disposable.dispose();
+        AppDatabase.destroyInstance();
     }
 
     @Override
@@ -238,5 +244,6 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
             return 0;
         }
     }
+
 
 }

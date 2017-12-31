@@ -43,6 +43,7 @@ import static android.view.View.VISIBLE;
 public class SearchableActivity extends AppCompatActivity implements TextToSpeech.OnInitListener {
 
     private RecyclerView mRecyclerView;
+    private LinearLayoutManager layoutManager;
     private ProgressBar progressBar;
     private CompositeDisposable compositeDisposable;
     private DataAdapter mAdapter;
@@ -54,12 +55,21 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
 
     private AppDatabase db;
     private boolean voice_system;
+    private int onpause;
+    private int currentpage = 1;
+    private boolean is3D = false;
+    private boolean isGenre = false;
+    private boolean isLoading;
+    private boolean isLastPage;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_searchable);
+        onpause = 0;
         Fabric.with(this, new Crashlytics());
+
+        layoutManager = new LinearLayoutManager(getApplicationContext());
         tts = new TextToSpeech(this, this);
         tts.setLanguage(Locale.getDefault());
         SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
@@ -88,7 +98,7 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
         }
         setSupportActionBar(toolbar);
         initRecyclerView();
-        loadJSON(query);
+        loadJSON(query, currentpage);
 
     }
 
@@ -96,15 +106,39 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
 
         mRecyclerView = findViewById(R.id.recycler_view);
         mRecyclerView.setHasFixedSize(true);
-        RecyclerView.LayoutManager layoutManager = new LinearLayoutManager(getApplicationContext());
         mRecyclerView.setLayoutManager(layoutManager);
+        mRecyclerView.addOnScrollListener(recyclerViewOnScrollListener);
         mAdapter = new DataAdapter(null, null);
         mRecyclerView.setAdapter(mAdapter);
 
     }
 
-    private void loadJSON(String query) {
+    private RecyclerView.OnScrollListener recyclerViewOnScrollListener = new RecyclerView.OnScrollListener() {
+        @Override
+        public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
+            super.onScrollStateChanged(recyclerView, newState);
+        }
 
+        @Override
+        public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
+            super.onScrolled(recyclerView, dx, dy);
+            int visibleItemCount = layoutManager.getChildCount();
+            int totalItemCount = layoutManager.getItemCount();
+            int firstVisibleItemPosition = layoutManager.findFirstVisibleItemPosition();
+
+            if (!isLoading && !isLastPage) {
+                if ((visibleItemCount + firstVisibleItemPosition) >= totalItemCount
+                        && firstVisibleItemPosition >= 0
+                        && totalItemCount >= Constants.PAGE_SIZE * currentpage) {
+                    currentpage = currentpage + 1;
+                    loadJSON(query, currentpage);
+                }
+            }
+        }
+    };
+
+    private void loadJSON(String query, int currentpage) {
+        isLoading = true;
         progressBar.setVisibility(VISIBLE);
         RequestYTSInterface requestYTSInterface = new Retrofit.Builder()
                 .baseUrl(Constants.YTS_BASE_URL)
@@ -113,14 +147,15 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
                 .build().create(RequestYTSInterface.class);
 
         if (Intent.ACTION_SEARCH.equals(intent.getAction())) {
-            compositeDisposable.add(requestYTSInterface.getMovieSearch("50", query)
+            compositeDisposable.add(requestYTSInterface.getMovieSearch(Constants.PAGE_SIZE, query)
                     .observeOn(AndroidSchedulers.mainThread())
                     .subscribeOn(Schedulers.io())
                     .subscribe(this::handleResponse, this::handleError));
         } else {
             switch (query) {
                 case "3D":
-                    compositeDisposable.add(requestYTSInterface.getTridiSearch("50", query)
+                    is3D = true;
+                    compositeDisposable.add(requestYTSInterface.getTridiSearch(Constants.PAGE_SIZE, query, currentpage)
                             .observeOn(AndroidSchedulers.mainThread())
                             .subscribeOn(Schedulers.io())
                             .subscribe(this::handleResponse, this::handleError));
@@ -133,7 +168,8 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
 
                     break;
                 default:
-                    compositeDisposable.add(requestYTSInterface.getGenreSearch("50", query)
+                    isGenre = true;
+                    compositeDisposable.add(requestYTSInterface.getGenreSearch(Constants.PAGE_SIZE, query, currentpage)
                             .observeOn(AndroidSchedulers.mainThread())
                             .subscribeOn(Schedulers.io())
                             .subscribe(this::handleResponse, this::handleError));
@@ -145,6 +181,7 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
 
     private void handleDBResponse(List<Movie> pelisdb) {
         progressBar.setVisibility(View.GONE);
+        isLoading = false;
         if (pelisdb.isEmpty()) {
             if (voice_system) {
                 tts.speak("No encontramos peliculas en su lista personal", TextToSpeech.QUEUE_ADD, null, null);
@@ -162,11 +199,12 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
     }
 
     private void handleDBError(Throwable error) {
-
+        isLoading = false;
     }
 
     private void handleResponse(MovieDetails result) {
         progressBar.setVisibility(GONE);
+        isLoading = false;
         List<Movie> movies = result.getData().getMovies();
 
         if (movies.isEmpty()) {
@@ -178,9 +216,20 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
             if (voice_system) {
                 tts.speak("Estos son sus resultados con " + query, TextToSpeech.QUEUE_ADD, null, null);
             }
-            mAdapter = new DataAdapter(movies, "");
-            mRecyclerView.setAdapter(mAdapter);
-            checkAdapterIsEmpty();
+
+            if (is3D || isGenre) {
+                if (mAdapter.getItemCount() < Constants.PAGE_SIZE) {
+                    mAdapter = new DataAdapter(movies, "");
+                    mRecyclerView.setAdapter(mAdapter);
+                } else {
+                    mAdapter.addMovies(movies);
+                    mRecyclerView.scrollToPosition(currentpage * 50);
+                }
+            } else {
+                mAdapter = new DataAdapter(movies, "");
+                mRecyclerView.setAdapter(mAdapter);
+                checkAdapterIsEmpty();
+            }
         }
 
 
@@ -188,6 +237,7 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
 
     private void handleError(Throwable throwable) {
         progressBar.setVisibility(GONE);
+        isLoading = false;
         checkAdapterIsEmpty();
         if (voice_system) {
             tts.speak("No encontramos peliculas como " + query, TextToSpeech.QUEUE_ADD, null, null);
@@ -210,11 +260,33 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
     }
 
     @Override
+    public void onPause() {
+        super.onPause();
+        onpause = onpause + 1;
+        if (onpause > 1) {
+
+        }
+    }
+
+    @Override
     public void onDestroy() {
         super.onDestroy();
         compositeDisposable.dispose();
-        tts.shutdown();
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
+        }
         AppDatabase.destroyInstance();
+    }
+
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        tts = new TextToSpeech(this, this);
+        tts.setLanguage(Locale.getDefault());
+
+
     }
 
     @Override

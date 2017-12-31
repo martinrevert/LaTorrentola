@@ -103,7 +103,7 @@ public class UrlHandlerActivity extends AppCompatActivity implements TextToSpeec
                 .addConverterFactory(GsonConverterFactory.create())
                 .build().create(RequestYTSInterface.class);
 
-        mCompositeDisposable.add(requestYTSInterface.getMovieSearch("50", "tt" + imdb)
+        mCompositeDisposable.add(requestYTSInterface.getMovieSearch(Constants.PAGE_SIZE, "tt" + imdb)
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribeOn(Schedulers.io())
                 .subscribe(this::handleResponse, this::handleError));

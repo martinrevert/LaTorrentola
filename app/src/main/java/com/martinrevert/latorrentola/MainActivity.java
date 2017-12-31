@@ -55,7 +55,9 @@ import static android.view.View.VISIBLE;
 
 public class MainActivity extends AppCompatActivity {
 
+
     private RecyclerView mRecyclerView;
+    private LinearLayoutManager layoutManager;
     private ProgressBar progressBar;
 
     private CompositeDisposable mCompositeDisposable;
@@ -63,17 +65,21 @@ public class MainActivity extends AppCompatActivity {
     private ActionBarDrawerToggle mDrawerToggle;
 
     private Toolbar toolbar;
+    private List<Movie> movies;
     private DataAdapter mAdapter;
     private AppDatabase db;
 
     private Date lastvisit;
-
+    private int currentpage = 1;
+    private boolean isLastPage = false;
+    private boolean isLoading = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Fabric.with(this, new Crashlytics());
         setContentView(R.layout.activity_main);
+        layoutManager = new LinearLayoutManager(getApplicationContext());
         db = AppDatabase.getAppDatabase(this);
         toolbar = findViewById(R.id.toolbar);
 
@@ -126,8 +132,33 @@ public class MainActivity extends AppCompatActivity {
         updateLastVisitDate();
         initRecyclerView();
         //ToDo Aqui enviar como parametro "lastvisit" y comparar con cada fecha de peli
-        loadJSON();
+        loadJSON(currentpage);
     }
+
+
+    private RecyclerView.OnScrollListener recyclerViewOnScrollListener = new RecyclerView.OnScrollListener() {
+        @Override
+        public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
+            super.onScrollStateChanged(recyclerView, newState);
+        }
+
+        @Override
+        public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
+            super.onScrolled(recyclerView, dx, dy);
+            int visibleItemCount = layoutManager.getChildCount();
+            int totalItemCount = layoutManager.getItemCount();
+            int firstVisibleItemPosition = layoutManager.findFirstVisibleItemPosition();
+
+            if (!isLoading && !isLastPage) {
+                if ((visibleItemCount + firstVisibleItemPosition) >= totalItemCount
+                        && firstVisibleItemPosition >= 0
+                        && totalItemCount >= Constants.PAGE_SIZE * currentpage) {
+                    currentpage = currentpage +1;
+                    loadJSON(currentpage);
+                }
+            }
+        }
+    };
 
     private void okDate(List<DateLastVisit> dateLastVisits) {
         if (dateLastVisits.isEmpty()) {
@@ -156,13 +187,14 @@ public class MainActivity extends AppCompatActivity {
 
         mRecyclerView = findViewById(R.id.recycler_view);
         mRecyclerView.setHasFixedSize(true);
-        RecyclerView.LayoutManager layoutManager = new LinearLayoutManager(getApplicationContext());
         mRecyclerView.setLayoutManager(layoutManager);
-        mAdapter = new DataAdapter(null, null);
+        mRecyclerView.addOnScrollListener(recyclerViewOnScrollListener);
+        mAdapter = new DataAdapter(movies, null);
         //mRecyclerView.setAdapter(mAdapter);
     }
 
-    private void loadJSON() {
+    private void loadJSON(int page) {
+        isLoading = true;
         progressBar.setVisibility(VISIBLE);
         RequestYTSInterface requestYTSInterface = new Retrofit.Builder()
                 .baseUrl(Constants.YTS_BASE_URL)
@@ -170,7 +202,7 @@ public class MainActivity extends AppCompatActivity {
                 .addConverterFactory(GsonConverterFactory.create())
                 .build().create(RequestYTSInterface.class);
 
-        mCompositeDisposable.add(requestYTSInterface.getMovieDetails("50", "6")
+        mCompositeDisposable.add(requestYTSInterface.getMovieDetails(Constants.PAGE_SIZE, "6", page)
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribeOn(Schedulers.io())
                 .subscribe(this::handleResponse, this::handleError));
@@ -178,14 +210,21 @@ public class MainActivity extends AppCompatActivity {
 
     private void handleResponse(MovieDetails result) {
         progressBar.setVisibility(GONE);
-        List<Movie> movies = result.getData().getMovies();
-        mAdapter = new DataAdapter(movies, "");
-        mRecyclerView.setAdapter(mAdapter);
+        isLoading = false;
+        List<Movie> pelis = result.getData().getMovies();
+        if (mAdapter.getItemCount() < Constants.PAGE_SIZE) {
+            mAdapter = new DataAdapter(pelis, "");
+            mRecyclerView.setAdapter(mAdapter);
+        } else {
+            mAdapter.addMovies(pelis);
+            mRecyclerView.scrollToPosition(currentpage * 50);
+        }
     }
 
     private void handleError(Throwable error) {
         progressBar.setVisibility(GONE);
-        Toast.makeText(this, "Error " + error.getLocalizedMessage(), Toast.LENGTH_SHORT).show();
+        isLoading = false;
+        Log.v("ERROR", error.getLocalizedMessage());
     }
 
     @Override

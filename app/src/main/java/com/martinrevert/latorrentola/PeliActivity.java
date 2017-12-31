@@ -2,7 +2,6 @@ package com.martinrevert.latorrentola;
 
 import android.app.TaskStackBuilder;
 import android.content.ActivityNotFoundException;
-import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -22,7 +21,6 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.crashlytics.android.Crashlytics;
-import com.github.florent37.rxsharedpreferences.RxSharedPreferences;
 import com.google.android.youtube.player.YouTubeInitializationResult;
 import com.google.android.youtube.player.YouTubePlayer;
 import com.google.android.youtube.player.YouTubePlayerFragment;
@@ -48,10 +46,8 @@ import java.util.Locale;
 
 import io.fabric.sdk.android.Fabric;
 
-import io.reactivex.Observable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
-import io.reactivex.disposables.Disposable;
 import io.reactivex.schedulers.Schedulers;
 
 import okhttp3.OkHttpClient;
@@ -483,8 +479,9 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
     @Override
     public void onDestroy() {
         super.onDestroy();
-        mCompositeDisposable.clear();
+        mCompositeDisposable.dispose();
         tts.shutdown();
+        AppDatabase.destroyInstance();
 
     }
 
