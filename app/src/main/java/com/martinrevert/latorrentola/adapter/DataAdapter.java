@@ -82,7 +82,12 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
         holder.mTitle.setText(movies.get(holder.getAdapterPosition()).getTitleLong());
         holder.mRating.setRating(Float.parseFloat(movies.get(holder.getAdapterPosition()).getRating()));
         List<String> generos = movies.get(holder.getAdapterPosition()).getGenres();
-        String genres = generos.toString();
+        String genres = null;
+        if (generos == null){
+            genres = "Sin genero";
+        }else {
+            genres = generos.toString();
+        }
         holder.mGenres.setText(genres);
         Context context = holder.mPoster.getContext();
         Picasso.with(context).load(movies.get(holder.getAdapterPosition()).getLargeCoverImage()).into(holder.mPoster);
@@ -237,13 +242,12 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
 
     @Override
     public int getItemCount() {
-        try {
-            return movies.size();
-        } catch (NullPointerException e) {
-            e.printStackTrace();
+        if (movies == null) {
             return 0;
+        } else {
+            return movies.size();
         }
-    }
+     }
 
 
 }

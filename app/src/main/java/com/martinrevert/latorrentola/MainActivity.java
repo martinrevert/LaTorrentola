@@ -212,7 +212,7 @@ public class MainActivity extends AppCompatActivity {
         progressBar.setVisibility(GONE);
         isLoading = false;
         List<Movie> pelis = result.getData().getMovies();
-        if (mAdapter.getItemCount() < Constants.PAGE_SIZE) {
+        if (mAdapter.getItemCount() == 0) {
             mAdapter = new DataAdapter(pelis, "");
             mRecyclerView.setAdapter(mAdapter);
         } else {

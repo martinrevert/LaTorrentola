@@ -15,7 +15,7 @@ import com.martinrevert.latorrentola.model.YTS.Movie;
 /**
  * Created by martin on 07/12/17.
  */
-@Database(version = 2, entities = {Movie.class, DateLastVisit.class})
+@Database(version = 2, entities = {Movie.class, DateLastVisit.class}, exportSchema = false)
 @TypeConverters({Converters.class})
 public abstract class AppDatabase extends RoomDatabase {
 
