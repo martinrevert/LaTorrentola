@@ -77,9 +77,9 @@ dependencies {
     implementation('com.crashlytics.sdk.android:crashlytics:2.7.1@aar') {
         transitive = true
     }
-    implementation 'android.arch.persistence.room:runtime:1.1.0-alpha1'
-    annotationProcessor "android.arch.persistence.room:compiler:1.1.0-alpha1"
-    implementation 'android.arch.persistence.room:rxjava2:1.1.0-alpha1'
+    implementation 'android.arch.persistence.room:runtime:1.1.0-alpha2'
+    annotationProcessor 'android.arch.persistence.room:compiler:1.1.0-alpha2'
+    implementation 'android.arch.persistence.room:rxjava2:1.1.0-alpha2'
 
     //implementation 'com.github.florent37:rxsharedpreferences:1.0.0'
 
