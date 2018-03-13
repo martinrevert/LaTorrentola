@@ -1,6 +1,6 @@
 #La Torrentola 
 
-La Torrentola is an example Android app made to test modern Android ecosystem funcionalities and arquitectures.
+La Torrentola is an example Android app made to test modern Android ecosystem funcionalities and architectures.
 
 It makes use of:
 
@@ -14,9 +14,9 @@ It makes use of:
 
 Next steps:
 
-- Decouple views with ViewModel
-- Move to a pluggable arquitecture of torrent vendors (more interfaced, because now is basically spaguetti)
-- Offer different switchable posters view with normal and staggered grids.
+- Decouple views with ViewModel, move plain Android MVC to MVVM.
+- Move to a pluggable architecture of torrent vendors (more interfaced, because now is basically ugly spaguetti)
+- Offer different switchable posters view with normal and staggered grids (basically change the Layout Manager of the RecyclerView).
 - Maybe notifications.
 - ???????
 
