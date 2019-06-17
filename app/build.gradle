@@ -11,7 +11,7 @@ def getVersionCode = { ->
         return code.toString().split("\n").size()
     }
     catch (ignored) {
-        return -1;
+        return -1
     }
 }
 
@@ -19,20 +19,19 @@ android {
     signingConfigs {
         release {
             keyAlias 'androidreleasekey'
-            storeFile file('/home/martin/release.keystore')
+            storeFile file('../app/keys/release.keystore')
             keyPassword 'android'
             storePassword 'android'
         }
     }
-    compileSdkVersion 27
-    buildToolsVersion "27.0.3"
+    compileSdkVersion 28
     defaultConfig {
         applicationId "com.martinrevert.latorrentola"
         versionCode 10000 + getVersionCode()
         versionName "1.0." + getVersionCode()
         archivesBaseName = "latorrentola$versionName"
         minSdkVersion 23
-        targetSdkVersion 27
+        targetSdkVersion 28
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
 
 
@@ -55,31 +54,31 @@ android {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation 'com.android.support:design:27.1.0'
-    implementation 'com.android.support:appcompat-v7:27.1.0'
-    implementation 'com.android.support:recyclerview-v7:27.1.0'
-    implementation 'com.android.support:cardview-v7:27.1.0'
-    implementation 'com.android.support.constraint:constraint-layout:1.1.0-beta5'
+    implementation 'com.android.support:design:28.0.0'
+    implementation 'com.android.support:appcompat-v7:28.0.0'
+    implementation 'com.android.support:recyclerview-v7:28.0.0'
+    implementation 'com.android.support:cardview-v7:28.0.0'
+    implementation 'com.android.support.constraint:constraint-layout:2.0.0-beta1'
     androidTestImplementation('com.android.support.test.espresso:espresso-core:3.0.1', {
         exclude group: 'com.android.support', module: 'support-annotations'
     })
-    androidTestImplementation 'com.android.support.test:runner:1.0.1'
+    androidTestImplementation 'com.android.support.test:runner:1.0.2'
     testImplementation 'junit:junit:4.12'
-    implementation 'com.squareup.retrofit2:retrofit:2.3.0'
-    implementation 'com.squareup.retrofit2:converter-gson:2.3.0'
-    implementation 'com.squareup.retrofit2:adapter-rxjava2:2.3.0'
+    implementation 'com.squareup.retrofit2:retrofit:2.6.0'
+    implementation 'com.squareup.retrofit2:converter-gson:2.6.0'
+    implementation 'com.squareup.retrofit2:adapter-rxjava2:2.6.0'
     implementation 'com.squareup.picasso:picasso:2.5.2'
     implementation 'com.squareup.okhttp3:logging-interceptor:3.10.0'
-    implementation 'io.reactivex.rxjava2:rxjava:2.1.10'
-    implementation 'io.reactivex.rxjava2:rxandroid:2.0.2'
-    implementation 'com.google.firebase:firebase-core:11.8.0'
-    implementation 'com.google.firebase:firebase-messaging:11.8.0'
-    implementation('com.crashlytics.sdk.android:crashlytics:2.7.1@aar') {
+    implementation 'io.reactivex.rxjava2:rxandroid:2.1.1'
+    implementation 'io.reactivex.rxjava2:rxjava:2.2.6'
+    implementation 'com.google.firebase:firebase-core:16.0.9'
+    implementation 'com.google.firebase:firebase-messaging:18.0.0'
+    implementation('com.crashlytics.sdk.android:crashlytics:2.10.1@aar') {
         transitive = true
     }
-    implementation 'android.arch.persistence.room:runtime:1.1.0-alpha2'
-    annotationProcessor 'android.arch.persistence.room:compiler:1.1.0-alpha2'
-    implementation 'android.arch.persistence.room:rxjava2:1.1.0-alpha2'
+    implementation 'android.arch.persistence.room:runtime:1.1.1'
+    annotationProcessor 'android.arch.persistence.room:compiler:1.1.1'
+    implementation 'android.arch.persistence.room:rxjava2:1.1.1'
 
     //implementation 'com.github.florent37:rxsharedpreferences:1.0.0'
 
