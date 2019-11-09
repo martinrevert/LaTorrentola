@@ -3,7 +3,7 @@ package com.martinrevert.latorrentola;
 
 import android.os.Bundle;
 import android.preference.PreferenceFragment;
-import android.support.annotation.Nullable;
+import androidx.annotation.Nullable;
 
 
 /**
