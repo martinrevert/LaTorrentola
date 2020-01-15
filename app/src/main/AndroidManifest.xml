@@ -84,7 +84,9 @@
             </intent-filter>
         </activity>
         <activity android:name=".GenerosActivity" />
-        <activity android:name=".GenericListActivity"></activity>
+        <activity android:name=".GenericListActivity">
+
+        </activity>
     </application>
 
 </manifest>
