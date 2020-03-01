@@ -167,7 +167,7 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
 
             for (Torrent torroyts : torrentsyts) {
 
-                String text = "YTS" + " " + torroyts.getQuality() + " " + torroyts.getSize();
+                String text = "YTS" + " " + torroyts.getQuality() + " " + torroyts.getSize() + " " + torroyts.getType();
 
                 LinearLayout linearyts = findViewById(R.id.linearyts);
 

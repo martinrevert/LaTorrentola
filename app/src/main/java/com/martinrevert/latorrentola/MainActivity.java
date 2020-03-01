@@ -5,12 +5,16 @@ import android.app.SearchManager;
 import android.content.Intent;
 
 import android.content.res.Configuration;
+
 import com.google.android.material.navigation.NavigationView;
+
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.appcompat.app.ActionBarDrawerToggle;
 import androidx.appcompat.widget.SearchView;
+
 import android.content.Context;
 import android.os.Bundle;
+
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -36,6 +40,7 @@ import com.martinrevert.latorrentola.network.RequestYTSInterface;
 import java.text.DateFormat;
 import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 
 import io.fabric.sdk.android.Fabric;
 
@@ -44,6 +49,8 @@ import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.schedulers.Schedulers;
 
+import okhttp3.OkHttpClient;
+import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Retrofit;
 import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory;
 import retrofit2.converter.gson.GsonConverterFactory;
@@ -67,9 +74,7 @@ public class MainActivity extends AppCompatActivity {
     private DataAdapter mAdapter;
     private AppDatabase db;
 
-    private Date lastvisit;
     private int currentpage = 1;
-    private boolean isLastPage = false;
     private boolean isLoading = false;
 
     @Override
@@ -83,7 +88,7 @@ public class MainActivity extends AppCompatActivity {
 
         setSupportActionBar(toolbar);
 
-        getSupportActionBar().setHomeButtonEnabled(true);
+        Objects.requireNonNull(getSupportActionBar()).setHomeButtonEnabled(true);
         getSupportActionBar().setDisplayShowHomeEnabled(true);
 
         mDrawerLayout = findViewById(R.id.drawer_layout);
@@ -109,13 +114,13 @@ public class MainActivity extends AppCompatActivity {
             /** Called when a drawer has settled in a completely closed state. */
             public void onDrawerClosed(View view) {
                 super.onDrawerClosed(view);
-                getActionBar().setTitle("La Torrentola");
+                Objects.requireNonNull(getActionBar()).setTitle("La Torrentola");
             }
 
             /** Called when a drawer has settled in a completely open state. */
             public void onDrawerOpened(View drawerView) {
                 super.onDrawerOpened(drawerView);
-                getActionBar().setTitle("Menu");
+                Objects.requireNonNull(getActionBar()).setTitle("Menu");
             }
         };
 
@@ -147,11 +152,12 @@ public class MainActivity extends AppCompatActivity {
             int totalItemCount = layoutManager.getItemCount();
             int firstVisibleItemPosition = layoutManager.findFirstVisibleItemPosition();
 
+            boolean isLastPage = false;
             if (!isLoading && !isLastPage) {
                 if ((visibleItemCount + firstVisibleItemPosition) >= totalItemCount
                         && firstVisibleItemPosition >= 0
                         && totalItemCount >= Constants.PAGE_SIZE * currentpage) {
-                    currentpage = currentpage +1;
+                    currentpage = currentpage + 1;
                     loadJSON(currentpage);
                 }
             }
@@ -162,7 +168,7 @@ public class MainActivity extends AppCompatActivity {
         if (dateLastVisits.isEmpty()) {
             Log.v("LAST DATE", "FECHA VACIA");
         } else {
-            lastvisit = dateLastVisits.get(0).getDate();
+            Date lastvisit = dateLastVisits.get(0).getDate();
             Log.v("LAST DATE", DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM).format(lastvisit));
         }
     }
@@ -194,13 +200,25 @@ public class MainActivity extends AppCompatActivity {
     private void loadJSON(int page) {
         isLoading = true;
         progressBar.setVisibility(VISIBLE);
+
+        HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
+        // set your desired log level
+        logging.setLevel(HttpLoggingInterceptor.Level.BODY);
+
+        OkHttpClient.Builder httpClient = new OkHttpClient.Builder();
+        // add your other interceptors …
+
+        // add logging as last interceptor
+        httpClient.addInterceptor(logging);  // <-- this is the important line!
+
         RequestYTSInterface requestYTSInterface = new Retrofit.Builder()
                 .baseUrl(Constants.YTS_BASE_URL)
                 .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
                 .addConverterFactory(GsonConverterFactory.create())
+                .client(httpClient.build())
                 .build().create(RequestYTSInterface.class);
 
-        mCompositeDisposable.add(requestYTSInterface.getMovieDetails(Constants.PAGE_SIZE, "6", page)
+        mCompositeDisposable.add(requestYTSInterface.getMovieDetails(Constants.PAGE_SIZE, "6", page, "true")
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribeOn(Schedulers.io())
                 .subscribe(this::handleResponse, this::handleError));

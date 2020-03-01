@@ -36,6 +36,9 @@ public class Torrent {
     @SerializedName("date_uploaded_unix")
     @Expose
     private Integer dateUploadedUnix;
+    @SerializedName("type")
+    @Expose
+    private String type;
 
     public String getUrl() {
         return url;
@@ -109,4 +112,11 @@ public class Torrent {
         this.dateUploadedUnix = dateUploadedUnix;
     }
 
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
 }

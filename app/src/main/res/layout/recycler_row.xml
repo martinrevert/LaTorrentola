@@ -5,8 +5,9 @@
     android:layout_height="wrap_content"
     android:layout_gravity="center"
     android:layout_marginLeft="32dp"
+    android:layout_marginTop="8dp"
     android:layout_marginRight="32dp"
-    android:layout_marginTop="8dp">
+    card_view:cardCornerRadius="32dp">
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/ConstraintLayout"
@@ -14,15 +15,46 @@
         android:layout_height="match_parent"
         android:layout_margin="10dp">
 
-        <TextView
-            android:id="@+id/title"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            card_view:layout_constraintEnd_toEndOf="parent"
+        <ImageButton
+            android:id="@+id/imageButtonMyList"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp"
+            android:background="@android:color/transparent"
+            android:visibility="gone"
+            card_view:layout_constraintBottom_toBottomOf="parent"
             card_view:layout_constraintStart_toStartOf="parent"
-            card_view:layout_constraintTop_toTopOf="parent" />
+            card_view:layout_constraintTop_toBottomOf="@+id/poster"
+            card_view:srcCompat="@drawable/ic_add_circle_black_24dp" />
+
+        <ImageButton
+            android:id="@+id/imageButtonNoMyList"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp"
+            android:background="@android:color/transparent"
+            android:visibility="gone"
+            card_view:layout_constraintBottom_toBottomOf="parent"
+            card_view:layout_constraintStart_toStartOf="parent"
+            card_view:layout_constraintTop_toBottomOf="@+id/poster"
+            card_view:srcCompat="@drawable/ic_check_circle_black_24dp" />
+
+        <ImageButton
+            android:id="@+id/imageButtonShare"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginRight="16dp"
+            android:layout_marginBottom="8dp"
+            android:background="@android:color/transparent"
+            card_view:layout_constraintBottom_toBottomOf="parent"
+            card_view:layout_constraintRight_toRightOf="parent"
+            card_view:layout_constraintTop_toBottomOf="@+id/poster"
+            card_view:srcCompat="@drawable/ic_share_black_24dp" />
 
         <ImageView
             android:id="@+id/poster"
@@ -55,47 +87,16 @@
             card_view:layout_constraintStart_toStartOf="parent"
             card_view:layout_constraintTop_toBottomOf="@+id/rating" />
 
-        <ImageButton
-            android:id="@+id/imageButtonMyList"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginBottom="8dp"
-            android:layout_marginStart="16dp"
-            android:layout_marginTop="8dp"
-            android:background="@android:color/transparent"
-            card_view:layout_constraintBottom_toBottomOf="parent"
+
+        <TextView
+            android:id="@+id/title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            card_view:layout_constraintEnd_toEndOf="parent"
             card_view:layout_constraintStart_toStartOf="parent"
-            card_view:layout_constraintTop_toBottomOf="@+id/poster"
-            card_view:srcCompat="@drawable/ic_add_circle_black_24dp"
-            android:visibility="gone"/>
-
-        <ImageButton
-            android:id="@+id/imageButtonNoMyList"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginBottom="8dp"
-            android:layout_marginStart="16dp"
-            android:layout_marginTop="8dp"
-            android:background="@android:color/transparent"
-            card_view:layout_constraintBottom_toBottomOf="parent"
-            card_view:layout_constraintStart_toStartOf="parent"
-            card_view:layout_constraintTop_toBottomOf="@+id/poster"
-            card_view:srcCompat="@drawable/ic_check_circle_black_24dp"
-            android:visibility="gone"/>
-
-
-        <ImageButton
-            android:id="@+id/imageButtonShare"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginBottom="8dp"
-            android:layout_marginRight="16dp"
-            android:layout_marginTop="8dp"
-            android:background="@android:color/transparent"
-            card_view:layout_constraintBottom_toBottomOf="parent"
-            card_view:layout_constraintRight_toRightOf="parent"
-            card_view:layout_constraintTop_toBottomOf="@+id/poster"
-            card_view:srcCompat="@drawable/ic_share_black_24dp" />
+            card_view:layout_constraintTop_toTopOf="parent" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 </androidx.cardview.widget.CardView>
