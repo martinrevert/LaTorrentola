@@ -15,8 +15,6 @@ import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
-import com.crashlytics.android.Crashlytics;
-
 import com.martinrevert.latorrentola.adapter.DataAdapter;
 import com.martinrevert.latorrentola.constants.Constants;
 import com.martinrevert.latorrentola.database.AppDatabase;
@@ -26,8 +24,6 @@ import com.martinrevert.latorrentola.network.RequestYTSInterface;
 
 import java.util.List;
 import java.util.Locale;
-
-import io.fabric.sdk.android.Fabric;
 
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
@@ -67,7 +63,6 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_searchable);
         onpause = 0;
-        Fabric.with(this, new Crashlytics());
 
         layoutManager = new LinearLayoutManager(getApplicationContext());
         tts = new TextToSpeech(this, this);
