@@ -1,18 +1,9 @@
 apply plugin: 'com.android.application'
 
-def getVersionCode = { ->
-    try {
-        def code = new ByteArrayOutputStream()
-        exec {
-            commandLine 'git', 'log', '--oneline'
-            standardOutput = code
-        }
-        return code.toString().split("\n").size()
-    }
-    catch (ignored) {
-        return -1
-    }
-}
+def gitVersionCode = providers.exec {
+    commandLine 'git', 'rev-list', '--count', 'HEAD'
+    ignoreExitValue = true
+}.standardOutput.asText.map { it.trim() }.map { it.isInteger() ? it.toInteger() : 0 }.getOrElse(0)
 
 android {
     signingConfigs {
@@ -26,8 +17,8 @@ android {
     compileSdkVersion 28
     defaultConfig {
         applicationId "com.martinrevert.latorrentola"
-        versionCode 10000 + getVersionCode()
-        versionName "1.0." + getVersionCode()
+        versionCode 10000 + gitVersionCode
+        versionName "1.0.$gitVersionCode"
         archivesBaseName = "latorrentola$versionName"
         minSdkVersion 23
         targetSdkVersion 30
@@ -35,10 +26,7 @@ android {
 
 
     }
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
+
     buildTypes {
         release {
             minifyEnabled false
@@ -55,6 +43,7 @@ android {
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation 'org.jsoup:jsoup:1.13.1'
+    implementation 'me.pushy:sdk:1.0.91'
     implementation 'com.google.android.material:material:1.4.0'
     implementation 'androidx.appcompat:appcompat:1.3.1'
     implementation 'androidx.recyclerview:recyclerview:1.2.1'
