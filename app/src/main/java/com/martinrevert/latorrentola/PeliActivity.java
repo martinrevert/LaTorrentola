@@ -9,6 +9,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.speech.tts.TextToSpeech;
+import androidx.annotation.NonNull;
 import androidx.core.app.NavUtils;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -20,13 +21,9 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import com.google.android.youtube.player.YouTubeInitializationResult;
-import com.google.android.youtube.player.YouTubePlayer;
-import com.google.android.youtube.player.YouTubePlayerFragment;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
-import com.martinrevert.latorrentola.constants.Constants;
 import com.martinrevert.latorrentola.database.AppDatabase;
 import com.martinrevert.latorrentola.model.YTS.Movie;
 import com.martinrevert.latorrentola.model.YTS.Torrent;
@@ -36,6 +33,11 @@ import com.martinrevert.latorrentola.model.argenteam.Release;
 import com.martinrevert.latorrentola.model.argenteam.Results;
 import com.martinrevert.latorrentola.network.RequestArgenteamInterface;
 import com.martinrevert.latorrentola.network.RequestYandex;
+import com.martinrevert.latorrentola.constants.Constants;
+
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer;
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener;
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView;
 
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Type;
@@ -53,12 +55,12 @@ import retrofit2.Retrofit;
 import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory;
 import retrofit2.converter.gson.GsonConverterFactory;
 
-public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnInitializedListener, TextToSpeech.OnInitListener {
+public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnInitListener {
 
     private String imdb;
     private String youtube_video_trailer;
     private CompositeDisposable mCompositeDisposable;
-    private YouTubePlayerFragment youTubePlayerFragment;
+    private YouTubePlayerView youTubePlayerView;
     private Movie movie;
     private boolean ispresent;
     private RequestYandex requestYandexTranslate;
@@ -83,7 +85,9 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_peli);
         emptyargenteam = findViewById(R.id.emptyargenteam);
-        youTubePlayerFragment = (YouTubePlayerFragment) getFragmentManager().findFragmentById(R.id.youtube_player_view);
+        youTubePlayerView = findViewById(R.id.youtube_player_view);
+        getLifecycle().addObserver(youTubePlayerView);
+
         mCompositeDisposable = new CompositeDisposable();
         db = AppDatabase.getAppDatabase(this);
 
@@ -121,7 +125,14 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
 
             Log.v("YTS", movie.getTitleLong());
 
-            youTubePlayerFragment.initialize(Constants.YOUTUBE_API_KEY, this);
+            if (youtube_video_trailer != null && !youtube_video_trailer.isEmpty()) {
+                youTubePlayerView.addYouTubePlayerListener(new AbstractYouTubePlayerListener() {
+                    @Override
+                    public void onReady(@NonNull YouTubePlayer initializedYouTubePlayer) {
+                        initializedYouTubePlayer.cueVideo(youtube_video_trailer, 0);
+                    }
+                });
+            }
 
 
             String summ = "Summary: " + movie.getSummary();
@@ -287,18 +298,6 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
 
     }
 
-    @Override
-    public void onInitializationSuccess(YouTubePlayer.Provider provider, YouTubePlayer player,
-                                        boolean wasRestored) {
-        if (!wasRestored) {
-            player.cueVideo(youtube_video_trailer);
-        }
-    }
-
-    @Override
-    public void onInitializationFailure(YouTubePlayer.Provider provider, YouTubeInitializationResult youTubeInitializationResult) {
-
-    }
 
     private void loadJSONargenteam() {
 
@@ -327,14 +326,18 @@ public class PeliActivity extends AppCompatActivity implements YouTubePlayer.OnI
 
     private void handleResponse(Results movieId) {
         com.martinrevert.latorrentola.model.argenteam.Movie peli;
-        peli = movieId.getMovies().get(0);
-        Integer id = peli.getId();
-        Log.v("id", id.toString());
+        if (movieId.getMovies() != null && !movieId.getMovies().isEmpty()) {
+            peli = movieId.getMovies().get(0);
+            Integer id = peli.getId();
+            Log.v("id", id.toString());
 
-        mCompositeDisposable.add(requestArgenteamInterface.getMovieId(id)
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribeOn(Schedulers.io())
-                .subscribe(this::handleResponseId, this::handleErrorId));
+            mCompositeDisposable.add(requestArgenteamInterface.getMovieId(id)
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribeOn(Schedulers.io())
+                    .subscribe(this::handleResponseId, this::handleErrorId));
+        } else {
+            emptyargenteam.setVisibility(View.VISIBLE);
+        }
 
     }
 

@@ -89,12 +89,6 @@
                 <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
-        <activity android:name=".GenerosActivity"
-            android:exported="false" />
-        <activity android:name=".GenericListActivity"
-            android:exported="false">
-
-        </activity>
     </application>
 
 </manifest>

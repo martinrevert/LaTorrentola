@@ -8,12 +8,12 @@
     tools:showIn="@layout/activity_peli">
 
 
-    <fragment
+    <com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
         android:id="@+id/youtube_player_view"
-        android:name="com.google.android.youtube.player.YouTubePlayerFragment"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent"
+        app:autoPlay="false" />
 
     <LinearLayout
         android:id="@+id/details"

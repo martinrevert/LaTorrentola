@@ -41,6 +41,9 @@ android {
         resources {
             excludes += '/META-INF/versions/9/OSGI-INF/MANIFEST.MF'
         }
+        jniLibs {
+            useLegacyPackaging false
+        }
     }
 }
 
@@ -80,6 +83,9 @@ dependencies {
     implementation 'androidx.room:room-runtime:2.8.4'
     annotationProcessor 'androidx.room:room-compiler:2.8.4'
     implementation 'androidx.room:room-rxjava2:2.8.4'
+
+    // YouTube Player
+    implementation 'com.pierfrancescosoffritti.androidyoutubeplayer:core:13.0.0'
 }
 apply plugin: 'com.google.gms.google-services'
 apply plugin: 'com.google.firebase.crashlytics'
