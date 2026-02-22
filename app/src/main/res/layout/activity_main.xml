@@ -7,12 +7,11 @@
     android:layout_height="match_parent">
 
     <androidx.constraintlayout.widget.ConstraintLayout
-
         android:id="@+id/activity_main"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        tools:context="com.martinrevert.latorrentola.MainActivity"
-        tools:layout_editor_absoluteY="25dp">
+        android:fitsSystemWindows="true"
+        tools:context="com.martinrevert.latorrentola.MainActivity">
 
         <ProgressBar
             android:id="@+id/progressBar"
@@ -21,8 +20,6 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
             android:layout_marginEnd="8dp"
-
-
             android:layout_marginStart="8dp"
             android:layout_marginTop="8dp"
             app:layout_constraintBottom_toBottomOf="parent"
@@ -47,10 +44,8 @@
             android:layout_height="0dp"
             android:layout_marginTop="8dp"
             android:clipToPadding="false"
-
             android:paddingBottom="?attr/actionBarSize"
             android:scrollbars="vertical"
-
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintLeft_toLeftOf="parent"
             app:layout_constraintRight_toRightOf="parent"
