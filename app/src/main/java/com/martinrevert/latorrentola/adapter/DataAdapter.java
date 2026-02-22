@@ -90,7 +90,7 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
         }
         holder.mGenres.setText(genres);
         Context context = holder.mPoster.getContext();
-        Picasso.with(context).load(movies.get(holder.getAdapterPosition()).getLargeCoverImage()).into(holder.mPoster);
+        Picasso.get().load(movies.get(holder.getAdapterPosition()).getLargeCoverImage()).into(holder.mPoster);
 
         db = AppDatabase.getAppDatabase(context);
        /*

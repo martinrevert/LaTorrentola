@@ -14,17 +14,15 @@ android {
             storePassword 'android'
         }
     }
-    compileSdk 34
+    compileSdk 35
     defaultConfig {
         applicationId "com.martinrevert.latorrentola"
         versionCode 10000 + gitVersionCode
         versionName "1.0.$gitVersionCode"
         archivesBaseName = "latorrentola$versionName"
         minSdkVersion 23
-        targetSdkVersion 30
+        targetSdkVersion 35
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-
-
     }
 
     buildTypes {
@@ -38,6 +36,12 @@ android {
         }
     }
     namespace 'com.martinrevert.latorrentola'
+
+    packaging {
+        resources {
+            excludes += '/META-INF/versions/9/OSGI-INF/MANIFEST.MF'
+        }
+    }
 }
 
 dependencies {
@@ -61,18 +65,21 @@ dependencies {
     implementation 'com.squareup.okhttp3:logging-interceptor:5.3.2'
     implementation 'io.reactivex.rxjava2:rxandroid:2.1.1'
     implementation 'io.reactivex.rxjava2:rxjava:2.2.21'
+    
+    // Firebase
     implementation platform('com.google.firebase:firebase-bom:34.9.0')
-    implementation 'com.google.firebase:firebase-core:21.1.1'
-    implementation 'com.google.firebase:firebase-messaging:25.0.1'
-    implementation 'com.google.firebase:firebase-analytics:23.0.0'
-    implementation 'com.google.firebase:firebase-crashlytics:20.0.4'
+    implementation 'com.google.firebase:firebase-analytics'
+    implementation 'com.google.firebase:firebase-messaging'
+    implementation 'com.google.firebase:firebase-crashlytics'
+    implementation 'com.google.firebase:firebase-sessions'
+
+    // DataStore - required by Firebase Sessions
+    implementation 'androidx.datastore:datastore:1.2.0'
+    implementation 'androidx.datastore:datastore-preferences:1.2.0'
+
     implementation 'androidx.room:room-runtime:2.8.4'
     annotationProcessor 'androidx.room:room-compiler:2.8.4'
     implementation 'androidx.room:room-rxjava2:2.8.4'
-
-    //implementation 'com.github.florent37:rxsharedpreferences:1.0.0'
-
 }
 apply plugin: 'com.google.gms.google-services'
-// Apply the Crashlytics Gradle plugin
 apply plugin: 'com.google.firebase.crashlytics'
