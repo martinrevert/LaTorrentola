@@ -124,6 +124,8 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
 
             @Override
             public void onClick(View view) {
+                int pos = holder.getAdapterPosition();
+                if (pos == RecyclerView.NO_POSITION) return;
 
                 ObjectAnimator scaleDown = ObjectAnimator.ofPropertyValuesHolder(view,
                         PropertyValuesHolder.ofFloat("scaleX", 1.5f),
@@ -135,7 +137,7 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
 
                 scaleDown.start();
 
-                Movie peli = movies.get(holder.getAdapterPosition());
+                Movie peli = movies.get(pos);
                 Runnable loadRunnable = new Runnable() {
                     @Override
                     public void run() {
@@ -146,12 +148,11 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
                 };
                 Thread insertThread = new Thread(loadRunnable);
                 insertThread.start();
-                if (type.equals("milista")) {
-                    movies.remove(holder.getAdapterPosition());
-                    //Todo verificar si el +1 se puede evitar con getLayoutPosition()
-                    notifyItemRemoved(holder.getAdapterPosition() + 1);
+                if (type != null && type.equals("milista")) {
+                    movies.remove(pos);
+                    notifyItemRemoved(pos);
                 } else {
-                    notifyItemChanged(holder.getAdapterPosition());
+                    notifyItemChanged(pos);
                 }
             }
         });
@@ -160,6 +161,8 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
 
             @Override
             public void onClick(View view) {
+                int pos = holder.getAdapterPosition();
+                if (pos == RecyclerView.NO_POSITION) return;
 
                 ObjectAnimator scaleDown = ObjectAnimator.ofPropertyValuesHolder(view,
                         PropertyValuesHolder.ofFloat("scaleX", 1.5f),
@@ -171,7 +174,7 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
 
                 scaleDown.start();
 
-                Movie peli = movies.get(holder.getAdapterPosition());
+                Movie peli = movies.get(pos);
                 Runnable loadRunnable = new Runnable() {
                     @Override
                     public void run() {
@@ -182,7 +185,7 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
                 };
                 Thread insertThread = new Thread(loadRunnable);
                 insertThread.start();
-                notifyItemChanged(holder.getAdapterPosition());
+                notifyItemChanged(pos);
 
             }
         });
@@ -191,6 +194,8 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
         holder.mShare.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
+                int pos = holder.getAdapterPosition();
+                if (pos == RecyclerView.NO_POSITION) return;
 
                 ObjectAnimator scaleDown = ObjectAnimator.ofPropertyValuesHolder(view,
                         PropertyValuesHolder.ofFloat("scaleX", 1.2f),
@@ -202,7 +207,7 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
 
                 scaleDown.start();
 
-                Movie peli = movies.get(holder.getAdapterPosition());
+                Movie peli = movies.get(pos);
                 String url = "http://www.imdb.com/title/" + peli.getImdbCode();
                 Intent sendIntent = new Intent();
                 sendIntent.setAction(Intent.ACTION_SEND);
@@ -214,8 +219,10 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
         });
 
         holder.itemView.setOnClickListener(view1 -> {
+            int pos = holder.getAdapterPosition();
+            if (pos == RecyclerView.NO_POSITION) return;
 
-            Movie peli = movies.get(holder.getAdapterPosition());
+            Movie peli = movies.get(pos);
             String strPeli = new Gson().toJson(peli);
             Intent intent = new Intent(context, PeliActivity.class);
             intent.putExtra("PELI", strPeli);
