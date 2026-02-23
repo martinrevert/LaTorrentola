@@ -2,6 +2,17 @@
 
 La Torrentola is an example Android app made to test modern Android ecosystem functionalities and architectures.
 
+**Purpose:** This app is a specialized discovery tool intended to be a companion for **[Transdrone](https://play.google.com/store/apps/details?id=com.nascent.transdrone)**. While La Torrentola handles movie discovery, data visualization, and accessibility, it intentionally transfers the responsibility of torrent management and downloading to Transdrone.
+
+### Why use La Torrentola with Transdrone?
+
+By delegating the actual download task to **Transdrone**, users gain several advantages:
+
+1.  **Remote Management:** You can find a movie on your phone with La Torrentola and send the magnet link to Transdrone, which then manages the download on a remote server (like a home NAS or seedbox) rather than consuming your phone's storage and battery.
+2.  **Protocol Support:** Transdrone supports a vast array of remote clients (uTorrent, Transmission, rTorrent, Synology, etc.), making La Torrentola compatible with almost any home setup.
+3.  **Efficiency:** La Torrentola remains a lightweight discovery app, avoiding the heavy battery drain and data usage associated with running a full BitTorrent client on a mobile device.
+4.  **Security & Privacy:** Downloads happen on your designated home server, allowing you to centralize your media and maintain better control over your network traffic.
+
 ## Architecture Overview
 
 The app follows a **Model-View-Controller (MVC)** pattern, transitioning towards **MVVM**.
@@ -29,7 +40,6 @@ graph TD
         F --> I[AI: Google ML Kit]
         
         G -->|YTS API| J[YTS Movie Data]
-        G -->|Argenteam API| K[Torrent Details]
         H -->|AppDatabase| L[Personal Movie List]
         I -->|Translator| M[Spanish Summary]
     end
@@ -42,13 +52,14 @@ graph TD
 
     UI_Layer -.-> Cross_Cutting
     Cross_Cutting -.-> Data_Layer
+    UI_Layer -.->|Magnet Intent| Q[Transdrone/External Client]
 ```
 
 - **View:** XML layouts and Activities (`MainActivity`, `PeliActivity`, `SearchableActivity`, etc.).
 - **Controller/Logic:** Activities handle user interaction and coordinate data fetching.
-- **Model:** Data classes representing YTS and Argenteam API responses, and Room entities.
+- **Model:** Data classes representing YTS API responses and Room entities.
 - **Data Layer:** 
-    - **Remote:** Retrofit interfaces for YTS and Argenteam APIs.
+    - **Remote:** Retrofit interface for the YTS API.
     - **Local:** Room database (`AppDatabase`) for storing a personal movie list.
     - **AI:** Google ML Kit for on-device translation.
 - **Async/Reactive:** RxJava 2 for handling network calls and database operations.
@@ -114,12 +125,12 @@ sequenceDiagram
     participant User
     participant PeliActivity
     participant MLKit as Google ML Kit
-    participant ArgenteamAPI as Argenteam API
     participant TTS as Text-to-Speech
+    participant OS as Android Intent System
+    participant Transdrone
 
     User->>PeliActivity: Click Movie
     PeliActivity->>TTS: Speak Movie Title
-    PeliActivity->>ArgenteamAPI: Fetch Torrent Details
     alt Voice Translation Enabled
         PeliActivity->>MLKit: translate(Summary)
         MLKit-->>PeliActivity: Spanish Text
@@ -127,8 +138,10 @@ sequenceDiagram
     else Voice Summary Enabled
         PeliActivity->>TTS: Speak English Summary
     end
-    ArgenteamAPI-->>PeliActivity: Torrent Links
-    PeliActivity-->>User: Display Details & Torrents
+    PeliActivity-->>User: Display Details & YTS Torrents
+    User->>PeliActivity: Click Magnet Link
+    PeliActivity->>OS: startActivity(Magnet Intent)
+    OS->>Transdrone: Handle Torrent Download
 ```
 
 ### 4. Deep Link / URL Handling Flow
@@ -153,11 +166,10 @@ sequenceDiagram
 
 ## Requirements
 
-To compile the project, you need a `Constants.java` file in your `constants` package. Note that Yandex translation has been removed in favor of ML Kit.
+To compile the project, you need a `Constants.java` file in your `constants` package.
 
 ```java
 public class Constants {
-    public static final String ARGENTEAM_BASE_URL = "http://www.argenteam.net/api/v1/";
     public static final String YTS_BASE_URL = "https://yts.ag/api/v2/";
     public static final int PAGE_SIZE = 50;
 }
