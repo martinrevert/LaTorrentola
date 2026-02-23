@@ -95,6 +95,9 @@ dependencies {
 
     // YouTube Player
     implementation 'com.pierfrancescosoffritti.androidyoutubeplayer:core:13.0.0'
+
+    // ML Kit Translate
+    implementation 'com.google.mlkit:translate:17.0.3'
 }
 apply plugin: 'com.google.gms.google-services'
 apply plugin: 'com.google.firebase.crashlytics'

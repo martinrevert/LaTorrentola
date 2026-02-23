@@ -20,19 +20,23 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
+import com.google.mlkit.common.model.DownloadConditions;
+import com.google.mlkit.nl.translate.TranslateLanguage;
+import com.google.mlkit.nl.translate.Translation;
+import com.google.mlkit.nl.translate.Translator;
+import com.google.mlkit.nl.translate.TranslatorOptions;
 import com.martinrevert.latorrentola.database.AppDatabase;
 import com.martinrevert.latorrentola.model.YTS.Movie;
 import com.martinrevert.latorrentola.model.YTS.Torrent;
-import com.martinrevert.latorrentola.model.Yandex.Summary;
 import com.martinrevert.latorrentola.model.argenteam.MovieDetails;
 import com.martinrevert.latorrentola.model.argenteam.Release;
 import com.martinrevert.latorrentola.model.argenteam.Results;
 import com.martinrevert.latorrentola.network.RequestArgenteamInterface;
-import com.martinrevert.latorrentola.network.RequestYandex;
 import com.martinrevert.latorrentola.constants.Constants;
 
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer;
@@ -63,7 +67,6 @@ public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnIn
     private YouTubePlayerView youTubePlayerView;
     private Movie movie;
     private boolean ispresent;
-    private RequestYandex requestYandexTranslate;
     private RequestArgenteamInterface requestArgenteamInterface;
     private TextView emptyargenteam;
 
@@ -78,6 +81,8 @@ public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnIn
     private boolean voice_translation;
     private boolean voice_system;
     private boolean voice_summary;
+    private Translator englishSpanishTranslator;
+    private boolean isTtsInitialized = false;
 
 
     @Override
@@ -143,10 +148,6 @@ public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnIn
             language.setText(lg);
             String rt = "Rating: " + movie.getRating();
             rating.setText(rt);
-
-            if(voice_system) {
-                tts.speak(movie.getTitleLong(),TextToSpeech.QUEUE_ADD,null,null);
-            }
 
             String texto = movie.getSummary();
 
@@ -252,7 +253,9 @@ public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnIn
                 linearyts.addView(btntorrentyts);
 
             }
-            loadJSONyandextranslate(texto);
+            if (voice_translation) {
+                translateAndSpeak(texto);
+            }
             loadJSONargenteam();
         } else {
 
@@ -261,41 +264,33 @@ public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnIn
     }
 
 
-    private void loadJSONyandextranslate(String text) {
-        String lang = "en-es";
-        String api = Constants.YANDEX_API_KEY;
-        HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
-        // set your desired log level
-        logging.setLevel(HttpLoggingInterceptor.Level.BODY);
-        OkHttpClient.Builder httpClient = new OkHttpClient.Builder();
-        // add your other interceptors …
-        // add logging as last interceptor
-        httpClient.addInterceptor(logging);  // <-- this is the important line!
+    private void translateAndSpeak(String text) {
+        TranslatorOptions options = new TranslatorOptions.Builder()
+                .setSourceLanguage(TranslateLanguage.ENGLISH)
+                .setTargetLanguage(TranslateLanguage.SPANISH)
+                .build();
+        englishSpanishTranslator = Translation.getClient(options);
 
-        requestYandexTranslate = new Retrofit.Builder()
-                .baseUrl(Constants.YANDEX_BASE_URL)
-                .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
-                .addConverterFactory(GsonConverterFactory.create())
-                .client(httpClient.build())
-                .build().create(RequestYandex.class);
+        DownloadConditions conditions = new DownloadConditions.Builder()
+                .requireWifi()
+                .build();
 
-        if(voice_translation) {
-            mCompositeDisposable.add(requestYandexTranslate.getTranslate(api, text, lang)
-                    .observeOn(AndroidSchedulers.mainThread())
-                    .subscribeOn(Schedulers.io())
-                    .subscribe(this::handleResponseYandex, this::handleErrorYandex));
-        }
-    }
-
-    private void handleResponseYandex(Summary summary) {
-        String talkargento = summary.getText().get(0);
-
-            tts.speak(talkargento, TextToSpeech.QUEUE_ADD, null, null);
-
-        }
-
-    private void handleErrorYandex(Throwable error) {
-
+        englishSpanishTranslator.downloadModelIfNeeded(conditions)
+                .addOnSuccessListener(unused -> {
+                    englishSpanishTranslator.translate(text)
+                            .addOnSuccessListener(translatedText -> {
+                                if (isTtsInitialized) {
+                                    tts.speak(translatedText, TextToSpeech.QUEUE_ADD, null, null);
+                                } else {
+                                    speak = translatedText;
+                                }
+                            })
+                            .addOnFailureListener(e -> Log.e("MLKIT", "Translation failed: " + e.getLocalizedMessage()));
+                })
+                .addOnFailureListener(e -> {
+                    Log.e("MLKIT", "Model download failed: " + e.getLocalizedMessage());
+                    Toast.makeText(this, "Error al descargar modelo de traducción", Toast.LENGTH_SHORT).show();
+                });
     }
 
 
@@ -479,13 +474,27 @@ public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnIn
     public void onDestroy() {
         super.onDestroy();
         mCompositeDisposable.dispose();
-        tts.shutdown();
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
+        }
+        if (englishSpanishTranslator != null) {
+            englishSpanishTranslator.close();
+        }
         AppDatabase.destroyInstance();
 
     }
 
     @Override
-    public void onInit(int i) {
-        tts.speak(speak, TextToSpeech.QUEUE_ADD, null, null);
+    public void onInit(int status) {
+        if (status == TextToSpeech.SUCCESS) {
+            isTtsInitialized = true;
+            if (voice_system && movie != null) {
+                tts.speak(movie.getTitleLong(), TextToSpeech.QUEUE_ADD, null, null);
+            }
+            if (speak != null) {
+                tts.speak(speak, TextToSpeech.QUEUE_ADD, null, null);
+            }
+        }
     }
 }
