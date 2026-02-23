@@ -33,10 +33,6 @@ import com.google.mlkit.nl.translate.TranslatorOptions;
 import com.martinrevert.latorrentola.database.AppDatabase;
 import com.martinrevert.latorrentola.model.YTS.Movie;
 import com.martinrevert.latorrentola.model.YTS.Torrent;
-import com.martinrevert.latorrentola.model.argenteam.MovieDetails;
-import com.martinrevert.latorrentola.model.argenteam.Release;
-import com.martinrevert.latorrentola.model.argenteam.Results;
-import com.martinrevert.latorrentola.network.RequestArgenteamInterface;
 import com.martinrevert.latorrentola.constants.Constants;
 
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer;
@@ -49,26 +45,16 @@ import java.net.URLEncoder;
 import java.util.List;
 import java.util.Locale;
 
-import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.schedulers.Schedulers;
 
-import okhttp3.OkHttpClient;
-import okhttp3.logging.HttpLoggingInterceptor;
-import retrofit2.Retrofit;
-import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory;
-import retrofit2.converter.gson.GsonConverterFactory;
-
 public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnInitListener {
 
-    private String imdb;
     private String youtube_video_trailer;
     private CompositeDisposable mCompositeDisposable;
     private YouTubePlayerView youTubePlayerView;
     private Movie movie;
     private boolean ispresent;
-    private RequestArgenteamInterface requestArgenteamInterface;
-    private TextView emptyargenteam;
 
     private TextView summary;
     private TextView year;
@@ -89,7 +75,6 @@ public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnIn
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_peli);
-        emptyargenteam = findViewById(R.id.emptyargenteam);
         youTubePlayerView = findViewById(R.id.youtube_player_view);
         getLifecycle().addObserver(youTubePlayerView);
 
@@ -119,8 +104,6 @@ public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnIn
             }.getType();
 
             movie = gson.fromJson(peliStr, type);
-
-            imdb = movie.getImdbCode().substring(2);
 
             Toolbar toolbar = findViewById(R.id.toolbar);
             toolbar.setTitle(movie.getTitle());
@@ -256,9 +239,6 @@ public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnIn
             if (voice_translation) {
                 translateAndSpeak(texto);
             }
-            loadJSONargenteam();
-        } else {
-
         }
 
     }
@@ -291,159 +271,6 @@ public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnIn
                     Log.e("MLKIT", "Model download failed: " + e.getLocalizedMessage());
                     Toast.makeText(this, "Error al descargar modelo de traducción", Toast.LENGTH_SHORT).show();
                 });
-    }
-
-
-    private void loadJSONargenteam() {
-
-        HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
-        // set your desired log level
-        logging.setLevel(HttpLoggingInterceptor.Level.BODY);
-        OkHttpClient.Builder httpClient = new OkHttpClient.Builder();
-        // add your other interceptors …
-        // add logging as last interceptor
-        httpClient.addInterceptor(logging);  // <-- this is the important line!
-
-
-        requestArgenteamInterface = new Retrofit.Builder()
-                .baseUrl(Constants.ARGENTEAM_BASE_URL)
-                .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
-                .addConverterFactory(GsonConverterFactory.create())
-                .client(httpClient.build())
-                .build().create(RequestArgenteamInterface.class);
-
-        mCompositeDisposable.add(requestArgenteamInterface.getMovie(imdb)
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribeOn(Schedulers.io())
-                .subscribe(this::handleResponse, this::handleError));
-
-    }
-
-    private void handleResponse(Results movieId) {
-        com.martinrevert.latorrentola.model.argenteam.Movie peli;
-        if (movieId.getMovies() != null && !movieId.getMovies().isEmpty()) {
-            peli = movieId.getMovies().get(0);
-            Integer id = peli.getId();
-            Log.v("id", id.toString());
-
-            mCompositeDisposable.add(requestArgenteamInterface.getMovieId(id)
-                    .observeOn(AndroidSchedulers.mainThread())
-                    .subscribeOn(Schedulers.io())
-                    .subscribe(this::handleResponseId, this::handleErrorId));
-        } else {
-            emptyargenteam.setVisibility(View.VISIBLE);
-        }
-
-    }
-
-    private void handleResponseId(MovieDetails movieat) {
-
-        List<Release> releases = movieat.getReleases();
-        Integer count = 0;
-        for (Release rel : releases) {
-
-            if (!rel.getTorrents().isEmpty()) {
-                count = count + 1;
-                Uri uri = Uri.parse(rel.getTorrents().get(0).getUri());
-                String codec = rel.getCodec();
-                String tags = rel.getTags();
-                String source = rel.getSource();
-                String size = rel.getSize();
-                Log.v("CODEC", codec + " " + tags + " " + source + " " + size);
-
-                LinearLayout linearargenteam = findViewById(R.id.linearargenteam);
-
-                Button btntorrent = new Button(PeliActivity.this);
-                btntorrent.setText(source + " " + codec + " " + tags + " " + size);
-                btntorrent.setOnClickListener(new View.OnClickListener() {
-
-                    private void sendtorrent() {
-                        Intent sharingIntent = new Intent(
-                                android.content.Intent.ACTION_VIEW);
-                        sharingIntent
-                                .addCategory(android.content.Intent.CATEGORY_BROWSABLE);
-                        sharingIntent.setData(uri);
-                        //ToDO Acá hay que implementar algo por si no hay apps que reciban magnet links
-                        try {
-                            startActivity(sharingIntent);
-                        } catch (ActivityNotFoundException activityNotFound) {
-
-                            new AlertDialog.Builder(PeliActivity.this, R.style.Theme_AppCompat_Dialog)
-                                    .setTitle("Enviar torrent")
-                                    .setMessage("No tienes ningun torrent player instalado o no tienes una app Android para enviar a descargar tu torrent a otro sitio.")
-                                    .setPositiveButton("OK", null)
-                                    .show();
-
-                        }
-                    }
-
-                    @Override
-                    public void onClick(View view) {
-
-                        if (ispresent) {
-                            new AlertDialog.Builder(PeliActivity.this, R.style.Theme_AppCompat_Dialog)
-                                    .setTitle("Enviar torrent")
-                                    .setMessage("Esta peli esta en tu lista de deseos ¿Deseas quitarla de alli?")
-                                    .setPositiveButton("Si", new DialogInterface.OnClickListener() {
-                                        @Override
-                                        public void onClick(DialogInterface dialog, int which) {
-
-                                            Runnable loadRunnable = new Runnable() {
-                                                @Override
-                                                public void run() {
-                                                    android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
-                                                    db.movieDao().delete(movie);
-
-                                                }
-                                            };
-                                            Thread insertThread = new Thread(loadRunnable);
-                                            insertThread.start();
-
-                                            sendtorrent();
-                                        }
-                                    })
-                                    .setNegativeButton("No", new DialogInterface.OnClickListener() {
-                                        @Override
-                                        public void onClick(DialogInterface dialogInterface, int i) {
-                                            sendtorrent();
-                                        }
-                                    }).show();
-                        } else {
-                            sendtorrent();
-                        }
-
-                    }
-                });
-                btntorrent.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-                linearargenteam.addView(btntorrent);
-
-                Log.v("UN RELEASE CON TORRENT", "SI TORRENT");
-            } else {
-                Log.v("UN RELEASE SIN TORRENT", "NO TORRENT");
-
-            }
-
-        }
-        if (count == 0) {
-            emptyargenteam.setVisibility(View.VISIBLE);
-        }
-
-    }
-
-
-    private void handleErrorId(Throwable throwable) {
-
-        throwable.printStackTrace();
-
-        Log.v("ERRORARGENTEAMID", throwable.getLocalizedMessage());
-
-
-    }
-
-    private void handleError(Throwable error) {
-
-        Log.v("ERRORARGENTEAM", error.getLocalizedMessage());
-        emptyargenteam.setVisibility(View.VISIBLE);
     }
 
     @Override

@@ -77,36 +77,4 @@
 
     </LinearLayout>
 
-
-    <ImageView
-        android:id="@+id/argenteamlogo"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginEnd="16dp"
-        android:layout_marginStart="16dp"
-        android:src="@drawable/logoargenteam"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/linearyts"
-        tools:layout_editor_absoluteY="110dp" />
-
-    <LinearLayout
-        android:id="@+id/linearargenteam"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:orientation="vertical"
-        app:layout_constraintTop_toBottomOf="@+id/argenteamlogo"
-        tools:layout_editor_absoluteX="16dp">
-
-        <TextView
-            android:id="@+id/emptyargenteam"
-            android:visibility="gone"
-            android:text="Esta película no se encuentra en este proveedor"
-            android:layout_gravity="center"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
-
-    </LinearLayout>
-
 </androidx.constraintlayout.widget.ConstraintLayout>
