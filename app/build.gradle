@@ -1,9 +1,15 @@
-apply plugin: 'com.android.application'
+plugins {
+    id 'com.android.application'
+    id 'com.google.gms.google-services'
+    id 'com.google.firebase.crashlytics'
+}
 
 def gitVersionCode = providers.exec {
     commandLine 'git', 'rev-list', '--count', 'HEAD'
     ignoreExitValue = true
 }.standardOutput.asText.map { it.trim() }.map { it.isInteger() ? it.toInteger() : 0 }.getOrElse(0)
+
+def version_name = "1.0.$gitVersionCode"
 
 android {
     signingConfigs {
@@ -18,8 +24,7 @@ android {
     defaultConfig {
         applicationId "com.martinrevert.latorrentola"
         versionCode 10000 + gitVersionCode
-        versionName "1.0.$gitVersionCode"
-        archivesBaseName = "latorrentola$versionName"
+        versionName version_name
         minSdkVersion 23
         targetSdkVersion 35
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -28,7 +33,7 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }
         debug {
@@ -48,12 +53,22 @@ android {
 
     packaging {
         resources {
-            excludes += '/META-INF/versions/9/OSGI-INF/MANIFEST.MF'
+            excludes.add('/META-INF/versions/9/OSGI-INF/MANIFEST.MF')
         }
         jniLibs {
-            useLegacyPackaging false
+            useLegacyPackaging = false
         }
     }
+    
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+        }
+    }
+}
+
+base {
+    archivesName = "latorrentola$version_name"
 }
 
 dependencies {
@@ -65,11 +80,22 @@ dependencies {
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
     implementation 'androidx.cardview:cardview:1.0.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
-    androidTestImplementation('androidx.test.espresso:espresso-core:3.1.0', {
-        exclude group: 'com.android.support', module: 'support-annotations'
-    })
-    androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+    
+    // Testing Dependencies
     testImplementation 'junit:junit:4.13.2'
+    testImplementation "org.mockito:mockito-core:5.11.0"
+    testImplementation "com.google.truth:truth:1.4.2"
+    testImplementation "org.robolectric:robolectric:4.16.1"
+    testImplementation "com.squareup.okhttp3:mockwebserver:5.0.0-alpha.14"
+    testImplementation "androidx.room:room-testing:2.8.4"
+    testImplementation "androidx.arch.core:core-testing:2.2.0"
+    testImplementation 'androidx.test:core:1.6.1'
+    
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+    androidTestImplementation 'androidx.test:runner:1.6.1'
+    androidTestImplementation 'androidx.test:rules:1.6.1'
+
     implementation 'com.squareup.retrofit2:retrofit:3.0.0'
     implementation 'com.squareup.retrofit2:converter-gson:3.0.0'
     implementation 'com.squareup.retrofit2:adapter-rxjava2:3.0.0'
@@ -99,5 +125,3 @@ dependencies {
     // ML Kit Translate
     implementation 'com.google.mlkit:translate:17.0.3'
 }
-apply plugin: 'com.google.gms.google-services'
-apply plugin: 'com.google.firebase.crashlytics'

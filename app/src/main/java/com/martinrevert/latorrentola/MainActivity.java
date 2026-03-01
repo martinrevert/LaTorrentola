@@ -24,7 +24,7 @@ import com.google.android.material.navigation.NavigationView;
 import com.martinrevert.latorrentola.adapter.DataAdapter;
 import com.martinrevert.latorrentola.constants.Constants;
 import com.martinrevert.latorrentola.database.AppDatabase;
-import com.martinrevert.latorrentola.model.DateLastVisit;
+import com.martinrevert.latorrentola.model.date.DateLastVisit;
 import com.martinrevert.latorrentola.model.YTS.Movie;
 import com.martinrevert.latorrentola.model.YTS.MovieDetails;
 import com.martinrevert.latorrentola.network.RequestYTSInterface;
@@ -102,13 +102,13 @@ public class MainActivity extends AppCompatActivity {
             /** Called when a drawer has settled in a completely closed state. */
             public void onDrawerClosed(View view) {
                 super.onDrawerClosed(view);
-                Objects.requireNonNull(getActionBar()).setTitle("La Torrentola");
+                Objects.requireNonNull(getSupportActionBar()).setTitle("La Torrentola");
             }
 
             /** Called when a drawer has settled in a completely open state. */
             public void onDrawerOpened(View drawerView) {
                 super.onDrawerOpened(drawerView);
-                Objects.requireNonNull(getActionBar()).setTitle("Menu");
+                Objects.requireNonNull(getSupportActionBar()).setTitle("Menu");
             }
         };
 
@@ -225,6 +225,19 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void handleResponseSingle(MovieDetails result) {
+        progressBar.setVisibility(GONE);
+        isLoading = false;
+        List<Movie> pelis = result.getData().getMovies();
+        if (mAdapter.getItemCount() == 0) {
+            mAdapter = new DataAdapter(pelis, "");
+            mRecyclerView.setAdapter(mAdapter);
+        } else {
+            mAdapter.addMovies(pelis);
+            mRecyclerView.scrollToPosition(currentpage * 50);
+        }
+    }
+
     private void handleError(Throwable error) {
         progressBar.setVisibility(GONE);
         isLoading = false;
@@ -259,20 +272,17 @@ public class MainActivity extends AppCompatActivity {
             return true;
         }
 
-        switch (item.getItemId()) {
+        int id = item.getItemId();
 
-            case R.id.search:
-                onSearchRequested();
-                return true;
-            case R.id.settings:
-
-                startActivity(new Intent(this, OpcionesActivity.class));
-
-                return true;
-            default:
-                return super.onOptionsItemSelected(item);
-
+        if (id == R.id.search) {
+            onSearchRequested();
+            return true;
+        } else if (id == R.id.settings) {
+            startActivity(new Intent(this, OpcionesActivity.class));
+            return true;
         }
+
+        return super.onOptionsItemSelected(item);
     }
 
     @Override
@@ -306,133 +316,106 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public boolean onNavigationItemSelected(MenuItem menuItem) {
                         Context context = getApplicationContext();
-                        switch (menuItem.getItemId()) {
-                            case R.id.action:
-                                Intent action = new Intent(context, SearchableActivity.class);
-                                action.putExtra("GENRE", "Action");
-                                startActivity(action);
-                                break;
-                            case R.id.adventure:
-                                Intent adventure = new Intent(context, SearchableActivity.class);
-                                adventure.putExtra("GENRE", "Adventure");
-                                startActivity(adventure);
-                                break;
-                            case R.id.biography:
-                                Intent biography = new Intent(context, SearchableActivity.class);
-                                biography.putExtra("GENRE", "Biography");
-                                startActivity(biography);
-                                break;
-                            case R.id.animation:
-                                Intent animation = new Intent(context, SearchableActivity.class);
-                                animation.putExtra("GENRE", "Animation");
-                                startActivity(animation);
-                                break;
-                            case R.id.comedy:
-                                Intent comedy = new Intent(context, SearchableActivity.class);
-                                comedy.putExtra("GENRE", "Comedy");
-                                startActivity(comedy);
-                                break;
-                            case R.id.crime:
-                                Intent crime = new Intent(context, SearchableActivity.class);
-                                crime.putExtra("GENRE", "Crime");
-                                startActivity(crime);
-                                break;
-                            case R.id.documentary:
-                                Intent documentary = new Intent(context, SearchableActivity.class);
-                                documentary.putExtra("GENRE", "Documentary");
-                                startActivity(documentary);
-                                break;
-                            case R.id.drama:
-                                Intent drama = new Intent(context, SearchableActivity.class);
-                                drama.putExtra("GENRE", "Drama");
-                                startActivity(drama);
-                                break;
-                            case R.id.family:
-                                Intent family = new Intent(context, SearchableActivity.class);
-                                family.putExtra("GENRE", "Family");
-                                startActivity(family);
-                                break;
-                            case R.id.fantasy:
-                                Intent fantasy = new Intent(context, SearchableActivity.class);
-                                fantasy.putExtra("GENRE", "Fantasy");
-                                startActivity(fantasy);
-                                break;
-                            case R.id.filmnoir:
-                                Intent filmnoir = new Intent(context, SearchableActivity.class);
-                                filmnoir.putExtra("GENRE", "Film-Noir");
-                                startActivity(filmnoir);
-                                break;
-                            case R.id.history:
-                                Intent history = new Intent(context, SearchableActivity.class);
-                                history.putExtra("GENRE", "History");
-                                startActivity(history);
-                                break;
-
-                            case R.id.horror:
-                                Intent horror = new Intent(context, SearchableActivity.class);
-                                horror.putExtra("GENRE", "Horror");
-                                startActivity(horror);
-                                break;
-                            case R.id.music:
-                                Intent music = new Intent(context, SearchableActivity.class);
-                                music.putExtra("GENRE", "Music");
-                                startActivity(music);
-                                break;
-                            case R.id.musical:
-                                Intent musical = new Intent(context, SearchableActivity.class);
-                                musical.putExtra("GENRE", "Musical");
-                                startActivity(musical);
-                                break;
-                            case R.id.mystery:
-                                Intent mystery = new Intent(context, SearchableActivity.class);
-                                mystery.putExtra("GENRE", "Mystery");
-                                startActivity(mystery);
-                                break;
-                            case R.id.romance:
-                                Intent romance = new Intent(context, SearchableActivity.class);
-                                romance.putExtra("GENRE", "Romance");
-                                startActivity(romance);
-                                break;
-                            case R.id.scifi:
-                                Intent scifi = new Intent(context, SearchableActivity.class);
-                                scifi.putExtra("GENRE", "Sci-Fi");
-                                startActivity(scifi);
-                                break;
-                            case R.id.sport:
-                                Intent sport = new Intent(context, SearchableActivity.class);
-                                sport.putExtra("GENRE", "Sport");
-                                startActivity(sport);
-                                break;
-                            case R.id.thriller:
-                                Intent thriller = new Intent(context, SearchableActivity.class);
-                                thriller.putExtra("GENRE", "Thriller");
-                                startActivity(thriller);
-                                break;
-                            case R.id.war:
-                                Intent war = new Intent(context, SearchableActivity.class);
-                                war.putExtra("GENRE", "War");
-                                startActivity(war);
-                                break;
-                            case R.id.western:
-                                Intent western = new Intent(context, SearchableActivity.class);
-                                western.putExtra("GENRE", "Western");
-                                startActivity(western);
-                                break;
-
-                            case R.id.milista:
-                                Intent milista = new Intent(context, SearchableActivity.class);
-                                milista.putExtra("GENRE", "milista");
-                                startActivity(milista);
-                                break;
-                            case R.id.tridimensional:
-                                Intent tridi = new Intent(context, SearchableActivity.class);
-                                tridi.putExtra("GENRE", "3D");
-                                startActivity(tridi);
-                                break;
-                            case R.id.settings:
-                                Intent settings = new Intent(context, OpcionesActivity.class);
-                                startActivity(settings);
-                                break;
+                        int id = menuItem.getItemId();
+                        if (id == R.id.action) {
+                            Intent action = new Intent(context, SearchableActivity.class);
+                            action.putExtra("GENRE", "Action");
+                            startActivity(action);
+                        } else if (id == R.id.adventure) {
+                            Intent adventure = new Intent(context, SearchableActivity.class);
+                            adventure.putExtra("GENRE", "Adventure");
+                            startActivity(adventure);
+                        } else if (id == R.id.biography) {
+                            Intent biography = new Intent(context, SearchableActivity.class);
+                            biography.putExtra("GENRE", "Biography");
+                            startActivity(biography);
+                        } else if (id == R.id.animation) {
+                            Intent animation = new Intent(context, SearchableActivity.class);
+                            animation.putExtra("GENRE", "Animation");
+                            startActivity(animation);
+                        } else if (id == R.id.comedy) {
+                            Intent comedy = new Intent(context, SearchableActivity.class);
+                            comedy.putExtra("GENRE", "Comedy");
+                            startActivity(comedy);
+                        } else if (id == R.id.crime) {
+                            Intent crime = new Intent(context, SearchableActivity.class);
+                            crime.putExtra("GENRE", "Crime");
+                            startActivity(crime);
+                        } else if (id == R.id.documentary) {
+                            Intent documentary = new Intent(context, SearchableActivity.class);
+                            documentary.putExtra("GENRE", "Documentary");
+                            startActivity(documentary);
+                        } else if (id == R.id.drama) {
+                            Intent drama = new Intent(context, SearchableActivity.class);
+                            drama.putExtra("GENRE", "Drama");
+                            startActivity(drama);
+                        } else if (id == R.id.family) {
+                            Intent family = new Intent(context, SearchableActivity.class);
+                            family.putExtra("GENRE", "Family");
+                            startActivity(family);
+                        } else if (id == R.id.fantasy) {
+                            Intent fantasy = new Intent(context, SearchableActivity.class);
+                            fantasy.putExtra("GENRE", "Fantasy");
+                            startActivity(fantasy);
+                        } else if (id == R.id.filmnoir) {
+                            Intent filmnoir = new Intent(context, SearchableActivity.class);
+                            filmnoir.putExtra("GENRE", "Film-Noir");
+                            startActivity(filmnoir);
+                        } else if (id == R.id.history) {
+                            Intent history = new Intent(context, SearchableActivity.class);
+                            history.putExtra("GENRE", "History");
+                            startActivity(history);
+                        } else if (id == R.id.horror) {
+                            Intent horror = new Intent(context, SearchableActivity.class);
+                            horror.putExtra("GENRE", "Horror");
+                            startActivity(horror);
+                        } else if (id == R.id.music) {
+                            Intent music = new Intent(context, SearchableActivity.class);
+                            music.putExtra("GENRE", "Music");
+                            startActivity(music);
+                        } else if (id == R.id.musical) {
+                            Intent musical = new Intent(context, SearchableActivity.class);
+                            musical.putExtra("GENRE", "Musical");
+                            startActivity(musical);
+                        } else if (id == R.id.mystery) {
+                            Intent mystery = new Intent(context, SearchableActivity.class);
+                            mystery.putExtra("GENRE", "Mystery");
+                            startActivity(mystery);
+                        } else if (id == R.id.romance) {
+                            Intent romance = new Intent(context, SearchableActivity.class);
+                            romance.putExtra("GENRE", "Romance");
+                            startActivity(romance);
+                        } else if (id == R.id.scifi) {
+                            Intent scifi = new Intent(context, SearchableActivity.class);
+                            scifi.putExtra("GENRE", "Sci-Fi");
+                            startActivity(scifi);
+                        } else if (id == R.id.sport) {
+                            Intent sport = new Intent(context, SearchableActivity.class);
+                            sport.putExtra("GENRE", "Sport");
+                            startActivity(sport);
+                        } else if (id == R.id.thriller) {
+                            Intent thriller = new Intent(context, SearchableActivity.class);
+                            thriller.putExtra("GENRE", "Thriller");
+                            startActivity(thriller);
+                        } else if (id == R.id.war) {
+                            Intent war = new Intent(context, SearchableActivity.class);
+                            war.putExtra("GENRE", "War");
+                            startActivity(war);
+                        } else if (id == R.id.western) {
+                            Intent western = new Intent(context, SearchableActivity.class);
+                            western.putExtra("GENRE", "Western");
+                            startActivity(western);
+                        } else if (id == R.id.milista) {
+                            Intent milista = new Intent(context, SearchableActivity.class);
+                            milista.putExtra("GENRE", "milista");
+                            startActivity(milista);
+                        } else if (id == R.id.tridimensional) {
+                            Intent tridi = new Intent(context, SearchableActivity.class);
+                            tridi.putExtra("GENRE", "3D");
+                            startActivity(tridi);
+                        } else if (id == R.id.settings) {
+                            Intent settings = new Intent(context, OpcionesActivity.class);
+                            startActivity(settings);
                         }
 
                         //menuItem.setChecked(true);

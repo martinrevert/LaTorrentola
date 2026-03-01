@@ -1,4 +1,4 @@
-package com.martinrevert.latorrentola.model;
+package com.martinrevert.latorrentola.model.date;
 
 import androidx.room.ColumnInfo;
 import androidx.room.Entity;

@@ -5,7 +5,7 @@ import androidx.room.Insert;
 import androidx.room.OnConflictStrategy;
 import androidx.room.Query;
 
-import com.martinrevert.latorrentola.model.DateLastVisit;
+import com.martinrevert.latorrentola.model.date.DateLastVisit;
 
 import java.util.List;
 

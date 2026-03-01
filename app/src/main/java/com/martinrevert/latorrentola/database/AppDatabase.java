@@ -9,7 +9,7 @@ import androidx.room.migration.Migration;
 import android.content.Context;
 
 
-import com.martinrevert.latorrentola.model.DateLastVisit;
+import com.martinrevert.latorrentola.model.date.DateLastVisit;
 import com.martinrevert.latorrentola.model.YTS.Movie;
 
 /**
