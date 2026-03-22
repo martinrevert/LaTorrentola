@@ -25,6 +25,10 @@ import androidx.core.content.ContextCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.work.BackoffPolicy;
+import androidx.work.Data;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkManager;
 
 import com.google.android.material.navigation.NavigationView;
 import com.google.firebase.messaging.FirebaseMessaging;
@@ -34,12 +38,14 @@ import com.martinrevert.latorrentola.database.AppDatabase;
 import com.martinrevert.latorrentola.model.date.DateLastVisit;
 import com.martinrevert.latorrentola.model.YTS.Movie;
 import com.martinrevert.latorrentola.model.YTS.MovieDetails;
+import com.martinrevert.latorrentola.network.FCMRegistrationWorker;
 import com.martinrevert.latorrentola.network.RequestYTSInterface;
 
 import java.text.DateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 import io.reactivex.Completable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
@@ -143,14 +149,28 @@ public class MainActivity extends AppCompatActivity {
 
         askNotificationPermission();
 
-        FirebaseMessaging.getInstance().subscribeToTopic("all")
+        FirebaseMessaging.getInstance().getToken()
                 .addOnCompleteListener(task -> {
-                    String msg = "Subscribed to all topic";
                     if (!task.isSuccessful()) {
-                        msg = "Subscribe failed";
+                        Log.w("FCM", "Fetching FCM registration token failed", task.getException());
+                        return;
                     }
-                    Log.d("FCM", msg);
+                    String token = task.getResult();
+                    scheduleTokenRegistration(token);
                 });
+    }
+
+    private void scheduleTokenRegistration(String token) {
+        Data inputData = new Data.Builder()
+                .putString("token", token)
+                .build();
+
+        OneTimeWorkRequest registrationWork = new OneTimeWorkRequest.Builder(FCMRegistrationWorker.class)
+                .setInputData(inputData)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
+                .build();
+
+        WorkManager.getInstance(this).enqueue(registrationWork);
     }
 
     private void askNotificationPermission() {

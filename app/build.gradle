@@ -124,4 +124,7 @@ dependencies {
 
     // ML Kit Translate
     implementation 'com.google.mlkit:translate:17.0.3'
+
+    // WorkManager
+    implementation "androidx.work:work-runtime:2.10.0"
 }

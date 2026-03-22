@@ -8,15 +8,26 @@ import android.content.Intent;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
+import android.util.Log;
+
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
+import androidx.work.BackoffPolicy;
+import androidx.work.Data;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkManager;
+
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
+import com.martinrevert.latorrentola.network.FCMRegistrationWorker;
+
+import java.util.concurrent.TimeUnit;
 
 public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
     private static final String CHANNEL_ID = "default_channel_id";
     private static final String CHANNEL_NAME = "Default Channel";
+    private static final String TAG = "FCM_Service";
 
     @Override
     public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {
@@ -27,7 +38,21 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
     @Override
     public void onNewToken(@NonNull String token) {
-        // Handle new token if necessary
+        Log.d(TAG, "Refreshed token: " + token);
+        scheduleTokenRegistration(token);
+    }
+
+    private void scheduleTokenRegistration(String token) {
+        Data inputData = new Data.Builder()
+                .putString("token", token)
+                .build();
+
+        OneTimeWorkRequest registrationWork = new OneTimeWorkRequest.Builder(FCMRegistrationWorker.class)
+                .setInputData(inputData)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
+                .build();
+
+        WorkManager.getInstance(this).enqueue(registrationWork);
     }
 
     private void sendNotification(String title, String messageBody) {
