@@ -6,6 +6,6 @@ import retrofit2.http.Query;
 
 public interface RequestFCMInterface {
 
-    @POST("subscription")
+    @POST("api/subscriptions/subscribe")
     Completable subscribeToTopic(@Query("token") String token);
 }
