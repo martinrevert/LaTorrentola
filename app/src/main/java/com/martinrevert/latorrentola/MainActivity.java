@@ -1,6 +1,8 @@
 package com.martinrevert.latorrentola;
 
 import android.Manifest;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.SearchManager;
 import android.content.Context;
 import android.content.Intent;
@@ -147,6 +149,7 @@ public class MainActivity extends AppCompatActivity {
         //ToDo Aqui enviar como parametro "lastvisit" y comparar con cada fecha de peli
         loadJSON(currentpage);
 
+        createNotificationChannel();
         askNotificationPermission();
 
         FirebaseMessaging.getInstance().getToken()
@@ -158,6 +161,19 @@ public class MainActivity extends AppCompatActivity {
                     String token = task.getResult();
                     scheduleTokenRegistration(token);
                 });
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            String channelId = "default_channel_id";
+            CharSequence name = "Default Channel";
+            String description = "Channel for general notifications";
+            int importance = NotificationManager.IMPORTANCE_DEFAULT;
+            NotificationChannel channel = new NotificationChannel(channelId, name, importance);
+            channel.setDescription(description);
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            notificationManager.createNotificationChannel(channel);
+        }
     }
 
     private void scheduleTokenRegistration(String token) {
