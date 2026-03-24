@@ -11,9 +11,10 @@ import java.util.Date;
  * Created by martin on 21/12/17.
  */
 @Entity(tableName = "date")
-public class DateLastVisit{
-    @PrimaryKey(autoGenerate = true)
-    private int id;
+public class DateLastVisit {
+    @PrimaryKey
+    private int id = 1;
+    
     @ColumnInfo
     private Date date;
 
@@ -32,6 +33,4 @@ public class DateLastVisit{
     public void setDate(Date date) {
         this.date = date;
     }
-
-
 }

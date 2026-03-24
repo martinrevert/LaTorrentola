@@ -6,6 +6,7 @@ package com.martinrevert.latorrentola.model.YTS;
 
 import androidx.room.ColumnInfo;
 import androidx.room.Entity;
+import androidx.room.Ignore;
 import androidx.room.PrimaryKey;
 
 import java.util.List;
@@ -110,6 +111,11 @@ public class Movie {
     @SerializedName("torrents")
     @Expose
     private List<Torrent> torrents = null;
+
+    @Ignore
+    @SerializedName("date_uploaded_unix")
+    @Expose
+    private Long dateUploadedUnix;
 
     public Integer getId() {
         return id;
@@ -303,4 +309,11 @@ public class Movie {
         this.torrents = torrents;
     }
 
+    public Long getDateUploadedUnix() {
+        return dateUploadedUnix;
+    }
+
+    public void setDateUploadedUnix(Long dateUploadedUnix) {
+        this.dateUploadedUnix = dateUploadedUnix;
+    }
 }

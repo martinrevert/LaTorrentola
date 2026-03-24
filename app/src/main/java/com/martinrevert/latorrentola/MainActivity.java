@@ -82,6 +82,7 @@ public class MainActivity extends AppCompatActivity {
 
     private int currentpage = 1;
     private boolean isLoading = false;
+    private Date lastVisitDate;
 
     private final ActivityResultLauncher<String> requestPermissionLauncher =
             registerForActivityResult(new ActivityResultContracts.RequestPermission(), isGranted -> {
@@ -142,13 +143,11 @@ public class MainActivity extends AppCompatActivity {
         mCompositeDisposable = new CompositeDisposable();
 
         mCompositeDisposable.add(db.dateDao().getDate()
-                .observeOn(Schedulers.io())
                 .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(this::okDate, this::handleErrorDate));
 
-        updateLastVisitDate();
         initRecyclerView();
-        //ToDo Aqui enviar como parametro "lastvisit" y comparar con cada fecha de peli
         loadJSON(currentpage);
 
         createNotificationChannel();
@@ -234,25 +233,36 @@ public class MainActivity extends AppCompatActivity {
 
     private void okDate(List<DateLastVisit> dateLastVisits) {
         if (dateLastVisits.isEmpty()) {
-            Log.v("LAST DATE", "FECHA VACIA");
+            Log.v("DATE_LOG", "Database empty. Setting epoch start.");
+            lastVisitDate = new Date(0); 
         } else {
-            Date lastvisit = dateLastVisits.get(0).getDate();
-            Log.v("LAST DATE", DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM).format(lastvisit));
+            lastVisitDate = dateLastVisits.get(0).getDate();
+            Log.v("DATE_LOG", "Retrieved last visit: " + DateFormat.getDateTimeInstance().format(lastVisitDate));
         }
+        
+        if (mAdapter != null) {
+            mAdapter.setLastVisitDate(lastVisitDate);
+        }
+        
+        updateLastVisitDate(); 
     }
 
     private void updateLastVisitDate() {
         DateLastVisit date = new DateLastVisit();
+        date.setId(1);
         date.setDate(new Date());
+        Log.v("DATE_LOG", "Updating database with current time: " + DateFormat.getDateTimeInstance().format(date.getDate()));
+        
         Completable.fromAction(() -> db.dateDao().setDate(date))
                 .subscribeOn(Schedulers.io())
-                .subscribe(() -> {
-                }, this::handleErrorDate);
-
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(() -> Log.v("DATE_LOG", "Database update successful"), 
+                           e -> Log.e("DATE_LOG", "Database update failed", e));
     }
 
     private void handleErrorDate(Throwable throwable) {
-        Log.v("ERROR", throwable.getLocalizedMessage());
+        Log.e("DATE_LOG", "Error retrieving date", throwable);
+        updateLastVisitDate(); // Try to initialize if retrieval failed
     }
 
     private void initRecyclerView() {
@@ -265,6 +275,9 @@ public class MainActivity extends AppCompatActivity {
         mRecyclerView.setLayoutManager(layoutManager);
         mRecyclerView.addOnScrollListener(recyclerViewOnScrollListener);
         mAdapter = new DataAdapter(movies, null);
+        if (lastVisitDate != null) {
+            mAdapter.setLastVisitDate(lastVisitDate);
+        }
         //mRecyclerView.setAdapter(mAdapter);
     }
 
@@ -319,6 +332,7 @@ public class MainActivity extends AppCompatActivity {
         List<Movie> pelis = result.getData().getMovies();
         if (mAdapter.getItemCount() == 0) {
             mAdapter = new DataAdapter(pelis, "");
+            mAdapter.setLastVisitDate(lastVisitDate);
             mRecyclerView.setAdapter(mAdapter);
         } else {
             mAdapter.addMovies(pelis);
@@ -332,6 +346,7 @@ public class MainActivity extends AppCompatActivity {
         List<Movie> pelis = result.getData().getMovies();
         if (mAdapter.getItemCount() == 0) {
             mAdapter = new DataAdapter(pelis, "");
+            mAdapter.setLastVisitDate(lastVisitDate);
             mRecyclerView.setAdapter(mAdapter);
         } else {
             mAdapter.addMovies(pelis);

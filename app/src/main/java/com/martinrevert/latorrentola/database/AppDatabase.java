@@ -1,11 +1,9 @@
 package com.martinrevert.latorrentola.database;
 
-import androidx.sqlite.db.SupportSQLiteDatabase;
 import androidx.room.Database;
 import androidx.room.Room;
 import androidx.room.RoomDatabase;
 import androidx.room.TypeConverters;
-import androidx.room.migration.Migration;
 import android.content.Context;
 
 
@@ -15,11 +13,11 @@ import com.martinrevert.latorrentola.model.YTS.Movie;
 /**
  * Created by martin on 07/12/17.
  */
-@Database(version = 2, entities = {Movie.class, DateLastVisit.class}, exportSchema = false)
+@Database(version = 3, entities = {Movie.class, DateLastVisit.class}, exportSchema = false)
 @TypeConverters({Converters.class})
 public abstract class AppDatabase extends RoomDatabase {
 
-    private static AppDatabase INSTANCE;
+    private static volatile AppDatabase INSTANCE;
 
     abstract public MovieDao movieDao();
 
@@ -27,24 +25,19 @@ public abstract class AppDatabase extends RoomDatabase {
 
     public static AppDatabase getAppDatabase(Context context) {
         if (INSTANCE == null) {
-            INSTANCE =
-                    Room.databaseBuilder(context.getApplicationContext(), AppDatabase.class, "appdatabase")
-                            .addMigrations(MIGRATION_1_2)
+            synchronized (AppDatabase.class) {
+                if (INSTANCE == null) {
+                    INSTANCE = Room.databaseBuilder(context.getApplicationContext(), 
+                            AppDatabase.class, "appdatabase")
+                            .fallbackToDestructiveMigration()
                             .build();
+                }
+            }
         }
-
         return INSTANCE;
     }
 
-    static final Migration MIGRATION_1_2 = new Migration(1, 2) {
-        @Override
-        public void migrate(SupportSQLiteDatabase database) {
-            database.execSQL("CREATE TABLE `date` (`id` INTEGER,`date` LONG, PRIMARY KEY(`id`))");
-        }
-    };
-
     public static void destroyInstance() {
-        INSTANCE = null;
+        // Method kept for compatibility but no longer closes the singleton
     }
-
 }
