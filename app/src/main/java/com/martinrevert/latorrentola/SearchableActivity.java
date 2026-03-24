@@ -1,13 +1,17 @@
 package com.martinrevert.latorrentola;
 
 import android.app.SearchManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.preference.PreferenceManager;
 import android.speech.tts.TextToSpeech;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import android.os.Bundle;
-import androidx.recyclerview.widget.LinearLayoutManager;
+import android.util.DisplayMetrics;
+import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.appcompat.widget.Toolbar;
 import android.util.Log;
@@ -39,7 +43,7 @@ import static android.view.View.VISIBLE;
 public class SearchableActivity extends AppCompatActivity implements TextToSpeech.OnInitListener {
 
     private RecyclerView mRecyclerView;
-    private LinearLayoutManager layoutManager;
+    private GridLayoutManager layoutManager;
     private ProgressBar progressBar;
     private CompositeDisposable compositeDisposable;
     private DataAdapter mAdapter;
@@ -64,7 +68,6 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
         setContentView(R.layout.activity_searchable);
         onpause = 0;
 
-        layoutManager = new LinearLayoutManager(getApplicationContext());
         tts = new TextToSpeech(this, this);
         tts.setLanguage(Locale.getDefault());
         SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
@@ -101,11 +104,41 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
 
         mRecyclerView = findViewById(R.id.recycler_view);
         mRecyclerView.setHasFixedSize(true);
+        
+        int columns = calculateNoOfColumns(getApplicationContext());
+        layoutManager = new GridLayoutManager(getApplicationContext(), columns);
+        
         mRecyclerView.setLayoutManager(layoutManager);
         mRecyclerView.addOnScrollListener(recyclerViewOnScrollListener);
         mAdapter = new DataAdapter(null, null);
         mRecyclerView.setAdapter(mAdapter);
 
+    }
+
+    public int calculateNoOfColumns(Context context) {
+        DisplayMetrics displayMetrics = context.getResources().getDisplayMetrics();
+        float dpWidth = displayMetrics.widthPixels / displayMetrics.density;
+        
+        int columns;
+        boolean isLandscape = context.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        
+        int posterWidth = 180; 
+        columns = (int) (dpWidth / posterWidth);
+        
+        if (isLandscape) {
+            return Math.max(4, columns);
+        } else {
+            return Math.max(2, columns);
+        }
+    }
+
+    @Override
+    public void onConfigurationChanged(@NonNull Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if (mRecyclerView != null) {
+            int columns = calculateNoOfColumns(getApplicationContext());
+            layoutManager.setSpanCount(columns);
+        }
     }
 
     private RecyclerView.OnScrollListener recyclerViewOnScrollListener = new RecyclerView.OnScrollListener() {
@@ -291,4 +324,3 @@ public class SearchableActivity extends AppCompatActivity implements TextToSpeec
         }
     }
 }
-

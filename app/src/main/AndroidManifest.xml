@@ -30,7 +30,6 @@
 
         <activity
             android:name=".MainActivity"
-            android:screenOrientation="portrait"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -47,12 +46,10 @@
             android:name=".PeliActivity"
             android:label="@string/title_activity_peli"
             android:parentActivityName=".MainActivity"
-            android:screenOrientation="portrait"
             android:exported="false" />
         <activity
             android:name=".SearchableActivity"
             android:parentActivityName=".MainActivity"
-            android:screenOrientation="portrait"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.SEARCH" />
@@ -64,12 +61,10 @@
         </activity>
         <activity
             android:name=".OpcionesActivity"
-            android:screenOrientation="portrait"
             android:exported="false" />
         <activity
             android:name=".UrlHandlerActivity"
             android:parentActivityName=".MainActivity"
-            android:screenOrientation="portrait"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

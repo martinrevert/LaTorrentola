@@ -10,6 +10,7 @@ import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -19,13 +20,14 @@ import android.widget.ProgressBar;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBarDrawerToggle;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SearchView;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
-import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.work.BackoffPolicy;
 import androidx.work.Data;
@@ -66,7 +68,7 @@ public class MainActivity extends AppCompatActivity {
 
 
     private RecyclerView mRecyclerView;
-    private LinearLayoutManager layoutManager;
+    private GridLayoutManager layoutManager;
     private ProgressBar progressBar;
 
     private CompositeDisposable mCompositeDisposable;
@@ -94,7 +96,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        layoutManager = new LinearLayoutManager(getApplicationContext());
+        
         db = AppDatabase.getAppDatabase(this);
         toolbar = findViewById(R.id.toolbar);
 
@@ -254,13 +256,34 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void initRecyclerView() {
-
         mRecyclerView = findViewById(R.id.recycler_view);
         mRecyclerView.setHasFixedSize(true);
+        
+        int columns = calculateNoOfColumns(getApplicationContext());
+        layoutManager = new GridLayoutManager(getApplicationContext(), columns);
+        
         mRecyclerView.setLayoutManager(layoutManager);
         mRecyclerView.addOnScrollListener(recyclerViewOnScrollListener);
         mAdapter = new DataAdapter(movies, null);
         //mRecyclerView.setAdapter(mAdapter);
+    }
+
+    public int calculateNoOfColumns(Context context) {
+        DisplayMetrics displayMetrics = context.getResources().getDisplayMetrics();
+        float dpWidth = displayMetrics.widthPixels / displayMetrics.density;
+        
+        int columns;
+        boolean isLandscape = context.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        
+        // Define poster width in dp (approximate)
+        int posterWidth = 180; 
+        columns = (int) (dpWidth / posterWidth);
+        
+        if (isLandscape) {
+            return Math.max(4, columns);
+        } else {
+            return Math.max(2, columns);
+        }
     }
 
     private void loadJSON(int page) {
@@ -371,9 +394,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onConfigurationChanged(Configuration newConfig) {
+    public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         mDrawerToggle.onConfigurationChanged(newConfig);
+        
+        if (mRecyclerView != null) {
+            int columns = calculateNoOfColumns(getApplicationContext());
+            layoutManager.setSpanCount(columns);
+        }
     }
 
     @Override

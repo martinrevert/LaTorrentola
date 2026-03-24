@@ -2,14 +2,19 @@ package com.martinrevert.latorrentola;
 
 
 import android.app.TaskStackBuilder;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.speech.tts.TextToSpeech;
+import android.util.DisplayMetrics;
+
+import androidx.annotation.NonNull;
 import androidx.core.app.NavUtils;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.appcompat.widget.Toolbar;
 import android.util.Log;
@@ -42,6 +47,7 @@ import static android.view.View.VISIBLE;
 public class UrlHandlerActivity extends AppCompatActivity implements TextToSpeech.OnInitListener {
 
     private RecyclerView mRecyclerView;
+    private GridLayoutManager layoutManager;
     private ProgressBar progressBar;
 
     private CompositeDisposable mCompositeDisposable;
@@ -88,10 +94,39 @@ public class UrlHandlerActivity extends AppCompatActivity implements TextToSpeec
 
         mRecyclerView = findViewById(R.id.recycler_view);
         mRecyclerView.setHasFixedSize(true);
-        RecyclerView.LayoutManager layoutManager = new LinearLayoutManager(getApplicationContext());
+        
+        int columns = calculateNoOfColumns(getApplicationContext());
+        layoutManager = new GridLayoutManager(getApplicationContext(), columns);
+        
         mRecyclerView.setLayoutManager(layoutManager);
         mAdapter = new DataAdapter(null, null);
         mRecyclerView.setAdapter(mAdapter);
+    }
+
+    public int calculateNoOfColumns(Context context) {
+        DisplayMetrics displayMetrics = context.getResources().getDisplayMetrics();
+        float dpWidth = displayMetrics.widthPixels / displayMetrics.density;
+        
+        int columns;
+        boolean isLandscape = context.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        
+        int posterWidth = 180; 
+        columns = (int) (dpWidth / posterWidth);
+        
+        if (isLandscape) {
+            return Math.max(4, columns);
+        } else {
+            return Math.max(2, columns);
+        }
+    }
+
+    @Override
+    public void onConfigurationChanged(@NonNull Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if (mRecyclerView != null) {
+            int columns = calculateNoOfColumns(getApplicationContext());
+            layoutManager.setSpanCount(columns);
+        }
     }
 
     private void loadJSON(String imdb) {
