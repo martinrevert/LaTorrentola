@@ -41,6 +41,7 @@ graph TD
         
         G -->|YTS API| J[YTS Movie Data]
         H -->|AppDatabase| L[Personal Movie List]
+        H -->|AppDatabase| LR[Last Visit Tracking]
         I -->|Translator| M[Spanish Summary]
     end
 
@@ -60,7 +61,7 @@ graph TD
 - **Model:** Data classes representing YTS API responses and Room entities.
 - **Data Layer:** 
     - **Remote:** Retrofit interface for the YTS API.
-    - **Local:** Room database (`AppDatabase`) for storing a personal movie list.
+    - **Local:** Room database (`AppDatabase`) for storing a personal movie list and session tracking.
     - **AI:** Google ML Kit for on-device translation.
 - **Async/Reactive:** RxJava 2 for handling network calls and database operations.
 
@@ -68,33 +69,39 @@ graph TD
 
 1.  **Modern Build System:** Updated to **Android Gradle Plugin 8.7.0** and **Gradle 8.9**.
 2.  **Android 15 Ready:** Target SDK 35 with **Edge-to-Edge** support (using `fitsSystemWindows`) to ensure the UI respects system bars.
-3.  **On-Device Translation:** Replaced Yandex API with **Google ML Kit Translate** (English to Spanish) for movie summaries.
-4.  **Accessibility:** Integrated **Text-to-Speech (TTS)** for reading movie details and translations.
-5.  **Reactive Programming:** Extensive use of **RxJava 2** for asynchronous operations.
-6.  **Networking:** **Retrofit 2** with reactive adapters.
-7.  **Persistence:** **Room Persistence Library** for local storage.
-8.  **Media Integration:** **YouTube Player** integration for trailers.
-9.  **Firebase:** Integration with Analytics, Messaging, Crashlytics, and Sessions.
+3.  **Adaptive Grid Layout:** Implemented a dynamic `GridLayoutManager` that supports:
+    - **Portrait:** Minimum 2 columns.
+    - **Landscape:** Minimum 4 columns.
+    - **Foldables:** Automatic adjustment for open/closed states.
+4.  **Fresh Content Highlighting:** A "New" badge (Yellow ribbon) automatically appears on movie posters uploaded since the user's last session, powered by Room-based session tracking.
+5.  **On-Device Translation:** Replaced Yandex API with **Google ML Kit Translate** (English to Spanish) for movie summaries.
+6.  **Accessibility:** Integrated **Text-to-Speech (TTS)** for reading movie details and translations.
+7.  **Reactive Programming:** Extensive use of **RxJava 2** for asynchronous operations.
+8.  **Networking:** **Retrofit 2** with reactive adapters.
+9.  **Persistence:** **Room Persistence Library** for local storage.
+10. **Media Integration:** **YouTube Player** integration for trailers.
+11. **Firebase:** Integration with Analytics, Messaging, Crashlytics, and Sessions.
 
 ## Sequence Diagrams
 
-### 1. Main Movie Discovery Flow
+### 1. Main Movie Discovery & Session Flow
 ```mermaid
 sequenceDiagram
     participant User
     participant MainActivity
+    participant RoomDB as Local Room DB
     participant YTS_API as YTS Remote API
     participant RecyclerView
 
     User->>MainActivity: Open App
+    MainActivity->>RoomDB: fetchLastVisit()
+    RoomDB-->>MainActivity: previousVisitDate
+    MainActivity->>RoomDB: updateLastVisit(currentTime)
     MainActivity->>YTS_API: loadJSON(page 1)
     YTS_API-->>MainActivity: List<Movie>
-    MainActivity->>RecyclerView: Update Adapter
-    RecyclerView-->>User: Display Movies
-    User->>RecyclerView: Scroll to bottom
-    MainActivity->>YTS_API: loadJSON(next page)
-    YTS_API-->>MainActivity: More Movies
-    MainActivity->>RecyclerView: Append Movies
+    MainActivity->>RecyclerView: Compare date_uploaded vs previousVisitDate
+    MainActivity->>RecyclerView: Update Adapter (Show "New" Badges)
+    RecyclerView-->>User: Display Movies with Grid Layout
 ```
 
 ### 2. Search & Filter Flow
@@ -116,7 +123,7 @@ sequenceDiagram
         RoomDB-->>SearchableActivity: List<Movie>
     end
     SearchableActivity->>TTS: Speak Results Summary
-    SearchableActivity-->>User: Display Results
+    SearchableActivity-->>User: Display Results in Adaptive Grid
 ```
 
 ### 3. Movie Details & Translation Flow
@@ -144,26 +151,6 @@ sequenceDiagram
     OS->>Transdrone: Handle Torrent Download
 ```
 
-### 4. Deep Link / URL Handling Flow
-```mermaid
-sequenceDiagram
-    participant OS as Android OS
-    participant UrlHandlerActivity
-    participant YTS_API as YTS Remote API
-    participant TTS as Text-to-Speech
-
-    OS->>UrlHandlerActivity: Open IMDb Link / Share Text
-    UrlHandlerActivity->>TTS: Speak "Chequeando disponibilidad"
-    UrlHandlerActivity->>YTS_API: getMovieSearch(IMDb ID)
-    YTS_API-->>UrlHandlerActivity: Movie Result
-    alt Found
-        UrlHandlerActivity->>TTS: Speak "Disponible"
-    else Not Found
-        UrlHandlerActivity->>TTS: Speak "No disponible"
-    end
-    UrlHandlerActivity-->>User: Display Result
-```
-
 ## Requirements
 
 To compile the project, you need a `Constants.java` file in your `constants` package.
@@ -179,5 +166,4 @@ public class Constants {
 
 - Decouple views with **ViewModel**, moving from plain Android MVC to **MVVM**.
 - Move to a pluggable architecture of torrent vendors to reduce coupling.
-- Offer different switchable posters view with normal and staggered grids.
 - Enhance notification handling.
