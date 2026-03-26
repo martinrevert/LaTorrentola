@@ -29,6 +29,7 @@ import androidx.core.content.ContextCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import androidx.work.BackoffPolicy;
 import androidx.work.Data;
 import androidx.work.OneTimeWorkRequest;
@@ -46,6 +47,7 @@ import com.martinrevert.latorrentola.network.FCMRegistrationWorker;
 import com.martinrevert.latorrentola.network.RequestYTSInterface;
 
 import java.text.DateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
@@ -70,13 +72,14 @@ public class MainActivity extends AppCompatActivity {
     private RecyclerView mRecyclerView;
     private GridLayoutManager layoutManager;
     private ProgressBar progressBar;
+    private SwipeRefreshLayout swipeRefreshLayout;
 
     private CompositeDisposable mCompositeDisposable;
     private DrawerLayout mDrawerLayout;
     private ActionBarDrawerToggle mDrawerToggle;
 
     private Toolbar toolbar;
-    private List<Movie> movies;
+    private List<Movie> movies = new ArrayList<>();
     private DataAdapter mAdapter;
     private AppDatabase db;
 
@@ -140,6 +143,12 @@ public class MainActivity extends AppCompatActivity {
         };
 
         progressBar = findViewById(R.id.progressBar);
+        swipeRefreshLayout = findViewById(R.id.swipe_refresh_layout);
+        swipeRefreshLayout.setOnRefreshListener(() -> {
+            currentpage = 1;
+            loadJSON(currentpage);
+        });
+
         mCompositeDisposable = new CompositeDisposable();
 
         mCompositeDisposable.add(db.dateDao().getDate()
@@ -300,11 +309,11 @@ public class MainActivity extends AppCompatActivity {
         
         mRecyclerView.setLayoutManager(layoutManager);
         mRecyclerView.addOnScrollListener(recyclerViewOnScrollListener);
-        mAdapter = new DataAdapter(movies, null);
+        mAdapter = new DataAdapter(movies, "");
         if (lastVisitDate != null) {
             mAdapter.setLastVisitDate(lastVisitDate);
         }
-        //mRecyclerView.setAdapter(mAdapter);
+        mRecyclerView.setAdapter(mAdapter);
     }
 
     public int calculateNoOfColumns(Context context) {
@@ -327,7 +336,9 @@ public class MainActivity extends AppCompatActivity {
 
     private void loadJSON(int page) {
         isLoading = true;
-        progressBar.setVisibility(VISIBLE);
+        if (!swipeRefreshLayout.isRefreshing()) {
+            progressBar.setVisibility(VISIBLE);
+        }
 
         HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
         // set your desired log level
@@ -354,34 +365,22 @@ public class MainActivity extends AppCompatActivity {
 
     private void handleResponse(MovieDetails result) {
         progressBar.setVisibility(GONE);
+        swipeRefreshLayout.setRefreshing(false);
         isLoading = false;
         List<Movie> pelis = result.getData().getMovies();
-        if (mAdapter.getItemCount() == 0) {
-            mAdapter = new DataAdapter(pelis, "");
-            mAdapter.setLastVisitDate(lastVisitDate);
-            mRecyclerView.setAdapter(mAdapter);
+        if (currentpage == 1) {
+            movies.clear();
+            movies.addAll(pelis);
+            mAdapter.setMovies(movies);
         } else {
             mAdapter.addMovies(pelis);
-            mRecyclerView.scrollToPosition(currentpage * 50);
-        }
-    }
-
-    private void handleResponseSingle(MovieDetails result) {
-        progressBar.setVisibility(GONE);
-        isLoading = false;
-        List<Movie> pelis = result.getData().getMovies();
-        if (mAdapter.getItemCount() == 0) {
-            mAdapter = new DataAdapter(pelis, "");
-            mAdapter.setLastVisitDate(lastVisitDate);
-            mRecyclerView.setAdapter(mAdapter);
-        } else {
-            mAdapter.addMovies(pelis);
-            mRecyclerView.scrollToPosition(currentpage * 50);
+            mRecyclerView.scrollToPosition((currentpage - 1) * 50);
         }
     }
 
     private void handleError(Throwable error) {
         progressBar.setVisibility(GONE);
+        swipeRefreshLayout.setRefreshing(false);
         isLoading = false;
         Log.v("ERROR", error.getLocalizedMessage());
     }

@@ -6,9 +6,12 @@ import android.app.PendingIntent;
 import android.app.TaskStackBuilder;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.media.AudioAttributes;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
+import android.preference.PreferenceManager;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -98,24 +101,50 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         }
 
-        Uri defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        String ringtoneStr = sharedPreferences.getString("system_ringtone", null);
+        Uri soundUri;
+        if (ringtoneStr != null && !ringtoneStr.isEmpty()) {
+            soundUri = Uri.parse(ringtoneStr);
+        } else {
+            soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+        }
+
         NotificationCompat.Builder notificationBuilder =
                 new NotificationCompat.Builder(this, CHANNEL_ID)
                         .setSmallIcon(R.mipmap.ic_launcher)
                         .setContentTitle(title)
                         .setContentText(messageBody)
                         .setAutoCancel(true)
-                        .setSound(defaultSoundUri)
+                        .setSound(soundUri)
                         .setContentIntent(pendingIntent);
 
         NotificationManager notificationManager =
                 (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
-                    CHANNEL_NAME,
-                    NotificationManager.IMPORTANCE_DEFAULT);
-            notificationManager.createNotificationChannel(channel);
+            // For Android O and above, we need to delete and recreate the channel if we want to change the sound,
+            // or just ensure it's created with the correct sound the first time.
+            // Note: Once a channel is created, you cannot change its importance or sound programmatically.
+            // A common workaround is to create a new channel with a different ID if the user changes the sound.
+            
+            // To make it simple and respect the user's choice, we'll use a dynamic channel ID based on the sound URI.
+            String dynamicChannelId = CHANNEL_ID + "_" + soundUri.toString().hashCode();
+            notificationBuilder.setChannelId(dynamicChannelId);
+
+            if (notificationManager.getNotificationChannel(dynamicChannelId) == null) {
+                NotificationChannel channel = new NotificationChannel(dynamicChannelId,
+                        CHANNEL_NAME,
+                        NotificationManager.IMPORTANCE_DEFAULT);
+                
+                AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                        .build();
+                channel.setSound(soundUri, audioAttributes);
+                
+                notificationManager.createNotificationChannel(channel);
+            }
         }
 
         notificationManager.notify(0, notificationBuilder.build());

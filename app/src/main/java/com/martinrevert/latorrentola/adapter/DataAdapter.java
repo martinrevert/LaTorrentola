@@ -48,6 +48,11 @@ public class DataAdapter extends RecyclerView.Adapter<DataAdapter.ViewHolder> {
         notifyDataSetChanged();
     }
 
+    public void setMovies(List<Movie> movies) {
+        this.movies = movies;
+        notifyDataSetChanged();
+    }
+
     public void setLastVisitDate(Date date) {
         this.lastVisitDate = date;
         notifyDataSetChanged();

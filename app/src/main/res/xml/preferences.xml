@@ -28,8 +28,9 @@
     <RingtonePreference
         android:title="Ringtone notificaciones"
         android:key="system_ringtone"
+        android:ringtoneType="notification"
+        android:showDefault="true"
+        android:showSilent="true"
         />
-
-
 
 </PreferenceScreen>
