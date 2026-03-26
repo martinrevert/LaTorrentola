@@ -112,6 +112,11 @@ public class Movie {
     @Expose
     private List<Torrent> torrents = null;
 
+    @ColumnInfo
+    @SerializedName("cast")
+    @Expose
+    private List<Cast> cast = null;
+
     @Ignore
     @SerializedName("date_uploaded_unix")
     @Expose
@@ -307,6 +312,14 @@ public class Movie {
 
     public void setTorrents(List<Torrent> torrents) {
         this.torrents = torrents;
+    }
+
+    public List<Cast> getCast() {
+        return cast;
+    }
+
+    public void setCast(List<Cast> cast) {
+        this.cast = cast;
     }
 
     public Long getDateUploadedUnix() {

@@ -29,4 +29,12 @@ public interface RequestYTSInterface {
                                             @Query("quality") String query,
                                             @Query("page") int currentpage);
 
+    @GET("movie_details.json")
+    Observable<MovieDetails> getMovieDetailsById(@Query("movie_id") String movieId);
+
+    @GET("movie_details.json")
+    Observable<MovieDetails> getMovieDetailsFull(@Query("movie_id") String movieId,
+                                                 @Query("with_images") boolean withImages,
+                                                 @Query("with_cast") boolean withCast);
+
 }

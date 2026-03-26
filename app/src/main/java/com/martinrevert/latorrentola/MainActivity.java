@@ -162,6 +162,32 @@ public class MainActivity extends AppCompatActivity {
                     String token = task.getResult();
                     scheduleTokenRegistration(token);
                 });
+
+        handleIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIntent(intent);
+    }
+
+    private void handleIntent(Intent intent) {
+        if (intent != null && intent.getExtras() != null) {
+            String movieId = intent.getExtras().getString("id");
+            String movieJson = intent.getExtras().getString("PELI");
+
+            if (movieId != null) {
+                Intent detailIntent = new Intent(this, PeliActivity.class);
+                detailIntent.putExtra("MOVIE_ID", movieId);
+                startActivity(detailIntent);
+            } else if (movieJson != null) {
+                Intent detailIntent = new Intent(this, PeliActivity.class);
+                detailIntent.putExtra("PELI", movieJson);
+                startActivity(detailIntent);
+            }
+        }
     }
 
     private void createNotificationChannel() {

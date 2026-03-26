@@ -5,6 +5,7 @@ import androidx.room.TypeConverter;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
+import com.martinrevert.latorrentola.model.YTS.Cast;
 import com.martinrevert.latorrentola.model.YTS.Torrent;
 
 
@@ -25,6 +26,19 @@ public class Converters {
 
     @TypeConverter
     public static String fromTorrentList(List<Torrent> list) {
+        Gson gson = new Gson();
+        String json = gson.toJson(list);
+        return json;
+    }
+
+    @TypeConverter
+    public static List<Cast> fromCastString(String value) {
+        Type listType = new TypeToken<List<Cast>>() {}.getType();
+        return new Gson().fromJson(value, listType);
+    }
+
+    @TypeConverter
+    public static String fromCastList(List<Cast> list) {
         Gson gson = new Gson();
         String json = gson.toJson(list);
         return json;
@@ -52,8 +66,4 @@ public class Converters {
     public Long dateToTimestamp(Date date) {
         return date == null ? null : date.getTime();
     }
-
-
-
-
 }

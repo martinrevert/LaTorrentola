@@ -22,6 +22,9 @@ public class Data {
     @SerializedName("movies")
     @Expose
     private List<Movie> movies = null;
+    @SerializedName("movie")
+    @Expose
+    private Movie movie;
     @SerializedName("@meta")
     @Expose
     private Meta meta;
@@ -56,6 +59,14 @@ public class Data {
 
     public void setMovies(List<Movie> movies) {
         this.movies = movies;
+    }
+
+    public Movie getMovie() {
+        return movie;
+    }
+
+    public void setMovie(Movie movie) {
+        this.movie = movie;
     }
 
     public Meta getMeta() {

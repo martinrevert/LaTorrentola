@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.TaskStackBuilder;
 import android.content.Context;
 import android.content.Intent;
 import android.media.RingtoneManager;
@@ -21,6 +22,7 @@ import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 import com.martinrevert.latorrentola.network.FCMRegistrationWorker;
 
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public class MyFirebaseMessagingService extends FirebaseMessagingService {
@@ -31,8 +33,24 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
     @Override
     public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {
+        String title = null;
+        String body = null;
+
         if (remoteMessage.getNotification() != null) {
-            sendNotification(remoteMessage.getNotification().getTitle(), remoteMessage.getNotification().getBody());
+            title = remoteMessage.getNotification().getTitle();
+            body = remoteMessage.getNotification().getBody();
+        }
+
+        Map<String, String> data = remoteMessage.getData();
+        String movieJson = data.get("PELI");
+        String movieId = data.get("id");
+
+        // Use data payload if notification payload is missing
+        if (title == null) title = data.get("title");
+        if (body == null) body = data.get("body");
+
+        if (title != null && body != null) {
+            sendNotification(title, body, movieJson, movieId);
         }
     }
 
@@ -55,11 +73,30 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         WorkManager.getInstance(this).enqueue(registrationWork);
     }
 
-    private void sendNotification(String title, String messageBody) {
-        Intent intent = new Intent(this, MainActivity.class);
+    private void sendNotification(String title, String messageBody, String movieJson, String movieId) {
+        Intent intent;
+        if (movieJson != null) {
+            intent = new Intent(this, PeliActivity.class);
+            intent.putExtra("PELI", movieJson);
+        } else if (movieId != null) {
+            intent = new Intent(this, PeliActivity.class);
+            intent.putExtra("MOVIE_ID", movieId);
+        } else {
+            intent = new Intent(this, MainActivity.class);
+        }
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
-                PendingIntent.FLAG_IMMUTABLE);
+
+        PendingIntent pendingIntent;
+        if (movieJson != null || movieId != null) {
+            // Build the back stack so pressing back goes to MainActivity
+            TaskStackBuilder stackBuilder = TaskStackBuilder.create(this);
+            stackBuilder.addNextIntentWithParentStack(intent);
+            pendingIntent = stackBuilder.getPendingIntent(0,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        } else {
+            pendingIntent = PendingIntent.getActivity(this, 0, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        }
 
         Uri defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
         NotificationCompat.Builder notificationBuilder =

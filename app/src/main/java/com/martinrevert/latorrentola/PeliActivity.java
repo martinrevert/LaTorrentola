@@ -14,6 +14,9 @@ import androidx.core.app.NavUtils;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
 import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
@@ -30,10 +33,13 @@ import com.google.mlkit.nl.translate.TranslateLanguage;
 import com.google.mlkit.nl.translate.Translation;
 import com.google.mlkit.nl.translate.Translator;
 import com.google.mlkit.nl.translate.TranslatorOptions;
+import com.martinrevert.latorrentola.adapter.CastAdapter;
 import com.martinrevert.latorrentola.database.AppDatabase;
 import com.martinrevert.latorrentola.model.YTS.Movie;
+import com.martinrevert.latorrentola.model.YTS.MovieDetails;
 import com.martinrevert.latorrentola.model.YTS.Torrent;
 import com.martinrevert.latorrentola.constants.Constants;
+import com.martinrevert.latorrentola.network.RequestYTSInterface;
 
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer;
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener;
@@ -45,8 +51,12 @@ import java.net.URLEncoder;
 import java.util.List;
 import java.util.Locale;
 
+import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.schedulers.Schedulers;
+import retrofit2.Retrofit;
+import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory;
+import retrofit2.converter.gson.GsonConverterFactory;
 
 public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnInitListener {
 
@@ -60,6 +70,8 @@ public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnIn
     private TextView year;
     private TextView language;
     private TextView rating;
+    private TextView castLabel;
+    private RecyclerView castRecyclerView;
 
     private TextToSpeech tts;
     private String speak;
@@ -91,79 +103,137 @@ public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnIn
         year = findViewById(R.id.year);
         language = findViewById(R.id.language);
         rating = findViewById(R.id.rating);
+        castLabel = findViewById(R.id.cast_label);
+        castRecyclerView = findViewById(R.id.cast_recycler_view);
+        castRecyclerView.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
 
         tts = new TextToSpeech(this, this);
         tts.setLanguage(Locale.getDefault());
 
         Bundle bundle = getIntent().getExtras();
-        String peliStr = null;
         if (bundle != null) {
-            peliStr = bundle.getString("PELI" + "");
-            Gson gson = new Gson();
-            Type type = new TypeToken<Movie>() {
-            }.getType();
+            if (bundle.containsKey("PELI")) {
+                String peliStr = bundle.getString("PELI");
+                Gson gson = new Gson();
+                Type type = new TypeToken<Movie>() {}.getType();
+                movie = gson.fromJson(peliStr, type);
+                initView();
+                // Fetch full details to get cast even if we have basic movie data
+                fetchMovieDetails(String.valueOf(movie.getId()));
+            } else if (bundle.containsKey("MOVIE_ID")) {
+                String movieId = bundle.getString("MOVIE_ID");
+                fetchMovieDetails(movieId);
+            }
+        }
+    }
 
-            movie = gson.fromJson(peliStr, type);
+    private void fetchMovieDetails(String movieId) {
+        RequestYTSInterface requestYTSInterface = new Retrofit.Builder()
+                .baseUrl(Constants.YTS_BASE_URL)
+                .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
+                .addConverterFactory(GsonConverterFactory.create())
+                .build().create(RequestYTSInterface.class);
 
-            Toolbar toolbar = findViewById(R.id.toolbar);
-            toolbar.setTitle(movie.getTitle());
-            setSupportActionBar(toolbar);
-
-            youtube_video_trailer = movie.getYtTrailerCode();
-
-            Log.v("YTS", movie.getTitleLong());
-
-            if (youtube_video_trailer != null && !youtube_video_trailer.isEmpty()) {
-                youTubePlayerView.addYouTubePlayerListener(new AbstractYouTubePlayerListener() {
-                    @Override
-                    public void onReady(@NonNull YouTubePlayer initializedYouTubePlayer) {
-                        initializedYouTubePlayer.cueVideo(youtube_video_trailer, 0);
+        // Use the new method to fetch cast and images
+        mCompositeDisposable.add(requestYTSInterface.getMovieDetailsFull(movieId, true, true)
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribeOn(Schedulers.io())
+                .subscribe(result -> {
+                    if (result.getData() != null) {
+                        if (result.getData().getMovies() != null && !result.getData().getMovies().isEmpty()) {
+                            movie = result.getData().getMovies().get(0);
+                        } else if (result.getData().getMovie() != null) {
+                            movie = result.getData().getMovie();
+                        }
+                        initView();
                     }
-                });
-            }
+                }, throwable -> Log.e("PeliActivity", "Error fetching movie details", throwable)));
+    }
+
+    private void initView() {
+        if (movie == null) return;
+
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        toolbar.setTitle(movie.getTitle());
+        setSupportActionBar(toolbar);
+
+        youtube_video_trailer = movie.getYtTrailerCode();
+
+        Log.v("YTS", movie.getTitleLong());
+
+        if (youtube_video_trailer != null && !youtube_video_trailer.isEmpty()) {
+            youTubePlayerView.addYouTubePlayerListener(new AbstractYouTubePlayerListener() {
+                @Override
+                public void onReady(@NonNull YouTubePlayer initializedYouTubePlayer) {
+                    initializedYouTubePlayer.cueVideo(youtube_video_trailer, 0);
+                }
+            });
+        }
+
+        // Robust summary detection (fallback to description_full or synopsis)
+        String displaySummary = movie.getSummary();
+        if (displaySummary == null || displaySummary.isEmpty()) {
+            displaySummary = movie.getDescriptionFull();
+        }
+        if (displaySummary == null || displaySummary.isEmpty()) {
+            displaySummary = movie.getSynopsis();
+        }
+
+        String summ = "Summary: " + (displaySummary != null ? displaySummary : "");
+        summary.setText(summ);
+        String yr = "Year: " + movie.getYear();
+        year.setText(yr);
+        String lg = "Language: " + movie.getLanguage();
+        language.setText(lg);
+        String rt = "Rating: " + movie.getRating();
+        rating.setText(rt);
+
+        // Cast setup
+        if (movie.getCast() != null && !movie.getCast().isEmpty()) {
+            castLabel.setVisibility(View.VISIBLE);
+            CastAdapter castAdapter = new CastAdapter(movie.getCast());
+            castRecyclerView.setAdapter(castAdapter);
+        } else {
+            castLabel.setVisibility(View.GONE);
+        }
+
+        String texto = displaySummary;
+
+        if(voice_summary && !voice_translation){
+            speak = texto;
+        }
+
+        Integer id = movie.getId();
+
+        mCompositeDisposable.add(db.movieDao().getMovie(id)
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(peli -> {
+                            ispresent = true;
+                            Log.v("DB", peli.getTitle());
+                        },
+                        throwable -> {
+                            ispresent = false;
+                            Log.v("DB", "NO DB" + throwable.getLocalizedMessage());
+                        }
+
+                ));
 
 
-            String summ = "Summary: " + movie.getSummary();
-            summary.setText(summ);
-            String yr = "Year: " + movie.getYear();
-            year.setText(yr);
-            String lg = "Language: " + movie.getLanguage();
-            language.setText(lg);
-            String rt = "Rating: " + movie.getRating();
-            rating.setText(rt);
+        List<Torrent> torrentsyts = movie.getTorrents();
 
-            String texto = movie.getSummary();
-
-            if(voice_summary && !voice_translation){
-                speak = texto;
-            }
-
-            Integer id = movie.getId();
-
-            mCompositeDisposable.add(db.movieDao().getMovie(id)
-                    .subscribeOn(Schedulers.io())
-                    .subscribe(peli -> {
-                                ispresent = true;
-                                Log.v("DB", peli.getTitle());
-                            },
-                            throwable -> {
-                                ispresent = false;
-                                Log.v("DB", "NO DB" + throwable.getLocalizedMessage());
-                            }
-
-                    ));
-
-
-            List<Torrent> torrentsyts = movie.getTorrents();
-
+        if (torrentsyts != null) {
+            LinearLayout linearyts = findViewById(R.id.linearyts);
+            linearyts.removeAllViews();
             for (Torrent torroyts : torrentsyts) {
 
                 String text = "YTS" + " " + torroyts.getQuality() + " " + torroyts.getSize() + " " + torroyts.getType();
 
-                LinearLayout linearyts = findViewById(R.id.linearyts);
-
                 Button btntorrentyts = new Button(PeliActivity.this);
                 btntorrentyts.setText(text);
+                btntorrentyts.setBackgroundResource(R.drawable.button_rounded);
+                btntorrentyts.setTextColor(getResources().getColor(android.R.color.white));
+
                 btntorrentyts.setOnClickListener(new View.OnClickListener() {
 
                     private void sendtorrent() {
@@ -180,7 +250,6 @@ public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnIn
                         sharingIntent
                                 .addCategory(android.content.Intent.CATEGORY_BROWSABLE);
                         sharingIntent.setData(Uri.parse(uriyts));
-                        //ToDO Acá hay que implementar algo por si no hay apps que reciban magnet links
                         try {
                             startActivity(sharingIntent);
                         } catch (ActivityNotFoundException activityNotFound) {
@@ -232,19 +301,35 @@ public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnIn
 
                     }
                 });
-                btntorrentyts.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, 
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                );
+                params.setMargins(0, 8, 0, 8);
+                btntorrentyts.setLayoutParams(params);
                 linearyts.addView(btntorrentyts);
 
             }
-            if (voice_translation) {
-                translateAndSpeak(texto);
-            }
+        }
+        if (voice_translation && texto != null && !texto.isEmpty()) {
+            translateAndSpeak(texto);
         }
 
+        if (isTtsInitialized) {
+            if (voice_system) {
+                tts.speak(movie.getTitleLong(), TextToSpeech.QUEUE_ADD, null, null);
+            }
+            if (speak != null) {
+                tts.speak(speak, TextToSpeech.QUEUE_ADD, null, null);
+            }
+        }
     }
 
 
     private void translateAndSpeak(String text) {
+        if (text == null || text.isEmpty()) return;
+
         TranslatorOptions options = new TranslatorOptions.Builder()
                 .setSourceLanguage(TranslateLanguage.ENGLISH)
                 .setTargetLanguage(TranslateLanguage.SPANISH)
@@ -276,20 +361,13 @@ public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnIn
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
-            // Respond to the action bar's Up/Home button
             case android.R.id.home:
                 Intent upIntent = NavUtils.getParentActivityIntent(this);
                 if (NavUtils.shouldUpRecreateTask(this, upIntent) || isTaskRoot()) {
-                    // This activity is NOT part of this app's task, so create a new task
-                    // when navigating up, with a synthesized back stack.
                     TaskStackBuilder.create(this)
-                            // Add all of this activity's parents to the back stack
                             .addNextIntentWithParentStack(upIntent)
-                            // Navigate up to the closest parent
                             .startActivities();
                 } else {
-                    // This activity is part of this app's task, so simply
-                    // navigate up to the logical parent activity.
                     NavUtils.navigateUpTo(this, upIntent);
                 }
                 return true;
@@ -308,19 +386,19 @@ public class PeliActivity extends AppCompatActivity implements TextToSpeech.OnIn
         if (englishSpanishTranslator != null) {
             englishSpanishTranslator.close();
         }
-        AppDatabase.destroyInstance();
-
     }
 
     @Override
     public void onInit(int status) {
         if (status == TextToSpeech.SUCCESS) {
             isTtsInitialized = true;
-            if (voice_system && movie != null) {
-                tts.speak(movie.getTitleLong(), TextToSpeech.QUEUE_ADD, null, null);
-            }
-            if (speak != null) {
-                tts.speak(speak, TextToSpeech.QUEUE_ADD, null, null);
+            if (movie != null) {
+                if (voice_system) {
+                    tts.speak(movie.getTitleLong(), TextToSpeech.QUEUE_ADD, null, null);
+                }
+                if (speak != null) {
+                    tts.speak(speak, TextToSpeech.QUEUE_ADD, null, null);
+                }
             }
         }
     }
