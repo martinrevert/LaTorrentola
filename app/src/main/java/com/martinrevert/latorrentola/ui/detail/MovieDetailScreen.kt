@@ -1,5 +1,8 @@
 package com.martinrevert.latorrentola.ui.detail
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -20,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -35,6 +39,7 @@ import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.Torrent
 import com.martinrevert.latorrentola.model.YTS.Cast
+import java.net.URLEncoder
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -119,7 +124,7 @@ fun MovieDetailContent(movie: Movie) {
         
         Text(text = "Torrents", style = MaterialTheme.typography.titleLarge)
         movie.torrents?.forEach { torrent ->
-            TorrentItem(torrent = torrent)
+            TorrentItem(movie = movie, torrent = torrent)
         }
     }
 }
@@ -201,9 +206,34 @@ fun CastItem(cast: Cast) {
 }
 
 @Composable
-fun TorrentItem(torrent: Torrent) {
+fun TorrentItem(movie: Movie, torrent: Torrent) {
+    val context = LocalContext.current
     Button(
-        onClick = { /* Handle magnet link */ },
+        onClick = {
+            val hash = torrent.hash
+            if (hash != null) {
+                try {
+                    val encodedTitle = URLEncoder.encode(movie.title ?: "Movie", "UTF-8")
+                    val magnetUri = "magnet:?xt=urn:btih:$hash" +
+                            "&dn=$encodedTitle" +
+                            "&tr=udp://open.demonii.com:1337/announce" +
+                            "&tr=udp://tracker.openbittorrent.com:80"
+                    
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        data = Uri.parse(magnetUri)
+                        addCategory(Intent.CATEGORY_BROWSABLE)
+                    }
+                    
+                    try {
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "No torrent client installed", Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Error creating magnet link", Toast.LENGTH_SHORT).show()
+                }
+            }
+        },
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
     ) {
         Text(text = "${torrent.quality} - ${torrent.size} (${torrent.type})")
