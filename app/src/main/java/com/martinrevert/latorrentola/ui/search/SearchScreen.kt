@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.home.MovieList
 
@@ -62,8 +63,10 @@ fun SearchScreen(
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
                 is SearchUiState.Success -> {
+                    val gridState = rememberLazyStaggeredGridState()
                     MovieList(
                         movies = state.movies,
+                        state = gridState,
                         onMovieClick = onMovieClick,
                         onLoadMore = { viewModel.loadMore() }
                     )

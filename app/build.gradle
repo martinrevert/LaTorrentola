@@ -79,6 +79,9 @@ dependencies {
     // Serialization
     implementation libs.kotlinx.serialization.json
 
+    // ML Kit Translation
+    implementation libs.mlkit.translate
+
     // Preferences
     implementation libs.androidx.preference.ktx
 }

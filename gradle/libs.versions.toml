@@ -19,6 +19,7 @@ coil = "3.4.0"
 serialization = "1.11.0"
 preference = "1.2.1"
 ksp = "2.3.6"
+mlkitTranslate = "17.0.3"
 googleServices = "4.4.4"
 firebaseCrashlytics = "3.0.7"
 
@@ -55,6 +56,7 @@ okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor",
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
+mlkit-translate = { group = "com.google.mlkit", name = "translate", version.ref = "mlkitTranslate" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

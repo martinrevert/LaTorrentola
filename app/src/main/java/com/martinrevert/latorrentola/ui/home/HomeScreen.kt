@@ -2,8 +2,11 @@ package com.martinrevert.latorrentola.ui.home
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -12,6 +15,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.model.YTS.Movie
@@ -25,6 +31,9 @@ fun HomeScreen(
     onSearchClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // 1. Properly save and restore scroll state across configuration changes (rotation)
+    val gridState = rememberLazyStaggeredGridState()
 
     Scaffold(
         topBar = {
@@ -49,6 +58,7 @@ fun HomeScreen(
                 is HomeUiState.Success -> {
                     MovieList(
                         movies = state.movies,
+                        state = gridState,
                         onMovieClick = onMovieClick,
                         onLoadMore = { viewModel.loadMovies() }
                     )
@@ -68,15 +78,28 @@ fun HomeScreen(
 @Composable
 fun MovieList(
     movies: List<Movie>,
+    state: LazyStaggeredGridState,
     onMovieClick: (Movie) -> Unit,
     onLoadMore: () -> Unit
 ) {
-    LazyColumn(
+    val configuration = LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp.dp
+    
+    val columns = if (screenWidth < 600.dp) {
+        StaggeredGridCells.Fixed(2)
+    } else {
+        StaggeredGridCells.Adaptive(minSize = 160.dp)
+    }
+
+    LazyVerticalStaggeredGrid(
+        columns = columns,
+        state = state,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalItemSpacing = 12.dp
     ) {
-        items(movies) { movie ->
+        items(movies, key = { it.id }) { movie ->
             MovieItem(movie = movie, onClick = { onMovieClick(movie) })
         }
         item {
@@ -96,26 +119,56 @@ fun MovieItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        shape = MaterialTheme.shapes.medium
     ) {
-        Row(modifier = Modifier.padding(8.dp)) {
+        Column {
             AsyncImage(
                 model = movie.mediumCoverImage,
                 contentDescription = null,
                 modifier = Modifier
-                    .size(100.dp, 150.dp),
+                    .fillMaxWidth()
+                    .aspectRatio(0.67f),
                 contentScale = ContentScale.Crop
             )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column {
-                Text(text = movie.title ?: "", style = MaterialTheme.typography.titleMedium)
-                Text(text = "Year: ${movie.year}", style = MaterialTheme.typography.bodySmall)
-                Text(text = "Rating: ${movie.rating}", style = MaterialTheme.typography.bodySmall)
+            Column(modifier = Modifier.padding(8.dp)) {
                 Text(
-                    text = movie.genres?.joinToString(", ") ?: "",
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1
+                    text = movie.title ?: "",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
+                
+                // RESTORED: Movie Genres
+                if (!movie.genres.isNullOrEmpty()) {
+                    Text(
+                        text = movie.genres.joinToString(", "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${movie.year}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "⭐ ${movie.rating}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
             }
         }
     }
