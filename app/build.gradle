@@ -79,6 +79,9 @@ dependencies {
     // Serialization
     implementation libs.kotlinx.serialization.json
 
+    // Firebase
+    implementation libs.firebase.messaging
+
     // ML Kit Translation
     implementation libs.mlkit.translate
 

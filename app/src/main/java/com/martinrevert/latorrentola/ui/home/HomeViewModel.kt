@@ -21,26 +21,46 @@ class HomeViewModel @Inject constructor(
 
     private val allMovies = mutableListOf<Movie>()
     private var currentPage = 1
+    private var isFetching = false
+    private var canLoadMore = true
 
     init {
         loadMovies()
     }
 
     fun loadMovies() {
+        if (isFetching || !canLoadMore) return
+        isFetching = true
+        
         viewModelScope.launch {
             try {
                 if (currentPage == 1) _uiState.value = HomeUiState.Loading
                 
                 val result = ytsRepository.getMovies(currentPage)
-                result.data?.movies?.let {
-                    allMovies.addAll(it)
-                    _uiState.value = HomeUiState.Success(allMovies.toList())
-                    currentPage++
+                result.data?.movies?.let { newMovies ->
+                    if (newMovies.isNotEmpty()) {
+                        // 1. Add only new movies (by id) to avoid duplicates
+                        val filteredNewMovies = newMovies.filter { newMovie ->
+                            allMovies.none { it.id == newMovie.id }
+                        }
+                        
+                        if (filteredNewMovies.isNotEmpty()) {
+                            allMovies.addAll(filteredNewMovies)
+                            _uiState.value = HomeUiState.Success(allMovies.toList())
+                        }
+                        currentPage++
+                    } else {
+                        canLoadMore = false
+                        if (allMovies.isEmpty()) _uiState.value = HomeUiState.Error("No movies found")
+                    }
                 } ?: run {
+                    canLoadMore = false
                     if (allMovies.isEmpty()) _uiState.value = HomeUiState.Error("No movies found")
                 }
             } catch (e: Exception) {
                 if (allMovies.isEmpty()) _uiState.value = HomeUiState.Error(e.localizedMessage ?: "Unknown error")
+            } finally {
+                isFetching = false
             }
         }
     }

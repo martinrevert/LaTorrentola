@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
@@ -27,8 +28,15 @@ sealed interface Route : NavKey {
 }
 
 @Composable
-fun AppNavigation() {
+fun AppNavigation(initialMovieJson: String? = null) {
     val backStack = rememberNavBackStack(Route.Home)
+
+    // Handle Deep Link / Notification navigation
+    LaunchedEffect(initialMovieJson) {
+        initialMovieJson?.let {
+            backStack.add(Route.Detail(it))
+        }
+    }
 
     NavDisplay(
         backStack = backStack,
