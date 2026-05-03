@@ -27,9 +27,18 @@ class DetailViewModel @Inject constructor(
 
     fun setMovie(movie: Movie) {
         viewModelScope.launch {
-            val isFavorite = ytsRepository.isFavorite(movie.id)
-            _uiState.value = DetailUiState.Success(movie, isFavorite)
-            handleVoice(movie)
+            _uiState.value = DetailUiState.Loading
+            try {
+                val isFavorite = ytsRepository.isFavorite(movie.id)
+                val fullDetailsResponse = ytsRepository.getMovieFullDetails(movie.id)
+                val fullMovie = fullDetailsResponse.data?.movie ?: movie
+                _uiState.value = DetailUiState.Success(fullMovie, isFavorite)
+                handleVoice(fullMovie)
+            } catch (e: Exception) {
+                val isFavorite = ytsRepository.isFavorite(movie.id)
+                _uiState.value = DetailUiState.Success(movie, isFavorite)
+                handleVoice(movie)
+            }
         }
     }
 

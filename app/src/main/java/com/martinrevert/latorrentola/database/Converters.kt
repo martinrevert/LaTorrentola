@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola.database
 import androidx.room.TypeConverter
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.martinrevert.latorrentola.model.YTS.Cast
 import com.martinrevert.latorrentola.model.YTS.Torrent
 import java.util.Date
 
@@ -26,6 +27,17 @@ class Converters {
 
     @TypeConverter
     fun fromArrayList(list: List<String>?): String? {
+        return Gson().toJson(list)
+    }
+
+    @TypeConverter
+    fun fromCastString(value: String?): List<Cast>? {
+        val listType = object : TypeToken<List<Cast>>() {}.type
+        return Gson().fromJson(value, listType)
+    }
+
+    @TypeConverter
+    fun fromCastList(list: List<Cast>?): String? {
         return Gson().toJson(list)
     }
 

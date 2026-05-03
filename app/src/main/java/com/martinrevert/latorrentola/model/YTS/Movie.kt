@@ -80,5 +80,8 @@ data class Movie(
     val state: String? = null,
     @ColumnInfo(name = "torrents")
     @SerializedName("torrents")
-    val torrents: List<Torrent>? = null
+    val torrents: List<Torrent>? = null,
+    @ColumnInfo(name = "cast")
+    @SerializedName("cast")
+    val cast: List<Cast>? = null
 )

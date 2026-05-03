@@ -14,19 +14,19 @@ class YtsRepository @Inject constructor(
 ) {
 
     suspend fun getMovies(page: Int): MovieDetails {
-        return ytsService.getMovieDetails(50, "6", page, "true")
+        return ytsService.getMovieDetails(50, "6", page, "true", "true")
     }
 
     suspend fun searchMovies(query: String): MovieDetails {
-        return ytsService.getMovieSearch(50, query)
+        return ytsService.getMovieSearch(50, query, "true")
     }
 
     suspend fun searchByGenre(genre: String, page: Int): MovieDetails {
-        return ytsService.getGenreSearch(50, genre, page)
+        return ytsService.getGenreSearch(50, genre, page, "true")
     }
 
     suspend fun searchByQuality(quality: String, page: Int): MovieDetails {
-        return ytsService.getTridiSearch(50, quality, page)
+        return ytsService.getTridiSearch(50, quality, page, "true")
     }
 
     fun getFavoriteMovies(): Flow<List<Movie>> {
@@ -43,5 +43,9 @@ class YtsRepository @Inject constructor(
 
     suspend fun removeFavorite(movie: Movie) {
         movieDao.delete(movie)
+    }
+
+    suspend fun getMovieFullDetails(movieId: Int): MovieDetails {
+        return ytsService.getMovieFullDetails(movieId)
     }
 }

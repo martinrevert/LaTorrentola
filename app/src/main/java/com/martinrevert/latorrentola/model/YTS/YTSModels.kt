@@ -23,8 +23,22 @@ data class Data(
     val pageNumber: Int? = null,
     @SerializedName("movies")
     val movies: List<Movie>? = null,
+    @SerializedName("movie")
+    val movie: Movie? = null,
     @SerializedName("@meta")
     val meta: Meta? = null
+)
+
+@Serializable
+data class Cast(
+    @SerializedName("name")
+    val name: String? = null,
+    @SerializedName("character_name")
+    val characterName: String? = null,
+    @SerializedName("url_small_image")
+    val urlSmallImage: String? = null,
+    @SerializedName("imdb_code")
+    val imdbCode: String? = null
 )
 
 @Serializable

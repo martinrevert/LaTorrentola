@@ -1,7 +1,12 @@
 package com.martinrevert.latorrentola.ui.detail
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -13,9 +18,18 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.Torrent
+import com.martinrevert.latorrentola.model.YTS.Cast
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,6 +101,11 @@ fun MovieDetailContent(movie: Movie) {
         Text(text = movie.summary ?: "No summary available", style = MaterialTheme.typography.bodyMedium)
         
         Spacer(modifier = Modifier.height(16.dp))
+
+        if (!movie.cast.isNullOrEmpty()) {
+            CastSection(castList = movie.cast)
+            Spacer(modifier = Modifier.height(16.dp))
+        }
         
         Text(text = "Details", style = MaterialTheme.typography.titleLarge)
         Text(text = "Year: ${movie.year}")
@@ -99,6 +118,58 @@ fun MovieDetailContent(movie: Movie) {
         movie.torrents?.forEach { torrent ->
             TorrentItem(torrent = torrent)
         }
+    }
+}
+
+@Composable
+fun CastSection(castList: List<Cast>) {
+    Text(text = "Cast", style = MaterialTheme.typography.titleLarge)
+    Spacer(modifier = Modifier.height(8.dp))
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(vertical = 8.dp)
+    ) {
+        items(castList) { cast ->
+            CastItem(cast = cast)
+        }
+    }
+}
+
+@Composable
+fun CastItem(cast: Cast) {
+    Column(
+        modifier = Modifier.width(80.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        AsyncImage(
+            model = cast.urlSmallImage,
+            contentDescription = cast.name,
+            placeholder = painterResource(R.drawable.ic_launcher_foreground),
+            error = painterResource(R.drawable.ic_launcher_foreground),
+            fallback = painterResource(R.drawable.ic_launcher_foreground),
+            modifier = Modifier
+                .size(70.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentScale = ContentScale.Crop
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = cast.name ?: "",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = cast.characterName ?: "",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
