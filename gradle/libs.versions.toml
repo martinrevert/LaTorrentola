@@ -22,7 +22,7 @@ ksp = "2.3.6"
 mlkitTranslate = "17.0.3"
 googleServices = "4.4.4"
 firebaseCrashlytics = "3.0.7"
-firebaseMessaging = "24.1.0"
+firebaseMessaging = "24.1.2"
 youtubePlayer = "13.0.0"
 
 [libraries]
