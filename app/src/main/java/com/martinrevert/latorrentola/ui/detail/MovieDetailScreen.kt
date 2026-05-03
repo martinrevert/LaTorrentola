@@ -106,7 +106,8 @@ fun MovieDetailContent(movie: Movie) {
         }
 
         Text(text = "Summary", style = MaterialTheme.typography.titleLarge)
-        Text(text = movie.summary ?: "No summary available", style = MaterialTheme.typography.bodyMedium)
+        val summaryText = movie.summary?.ifEmpty { movie.descriptionFull } ?: movie.descriptionFull
+        Text(text = summaryText ?: "No summary available", style = MaterialTheme.typography.bodyMedium)
         
         Spacer(modifier = Modifier.height(16.dp))
 
