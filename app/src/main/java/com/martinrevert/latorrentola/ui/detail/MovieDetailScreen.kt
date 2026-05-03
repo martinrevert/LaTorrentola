@@ -26,6 +26,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.Torrent
@@ -86,15 +91,13 @@ fun MovieDetailContent(movie: Movie) {
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        // Placeholder for YouTube Player
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(200.dp)
-                .padding(bottom = 16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("YouTube Player Placeholder (${movie.ytTrailerCode})")
+        // YouTube Player
+        if (!movie.ytTrailerCode.isNullOrEmpty()) {
+            YoutubePlayer(
+                youtubeVideoId = movie.ytTrailerCode,
+                lifecycleOwner = LocalLifecycleOwner.current
+            )
+            Spacer(modifier = Modifier.height(16.dp))
         }
 
         Text(text = "Summary", style = MaterialTheme.typography.titleLarge)
@@ -119,6 +122,30 @@ fun MovieDetailContent(movie: Movie) {
             TorrentItem(torrent = torrent)
         }
     }
+}
+
+@Composable
+fun YoutubePlayer(
+    youtubeVideoId: String,
+    lifecycleOwner: androidx.lifecycle.LifecycleOwner
+) {
+    AndroidView(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(16 / 9f)
+            .clip(MaterialTheme.shapes.medium),
+        factory = { context ->
+            YouTubePlayerView(context).apply {
+                lifecycleOwner.lifecycle.addObserver(this)
+
+                addYouTubePlayerListener(object : AbstractYouTubePlayerListener() {
+                    override fun onReady(youTubePlayer: YouTubePlayer) {
+                        youTubePlayer.cueVideo(youtubeVideoId, 0f)
+                    }
+                })
+            }
+        }
+    )
 }
 
 @Composable

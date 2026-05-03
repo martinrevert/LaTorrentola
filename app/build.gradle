@@ -87,4 +87,7 @@ dependencies {
 
     // Preferences
     implementation libs.androidx.preference.ktx
+
+    // YouTube Player
+    implementation libs.youtube.player
 }
