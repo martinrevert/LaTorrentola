@@ -52,7 +52,10 @@ fun AppNavigation(initialMovieJson: String? = null) {
                         backStack.add(Route.Detail(movieJson))
                     },
                     onSettingsClick = { backStack.add(Route.Settings) },
-                    onSearchClick = { backStack.add(Route.Search()) }
+                    onSearchClick = { backStack.add(Route.Search()) },
+                    onGenreClick = { genre ->
+                        backStack.add(Route.Search(genre))
+                    }
                 )
             }
             entry<Route.Detail> { detailKey ->

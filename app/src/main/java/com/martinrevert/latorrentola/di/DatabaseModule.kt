@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola.di
 import android.content.Context
 import com.martinrevert.latorrentola.database.AppDatabase
 import com.martinrevert.latorrentola.database.DateDao
+import com.martinrevert.latorrentola.database.GenreDao
 import com.martinrevert.latorrentola.database.MovieDao
 import dagger.Module
 import dagger.Provides
@@ -29,5 +30,10 @@ object DatabaseModule {
     @Provides
     fun provideDateDao(appDatabase: AppDatabase): DateDao {
         return appDatabase.dateDao()
+    }
+
+    @Provides
+    fun provideGenreDao(appDatabase: AppDatabase): GenreDao {
+        return appDatabase.genreDao()
     }
 }

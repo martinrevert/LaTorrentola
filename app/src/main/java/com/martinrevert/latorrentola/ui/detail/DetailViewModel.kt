@@ -34,6 +34,11 @@ class DetailViewModel @Inject constructor(
                 val fullMovie = fullDetailsResponse.data?.movie ?: movie
                 _uiState.value = DetailUiState.Success(fullMovie, isFavorite)
                 handleVoice(fullMovie)
+                
+                // Record genre visits for personalization
+                fullMovie.genres?.forEach { genre ->
+                    ytsRepository.recordGenreVisit(genre)
+                }
             } catch (e: Exception) {
                 val isFavorite = ytsRepository.isFavorite(movie.id)
                 _uiState.value = DetailUiState.Success(movie, isFavorite)

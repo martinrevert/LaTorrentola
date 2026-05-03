@@ -5,9 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.network.YtsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -19,6 +17,16 @@ class HomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
+    private val _topGenres = MutableStateFlow<List<String>>(emptyList())
+    val topGenres: StateFlow<List<String>> = _topGenres.asStateFlow()
+
+    val allGenres = listOf(
+        "Action", "Adventure", "Animation", "Biography", "Comedy", "Crime",
+        "Documentary", "Drama", "Family", "Fantasy", "Film-Noir", "History",
+        "Horror", "Music", "Musical", "Mystery", "Romance", "Sci-Fi",
+        "Short", "Sport", "Thriller", "War", "Western"
+    )
+
     private val allMovies = mutableListOf<Movie>()
     private var currentPage = 1
     private var isFetching = false
@@ -26,6 +34,25 @@ class HomeViewModel @Inject constructor(
 
     init {
         loadMovies()
+        observeTopGenres()
+    }
+
+    private fun observeTopGenres() {
+        ytsRepository.getTopGenres(limit = 7)
+            .onEach { stats ->
+                val topList = stats.map { it.genre }.toMutableList()
+                
+                // Fill with defaults if not enough history
+                val defaults = listOf("Action", "Comedy", "Drama", "Horror", "Sci-Fi")
+                for (default in defaults) {
+                    if (topList.size >= 7) break
+                    if (!topList.contains(default)) {
+                        topList.add(default)
+                    }
+                }
+                _topGenres.value = topList
+            }
+            .launchIn(viewModelScope)
     }
 
     fun loadMovies() {
