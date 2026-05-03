@@ -1,37 +1,14 @@
-package com.martinrevert.latorrentola.model.date;
+package com.martinrevert.latorrentola.model.date
 
-import androidx.room.ColumnInfo;
-import androidx.room.Entity;
-import androidx.room.PrimaryKey;
+import androidx.room.ColumnInfo
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+import java.util.Date
 
-import java.util.Date;
-
-
-/**
- * Created by martin on 21/12/17.
- */
 @Entity(tableName = "date")
-public class DateLastVisit{
+data class DateLastVisit(
     @PrimaryKey(autoGenerate = true)
-    private int id;
+    var id: Int = 0,
     @ColumnInfo
-    private Date date;
-
-    public int getId() {
-        return id;
-    }
-
-    public void setId(int id) {
-        this.id = id;
-    }
-
-    public Date getDate() {
-        return date;
-    }
-
-    public void setDate(Date date) {
-        this.date = date;
-    }
-
-
-}
+    var date: Date? = null
+)

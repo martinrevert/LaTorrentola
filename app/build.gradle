@@ -1,127 +1,84 @@
 plugins {
-    id 'com.android.application'
-    id 'com.google.gms.google-services'
-    id 'com.google.firebase.crashlytics'
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
+    alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics)
+    alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.kotlin.serialization)
 }
 
-def gitVersionCode = providers.exec {
-    commandLine 'git', 'rev-list', '--count', 'HEAD'
-    ignoreExitValue = true
-}.standardOutput.asText.map { it.trim() }.map { it.isInteger() ? it.toInteger() : 0 }.getOrElse(0)
-
-def version_name = "1.0.$gitVersionCode"
+def getGitVersionCount(providers) {
+    return providers.exec {
+        commandLine 'git', 'rev-list', '--count', 'HEAD'
+        ignoreExitValue = true
+    }.standardOutput.asText.map { it.trim() }.map { it.isInteger() ? it.toInteger() : 0 }.getOrElse(0)
+}
 
 android {
-    signingConfigs {
-        release {
-            keyAlias 'androidreleasekey'
-            storeFile file('../app/keys/release.keystore')
-            keyPassword 'android'
-            storePassword 'android'
-        }
-    }
-    compileSdk 35
+    namespace 'com.martinrevert.latorrentola'
+    compileSdk 36
+
+    def gitVersionCode = getGitVersionCount(providers)
+
     defaultConfig {
         applicationId "com.martinrevert.latorrentola"
         versionCode 10000 + gitVersionCode
-        versionName version_name
-        minSdkVersion 23
-        targetSdkVersion 35
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        versionName "1.0.$gitVersionCode"
+        minSdkVersion 24
+        targetSdkVersion 36
     }
 
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
-        }
-        debug {
-            signingConfig signingConfigs.release
-        }
+    buildFeatures {
+        compose = true
     }
-    namespace 'com.martinrevert.latorrentola'
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-
-    buildFeatures {
-        buildConfig = true
-    }
-
-    packaging {
-        resources {
-            excludes.add('/META-INF/versions/9/OSGI-INF/MANIFEST.MF')
-        }
-        jniLibs {
-            useLegacyPackaging = false
-        }
-    }
-    
-    testOptions {
-        unitTests {
-            includeAndroidResources = true
-        }
-    }
 }
 
+// Global base name for all generated archives (APKs, AABs, etc.)
 base {
-    archivesName = "latorrentola$version_name"
+    archivesName = "LaTorrentola-v1.0.${getGitVersionCount(providers)}"
 }
 
 dependencies {
-    implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation 'org.jsoup:jsoup:1.22.1'
-    implementation 'me.pushy:sdk:1.0.127'
-    implementation 'com.google.android.material:material:1.13.0'
-    implementation 'androidx.appcompat:appcompat:1.7.1'
-    implementation 'androidx.recyclerview:recyclerview:1.4.0'
-    implementation 'androidx.cardview:cardview:1.0.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
-    
-    // Testing Dependencies
-    testImplementation 'junit:junit:4.13.2'
-    testImplementation "org.mockito:mockito-core:5.11.0"
-    testImplementation "com.google.truth:truth:1.4.2"
-    testImplementation "org.robolectric:robolectric:4.16.1"
-    testImplementation "com.squareup.okhttp3:mockwebserver:5.0.0-alpha.14"
-    testImplementation "androidx.room:room-testing:2.8.4"
-    testImplementation "androidx.arch.core:core-testing:2.2.0"
-    testImplementation 'androidx.test:core:1.6.1'
-    
-    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
-    androidTestImplementation 'androidx.test:runner:1.6.1'
-    androidTestImplementation 'androidx.test:rules:1.6.1'
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.appcompat
+    implementation platform(libs.androidx.compose.bom)
+    implementation libs.androidx.ui
+    implementation libs.androidx.material3
+    implementation(libs.androidx.compose.material.icons.extended)
+    implementation libs.androidx.activity.compose
 
-    implementation 'com.squareup.retrofit2:retrofit:3.0.0'
-    implementation 'com.squareup.retrofit2:converter-gson:3.0.0'
-    implementation 'com.squareup.retrofit2:adapter-rxjava2:3.0.0'
-    implementation 'com.squareup.picasso:picasso:2.71828'
-    implementation 'com.squareup.okhttp3:logging-interceptor:5.3.2'
-    implementation 'io.reactivex.rxjava2:rxandroid:2.1.1'
-    implementation 'io.reactivex.rxjava2:rxjava:2.2.21'
-    
-    // Firebase
-    implementation platform('com.google.firebase:firebase-bom:34.9.0')
-    implementation 'com.google.firebase:firebase-analytics'
-    implementation 'com.google.firebase:firebase-messaging'
-    implementation 'com.google.firebase:firebase-crashlytics'
-    implementation 'com.google.firebase:firebase-sessions'
+    // Navigation
+    implementation libs.androidx.navigation3.runtime
+    implementation libs.androidx.navigation3.ui
 
-    // DataStore - required by Firebase Sessions
-    implementation 'androidx.datastore:datastore:1.2.0'
-    implementation 'androidx.datastore:datastore-preferences:1.2.0'
+    // Hilt
+    implementation libs.hilt.android
+    ksp libs.hilt.compiler
+    implementation libs.hilt.navigation.compose
 
-    implementation 'androidx.room:room-runtime:2.8.4'
-    annotationProcessor 'androidx.room:room-compiler:2.8.4'
-    implementation 'androidx.room:room-rxjava2:2.8.4'
+    // Room
+    implementation libs.room.runtime
+    implementation libs.room.ktx
+    ksp libs.room.compiler
 
-    // YouTube Player
-    implementation 'com.pierfrancescosoffritti.androidyoutubeplayer:core:13.0.0'
+    // Network
+    implementation libs.retrofit
+    implementation libs.retrofit.converter.gson
+    implementation libs.okhttp.logging
 
-    // ML Kit Translate
-    implementation 'com.google.mlkit:translate:17.0.3'
+    // Image Loading
+    implementation libs.coil.compose
+    implementation libs.coil.network.okhttp
+
+    // Serialization
+    implementation libs.kotlinx.serialization.json
+
+    // Preferences
+    implementation libs.androidx.preference.ktx
 }

@@ -1,59 +1,41 @@
-package com.martinrevert.latorrentola.database;
+package com.martinrevert.latorrentola.database
 
-import androidx.room.TypeConverter;
+import androidx.room.TypeConverter
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import com.martinrevert.latorrentola.model.YTS.Torrent
+import java.util.Date
 
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
-
-import com.martinrevert.latorrentola.model.YTS.Torrent;
-
-
-import java.lang.reflect.Type;
-import java.util.Date;
-import java.util.List;
-
-/**
- * Created by martin on 07/12/17.
- */
-
-public class Converters {
+class Converters {
     @TypeConverter
-    public static List<Torrent> fromTorrentString(String value) {
-        Type listType = new TypeToken<List<Torrent>>() {}.getType();
-        return new Gson().fromJson(value, listType);
+    fun fromTorrentString(value: String?): List<Torrent>? {
+        val listType = object : TypeToken<List<Torrent>>() {}.type
+        return Gson().fromJson(value, listType)
     }
 
     @TypeConverter
-    public static String fromTorrentList(List<Torrent> list) {
-        Gson gson = new Gson();
-        String json = gson.toJson(list);
-        return json;
+    fun fromTorrentList(list: List<Torrent>?): String? {
+        return Gson().toJson(list)
     }
 
     @TypeConverter
-    public static List<String> fromString(String value) {
-        Type listType = new TypeToken<List<String>>() {}.getType();
-        return new Gson().fromJson(value, listType);
+    fun fromString(value: String?): List<String>? {
+        val listType = object : TypeToken<List<String>>() {}.type
+        return Gson().fromJson(value, listType)
     }
 
     @TypeConverter
-    public static String fromArrayList(List<String> list) {
-        Gson gson = new Gson();
-        String json = gson.toJson(list);
-        return json;
+    fun fromArrayList(list: List<String>?): String? {
+        return Gson().toJson(list)
     }
 
     @TypeConverter
-    public Date fromTimestamp(Long value) {
-        return value == null ? null : new Date(value);
+    fun fromTimestamp(value: Long?): Date? {
+        return value?.let { Date(it) }
     }
 
     @TypeConverter
-    public Long dateToTimestamp(Date date) {
-        return date == null ? null : date.getTime();
+    fun dateToTimestamp(date: Date?): Long? {
+        return date?.time
     }
-
-
-
-
 }

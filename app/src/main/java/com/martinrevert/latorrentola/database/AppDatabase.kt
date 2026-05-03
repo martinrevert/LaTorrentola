@@ -1,50 +1,48 @@
-package com.martinrevert.latorrentola.database;
+package com.martinrevert.latorrentola.database
 
-import androidx.sqlite.db.SupportSQLiteDatabase;
-import androidx.room.Database;
-import androidx.room.Room;
-import androidx.room.RoomDatabase;
-import androidx.room.TypeConverters;
-import androidx.room.migration.Migration;
-import android.content.Context;
+import android.content.Context
+import androidx.room.Database
+import androidx.room.Room
+import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.model.date.DateLastVisit
 
+@Database(entities = [Movie::class, DateLastVisit::class], version = 2, exportSchema = false)
+@TypeConverters(Converters::class)
+abstract class AppDatabase : RoomDatabase() {
 
-import com.martinrevert.latorrentola.model.date.DateLastVisit;
-import com.martinrevert.latorrentola.model.YTS.Movie;
+    abstract fun movieDao(): MovieDao
+    abstract fun dateDao(): DateDao
 
-/**
- * Created by martin on 07/12/17.
- */
-@Database(version = 2, entities = {Movie.class, DateLastVisit.class}, exportSchema = false)
-@TypeConverters({Converters.class})
-public abstract class AppDatabase extends RoomDatabase {
+    companion object {
+        @Volatile
+        private var INSTANCE: AppDatabase? = null
 
-    private static AppDatabase INSTANCE;
-
-    abstract public MovieDao movieDao();
-
-    abstract public DateDao dateDao();
-
-    public static AppDatabase getAppDatabase(Context context) {
-        if (INSTANCE == null) {
-            INSTANCE =
-                    Room.databaseBuilder(context.getApplicationContext(), AppDatabase.class, "appdatabase")
-                            .addMigrations(MIGRATION_1_2)
-                            .build();
+        fun getAppDatabase(context: Context): AppDatabase {
+            return INSTANCE ?: synchronized(this) {
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    "appdatabase"
+                )
+                    .addMigrations(MIGRATION_1_2)
+                    .build()
+                INSTANCE = instance
+                instance
+            }
         }
 
-        return INSTANCE;
-    }
-
-    static final Migration MIGRATION_1_2 = new Migration(1, 2) {
-        @Override
-        public void migrate(SupportSQLiteDatabase database) {
-            database.execSQL("CREATE TABLE `date` (`id` INTEGER,`date` LONG, PRIMARY KEY(`id`))");
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE `date` (`id` INTEGER,`date` LONG, PRIMARY KEY(`id`))")
+            }
         }
-    };
 
-    public static void destroyInstance() {
-        INSTANCE = null;
+        fun destroyInstance() {
+            INSTANCE = null
+        }
     }
-
 }

@@ -1,39 +1,35 @@
-package com.martinrevert.latorrentola.utils;
+package com.martinrevert.latorrentola.utils
 
-import android.content.Context;
-import android.os.Vibrator;
+import android.content.Context
+import android.os.Vibrator
+import android.os.VibratorManager
+import android.os.Build
+import android.os.VibrationEffect
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 
-/**
- * Created by martin on 10/12/17.
- */
+@Singleton
+class VibrationManager @Inject constructor(
+    @param:ApplicationContext private val context: Context
+) {
 
-public class VibrationManager {
-
-    private VibrationManager me;
-    private Context context;
-
-    private Vibrator v = null;
-
-    private Vibrator getVibrator(){
-        if(v == null){
-            v = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
+    private val vibrator: Vibrator? by lazy {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+            vibratorManager?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
         }
-        return v;
     }
 
-    public VibrationManager getManager(Context context) {
-        if(me == null){
-            me = new VibrationManager();
+    fun vibrate(pattern: LongArray) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator?.vibrate(VibrationEffect.createWaveform(pattern, -1))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator?.vibrate(pattern, -1)
         }
-        me.setContext(context);
-        return me;
-    }
-
-    private void setContext(Context context){
-        this.context = context;
-    }
-
-    public void vibrate(long[] pattern){
-
     }
 }

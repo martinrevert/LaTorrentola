@@ -1,34 +1,25 @@
-package com.martinrevert.latorrentola.database;
+package com.martinrevert.latorrentola.database
 
-import androidx.room.Dao;
-import androidx.room.Delete;
-import androidx.room.Insert;
-import androidx.room.OnConflictStrategy;
-import androidx.room.Query;
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import com.martinrevert.latorrentola.model.YTS.Movie
+import kotlinx.coroutines.flow.Flow
 
-import com.martinrevert.latorrentola.model.YTS.Movie;
-
-import java.util.List;
-
-import io.reactivex.Flowable;
-import io.reactivex.Single;
-
-
-/**
- * Created by martin on 07/12/17.
- */
 @Dao
-public interface MovieDao {
+interface MovieDao {
 
-    @Query("SELECT * FROM movie")
-    Flowable<List<Movie>> getAll();
+    @Query("SELECT * FROM movies")
+    fun getAll(): Flow<List<Movie>>
 
-    @Query("SELECT * FROM movie WHERE id LIKE :id")
-    Single<Movie> getMovie(Integer id);
+    @Query("SELECT * FROM movies WHERE id = :id")
+    suspend fun getMovie(id: Int): Movie?
 
     @Delete
-    void delete(Movie movie);
+    suspend fun delete(movie: Movie)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    void insertMovie(Movie movie);
+    suspend fun insertMovie(movie: Movie)
 }
