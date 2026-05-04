@@ -25,6 +25,9 @@ class HomeViewModel @Inject constructor(
     private val _lastVisitDate = MutableStateFlow<Long?>(null)
     val lastVisitDate: StateFlow<Long?> = _lastVisitDate.asStateFlow()
 
+    // Expose refresh state for UI pull-to-refresh
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
     val allGenres = listOf(
         "Action", "Adventure", "Animation", "Biography", "Comedy", "Crime",
         "Documentary", "Drama", "Family", "Fantasy", "Film-Noir", "History",
@@ -108,6 +111,45 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Refresh the movie list: clear cached items and reload page 1.
+     * This method sets [_isRefreshing] while the network call is in progress
+     * so UI pull-to-refresh indicators can react.
+     */
+    fun refresh() {
+        if (isFetching) return
+        viewModelScope.launch {
+            isFetching = true
+            _isRefreshing.value = true
+            try {
+                // reset pagination and current list
+                currentPage = 1
+                canLoadMore = true
+                allMovies.clear()
+                _uiState.value = HomeUiState.Loading
+
+                val result = ytsRepository.getMovies(currentPage)
+                result.data?.movies?.let { newMovies ->
+                    if (newMovies.isNotEmpty()) {
+                        allMovies.addAll(newMovies)
+                        _uiState.value = HomeUiState.Success(allMovies.toList())
+                        currentPage++
+                    } else {
+                        canLoadMore = false
+                        if (allMovies.isEmpty()) _uiState.value = HomeUiState.Error("No movies found")
+                    }
+                } ?: run {
+                    canLoadMore = false
+                    if (allMovies.isEmpty()) _uiState.value = HomeUiState.Error("No movies found")
+                }
+            } catch (e: Exception) {
+                if (allMovies.isEmpty()) _uiState.value = HomeUiState.Error(e.localizedMessage ?: "Unknown error")
+            } finally {
+                _isRefreshing.value = false
+                isFetching = false
+            }
+        }
+    }
     fun toggleFavorite(movie: Movie) {
         viewModelScope.launch {
             if (ytsRepository.isFavorite(movie.id)) {

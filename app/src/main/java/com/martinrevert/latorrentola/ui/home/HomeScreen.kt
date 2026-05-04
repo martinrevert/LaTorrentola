@@ -3,7 +3,6 @@ package com.martinrevert.latorrentola.ui.home
 import androidx.compose.foundation.clickable
 import android.content.Intent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items as lazyItems
@@ -13,10 +12,14 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -31,7 +34,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.model.YTS.Movie
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
@@ -44,6 +47,7 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val topGenres by viewModel.topGenres.collectAsState()
     val lastVisitDate by viewModel.lastVisitDate.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
     
     var showGenreSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
@@ -76,7 +80,9 @@ fun HomeScreen(
                 onAllGenresClick = { showGenreSheet = true }
             )
 
-            Box(modifier = Modifier.fillMaxSize()) {
+                    val pullRefreshState = rememberPullRefreshState(isRefreshing, onRefresh = { viewModel.refresh() })
+
+                    Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
                 when (val state = uiState) {
                     is HomeUiState.Loading -> {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -98,6 +104,8 @@ fun HomeScreen(
                         )
                     }
                 }
+                // Pull-to-refresh indicator (official Compose implementation)
+                PullRefreshIndicator(isRefreshing, pullRefreshState, Modifier.align(Alignment.TopCenter))
             }
         }
     }
@@ -145,7 +153,7 @@ fun GenreChips(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun GenreBottomSheet(
     genres: List<String>,
