@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.Locale
 import javax.inject.Inject
 
 @HiltViewModel
@@ -52,27 +53,33 @@ class DetailViewModel @Inject constructor(
 
         val title = movie.title ?: ""
         val summary = movie.summary?.ifEmpty { movie.descriptionFull } ?: movie.descriptionFull ?: ""
+        val useTranslation = preferenceManager.getVoiceTranslation()
+        
+        // Use Locale.US for a clearer English accent
+        val englishLocale = Locale.US
+        val spanishLocale = Locale.forLanguageTag("es-ES")
 
-        // Always read the title
+        // Always read the title in English (unless translation is forced on titles)
         if (title.isNotEmpty()) {
-            voiceManager.speak(title)
+            voiceManager.speak(title, if (useTranslation) spanishLocale else englishLocale)
         }
 
         // Read summary if enabled
         if (preferenceManager.getVoiceSummary() && summary.isNotEmpty()) {
-            if (preferenceManager.getVoiceTranslation()) {
+            if (useTranslation) {
                 translationManager.translate(
                     text = summary,
                     onSuccess = { translatedText ->
-                        voiceManager.speak(translatedText)
+                        voiceManager.speak(translatedText, spanishLocale)
                     },
                     onError = {
-                        // Fallback to English if translation fails
-                        voiceManager.speak(summary)
+                        // Fallback to English accent if translation fails
+                        voiceManager.speak(summary, englishLocale)
                     }
                 )
             } else {
-                voiceManager.speak(summary)
+                // EXPLICITLY use English Locale for the original summary
+                voiceManager.speak(summary, englishLocale)
             }
         }
     }
