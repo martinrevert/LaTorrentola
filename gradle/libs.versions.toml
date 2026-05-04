@@ -24,7 +24,7 @@ googleServices = "4.4.4"
 firebaseCrashlytics = "3.0.7"
 firebaseMessaging = "24.1.2"
 youtubePlayer = "13.0.0"
-compose_material = "1.6.0"
+compose_material = "1.11.0"
 
 [libraries]
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }

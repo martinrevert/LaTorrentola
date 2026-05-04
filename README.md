@@ -1,183 +1,162 @@
-# La Torrentola 
+# La Torrentola 🎬
 
-La Torrentola is an example Android app made to test modern Android ecosystem functionalities and architectures.
+La Torrentola is a modern, high-performance Android application built with the latest technologies in the Android ecosystem. It serves as a movie discovery tool and a companion for **[Transdrone](https://play.google.com/store/apps/details?id=com.nascent.transdrone)**, focusing on seamless browsing, data visualization, and accessibility.
 
-**Purpose:** This app is a specialized discovery tool intended to be a companion for **[Transdrone](https://play.google.com/store/apps/details?id=com.nascent.transdrone)**. While La Torrentola handles movie discovery, data visualization, and accessibility, it intentionally transfers the responsibility of torrent management and downloading to Transdrone.
+## 🚀 Modern Android Stack
 
-### Why use La Torrentola with Transdrone?
+This project has been fully refactored to use the most cutting-edge libraries and patterns:
 
-By delegating the actual download task to **Transdrone**, users gain several advantages:
+-   **Language:** [Kotlin 2.1+](https://kotlinlang.org/) with the K2 compiler for faster builds and improved performance.
+-   **UI:** [Jetpack Compose](https://developer.android.com/compose) with **Material 3**, providing a declarative and reactive user interface.
+-   **Architecture:** [MVVM (Model-View-ViewModel)](https://developer.android.com/topic/architecture) with a clean separation of concerns.
+-   **Dependency Injection:** [Hilt](https://developer.android.com/training/dependency-injection/hilt-android) for robust and scalable DI.
+-   **Navigation:** [AndroidX Navigation 3](https://developer.android.com/jetpack/androidx/releases/navigation), the latest iteration for Compose-first navigation.
+-   **Networking:** [Retrofit 3.0](https://square.github.io/retrofit/) with [OkHttp 5](https://square.github.io/okhttp/) and Coroutines support.
+-   **Persistence:** [Room 2.8+](https://developer.android.com/training/data-storage/room) using [KSP (Kotlin Symbol Processing)](https://kotlinlang.org/docs/ksp-overview.html) for local caching.
+-   **Async & Streams:** [Kotlin Coroutines](https://kotlinlang.org/docs/coroutines-overview.html) and [Flow](https://kotlinlang.org/docs/flow.html) for all asynchronous operations.
+-   **Image Loading:** [Coil 3](https://coil-kt.github.io/coil/) for efficient, multi-platform ready image fetching.
+-   **AI Integration:** [Google ML Kit Translate](https://developers.google.com/ml-kit/language/translation) for on-device movie summary translations.
+-   **Build System:** [Android Gradle Plugin 9.2.0+](https://developer.android.com/studio/releases/gradle-plugin) and Version Catalogs (`libs.versions.toml`).
 
-1.  **Remote Management:** You can find a movie on your phone with La Torrentola and send the magnet link to Transdrone, which then manages the download on a remote server (like a home NAS or seedbox) rather than consuming your phone's storage and battery.
-2.  **Protocol Support:** Transdrone supports a vast array of remote clients (uTorrent, Transmission, rTorrent, Synology, etc.), making La Torrentola compatible with almost any home setup.
-3.  **Efficiency:** La Torrentola remains a lightweight discovery app, avoiding the heavy battery drain and data usage associated with running a full BitTorrent client on a mobile device.
-4.  **Security & Privacy:** Downloads happen on your designated home server, allowing you to centralize your media and maintain better control over your network traffic.
+## 🏗️ Architecture Overview
 
-## Architecture Overview
-
-The app follows a **Model-View-Controller (MVC)** pattern, transitioning towards **MVVM**.
+The app follows a modern reactive architecture, moving away from legacy XML and Activities to a Single-Activity Compose model.
 
 ```mermaid
 graph TD
-    subgraph UI_Layer [UI Layer]
-        A[MainActivity]
-        B[PeliActivity]
-        C[SearchableActivity]
-        D[UrlHandlerActivity]
-        E[XML Layouts]
+    subgraph UI_Layer [UI Layer - Jetpack Compose]
+        MA[MainActivity]
+        NV[AppNavigation - Nav3]
+        HS[HomeScreen]
+        DS[DetailScreen]
+        SS[SearchScreen]
     end
 
-    subgraph Logic_Layer [Logic/Controller Layer]
-        A -->|Coordinates| F[Data Fetching]
-        B -->|Coordinates| F
-        C -->|Coordinates| F
-        D -->|Coordinates| F
+    subgraph Presentation_Layer [Presentation Layer]
+        HVM[HomeViewModel]
+        DVM[DetailViewModel]
+        SVM[SearchViewModel]
     end
 
-    subgraph Data_Layer [Data Layer]
-        F --> G[Remote: Retrofit]
-        F --> H[Local: Room DB]
-        F --> I[AI: Google ML Kit]
-        
-        G -->|YTS API| J[YTS Movie Data]
-        H -->|AppDatabase| L[Personal Movie List]
-        I -->|Translator| M[Spanish Summary]
+    subgraph Domain_Data_Layer [Data Layer]
+        REP[YtsRepository]
+        RS[YtsService - Retrofit 3]
+        DB[AppDatabase - Room]
+        MLK[ML Kit Translator]
     end
 
-    subgraph Cross_Cutting [Cross-Cutting]
-        N[RxJava 2: Reactive Streams]
-        O[TTS: Text-to-Speech]
-        P[Firebase: Analytics/Crashlytics]
-    end
-
-    UI_Layer -.-> Cross_Cutting
-    Cross_Cutting -.-> Data_Layer
-    UI_Layer -.->|Magnet Intent| Q[Transdrone/External Client]
+    MA --> NV
+    NV --> HS & DS & SS
+    HS --> HVM
+    DS --> DVM
+    SS --> SVM
+    
+    HVM & DVM & SVM --> REP
+    REP --> RS
+    REP --> DB
+    REP --> MLK
+    
+    RS -->|YTS API| WAN[Web API]
+    DB -->|SQLite| DISK[Local Storage]
 ```
 
-- **View:** XML layouts and Activities (`MainActivity`, `PeliActivity`, `SearchableActivity`, etc.).
-- **Controller/Logic:** Activities handle user interaction and coordinate data fetching.
-- **Model:** Data classes representing YTS API responses and Room entities.
-- **Data Layer:** 
-    - **Remote:** Retrofit interface for the YTS API.
-    - **Local:** Room database (`AppDatabase`) for storing a personal movie list.
-    - **AI:** Google ML Kit for on-device translation.
-- **Async/Reactive:** RxJava 2 for handling network calls and database operations.
+## 🛠️ Key Features
 
-## Key Features & Technologies
+1.  **Declarative UI:** Entirely built with Jetpack Compose for a smooth, fluid user experience.
+2.  **State Management:** ViewModels leverage `StateFlow` and `collectAsStateWithLifecycle` to ensure UI state is handled safely.
+3.  **Adaptive Grids:** Staggered grids that adapt to screen size (Phones, Tablets, Foldables).
+4.  **Offline Support:** Room database caches movies for offline viewing and "Favorites" management.
+5.  **On-Device AI:** Real-time translation of movie summaries from English to Spanish without cloud dependencies.
+6.  **Navigation 3:** Uses the latest navigation APIs for passing complex data safely between screens.
+7.  **Edge-to-Edge:** Full support for Android 15's edge-to-edge requirements using `WindowInsets`.
+8.  **Performance:** Optimized with R8/ProGuard and modern serialization (Kotlinx Serialization + GSON).
 
-1.  **Modern Build System:** Updated to **Android Gradle Plugin 8.7.0** and **Gradle 8.9**.
-2.  **Android 15 Ready:** Target SDK 35 with **Edge-to-Edge** support (using `fitsSystemWindows`) to ensure the UI respects system bars.
-3.  **On-Device Translation:** Replaced Yandex API with **Google ML Kit Translate** (English to Spanish) for movie summaries.
-4.  **Accessibility:** Integrated **Text-to-Speech (TTS)** for reading movie details and translations.
-5.  **Reactive Programming:** Extensive use of **RxJava 2** for asynchronous operations.
-6.  **Networking:** **Retrofit 2** with reactive adapters.
-7.  **Persistence:** **Room Persistence Library** for local storage.
-8.  **Media Integration:** **YouTube Player** integration for trailers.
-9.  **Firebase:** Integration with Analytics, Messaging, Crashlytics, and Sessions.
+## 🔄 Core Workflows
 
-## Sequence Diagrams
-
-### 1. Main Movie Discovery Flow
+### 1. Movie Discovery & Pagination
 ```mermaid
 sequenceDiagram
-    participant User
-    participant MainActivity
-    participant YTS_API as YTS Remote API
-    participant RecyclerView
+    participant U as User
+    participant HS as HomeScreen
+    participant VM as HomeViewModel
+    participant R as YtsRepository
+    participant N as YtsService (Retrofit)
 
-    User->>MainActivity: Open App
-    MainActivity->>YTS_API: loadJSON(page 1)
-    YTS_API-->>MainActivity: List<Movie>
-    MainActivity->>RecyclerView: Update Adapter
-    RecyclerView-->>User: Display Movies
-    User->>RecyclerView: Scroll to bottom
-    MainActivity->>YTS_API: loadJSON(next page)
-    YTS_API-->>MainActivity: More Movies
-    MainActivity->>RecyclerView: Append Movies
+    U->>HS: Open App
+    HS->>VM: Observe uiState (Flow)
+    VM->>R: getMovies(page)
+    R->>N: listMovies(page)
+    N-->>R: List<Movie>
+    R->>R: Map & Enrich Data
+    R-->>VM: Flow<List<Movie>>
+    VM-->>HS: Update State
+    HS-->>U: Display Grid
+    U->>HS: Scroll to Bottom
+    HS->>VM: loadMore()
 ```
 
-### 2. Search & Filter Flow
+### 2. Search & Filter
 ```mermaid
 sequenceDiagram
-    participant User
-    participant SearchableActivity
-    participant YTS_API as YTS Remote API
-    participant RoomDB as Local Room DB
+    participant U as User
+    participant SS as SearchScreen
+    participant VM as SearchViewModel
+    participant R as YtsRepository
+    participant DB as Room DB
+
+    U->>SS: Enter Query
+    SS->>VM: onSearch(query)
+    alt Remote Search
+        VM->>R: searchMovies(query)
+        R-->>VM: Results
+    else Local Favorites
+        VM->>R: getFavorites()
+        R->>DB: Query
+        DB-->>R: List<Movie>
+        R-->>VM: Results
+    end
+    VM-->>SS: Update UI State
+```
+
+### 3. Movie Details & Translation
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant DS as DetailScreen
+    participant VM as DetailViewModel
+    participant MLK as ML Kit Translator
     participant TTS as Text-to-Speech
 
-    User->>SearchableActivity: Search Query / Select Genre
-    SearchableActivity->>TTS: Speak "Buscando..."
-    alt Search / Genre
-        SearchableActivity->>YTS_API: Request Data
-        YTS_API-->>SearchableActivity: Movie Results
-    else Personal List
-        SearchableActivity->>RoomDB: Query getAll()
-        RoomDB-->>SearchableActivity: List<Movie>
-    end
-    SearchableActivity->>TTS: Speak Results Summary
-    SearchableActivity-->>User: Display Results
+    U->>DS: Tap Movie
+    DS->>VM: Initialize(Movie)
+    VM->>MLK: translate(Summary)
+    MLK-->>VM: Spanish Text
+    VM-->>DS: Show Details & Translation
+    U->>DS: Tap Speaker Icon
+    DS->>TTS: Speak(Spanish Text)
 ```
 
-### 3. Movie Details & Translation Flow
-```mermaid
-sequenceDiagram
-    participant User
-    participant PeliActivity
-    participant MLKit as Google ML Kit
-    participant TTS as Text-to-Speech
-    participant OS as Android Intent System
-    participant Transdrone
+## 📦 Requirements & Setup
 
-    User->>PeliActivity: Click Movie
-    PeliActivity->>TTS: Speak Movie Title
-    alt Voice Translation Enabled
-        PeliActivity->>MLKit: translate(Summary)
-        MLKit-->>PeliActivity: Spanish Text
-        PeliActivity->>TTS: Speak Spanish Summary
-    else Voice Summary Enabled
-        PeliActivity->>TTS: Speak English Summary
-    end
-    PeliActivity-->>User: Display Details & YTS Torrents
-    User->>PeliActivity: Click Magnet Link
-    PeliActivity->>OS: startActivity(Magnet Intent)
-    OS->>Transdrone: Handle Torrent Download
-```
+To ensure the project compiles and runs correctly:
 
-### 4. Deep Link / URL Handling Flow
-```mermaid
-sequenceDiagram
-    participant OS as Android OS
-    participant UrlHandlerActivity
-    participant YTS_API as YTS Remote API
-    participant TTS as Text-to-Speech
+1.  **Constants:** Ensure `app/src/main/java/com/martinrevert/latorrentola/constants/Constants.kt` exists:
+    ```kotlin
+    object Constants {
+        const val YTS_BASE_URL = "https://yts.ag/api/v2/"
+        const val PAGE_SIZE = 50
+    }
+    ```
+2.  **Google Services:** Place your `google-services.json` in the `app/` directory for Firebase and ML Kit functionality.
+3.  **Local Properties:** Define your signing keys if you plan to build release versions.
 
-    OS->>UrlHandlerActivity: Open IMDb Link / Share Text
-    UrlHandlerActivity->>TTS: Speak "Chequeando disponibilidad"
-    UrlHandlerActivity->>YTS_API: getMovieSearch(IMDb ID)
-    YTS_API-->>UrlHandlerActivity: Movie Result
-    alt Found
-        UrlHandlerActivity->>TTS: Speak "Disponible"
-    else Not Found
-        UrlHandlerActivity->>TTS: Speak "No disponible"
-    end
-    UrlHandlerActivity-->>User: Display Result
-```
+## 📈 Future Roadmap
 
-## Requirements
+- [ ] Multi-module architecture for better build times.
+- [ ] Integration with more torrent providers.
+- [ ] Shared Element Transitions with Compose.
+- [ ] Predictive Back support.
+- [ ] Interactive Widgets for "New Releases".
 
-To compile the project, you need a `Constants.java` file in your `constants` package.
+---
 
-```java
-public class Constants {
-    public static final String YTS_BASE_URL = "https://yts.ag/api/v2/";
-    public static final int PAGE_SIZE = 50;
-}
-```
-
-## Next Steps
-
-- Decouple views with **ViewModel**, moving from plain Android MVC to **MVVM**.
-- Move to a pluggable architecture of torrent vendors to reduce coupling.
-- Offer different switchable posters view with normal and staggered grids.
-- Enhance notification handling.
