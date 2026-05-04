@@ -48,6 +48,7 @@ fun HomeScreen(
     val topGenres by viewModel.topGenres.collectAsState()
     val lastVisitDate by viewModel.lastVisitDate.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val favoritesCount by viewModel.favoritesCount.collectAsState()
     
     var showGenreSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
@@ -64,7 +65,17 @@ fun HomeScreen(
                         Icon(Icons.Default.Search, contentDescription = "Search")
                     }
                     IconButton(onClick = onFavoritesClick) {
-                        Icon(Icons.Default.Favorite, contentDescription = "Favorites")
+                        BadgedBox(
+                            badge = {
+                                if (favoritesCount > 0) {
+                                    Badge {
+                                        Text(favoritesCount.toString())
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.Favorite, contentDescription = "Favorites")
+                        }
                     }
                     IconButton(onClick = onSettingsClick) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
@@ -82,10 +93,15 @@ fun HomeScreen(
 
                     val pullRefreshState = rememberPullRefreshState(isRefreshing, onRefresh = { viewModel.refresh() })
 
-                    Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pullRefresh(pullRefreshState),
+                        contentAlignment = Alignment.Center
+                    ) {
                 when (val state = uiState) {
                     is HomeUiState.Loading -> {
-                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                        CircularProgressIndicator()
                     }
                     is HomeUiState.Success -> {
                         MovieList(
@@ -99,7 +115,6 @@ fun HomeScreen(
                     is HomeUiState.Error -> {
                         Text(
                             text = state.message,
-                            modifier = Modifier.align(Alignment.Center),
                             color = MaterialTheme.colorScheme.error
                         )
                     }

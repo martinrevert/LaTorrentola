@@ -28,6 +28,15 @@ class HomeViewModel @Inject constructor(
     // Expose refresh state for UI pull-to-refresh
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    val favoritesCount: StateFlow<Int> = ytsRepository.getFavoriteMovies()
+        .map { it.size }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 0
+        )
+
     val allGenres = listOf(
         "Action", "Adventure", "Animation", "Biography", "Comedy", "Crime",
         "Documentary", "Drama", "Family", "Fantasy", "Film-Noir", "History",

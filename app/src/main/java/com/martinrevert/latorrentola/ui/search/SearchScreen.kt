@@ -109,13 +109,18 @@ fun SearchScreen(
             )
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentAlignment = Alignment.Center
+        ) {
             when (val state = uiState) {
                 is SearchUiState.Idle -> {
-                    Text(text = "Start searching...", modifier = Modifier.align(Alignment.Center))
+                    Text(text = "Start searching...")
                 }
                 is SearchUiState.Loading -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    CircularProgressIndicator()
                 }
                 is SearchUiState.Success -> {
                     val gridState = rememberLazyStaggeredGridState()
@@ -128,10 +133,10 @@ fun SearchScreen(
                     )
                 }
                 is SearchUiState.Empty -> {
-                    Text(text = "No results found", modifier = Modifier.align(Alignment.Center))
+                    Text(text = "No results found")
                 }
                 is SearchUiState.Error -> {
-                    Text(text = state.message, modifier = Modifier.align(Alignment.Center))
+                    Text(text = state.message)
                 }
             }
         }

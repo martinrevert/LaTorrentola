@@ -79,16 +79,21 @@ fun MovieDetailScreen(
             )
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentAlignment = Alignment.Center
+        ) {
             when (val state = uiState) {
                 is DetailUiState.Loading -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    CircularProgressIndicator()
                 }
                 is DetailUiState.Success -> {
                     MovieDetailContent(movie = state.movie)
                 }
                 is DetailUiState.Error -> {
-                    Text(text = state.message, modifier = Modifier.align(Alignment.Center))
+                    Text(text = state.message)
                 }
             }
         }
