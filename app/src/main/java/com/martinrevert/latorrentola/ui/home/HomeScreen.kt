@@ -19,9 +19,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,6 +43,7 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val topGenres by viewModel.topGenres.collectAsState()
+    val lastVisitDate by viewModel.lastVisitDate.collectAsState()
     
     var showGenreSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
@@ -81,6 +85,7 @@ fun HomeScreen(
                         MovieList(
                             movies = state.movies,
                             state = gridState,
+                            lastVisitDate = lastVisitDate,
                             onMovieClick = onMovieClick,
                             onLoadMore = { viewModel.loadMovies() }
                         )
@@ -187,6 +192,7 @@ fun GenreBottomSheet(
 fun MovieList(
     movies: List<Movie>,
     state: LazyStaggeredGridState,
+    lastVisitDate: Long? = null,
     onMovieClick: (Movie) -> Unit,
     onLoadMore: () -> Unit,
     onDeleteClick: ((Movie) -> Unit)? = null
@@ -211,6 +217,7 @@ fun MovieList(
         items(movies, key = { it.id }) { movie ->
             MovieItem(
                 movie = movie, 
+                lastVisitDate = lastVisitDate,
                 onClick = { onMovieClick(movie) },
                 onDeleteClick = onDeleteClick
             )
@@ -226,6 +233,7 @@ fun MovieList(
 @Composable
 fun MovieItem(
     movie: Movie,
+    lastVisitDate: Long? = null,
     onClick: () -> Unit,
     onDeleteClick: ((Movie) -> Unit)? = null
 ) {
@@ -239,14 +247,31 @@ fun MovieItem(
     ) {
         Box {
             Column {
-                AsyncImage(
-                    model = movie.mediumCoverImage,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(0.67f),
-                    contentScale = ContentScale.Crop
-                )
+                Box {
+                    AsyncImage(
+                        model = movie.mediumCoverImage,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(0.67f),
+                        contentScale = ContentScale.Crop
+                    )
+                    
+                    // NEW BADGE logic
+                    val movieUploadTime = (movie.dateUploadedUnix ?: 0L) * 1000
+                    if (lastVisitDate != null && movieUploadTime > lastVisitDate) {
+                        Icon(
+                            painter = painterResource(com.martinrevert.latorrentola.R.drawable.new_badge),
+                            contentDescription = "New",
+                            tint = Color.Yellow,
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(8.dp)
+                                .size(32.dp)
+                                .rotate(-45f)
+                        )
+                    }
+                }
                 Column(modifier = Modifier.padding(8.dp)) {
                     Text(
                         text = movie.title ?: "",

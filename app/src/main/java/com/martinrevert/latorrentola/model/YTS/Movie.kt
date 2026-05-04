@@ -83,5 +83,8 @@ data class Movie(
     val torrents: List<Torrent>? = null,
     @ColumnInfo(name = "cast")
     @SerializedName("cast")
-    val cast: List<Cast>? = null
+    val cast: List<Cast>? = null,
+    @ColumnInfo(name = "date_uploaded_unix")
+    @SerializedName("date_uploaded_unix")
+    val dateUploadedUnix: Long? = null
 )

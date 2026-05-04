@@ -3,10 +3,12 @@ package com.martinrevert.latorrentola.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.model.date.DateLastVisit
 import com.martinrevert.latorrentola.network.YtsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.Date
 import javax.inject.Inject
 
 @HiltViewModel
@@ -19,6 +21,9 @@ class HomeViewModel @Inject constructor(
 
     private val _topGenres = MutableStateFlow<List<String>>(emptyList())
     val topGenres: StateFlow<List<String>> = _topGenres.asStateFlow()
+
+    private val _lastVisitDate = MutableStateFlow<Long?>(null)
+    val lastVisitDate: StateFlow<Long?> = _lastVisitDate.asStateFlow()
 
     val allGenres = listOf(
         "Action", "Adventure", "Animation", "Biography", "Comedy", "Crime",
@@ -33,8 +38,19 @@ class HomeViewModel @Inject constructor(
     private var canLoadMore = true
 
     init {
+        initVisitDate()
         loadMovies()
         observeTopGenres()
+    }
+
+    private fun initVisitDate() {
+        viewModelScope.launch {
+            val visit = ytsRepository.getLastVisitDate()
+            _lastVisitDate.value = visit?.date?.time
+            
+            // Immediately update to current time for NEXT session
+            ytsRepository.setLastVisitDate(DateLastVisit(id = 1, date = Date()))
+        }
     }
 
     private fun observeTopGenres() {

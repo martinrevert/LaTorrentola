@@ -1,9 +1,11 @@
 package com.martinrevert.latorrentola.network
 
+import com.martinrevert.latorrentola.database.DateDao
 import com.martinrevert.latorrentola.database.GenreDao
 import com.martinrevert.latorrentola.database.MovieDao
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.MovieDetails
+import com.martinrevert.latorrentola.model.date.DateLastVisit
 import com.martinrevert.latorrentola.model.stats.GenreStats
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
@@ -13,7 +15,8 @@ import javax.inject.Singleton
 class YtsRepository @Inject constructor(
     private val ytsService: YtsService,
     private val movieDao: MovieDao,
-    private val genreDao: GenreDao
+    private val genreDao: GenreDao,
+    private val dateDao: DateDao
 ) {
 
     suspend fun getMovies(page: Int): MovieDetails {
@@ -58,5 +61,13 @@ class YtsRepository @Inject constructor(
 
     suspend fun recordGenreVisit(genre: String) {
         genreDao.incrementOrInsert(genre)
+    }
+
+    suspend fun getLastVisitDate(): DateLastVisit? {
+        return dateDao.getDate().firstOrNull()
+    }
+
+    suspend fun setLastVisitDate(date: DateLastVisit) {
+        dateDao.setDate(date)
     }
 }
