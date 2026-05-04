@@ -53,6 +53,7 @@ fun AppNavigation(initialMovieJson: String? = null) {
                     },
                     onSettingsClick = { backStack.add(Route.Settings) },
                     onSearchClick = { backStack.add(Route.Search()) },
+                    onFavoritesClick = { backStack.add(Route.Search("milista")) },
                     onGenreClick = { genre ->
                         backStack.add(Route.Search(genre))
                     }

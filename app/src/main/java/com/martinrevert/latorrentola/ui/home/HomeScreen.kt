@@ -1,6 +1,9 @@
 package com.martinrevert.latorrentola.ui.home
 
 import androidx.compose.foundation.clickable
+import android.content.Intent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items as lazyItems
@@ -9,17 +12,16 @@ import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,6 +35,7 @@ fun HomeScreen(
     onMovieClick: (Movie) -> Unit,
     onSettingsClick: () -> Unit,
     onSearchClick: () -> Unit,
+    onFavoritesClick: () -> Unit,
     onGenreClick: (String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -51,6 +54,9 @@ fun HomeScreen(
                 actions = {
                     IconButton(onClick = onSearchClick) {
                         Icon(Icons.Default.Search, contentDescription = "Search")
+                    }
+                    IconButton(onClick = onFavoritesClick) {
+                        Icon(Icons.Default.Favorite, contentDescription = "Favorites")
                     }
                     IconButton(onClick = onSettingsClick) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
@@ -182,7 +188,8 @@ fun MovieList(
     movies: List<Movie>,
     state: LazyStaggeredGridState,
     onMovieClick: (Movie) -> Unit,
-    onLoadMore: () -> Unit
+    onLoadMore: () -> Unit,
+    onDeleteClick: ((Movie) -> Unit)? = null
 ) {
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
@@ -202,7 +209,11 @@ fun MovieList(
         verticalItemSpacing = 12.dp
     ) {
         items(movies, key = { it.id }) { movie ->
-            MovieItem(movie = movie, onClick = { onMovieClick(movie) })
+            MovieItem(
+                movie = movie, 
+                onClick = { onMovieClick(movie) },
+                onDeleteClick = onDeleteClick
+            )
         }
         item {
             LaunchedEffect(Unit) {
@@ -215,8 +226,10 @@ fun MovieList(
 @Composable
 fun MovieItem(
     movie: Movie,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDeleteClick: ((Movie) -> Unit)? = null
 ) {
+    val context = LocalContext.current
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -224,51 +237,93 @@ fun MovieItem(
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         shape = MaterialTheme.shapes.medium
     ) {
-        Column {
-            AsyncImage(
-                model = movie.mediumCoverImage,
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(0.67f),
-                contentScale = ContentScale.Crop
-            )
-            Column(modifier = Modifier.padding(8.dp)) {
-                Text(
-                    text = movie.title ?: "",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+        Box {
+            Column {
+                AsyncImage(
+                    model = movie.mediumCoverImage,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.67f),
+                    contentScale = ContentScale.Crop
                 )
-                
-                // RESTORED: Movie Genres
-                if (!movie.genres.isNullOrEmpty()) {
+                Column(modifier = Modifier.padding(8.dp)) {
                     Text(
-                        text = movie.genres.joinToString(", "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(vertical = 2.dp)
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "${movie.year}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "⭐ ${movie.rating}",
-                        style = MaterialTheme.typography.labelSmall,
+                        text = movie.title ?: "",
+                        style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.secondary
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    
+                    // RESTORED: Movie Genres
+                    if (!movie.genres.isNullOrEmpty()) {
+                        Text(
+                            text = movie.genres.joinToString(", "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(vertical = 2.dp)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${movie.year}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = {
+                                    val imdbUrl = "https://www.imdb.com/title/${movie.imdbCode}"
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, movie.title)
+                                        putExtra(Intent.EXTRA_TEXT, "Check out this movie: ${movie.title}\n$imdbUrl")
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "Share movie"))
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Share, 
+                                    contentDescription = "Share",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "⭐ ${movie.rating}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                        }
+                    }
+                }
+            }
+            
+            if (onDeleteClick != null) {
+                IconButton(
+                    onClick = { onDeleteClick(movie) },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f), CircleShape)
+                        .size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Delete, 
+                        contentDescription = "Delete",
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.error
                     )
                 }
             }
