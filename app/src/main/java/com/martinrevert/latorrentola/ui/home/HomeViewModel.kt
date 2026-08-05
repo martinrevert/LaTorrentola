@@ -91,26 +91,37 @@ class HomeViewModel @Inject constructor(
             try {
                 if (currentPage == 1) _uiState.value = HomeUiState.Loading
                 
-                val result = ytsRepository.getMovies(currentPage)
-                result.data?.movies?.let { newMovies ->
-                    if (newMovies.isNotEmpty()) {
-                        // 1. Add only new movies (by id) to avoid duplicates
-                        val filteredNewMovies = newMovies.filter { newMovie ->
+                var foundNewMovies = false
+                while (canLoadMore && !foundNewMovies) {
+                    val result = ytsRepository.getMovies(currentPage)
+                    val moviesFromApi = result.data?.movies
+                    
+                    if (moviesFromApi.isNullOrEmpty()) {
+                        canLoadMore = false
+                        break
+                    }
+
+                    // Filter only English movies as requested for the main screen
+                    val englishMovies = moviesFromApi.filter { it.language == "en" }
+                    
+                    if (englishMovies.isNotEmpty()) {
+                        // Add only new movies (by id) to avoid duplicates
+                        val filteredNewMovies = englishMovies.filter { newMovie ->
                             allMovies.none { it.id == newMovie.id }
                         }
                         
                         if (filteredNewMovies.isNotEmpty()) {
                             allMovies.addAll(filteredNewMovies)
                             _uiState.value = HomeUiState.Success(allMovies.toList())
+                            foundNewMovies = true
                         }
-                        currentPage++
-                    } else {
-                        canLoadMore = false
-                        if (allMovies.isEmpty()) _uiState.value = HomeUiState.Error("No movies found")
                     }
-                } ?: run {
-                    canLoadMore = false
-                    if (allMovies.isEmpty()) _uiState.value = HomeUiState.Error("No movies found")
+                    
+                    currentPage++
+                }
+
+                if (allMovies.isEmpty() && !canLoadMore) {
+                    _uiState.value = HomeUiState.Error("No English movies found")
                 }
             } catch (e: Exception) {
                 if (allMovies.isEmpty()) _uiState.value = HomeUiState.Error(e.localizedMessage ?: "Unknown error")
@@ -137,19 +148,29 @@ class HomeViewModel @Inject constructor(
                 allMovies.clear()
                 _uiState.value = HomeUiState.Loading
 
-                val result = ytsRepository.getMovies(currentPage)
-                result.data?.movies?.let { newMovies ->
-                    if (newMovies.isNotEmpty()) {
-                        allMovies.addAll(newMovies)
-                        _uiState.value = HomeUiState.Success(allMovies.toList())
-                        currentPage++
-                    } else {
+                var foundNewMovies = false
+                while (canLoadMore && !foundNewMovies) {
+                    val result = ytsRepository.getMovies(currentPage)
+                    val moviesFromApi = result.data?.movies
+
+                    if (moviesFromApi.isNullOrEmpty()) {
                         canLoadMore = false
-                        if (allMovies.isEmpty()) _uiState.value = HomeUiState.Error("No movies found")
+                        break
                     }
-                } ?: run {
-                    canLoadMore = false
-                    if (allMovies.isEmpty()) _uiState.value = HomeUiState.Error("No movies found")
+
+                    // Filter only English movies as requested for the main screen
+                    val englishMovies = moviesFromApi.filter { it.language == "en" }
+
+                    if (englishMovies.isNotEmpty()) {
+                        allMovies.addAll(englishMovies)
+                        _uiState.value = HomeUiState.Success(allMovies.toList())
+                        foundNewMovies = true
+                    }
+                    currentPage++
+                }
+
+                if (allMovies.isEmpty() && !canLoadMore) {
+                    _uiState.value = HomeUiState.Error("No English movies found")
                 }
             } catch (e: Exception) {
                 if (allMovies.isEmpty()) _uiState.value = HomeUiState.Error(e.localizedMessage ?: "Unknown error")

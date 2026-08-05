@@ -19,14 +19,20 @@ android {
     namespace 'com.martinrevert.latorrentola'
     compileSdk 37
 
+    def keystorePropertiesFile = rootProject.file("keystore.properties")
+    def keystoreProperties = new Properties()
+    if (keystorePropertiesFile.exists()) {
+        keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+    }
+
     def gitVersionCode = getGitVersionCount(providers)
 
     defaultConfig {
         applicationId "com.martinrevert.latorrentola"
-        versionCode 10000 + gitVersionCode
-        versionName "1.0.$gitVersionCode"
+        versionCode 20000 + gitVersionCode
+        versionName "2.0.$gitVersionCode"
         minSdkVersion 24
-        targetSdkVersion 36
+        targetSdkVersion 37
     }
 
     buildFeatures {
@@ -37,11 +43,28 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+
+    signingConfigs {
+        release {
+            storeFile file("keys/release.keystore")
+            storePassword keystoreProperties['RELEASE_STORE_PASSWORD'] ?: project.findProperty("RELEASE_STORE_PASSWORD") ?: ""
+            keyAlias keystoreProperties['RELEASE_KEY_ALIAS'] ?: project.findProperty("RELEASE_KEY_ALIAS") ?: ""
+            keyPassword keystoreProperties['RELEASE_KEY_PASSWORD'] ?: project.findProperty("RELEASE_KEY_PASSWORD") ?: ""
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
 }
 
 // Global base name for all generated archives (APKs, AABs, etc.)
 base {
-    archivesName = "LaTorrentola-v1.0.${getGitVersionCount(providers)}"
+    archivesName = "LaTorrentola-v2.0.${getGitVersionCount(providers)}"
 }
 
 dependencies {
