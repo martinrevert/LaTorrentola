@@ -38,10 +38,33 @@ class PreferenceManager @Inject constructor(
 
     fun getVibrator(): Boolean = sharedPreferences.getBoolean(KEY_VIBRATOR, false)
 
+    fun setFcmToken(token: String) {
+        sharedPreferences.edit { putString(KEY_FCM_TOKEN, token) }
+    }
+
+    fun getFcmToken(): String? = sharedPreferences.getString(KEY_FCM_TOKEN, null)
+
+    fun setFcmTopicSubscribed(subscribed: Boolean) {
+        sharedPreferences.edit { putBoolean(KEY_FCM_TOPIC_SUBSCRIBED, subscribed) }
+    }
+
+    fun isFcmTopicSubscribed(): Boolean =
+        sharedPreferences.getBoolean(KEY_FCM_TOPIC_SUBSCRIBED, false)
+
+    fun setFcmTokenSynced(synced: Boolean) {
+        sharedPreferences.edit { putBoolean(KEY_FCM_TOKEN_SYNCED, synced) }
+    }
+
+    fun isFcmTokenSynced(): Boolean =
+        sharedPreferences.getBoolean(KEY_FCM_TOKEN_SYNCED, false)
+
     companion object {
         private const val KEY_VOICE_SYSTEM = "voice_system"
         private const val KEY_VOICE_SUMMARY = "voice_summary"
         private const val KEY_VOICE_TRANSLATION = "voice_translation"
         private const val KEY_VIBRATOR = "vibrator"
+        private const val KEY_FCM_TOKEN = "fcm_token"
+        private const val KEY_FCM_TOPIC_SUBSCRIBED = "fcm_topic_subscribed"
+        private const val KEY_FCM_TOKEN_SYNCED = "fcm_token_synced"
     }
 }

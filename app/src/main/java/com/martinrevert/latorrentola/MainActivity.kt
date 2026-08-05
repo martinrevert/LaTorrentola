@@ -1,25 +1,52 @@
 package com.martinrevert.latorrentola
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
+import com.martinrevert.latorrentola.network.FirebaseMessagingConfig
+import com.martinrevert.latorrentola.network.FirebaseMessagingInitializer
 import com.martinrevert.latorrentola.ui.navigation.AppNavigation
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var firebaseMessagingInitializer: FirebaseMessagingInitializer
+
     private var movieJsonToOpen by mutableStateOf<String?>(null)
+
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            Log.d("FCM", "Notification permission granted")
+            firebaseMessagingInitializer.subscribeToDefaultTopic()
+        } else {
+            Log.w("FCM", "Notification permission denied")
+            firebaseMessagingInitializer.unsubscribeFromDefaultTopic()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
         handleIntent(intent)
+        
+        askNotificationPermission()
 
         enableEdgeToEdge()
         setContent {
@@ -35,8 +62,22 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        intent?.getStringExtra("PELI")?.let {
+        intent?.getStringExtra(FirebaseMessagingConfig.EXTRA_MOVIE_JSON)?.let {
             movieJsonToOpen = it
+        }
+    }
+
+    private fun askNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                firebaseMessagingInitializer.subscribeToDefaultTopic()
+            }
+        } else {
+            firebaseMessagingInitializer.subscribeToDefaultTopic()
         }
     }
 }

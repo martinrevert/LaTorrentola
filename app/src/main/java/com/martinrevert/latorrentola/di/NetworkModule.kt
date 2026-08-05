@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.di
 
 import com.martinrevert.latorrentola.constants.Constants
+import com.martinrevert.latorrentola.network.FcmService
 import com.martinrevert.latorrentola.network.YtsService
 import dagger.Module
 import dagger.Provides
@@ -34,6 +35,7 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    @YtsRetrofit
     fun provideRetrofit(okHttpClient: OkHttpClient): Retrofit {
         return Retrofit.Builder()
             .baseUrl(Constants.YTS_BASE_URL)
@@ -44,7 +46,32 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideYtsService(retrofit: Retrofit): YtsService {
+    @FcmRetrofit
+    fun provideFcmRetrofit(okHttpClient: OkHttpClient): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(Constants.FCM_BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            .client(okHttpClient)
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideYtsService(@YtsRetrofit retrofit: Retrofit): YtsService {
         return retrofit.create(YtsService::class.java)
     }
+
+    @Provides
+    @Singleton
+    fun provideFcmService(@FcmRetrofit retrofit: Retrofit): FcmService {
+        return retrofit.create(FcmService::class.java)
+    }
 }
+
+@javax.inject.Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class YtsRetrofit
+
+@javax.inject.Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class FcmRetrofit
