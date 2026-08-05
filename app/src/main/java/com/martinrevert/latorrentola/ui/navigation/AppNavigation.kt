@@ -70,12 +70,14 @@ fun AppNavigation(
                 )
             }
             entry<Route.Detail> { detailKey ->
-                val viewModel: DetailViewModel = hiltViewModel()
-                detailKey.movieJson?.let {
-                    val movie = Json.decodeFromString(Movie.serializer(), it)
-                    viewModel.setMovie(movie)
-                } ?: detailKey.movieId?.let {
-                    viewModel.setMovieById(it)
+                val viewModel: DetailViewModel = hiltViewModel(key = detailKey.hashCode().toString())
+                LaunchedEffect(detailKey) {
+                    detailKey.movieJson?.let {
+                        val movie = Json.decodeFromString(Movie.serializer(), it)
+                        viewModel.setMovie(movie)
+                    } ?: detailKey.movieId?.let {
+                        viewModel.setMovieById(it)
+                    }
                 }
                 MovieDetailScreen(viewModel = viewModel, onBackClick = { backStack.removeLastOrNull() })
             }
@@ -84,7 +86,7 @@ fun AppNavigation(
                 SettingsScreen(viewModel = viewModel, onBackClick = { backStack.removeLastOrNull() })
             }
             entry<Route.Search> { searchKey ->
-                val viewModel: SearchViewModel = hiltViewModel()
+                val viewModel: SearchViewModel = hiltViewModel(key = searchKey.hashCode().toString())
                 SearchScreen(
                     viewModel = viewModel,
                     initialGenre = searchKey.genre,

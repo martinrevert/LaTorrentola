@@ -19,6 +19,7 @@ interface YtsService {
     suspend fun getMovieSearch(
         @Query("limit") limit: Int,
         @Query("query_term") query: String,
+        @Query("page") page: Int,
         @Query("with_cast") withCast: String
     ): MovieDetails
 
