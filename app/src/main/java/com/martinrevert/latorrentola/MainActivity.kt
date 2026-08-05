@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
     lateinit var firebaseMessagingInitializer: FirebaseMessagingInitializer
 
     private var movieJsonToOpen by mutableStateOf<String?>(null)
+    private var movieIdToOpen by mutableStateOf<Int?>(null)
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -51,7 +52,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             LaTorrentolaTheme {
-                AppNavigation(initialMovieJson = movieJsonToOpen)
+                AppNavigation(
+                    initialMovieJson = movieJsonToOpen,
+                    initialMovieId = movieIdToOpen,
+                    onInitialDataHandled = {
+                        movieJsonToOpen = null
+                        movieIdToOpen = null
+                    }
+                )
             }
         }
     }
@@ -64,6 +72,9 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         intent?.getStringExtra(FirebaseMessagingConfig.EXTRA_MOVIE_JSON)?.let {
             movieJsonToOpen = it
+        }
+        intent?.getStringExtra(FirebaseMessagingConfig.EXTRA_MOVIE_ID)?.let {
+            movieIdToOpen = it.toIntOrNull()
         }
     }
 

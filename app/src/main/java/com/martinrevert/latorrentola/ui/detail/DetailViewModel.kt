@@ -48,6 +48,28 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    fun setMovieById(movieId: Int) {
+        viewModelScope.launch {
+            _uiState.value = DetailUiState.Loading
+            try {
+                val isFavorite = ytsRepository.isFavorite(movieId)
+                val fullDetailsResponse = ytsRepository.getMovieFullDetails(movieId)
+                fullDetailsResponse.data?.movie?.let { movie ->
+                    _uiState.value = DetailUiState.Success(movie, isFavorite)
+                    handleVoice(movie)
+                    
+                    movie.genres?.forEach { genre ->
+                        ytsRepository.recordGenreVisit(genre)
+                    }
+                } ?: run {
+                    _uiState.value = DetailUiState.Error("Movie not found")
+                }
+            } catch (e: Exception) {
+                _uiState.value = DetailUiState.Error(e.localizedMessage ?: "Unknown error")
+            }
+        }
+    }
+
     private fun handleVoice(movie: Movie) {
         if (!preferenceManager.getVoiceSystem()) return
 

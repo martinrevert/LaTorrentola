@@ -22,19 +22,29 @@ import com.martinrevert.latorrentola.model.YTS.Movie
 @Serializable
 sealed interface Route : NavKey {
     @Serializable object Home : Route
-    @Serializable data class Detail(val movieJson: String) : Route
+    @Serializable data class Detail(val movieJson: String? = null, val movieId: Int? = null) : Route
     @Serializable object Settings : Route
     @Serializable data class Search(val genre: String? = null) : Route
 }
 
 @Composable
-fun AppNavigation(initialMovieJson: String? = null) {
+fun AppNavigation(
+    initialMovieJson: String? = null, 
+    initialMovieId: Int? = null,
+    onInitialDataHandled: () -> Unit = {}
+) {
     val backStack = rememberNavBackStack(Route.Home)
 
     // Handle Deep Link / Notification navigation
-    LaunchedEffect(initialMovieJson) {
-        initialMovieJson?.let {
-            backStack.add(Route.Detail(it))
+    LaunchedEffect(initialMovieJson, initialMovieId) {
+        if (initialMovieJson != null || initialMovieId != null) {
+            initialMovieJson?.let {
+                backStack.add(Route.Detail(movieJson = it))
+            }
+            initialMovieId?.let {
+                backStack.add(Route.Detail(movieId = it))
+            }
+            onInitialDataHandled()
         }
     }
 
@@ -49,7 +59,7 @@ fun AppNavigation(initialMovieJson: String? = null) {
                     viewModel = viewModel,
                     onMovieClick = { movie ->
                         val movieJson = Json.encodeToString(Movie.serializer(), movie)
-                        backStack.add(Route.Detail(movieJson))
+                        backStack.add(Route.Detail(movieJson = movieJson))
                     },
                     onSettingsClick = { backStack.add(Route.Settings) },
                     onSearchClick = { backStack.add(Route.Search()) },
@@ -61,8 +71,12 @@ fun AppNavigation(initialMovieJson: String? = null) {
             }
             entry<Route.Detail> { detailKey ->
                 val viewModel: DetailViewModel = hiltViewModel()
-                val movie = Json.decodeFromString(Movie.serializer(), detailKey.movieJson)
-                viewModel.setMovie(movie)
+                detailKey.movieJson?.let {
+                    val movie = Json.decodeFromString(Movie.serializer(), it)
+                    viewModel.setMovie(movie)
+                } ?: detailKey.movieId?.let {
+                    viewModel.setMovieById(it)
+                }
                 MovieDetailScreen(viewModel = viewModel, onBackClick = { backStack.removeLastOrNull() })
             }
             entry<Route.Settings> {
@@ -76,7 +90,7 @@ fun AppNavigation(initialMovieJson: String? = null) {
                     initialGenre = searchKey.genre,
                     onMovieClick = { movie ->
                         val movieJson = Json.encodeToString(Movie.serializer(), movie)
-                        backStack.add(Route.Detail(movieJson))
+                        backStack.add(Route.Detail(movieJson = movieJson))
                     },
                     onBackClick = { backStack.removeLastOrNull() }
                 )
