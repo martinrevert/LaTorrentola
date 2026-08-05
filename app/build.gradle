@@ -17,7 +17,7 @@ def getGitVersionCount(providers) {
 
 android {
     namespace 'com.martinrevert.latorrentola'
-    compileSdk 36
+    compileSdk 37
 
     def gitVersionCode = getGitVersionCount(providers)
 

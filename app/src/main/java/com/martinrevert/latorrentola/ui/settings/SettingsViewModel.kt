@@ -21,7 +21,8 @@ class SettingsViewModel @Inject constructor(
             voiceSystem = preferenceManager.getVoiceSystem(),
             voiceSummary = preferenceManager.getVoiceSummary(),
             voiceTranslation = preferenceManager.getVoiceTranslation(),
-            vibrator = preferenceManager.getVibrator()
+            vibrator = preferenceManager.getVibrator(),
+            pushEnabled = preferenceManager.isPushEnabled()
         )
     }
 
@@ -44,11 +45,17 @@ class SettingsViewModel @Inject constructor(
         preferenceManager.setVibrator(enabled)
         _uiState.value = _uiState.value.copy(vibrator = enabled)
     }
+
+    fun togglePushEnabled(enabled: Boolean) {
+        preferenceManager.setPushEnabled(enabled)
+        _uiState.value = _uiState.value.copy(pushEnabled = enabled)
+    }
 }
 
 data class SettingsUiState(
     val voiceSystem: Boolean = true,
     val voiceSummary: Boolean = true,
     val voiceTranslation: Boolean = false,
-    val vibrator: Boolean = false
+    val vibrator: Boolean = false,
+    val pushEnabled: Boolean = true
 )

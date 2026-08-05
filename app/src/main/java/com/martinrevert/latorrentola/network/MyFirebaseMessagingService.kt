@@ -50,7 +50,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             ?: remoteMessage.data["id"]
 
         if (body.isNotBlank()) {
-            sendNotification(title, body, movieJson, movieId)
+            if (preferenceManager.isPushEnabled()) {
+                sendNotification(title, body, movieJson, movieId)
+            } else {
+                Log.d(TAG, "Push notifications are disabled in settings. Skipping visualization.")
+            }
         } else {
             Log.d(TAG, "Message received without displayable body. id=${remoteMessage.messageId}")
         }

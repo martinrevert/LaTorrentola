@@ -59,6 +59,11 @@ fun SettingsScreen(
                 checked = uiState.vibrator,
                 onCheckedChange = { viewModel.toggleVibrator(it) }
             )
+            SettingsToggle(
+                title = "Notificaciones Push",
+                checked = uiState.pushEnabled,
+                onCheckedChange = { viewModel.togglePushEnabled(it) }
+            )
         }
     }
 }

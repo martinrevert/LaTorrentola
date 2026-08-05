@@ -58,6 +58,12 @@ class PreferenceManager @Inject constructor(
     fun isFcmTokenSynced(): Boolean =
         sharedPreferences.getBoolean(KEY_FCM_TOKEN_SYNCED, false)
 
+    fun setPushEnabled(enabled: Boolean) {
+        sharedPreferences.edit { putBoolean(KEY_PUSH_ENABLED, enabled) }
+    }
+
+    fun isPushEnabled(): Boolean = sharedPreferences.getBoolean(KEY_PUSH_ENABLED, true)
+
     companion object {
         private const val KEY_VOICE_SYSTEM = "voice_system"
         private const val KEY_VOICE_SUMMARY = "voice_summary"
@@ -66,5 +72,6 @@ class PreferenceManager @Inject constructor(
         private const val KEY_FCM_TOKEN = "fcm_token"
         private const val KEY_FCM_TOPIC_SUBSCRIBED = "fcm_topic_subscribed"
         private const val KEY_FCM_TOKEN_SYNCED = "fcm_token_synced"
+        private const val KEY_PUSH_ENABLED = "push_enabled"
     }
 }
