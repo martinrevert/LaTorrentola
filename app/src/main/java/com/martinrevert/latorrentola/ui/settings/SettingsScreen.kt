@@ -1,5 +1,6 @@
 package com.martinrevert.latorrentola.ui.settings
 
+import android.content.pm.PackageManager
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -10,6 +11,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.PreferenceManager
@@ -21,13 +23,19 @@ fun SettingsScreen(
     onBackClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val isTv = context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) || 
+               context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEVISION)
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Settings") },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(
+                        onClick = onBackClick,
+                        modifier = Modifier.focusHighlight(shape = androidx.compose.foundation.shape.CircleShape)
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
@@ -57,11 +65,15 @@ fun SettingsScreen(
                 enabled = uiState.voiceSummary,
                 onCheckedChange = { viewModel.toggleVoiceTranslation(it) }
             )
-            SettingsToggle(
-                title = "Vibrar ante eventos",
-                checked = uiState.vibrator,
-                onCheckedChange = { viewModel.toggleVibrator(it) }
-            )
+            
+            if (!isTv) {
+                SettingsToggle(
+                    title = "Vibrar ante eventos",
+                    checked = uiState.vibrator,
+                    onCheckedChange = { viewModel.toggleVibrator(it) }
+                )
+            }
+            
             SettingsToggle(
                 title = "Notificaciones Push",
                 checked = uiState.pushEnabled,

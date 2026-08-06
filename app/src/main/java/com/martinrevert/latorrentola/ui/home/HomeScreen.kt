@@ -235,10 +235,10 @@ fun MovieList(
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
     
-    val columns = if (screenWidth < 600.dp) {
-        StaggeredGridCells.Fixed(2)
-    } else {
-        StaggeredGridCells.Adaptive(minSize = 160.dp)
+    val columns = when {
+        screenWidth < 600.dp -> StaggeredGridCells.Fixed(2)
+        screenWidth < 900.dp -> StaggeredGridCells.Adaptive(minSize = 160.dp)
+        else -> StaggeredGridCells.Adaptive(minSize = 200.dp) // Larger items for TVs/Tablets
     }
 
     LazyVerticalStaggeredGrid(
