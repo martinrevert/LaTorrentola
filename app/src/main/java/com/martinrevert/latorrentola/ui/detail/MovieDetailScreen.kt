@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.ui.detail
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -20,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -109,38 +111,72 @@ fun MovieDetailScreen(
 
 @Composable
 fun MovieDetailContent(movie: Movie) {
+    val context = LocalContext.current
+    val isTv = remember {
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
+        context.packageManager.hasSystemFeature("android.hardware.type.television")
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        // YouTube Player
-        if (!movie.ytTrailerCode.isNullOrEmpty()) {
-            YoutubePlayer(
-                youtubeVideoId = movie.ytTrailerCode,
-                lifecycleOwner = LocalLifecycleOwner.current
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-        }
+        if (isTv && !movie.ytTrailerCode.isNullOrEmpty()) {
+            // TV Layout: Side-by-side Video and Summary
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                Box(modifier = Modifier.weight(0.6f)) {
+                    YoutubePlayer(
+                        youtubeVideoId = movie.ytTrailerCode,
+                        lifecycleOwner = LocalLifecycleOwner.current
+                    )
+                }
+                Column(modifier = Modifier.weight(0.4f)) {
+                    Text(text = "Summary", style = MaterialTheme.typography.titleLarge)
+                    val summaryText = movie.summary?.ifEmpty { movie.descriptionFull } ?: movie.descriptionFull
+                    Text(
+                        text = summaryText ?: "No summary available",
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 8,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(text = "Year: ${movie.year}", style = MaterialTheme.typography.bodyLarge)
+                    Text(text = "Rating: ⭐ ${movie.rating}", style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+        } else {
+            // Phone/Tablet Layout: Stacked Video and Summary
+            if (!movie.ytTrailerCode.isNullOrEmpty()) {
+                YoutubePlayer(
+                    youtubeVideoId = movie.ytTrailerCode,
+                    lifecycleOwner = LocalLifecycleOwner.current
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
 
-        Text(text = "Summary", style = MaterialTheme.typography.titleLarge)
-        val summaryText = movie.summary?.ifEmpty { movie.descriptionFull } ?: movie.descriptionFull
-        Text(text = summaryText ?: "No summary available", style = MaterialTheme.typography.bodyMedium)
+            Text(text = "Summary", style = MaterialTheme.typography.titleLarge)
+            val summaryText = movie.summary?.ifEmpty { movie.descriptionFull } ?: movie.descriptionFull
+            Text(text = summaryText ?: "No summary available", style = MaterialTheme.typography.bodyMedium)
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Text(text = "Details", style = MaterialTheme.typography.titleLarge)
+            Text(text = "Year: ${movie.year}")
+            Text(text = "Language: ${movie.language}")
+            Text(text = "Rating: ${movie.rating}")
+        }
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         if (!movie.cast.isNullOrEmpty()) {
             CastSection(castList = movie.cast)
             Spacer(modifier = Modifier.height(16.dp))
         }
-        
-        Text(text = "Details", style = MaterialTheme.typography.titleLarge)
-        Text(text = "Year: ${movie.year}")
-        Text(text = "Language: ${movie.language}")
-        Text(text = "Rating: ${movie.rating}")
-        
-        Spacer(modifier = Modifier.height(16.dp))
         
         Text(text = "Torrents", style = MaterialTheme.typography.titleLarge)
         movie.torrents?.forEach { torrent ->
