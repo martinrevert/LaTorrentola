@@ -54,6 +54,11 @@ fun HomeScreen(
     
     var showGenreSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
+    val context = LocalContext.current
+    val isTv = remember {
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) || 
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEVISION)
+    }
 
     // 1. Properly save and restore scroll state across configuration changes (rotation)
     val gridState = rememberLazyStaggeredGridState()
@@ -61,7 +66,18 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("La Torrentola") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            painter = painterResource(com.martinrevert.latorrentola.R.mipmap.ic_launcher),
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp),
+                            tint = Color.Unspecified
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("La Torrentola")
+                    }
+                },
                 actions = {
                     IconButton(
                         onClick = onSearchClick,
@@ -102,36 +118,40 @@ fun HomeScreen(
                 onAllGenresClick = { showGenreSheet = true }
             )
 
-                    val pullRefreshState = rememberPullRefreshState(isRefreshing, onRefresh = { viewModel.refresh() })
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pullRefresh(pullRefreshState),
-                        contentAlignment = Alignment.Center
-                    ) {
-                when (val state = uiState) {
-                    is HomeUiState.Loading -> {
-                        CircularProgressIndicator()
-                    }
-                    is HomeUiState.Success -> {
-                        MovieList(
-                            movies = state.movies,
-                            state = gridState,
-                            lastVisitDate = lastVisitDate,
-                            onMovieClick = onMovieClick,
-                            onLoadMore = { viewModel.loadMovies() }
-                        )
-                    }
-                    is HomeUiState.Error -> {
-                        Text(
-                            text = state.message,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
+            if (isTv) {
+                // TV Layout: No pull-to-refresh
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    HomeContent(
+                        uiState = uiState,
+                        gridState = gridState,
+                        lastVisitDate = lastVisitDate,
+                        onMovieClick = onMovieClick,
+                        onLoadMore = { viewModel.loadMovies() }
+                    )
                 }
-                // Pull-to-refresh indicator (official Compose implementation)
-                PullRefreshIndicator(isRefreshing, pullRefreshState, Modifier.align(Alignment.TopCenter))
+            } else {
+                // Handheld Layout: With pull-to-refresh
+                val pullRefreshState = rememberPullRefreshState(isRefreshing, onRefresh = { viewModel.refresh() })
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pullRefresh(pullRefreshState),
+                    contentAlignment = Alignment.Center
+                ) {
+                    HomeContent(
+                        uiState = uiState,
+                        gridState = gridState,
+                        lastVisitDate = lastVisitDate,
+                        onMovieClick = onMovieClick,
+                        onLoadMore = { viewModel.loadMovies() }
+                    )
+                    // Pull-to-refresh indicator (official Compose implementation)
+                    PullRefreshIndicator(isRefreshing, pullRefreshState, Modifier.align(Alignment.TopCenter))
+                }
             }
         }
     }
@@ -146,6 +166,36 @@ fun HomeScreen(
             onDismiss = { showGenreSheet = false },
             sheetState = sheetState
         )
+    }
+}
+
+@Composable
+private fun HomeContent(
+    uiState: HomeUiState,
+    gridState: LazyStaggeredGridState,
+    lastVisitDate: Long?,
+    onMovieClick: (Movie) -> Unit,
+    onLoadMore: () -> Unit
+) {
+    when (uiState) {
+        is HomeUiState.Loading -> {
+            CircularProgressIndicator()
+        }
+        is HomeUiState.Success -> {
+            MovieList(
+                movies = uiState.movies,
+                state = gridState,
+                lastVisitDate = lastVisitDate,
+                onMovieClick = onMovieClick,
+                onLoadMore = onLoadMore
+            )
+        }
+        is HomeUiState.Error -> {
+            Text(
+                text = uiState.message,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
     }
 }
 
