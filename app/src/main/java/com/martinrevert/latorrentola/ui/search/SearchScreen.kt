@@ -19,9 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.shape.CircleShape
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.home.MovieList
 import com.martinrevert.latorrentola.ui.home.MovieItem
+import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -76,18 +78,21 @@ fun SearchScreen(
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             trailingIcon = {
-                                IconButton(onClick = {
-                                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                                        putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to search movies")
-                                    }
-                                    try {
-                                        speechLauncher.launch(intent)
-                                    } catch (e: Exception) {
-                                        // Handle case where speech recognition is not available
-                                    }
-                                }) {
+                                IconButton(
+                                    onClick = {
+                                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                                            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to search movies")
+                                        }
+                                        try {
+                                            speechLauncher.launch(intent)
+                                        } catch (e: Exception) {
+                                            // Handle case where speech recognition is not available
+                                        }
+                                    },
+                                    modifier = Modifier.focusHighlight(shape = CircleShape)
+                                ) {
                                     Icon(Icons.Default.Mic, contentDescription = "Voice Search")
                                 }
                             },
@@ -99,7 +104,10 @@ fun SearchScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(
+                        onClick = onBackClick,
+                        modifier = Modifier.focusHighlight(shape = CircleShape)
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },

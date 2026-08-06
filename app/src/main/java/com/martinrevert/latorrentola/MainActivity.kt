@@ -13,11 +13,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.core.content.ContextCompat
 import com.martinrevert.latorrentola.network.FirebaseMessagingConfig
 import com.martinrevert.latorrentola.network.FirebaseMessagingInitializer
 import com.martinrevert.latorrentola.ui.navigation.AppNavigation
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -26,6 +28,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var firebaseMessagingInitializer: FirebaseMessagingInitializer
+
+    @Inject
+    lateinit var preferenceManager: PreferenceManager
 
     private var movieJsonToOpen by mutableStateOf<String?>(null)
     private var movieIdToOpen by mutableStateOf<Int?>(null)
@@ -51,7 +56,8 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            LaTorrentolaTheme {
+            val themeMode by preferenceManager.themeFlow.collectAsState()
+            LaTorrentolaTheme(themeMode = themeMode) {
                 AppNavigation(
                     initialMovieJson = movieJsonToOpen,
                     initialMovieId = movieIdToOpen,

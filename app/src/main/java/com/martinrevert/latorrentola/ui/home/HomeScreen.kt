@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.ui.theme.focusHighlight
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
@@ -61,10 +62,16 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text("La Torrentola") },
                 actions = {
-                    IconButton(onClick = onSearchClick) {
+                    IconButton(
+                        onClick = onSearchClick,
+                        modifier = Modifier.focusHighlight(shape = CircleShape)
+                    ) {
                         Icon(Icons.Default.Search, contentDescription = "Search")
                     }
-                    IconButton(onClick = onFavoritesClick) {
+                    IconButton(
+                        onClick = onFavoritesClick,
+                        modifier = Modifier.focusHighlight(shape = CircleShape)
+                    ) {
                         BadgedBox(
                             badge = {
                                 if (favoritesCount > 0) {
@@ -77,7 +84,10 @@ fun HomeScreen(
                             Icon(Icons.Default.Favorite, contentDescription = "Favorites")
                         }
                     }
-                    IconButton(onClick = onSettingsClick) {
+                    IconButton(
+                        onClick = onSettingsClick,
+                        modifier = Modifier.focusHighlight(shape = CircleShape)
+                    ) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
                 }
@@ -156,13 +166,15 @@ fun GenreChips(
                 selected = false,
                 onClick = onAllGenresClick,
                 label = { Text("All Genres") },
-                leadingIcon = { Icon(Icons.Default.FilterList, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                leadingIcon = { Icon(Icons.Default.FilterList, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
             )
         }
         lazyItems(genres) { genre ->
             SuggestionChip(
                 onClick = { onGenreClick(genre) },
-                label = { Text(genre) }
+                label = { Text(genre) },
+                modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
             )
         }
     }
@@ -264,6 +276,7 @@ fun MovieItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .focusHighlight(shape = MaterialTheme.shapes.medium)
             .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         shape = MaterialTheme.shapes.medium

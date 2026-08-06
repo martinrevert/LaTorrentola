@@ -1,5 +1,6 @@
 package com.martinrevert.latorrentola.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -10,6 +11,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.utils.PreferenceManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,6 +67,45 @@ fun SettingsScreen(
                 checked = uiState.pushEnabled,
                 onCheckedChange = { viewModel.togglePushEnabled(it) }
             )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text(text = "Tema", style = MaterialTheme.typography.titleMedium)
+            
+            ThemeSelector(
+                selectedTheme = uiState.theme,
+                onThemeSelected = { viewModel.setTheme(it) }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ThemeSelector(
+    selectedTheme: Int,
+    onThemeSelected: (Int) -> Unit
+) {
+    val options = listOf("Sistema", "Claro", "Oscuro")
+    val themeValues = listOf(
+        PreferenceManager.THEME_SYSTEM,
+        PreferenceManager.THEME_LIGHT,
+        PreferenceManager.THEME_DARK
+    )
+
+    SingleChoiceSegmentedButtonRow(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        options.forEachIndexed { index, label ->
+            val shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
+            SegmentedButton(
+                shape = shape,
+                onClick = { onThemeSelected(themeValues[index]) },
+                selected = selectedTheme == themeValues[index],
+                modifier = Modifier.focusHighlight(shape = shape)
+            ) {
+                Text(label)
+            }
         }
     }
 }
@@ -76,7 +118,11 @@ fun SettingsToggle(
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusHighlight(shape = MaterialTheme.shapes.small)
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .padding(vertical = 12.dp, horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {

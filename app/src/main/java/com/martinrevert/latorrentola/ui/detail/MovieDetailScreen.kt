@@ -40,6 +40,7 @@ import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.Torrent
 import com.martinrevert.latorrentola.model.YTS.Cast
+import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import java.net.URLEncoder
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,14 +62,20 @@ fun MovieDetailScreen(
             TopAppBar(
                 title = { Text((uiState as? DetailUiState.Success)?.movie?.title ?: "Details") },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(
+                        onClick = onBackClick,
+                        modifier = Modifier.focusHighlight(shape = CircleShape)
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
                     val state = uiState
                     if (state is DetailUiState.Success) {
-                        IconButton(onClick = { viewModel.toggleFavorite(state.movie) }) {
+                        IconButton(
+                            onClick = { viewModel.toggleFavorite(state.movie) },
+                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                        ) {
                             Icon(
                                 if (state.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                 contentDescription = "Favorite"
@@ -247,7 +254,10 @@ fun TorrentItem(movie: Movie, torrent: Torrent) {
                 }
             }
         },
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .focusHighlight(shape = MaterialTheme.shapes.extraLarge)
     ) {
         Text(text = "${torrent.quality} - ${torrent.size} (${torrent.type})")
     }

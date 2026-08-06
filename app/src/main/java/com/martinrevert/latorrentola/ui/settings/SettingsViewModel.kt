@@ -24,7 +24,8 @@ class SettingsViewModel @Inject constructor(
             voiceSummary = preferenceManager.getVoiceSummary(),
             voiceTranslation = preferenceManager.getVoiceTranslation(),
             vibrator = preferenceManager.getVibrator(),
-            pushEnabled = preferenceManager.isPushEnabled()
+            pushEnabled = preferenceManager.isPushEnabled(),
+            theme = preferenceManager.getTheme()
         )
     }
 
@@ -53,6 +54,11 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(pushEnabled = enabled)
         firebaseMessagingInitializer.syncTopicSubscription(enabled)
     }
+
+    fun setTheme(theme: Int) {
+        preferenceManager.setTheme(theme)
+        _uiState.value = _uiState.value.copy(theme = theme)
+    }
 }
 
 data class SettingsUiState(
@@ -60,5 +66,6 @@ data class SettingsUiState(
     val voiceSummary: Boolean = true,
     val voiceTranslation: Boolean = false,
     val vibrator: Boolean = false,
-    val pushEnabled: Boolean = true
+    val pushEnabled: Boolean = true,
+    val theme: Int = PreferenceManager.THEME_SYSTEM
 )

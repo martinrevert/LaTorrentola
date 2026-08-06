@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -13,6 +16,9 @@ class PreferenceManager @Inject constructor(
 ) {
     private val sharedPreferences: SharedPreferences =
         context.getSharedPreferences("latorrentola_prefs", Context.MODE_PRIVATE)
+
+    private val _themeFlow = MutableStateFlow(getTheme())
+    val themeFlow: StateFlow<Int> = _themeFlow.asStateFlow()
 
     fun setVoiceSystem(enabled: Boolean) {
         sharedPreferences.edit { putBoolean(KEY_VOICE_SYSTEM, enabled) }
@@ -64,6 +70,13 @@ class PreferenceManager @Inject constructor(
 
     fun isPushEnabled(): Boolean = sharedPreferences.getBoolean(KEY_PUSH_ENABLED, true)
 
+    fun setTheme(theme: Int) {
+        sharedPreferences.edit { putInt(KEY_THEME, theme) }
+        _themeFlow.value = theme
+    }
+
+    fun getTheme(): Int = sharedPreferences.getInt(KEY_THEME, THEME_SYSTEM)
+
     companion object {
         private const val KEY_VOICE_SYSTEM = "voice_system"
         private const val KEY_VOICE_SUMMARY = "voice_summary"
@@ -73,5 +86,10 @@ class PreferenceManager @Inject constructor(
         private const val KEY_FCM_TOPIC_SUBSCRIBED = "fcm_topic_subscribed"
         private const val KEY_FCM_TOKEN_SYNCED = "fcm_token_synced"
         private const val KEY_PUSH_ENABLED = "push_enabled"
+        private const val KEY_THEME = "theme"
+
+        const val THEME_SYSTEM = 0
+        const val THEME_LIGHT = 1
+        const val THEME_DARK = 2
     }
 }
