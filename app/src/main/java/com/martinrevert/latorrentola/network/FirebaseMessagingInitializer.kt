@@ -34,7 +34,9 @@ class FirebaseMessagingInitializer @Inject constructor(
     }
 
     fun subscribeToDefaultTopic() {
-        syncTopicSubscription(true)
+        if (preferenceManager.isPushEnabled()) {
+            syncTopicSubscription(true)
+        }
     }
 
     fun unsubscribeFromDefaultTopic() {
@@ -125,6 +127,8 @@ class FirebaseMessagingInitializer @Inject constructor(
     }
 
     private fun shouldSubscribeToNotifications(): Boolean {
+        if (!preferenceManager.isPushEnabled()) return false
+        
         val notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
         if (!notificationsEnabled) return false
 

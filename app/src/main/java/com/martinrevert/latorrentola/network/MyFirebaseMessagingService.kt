@@ -138,6 +138,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     private fun canDeliverNotifications(): Boolean {
+        if (!preferenceManager.isPushEnabled()) return false
         if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) return false
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
 

@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.ui.settings
 
 import androidx.lifecycle.ViewModel
+import com.martinrevert.latorrentola.network.FirebaseMessagingInitializer
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,7 +11,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val preferenceManager: PreferenceManager
+    private val preferenceManager: PreferenceManager,
+    private val firebaseMessagingInitializer: FirebaseMessagingInitializer
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -49,6 +51,7 @@ class SettingsViewModel @Inject constructor(
     fun togglePushEnabled(enabled: Boolean) {
         preferenceManager.setPushEnabled(enabled)
         _uiState.value = _uiState.value.copy(pushEnabled = enabled)
+        firebaseMessagingInitializer.syncTopicSubscription(enabled)
     }
 }
 

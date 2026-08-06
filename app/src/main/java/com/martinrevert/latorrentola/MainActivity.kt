@@ -70,11 +70,23 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        intent?.getStringExtra(FirebaseMessagingConfig.EXTRA_MOVIE_JSON)?.let {
-            movieJsonToOpen = it
-        }
-        intent?.getStringExtra(FirebaseMessagingConfig.EXTRA_MOVIE_ID)?.let {
-            movieIdToOpen = it.toIntOrNull()
+        intent?.let {
+            // Check for Movie JSON (full object)
+            it.getStringExtra(FirebaseMessagingConfig.EXTRA_MOVIE_JSON)?.let { json ->
+                movieJsonToOpen = json
+            } ?: it.getStringExtra("peli")?.let { json ->
+                movieJsonToOpen = json
+            }
+
+            // Check for Movie ID
+            val idExtra = it.getStringExtra(FirebaseMessagingConfig.EXTRA_MOVIE_ID)
+                ?: it.getStringExtra("id")
+                ?: it.getIntExtra(FirebaseMessagingConfig.EXTRA_MOVIE_ID, -1).takeIf { id -> id != -1 }?.toString()
+                ?: it.getIntExtra("id", -1).takeIf { id -> id != -1 }?.toString()
+
+            idExtra?.let { idStr ->
+                movieIdToOpen = idStr.toIntOrNull()
+            }
         }
     }
 
