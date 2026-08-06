@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola.ui.home
 import androidx.compose.foundation.clickable
 import android.content.Intent
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items as lazyItems
@@ -69,10 +70,10 @@ fun HomeScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            painter = painterResource(com.martinrevert.latorrentola.R.mipmap.ic_launcher),
+                            painter = painterResource(com.martinrevert.latorrentola.R.drawable.ic_launcher_foreground),
                             contentDescription = null,
                             modifier = Modifier.size(32.dp),
-                            tint = Color.Unspecified
+                            tint = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color.White else Color.Black
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("La Torrentola")
