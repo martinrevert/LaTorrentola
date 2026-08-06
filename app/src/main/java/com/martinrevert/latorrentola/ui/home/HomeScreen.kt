@@ -31,6 +31,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.content.pm.PackageManager
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
@@ -232,13 +233,20 @@ fun MovieList(
     onLoadMore: () -> Unit,
     onDeleteClick: ((Movie) -> Unit)? = null
 ) {
+    val context = LocalContext.current
+    val isTv = remember {
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) || 
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEVISION)
+    }
+
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
     
     val columns = when {
+        isTv -> StaggeredGridCells.Fixed(6) // Enforce exactly 6 columns on TV devices
         screenWidth < 600.dp -> StaggeredGridCells.Fixed(2)
         screenWidth < 900.dp -> StaggeredGridCells.Adaptive(minSize = 160.dp)
-        else -> StaggeredGridCells.Adaptive(minSize = 200.dp) // Larger items for TVs/Tablets
+        else -> StaggeredGridCells.Adaptive(minSize = 200.dp) 
     }
 
     LazyVerticalStaggeredGrid(
