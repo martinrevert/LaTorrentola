@@ -6,7 +6,7 @@ La Torrentola is a modern, high-performance Android application built with the l
 
 This project has been fully refactored to use the most cutting-edge libraries and patterns:
 
--   **Language:** [Kotlin 2.1+](https://kotlinlang.org/) with the K2 compiler for faster builds and improved performance.
+-   **Language:** [Kotlin 2.4+](https://kotlinlang.org/) with the K2 compiler for faster builds and improved performance.
 -   **UI:** [Jetpack Compose](https://developer.android.com/compose) with **Material 3**, providing a declarative and reactive user interface.
 -   **Architecture:** [MVVM (Model-View-ViewModel)](https://developer.android.com/topic/architecture) with a clean separation of concerns.
 -   **Dependency Injection:** [Hilt](https://developer.android.com/training/dependency-injection/hilt-android) for robust and scalable DI.
@@ -16,7 +16,7 @@ This project has been fully refactored to use the most cutting-edge libraries an
 -   **Async & Streams:** [Kotlin Coroutines](https://kotlinlang.org/docs/coroutines-overview.html) and [Flow](https://kotlinlang.org/docs/flow.html) for all asynchronous operations.
 -   **Image Loading:** [Coil 3](https://coil-kt.github.io/coil/) for efficient, multi-platform ready image fetching.
 -   **AI Integration:** [Google ML Kit Translate](https://developers.google.com/ml-kit/language/translation) for on-device movie summary translations.
--   **Build System:** [Android Gradle Plugin 9.2.0+](https://developer.android.com/studio/releases/gradle-plugin) and Version Catalogs (`libs.versions.toml`).
+-   **Build System:** [Android Gradle Plugin 9.3.1+](https://developer.android.com/studio/releases/gradle-plugin) and Version Catalogs (`libs.versions.toml`).
 
 ## 🏗️ Architecture Overview
 
@@ -69,7 +69,9 @@ graph TD
 5.  **On-Device AI:** Real-time translation of movie summaries from English to Spanish without cloud dependencies.
 6.  **Navigation 3:** Uses the latest navigation APIs for passing complex data safely between screens.
 7.  **Edge-to-Edge:** Full support for Android 15's edge-to-edge requirements using `WindowInsets`.
-8.  **Performance:** Optimized with R8/ProGuard and modern serialization (Kotlinx Serialization + GSON).
+8.  **Android TV Support:** Optimized for leanback experience with a 16:9 banner and D-Pad focus handling.
+9.  **Theming & Accessibility:** Dynamic UI adjustments (e.g., App Bar icon tint) that adapt to surface luminance in both Light and Dark themes.
+10. **Performance:** Optimized with R8/ProGuard and modern serialization (Kotlinx Serialization + GSON).
 
 ## 🔄 Core Workflows
 
@@ -143,8 +145,9 @@ To ensure the project compiles and runs correctly:
 1.  **Constants:** Ensure `app/src/main/java/com/martinrevert/latorrentola/constants/Constants.kt` exists:
     ```kotlin
     object Constants {
-        const val YTS_BASE_URL = "https://yts.ag/api/v2/"
+        const val YTS_BASE_URL = "https://movies-api.accel.li/api/v2/"
         const val PAGE_SIZE = 50
+        const val MIN_RATING = "6"
     }
     ```
 2.  **Google Services:** Place your `google-services.json` in the `app/` directory for Firebase and ML Kit functionality.

@@ -21,7 +21,7 @@ class YtsRepository @Inject constructor(
 ) {
 
     suspend fun getMovies(page: Int): MovieDetails {
-        return ytsService.getMovieDetails(Constants.PAGE_SIZE, "6", page, "true", "true")
+        return ytsService.getMovieDetails(Constants.PAGE_SIZE, Constants.MIN_RATING, page, "true", "true")
     }
 
     suspend fun searchMovies(query: String, page: Int): MovieDetails {
