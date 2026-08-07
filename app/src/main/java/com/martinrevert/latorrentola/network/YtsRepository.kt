@@ -1,5 +1,6 @@
 package com.martinrevert.latorrentola.network
 
+import com.martinrevert.latorrentola.constants.Constants
 import com.martinrevert.latorrentola.database.DateDao
 import com.martinrevert.latorrentola.database.GenreDao
 import com.martinrevert.latorrentola.database.MovieDao
@@ -20,19 +21,19 @@ class YtsRepository @Inject constructor(
 ) {
 
     suspend fun getMovies(page: Int): MovieDetails {
-        return ytsService.getMovieDetails(50, "6", page, "true", "true")
+        return ytsService.getMovieDetails(Constants.PAGE_SIZE, "6", page, "true", "true")
     }
 
     suspend fun searchMovies(query: String, page: Int): MovieDetails {
-        return ytsService.getMovieSearch(50, query, page, "true")
+        return ytsService.getMovieSearch(Constants.PAGE_SIZE, query, page, "true")
     }
 
     suspend fun searchByGenre(genre: String, page: Int): MovieDetails {
-        return ytsService.getGenreSearch(50, genre, page, "true")
+        return ytsService.getGenreSearch(Constants.PAGE_SIZE, genre, page, "true")
     }
 
     suspend fun searchByQuality(quality: String, page: Int): MovieDetails {
-        return ytsService.getTridiSearch(50, quality, page, "true")
+        return ytsService.getTridiSearch(Constants.PAGE_SIZE, quality, page, "true")
     }
 
     fun getFavoriteMovies(): Flow<List<Movie>> {
