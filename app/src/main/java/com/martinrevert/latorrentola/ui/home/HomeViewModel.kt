@@ -32,6 +32,9 @@ class HomeViewModel @Inject constructor(
     private val _selectedQuality = MutableStateFlow<String?>(null)
     val selectedQuality: StateFlow<String?> = _selectedQuality.asStateFlow()
 
+    private val _lastClickedMovieId = MutableStateFlow<Int?>(null)
+    val lastClickedMovieId: StateFlow<Int?> = _lastClickedMovieId.asStateFlow()
+
     val qualityOptions = listOf("All", "2160p", "1080p.x265", "1080p", "720p", "3D")
 
     val favoritesCount: StateFlow<Int> = ytsRepository.getFavoriteMovies()
@@ -199,6 +202,14 @@ class HomeViewModel @Inject constructor(
             }
         }
     }
+    fun setLastClickedMovieId(id: Int?) {
+        _lastClickedMovieId.value = id
+    }
+
+    fun clearLastClickedMovieId() {
+        _lastClickedMovieId.value = null
+    }
+
     fun toggleFavorite(movie: Movie) {
         viewModelScope.launch {
             if (ytsRepository.isFavorite(movie.id)) {

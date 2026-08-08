@@ -22,6 +22,9 @@ class SearchViewModel @Inject constructor(
     private val _selectedQuality = MutableStateFlow<String?>(null)
     val selectedQuality: StateFlow<String?> = _selectedQuality.asStateFlow()
 
+    private val _lastClickedMovieId = MutableStateFlow<Int?>(null)
+    val lastClickedMovieId: StateFlow<Int?> = _lastClickedMovieId.asStateFlow()
+
     val qualityOptions = listOf("All", "2160p", "1080p.x265", "1080p", "720p", "3D")
 
     private val allResults = mutableListOf<Movie>()
@@ -94,6 +97,14 @@ class SearchViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    fun setLastClickedMovieId(id: Int?) {
+        _lastClickedMovieId.value = id
+    }
+
+    fun clearLastClickedMovieId() {
+        _lastClickedMovieId.value = null
     }
 
     fun removeFavorite(movie: Movie) {

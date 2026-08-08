@@ -37,6 +37,7 @@ fun SearchScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val selectedQuality by viewModel.selectedQuality.collectAsState()
+    val lastClickedMovieId by viewModel.lastClickedMovieId.collectAsState()
     val qualityOptions = viewModel.qualityOptions
     var searchQuery by remember { mutableStateOf("") }
     var isShowingFavorites by remember(initialGenre) { mutableStateOf(initialGenre == "milista") }
@@ -151,9 +152,14 @@ fun SearchScreen(
                             MovieList(
                                 movies = state.movies,
                                 state = gridState,
-                                onMovieClick = onMovieClick,
+                                onMovieClick = {
+                                    viewModel.setLastClickedMovieId(it.id)
+                                    onMovieClick(it)
+                                },
                                 onLoadMore = { if (!state.isFavorites) viewModel.loadMore() },
-                                onDeleteClick = if (state.isFavorites) { movie -> viewModel.removeFavorite(movie) } else null
+                                onDeleteClick = if (state.isFavorites) { movie -> viewModel.removeFavorite(movie) } else null,
+                                initialFocusId = lastClickedMovieId,
+                                onFocusRestored = { viewModel.clearLastClickedMovieId() }
                             )
                         }
                         is SearchUiState.Empty -> {

@@ -1,5 +1,7 @@
 package com.martinrevert.latorrentola.ui.home
 
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.clickable
 import android.content.Intent
 import androidx.compose.foundation.background
@@ -53,6 +55,7 @@ fun HomeScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val favoritesCount by viewModel.favoritesCount.collectAsState()
     val selectedQuality by viewModel.selectedQuality.collectAsState()
+    val lastClickedMovieId by viewModel.lastClickedMovieId.collectAsState()
     val qualityOptions = viewModel.qualityOptions
     
     var showGenreSheet by remember { mutableStateOf(false) }
@@ -137,8 +140,13 @@ fun HomeScreen(
                         uiState = uiState,
                         gridState = gridState,
                         lastVisitDate = lastVisitDate,
-                        onMovieClick = onMovieClick,
-                        onLoadMore = { viewModel.loadMovies() }
+                        onMovieClick = {
+                            viewModel.setLastClickedMovieId(it.id)
+                            onMovieClick(it)
+                        },
+                        onLoadMore = { viewModel.loadMovies() },
+                        lastClickedMovieId = lastClickedMovieId,
+                        onFocusRestored = { viewModel.clearLastClickedMovieId() }
                     )
                 }
             } else {
@@ -155,8 +163,13 @@ fun HomeScreen(
                         uiState = uiState,
                         gridState = gridState,
                         lastVisitDate = lastVisitDate,
-                        onMovieClick = onMovieClick,
-                        onLoadMore = { viewModel.loadMovies() }
+                        onMovieClick = {
+                            viewModel.setLastClickedMovieId(it.id)
+                            onMovieClick(it)
+                        },
+                        onLoadMore = { viewModel.loadMovies() },
+                        lastClickedMovieId = lastClickedMovieId,
+                        onFocusRestored = { viewModel.clearLastClickedMovieId() }
                     )
                     // Pull-to-refresh indicator (official Compose implementation)
                     PullRefreshIndicator(isRefreshing, pullRefreshState, Modifier.align(Alignment.TopCenter))
@@ -184,7 +197,9 @@ private fun HomeContent(
     gridState: LazyStaggeredGridState,
     lastVisitDate: Long?,
     onMovieClick: (Movie) -> Unit,
-    onLoadMore: () -> Unit
+    onLoadMore: () -> Unit,
+    lastClickedMovieId: Int? = null,
+    onFocusRestored: () -> Unit = {}
 ) {
     when (uiState) {
         is HomeUiState.Loading -> {
@@ -196,7 +211,9 @@ private fun HomeContent(
                 state = gridState,
                 lastVisitDate = lastVisitDate,
                 onMovieClick = onMovieClick,
-                onLoadMore = onLoadMore
+                onLoadMore = onLoadMore,
+                initialFocusId = lastClickedMovieId,
+                onFocusRestored = onFocusRestored
             )
         }
         is HomeUiState.Error -> {
@@ -314,7 +331,9 @@ fun MovieList(
     lastVisitDate: Long? = null,
     onMovieClick: (Movie) -> Unit,
     onLoadMore: () -> Unit,
-    onDeleteClick: ((Movie) -> Unit)? = null
+    onDeleteClick: ((Movie) -> Unit)? = null,
+    initialFocusId: Int? = null,
+    onFocusRestored: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val isTv = remember {
@@ -345,7 +364,9 @@ fun MovieList(
                 movie = movie, 
                 lastVisitDate = lastVisitDate,
                 onClick = { onMovieClick(movie) },
-                onDeleteClick = onDeleteClick
+                onDeleteClick = onDeleteClick,
+                shouldRequestFocus = movie.id == initialFocusId,
+                onFocusRestored = onFocusRestored
             )
         }
         item {
@@ -361,12 +382,24 @@ fun MovieItem(
     movie: Movie,
     lastVisitDate: Long? = null,
     onClick: () -> Unit,
-    onDeleteClick: ((Movie) -> Unit)? = null
+    onDeleteClick: ((Movie) -> Unit)? = null,
+    shouldRequestFocus: Boolean = false,
+    onFocusRestored: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(shouldRequestFocus) {
+        if (shouldRequestFocus) {
+            focusRequester.requestFocus()
+            onFocusRestored()
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .focusRequester(focusRequester)
             .focusHighlight(shape = MaterialTheme.shapes.medium)
             .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
