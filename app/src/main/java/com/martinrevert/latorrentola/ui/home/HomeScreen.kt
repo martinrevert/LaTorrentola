@@ -1,5 +1,6 @@
 package com.martinrevert.latorrentola.ui.home
 
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.clickable
@@ -402,10 +403,13 @@ fun MovieItem(
 
     LaunchedEffect(shouldRequestFocus) {
         if (shouldRequestFocus) {
-            yield()
-            delay(100)
-            focusRequester.requestFocus()
-            onFocusRestored()
+            // Wait for composition and layout to settle
+            delay(300)
+            try {
+                focusRequester.requestFocus()
+            } catch (e: Exception) {
+                // Focus request might fail if not attached
+            }
         }
     }
 
@@ -413,6 +417,11 @@ fun MovieItem(
         modifier = Modifier
             .fillMaxWidth()
             .focusRequester(focusRequester)
+            .onFocusChanged { state ->
+                if (state.isFocused && shouldRequestFocus) {
+                    onFocusRestored()
+                }
+            }
             .focusHighlight(shape = MaterialTheme.shapes.medium)
             .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
