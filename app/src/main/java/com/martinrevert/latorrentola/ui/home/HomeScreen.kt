@@ -20,6 +20,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.yield
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
@@ -375,6 +377,15 @@ fun MovieList(
             }
         }
     }
+
+    LaunchedEffect(initialFocusId, movies) {
+        if (initialFocusId != null && movies.isNotEmpty()) {
+            val index = movies.indexOfFirst { it.id == initialFocusId }
+            if (index != -1) {
+                state.scrollToItem(index)
+            }
+        }
+    }
 }
 
 @Composable
@@ -391,6 +402,8 @@ fun MovieItem(
 
     LaunchedEffect(shouldRequestFocus) {
         if (shouldRequestFocus) {
+            yield()
+            delay(100)
             focusRequester.requestFocus()
             onFocusRestored()
         }

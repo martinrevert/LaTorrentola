@@ -43,6 +43,8 @@ fun SearchScreen(
     var isShowingFavorites by remember(initialGenre) { mutableStateOf(initialGenre == "milista") }
     val context = LocalContext.current
 
+    val gridState = rememberLazyStaggeredGridState()
+
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -148,7 +150,6 @@ fun SearchScreen(
                             CircularProgressIndicator()
                         }
                         is SearchUiState.Success -> {
-                            val gridState = rememberLazyStaggeredGridState()
                             MovieList(
                                 movies = state.movies,
                                 state = gridState,
