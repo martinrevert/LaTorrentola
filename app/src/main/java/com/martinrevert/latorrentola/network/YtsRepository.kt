@@ -20,20 +20,20 @@ class YtsRepository @Inject constructor(
     private val dateDao: DateDao
 ) {
 
-    suspend fun getMovies(page: Int): MovieDetails {
-        return ytsService.getMovieDetails(Constants.PAGE_SIZE, Constants.MIN_RATING, page, "true", "true")
+    suspend fun getMovies(page: Int, quality: String? = null): MovieDetails {
+        return ytsService.getMovieDetails(Constants.PAGE_SIZE, Constants.MIN_RATING, page, "true", "true", "year", "desc", quality)
     }
 
-    suspend fun searchMovies(query: String, page: Int): MovieDetails {
-        return ytsService.getMovieSearch(Constants.PAGE_SIZE, query, page, "true")
+    suspend fun searchMovies(query: String, page: Int, quality: String? = null): MovieDetails {
+        return ytsService.getMovieSearch(Constants.PAGE_SIZE, query, page, "true", "year", "desc", quality)
     }
 
-    suspend fun searchByGenre(genre: String, page: Int): MovieDetails {
-        return ytsService.getGenreSearch(Constants.PAGE_SIZE, genre, page, "true")
+    suspend fun searchByGenre(genre: String, page: Int, quality: String? = null): MovieDetails {
+        return ytsService.getGenreSearch(Constants.PAGE_SIZE, genre, page, "true", "year", "desc", quality)
     }
 
     suspend fun searchByQuality(quality: String, page: Int): MovieDetails {
-        return ytsService.getTridiSearch(Constants.PAGE_SIZE, quality, page, "true")
+        return ytsService.getTridiSearch(Constants.PAGE_SIZE, quality, page, "true", "year", "desc")
     }
 
     fun getFavoriteMovies(): Flow<List<Movie>> {

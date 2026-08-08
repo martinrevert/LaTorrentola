@@ -19,6 +19,11 @@ class SearchViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
+    private val _selectedQuality = MutableStateFlow<String?>(null)
+    val selectedQuality: StateFlow<String?> = _selectedQuality.asStateFlow()
+
+    val qualityOptions = listOf("All", "2160p", "1080p.x265", "1080p", "720p", "3D")
+
     private val allResults = mutableListOf<Movie>()
     private var currentPage = 1
     private var lastQuery: String? = null
@@ -26,6 +31,15 @@ class SearchViewModel @Inject constructor(
     private var isShowingFavorites = false
     private var isFetching = false
     private var canLoadMore = true
+
+    fun setQuality(quality: String?) {
+        val q = if (quality == "All") null else quality
+        if (_selectedQuality.value == q) return
+        _selectedQuality.value = q
+        if (!isShowingFavorites) {
+            resetAndLoad()
+        }
+    }
 
     fun search(query: String) {
         if (query.isEmpty()) {
@@ -109,8 +123,8 @@ class SearchViewModel @Inject constructor(
                 if (currentPage == 1) _uiState.value = SearchUiState.Loading
                 
                 val result = when {
-                    query != null -> ytsRepository.searchMovies(query, currentPage)
-                    genre != null -> ytsRepository.searchByGenre(genre, currentPage)
+                    query != null -> ytsRepository.searchMovies(query, currentPage, _selectedQuality.value)
+                    genre != null -> ytsRepository.searchByGenre(genre, currentPage, _selectedQuality.value)
                     else -> null
                 }
 
@@ -122,8 +136,11 @@ class SearchViewModel @Inject constructor(
                         _uiState.value = SearchUiState.Empty
                     }
                 } else {
-                    // Filter duplicates
-                    val newMovies = moviesFromApi.filter { newMovie ->
+                    // Deduplicate API response first
+                    val distinctFromApi = moviesFromApi.distinctBy { it.id }
+                    
+                    // Filter duplicates against existing results
+                    val newMovies = distinctFromApi.filter { newMovie ->
                         allResults.none { it.id == newMovie.id }
                     }
                     

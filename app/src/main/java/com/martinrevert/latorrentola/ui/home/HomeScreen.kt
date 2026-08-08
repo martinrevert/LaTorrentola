@@ -52,6 +52,8 @@ fun HomeScreen(
     val lastVisitDate by viewModel.lastVisitDate.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val favoritesCount by viewModel.favoritesCount.collectAsState()
+    val selectedQuality by viewModel.selectedQuality.collectAsState()
+    val qualityOptions = viewModel.qualityOptions
     
     var showGenreSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
@@ -117,6 +119,12 @@ fun HomeScreen(
                 genres = topGenres,
                 onGenreClick = onGenreClick,
                 onAllGenresClick = { showGenreSheet = true }
+            )
+
+            QualityChips(
+                options = qualityOptions,
+                selectedQuality = selectedQuality ?: "All",
+                onQualityClick = { viewModel.setQuality(it) }
             )
 
             if (isTv) {
@@ -195,6 +203,30 @@ private fun HomeContent(
             Text(
                 text = uiState.message,
                 color = MaterialTheme.colorScheme.error
+            )
+        }
+    }
+}
+
+@Composable
+fun QualityChips(
+    options: List<String>,
+    selectedQuality: String,
+    onQualityClick: (String) -> Unit
+) {
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        lazyItems(options) { quality ->
+            FilterChip(
+                selected = selectedQuality == quality,
+                onClick = { onQualityClick(quality) },
+                label = { Text(quality) },
+                modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
             )
         }
     }

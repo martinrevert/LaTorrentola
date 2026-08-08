@@ -12,7 +12,10 @@ interface YtsService {
         @Query("minimum_rating") minimumRating: String,
         @Query("page") page: Int,
         @Query("with_rt_ratings") rtRatings: String,
-        @Query("with_cast") withCast: String
+        @Query("with_cast") withCast: String,
+        @Query("sort_by") sortBy: String = "year",
+        @Query("order_by") orderBy: String = "desc",
+        @Query("quality") quality: String? = null
     ): MovieDetails
 
     @GET("list_movies.json")
@@ -20,7 +23,10 @@ interface YtsService {
         @Query("limit") limit: Int,
         @Query("query_term") query: String,
         @Query("page") page: Int,
-        @Query("with_cast") withCast: String
+        @Query("with_cast") withCast: String,
+        @Query("sort_by") sortBy: String = "year",
+        @Query("order_by") orderBy: String = "desc",
+        @Query("quality") quality: String? = null
     ): MovieDetails
 
     @GET("list_movies.json")
@@ -28,15 +34,20 @@ interface YtsService {
         @Query("limit") limit: Int,
         @Query("genre") query: String,
         @Query("page") currentPage: Int,
-        @Query("with_cast") withCast: String
+        @Query("with_cast") withCast: String,
+        @Query("sort_by") sortBy: String = "year",
+        @Query("order_by") orderBy: String = "desc",
+        @Query("quality") quality: String? = null
     ): MovieDetails
 
     @GET("list_movies.json")
     suspend fun getTridiSearch(
         @Query("limit") limit: Int,
-        @Query("quality") query: String,
+        @Query("quality") quality: String,
         @Query("page") currentPage: Int,
-        @Query("with_cast") withCast: String
+        @Query("with_cast") withCast: String,
+        @Query("sort_by") sortBy: String = "year",
+        @Query("order_by") orderBy: String = "desc"
     ): MovieDetails
 
     @GET("movie_details.json")

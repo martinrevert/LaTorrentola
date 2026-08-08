@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.home.MovieList
 import com.martinrevert.latorrentola.ui.home.MovieItem
+import com.martinrevert.latorrentola.ui.home.QualityChips
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import java.util.Locale
 
@@ -35,6 +36,8 @@ fun SearchScreen(
     onBackClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val selectedQuality by viewModel.selectedQuality.collectAsState()
+    val qualityOptions = viewModel.qualityOptions
     var searchQuery by remember { mutableStateOf("") }
     var isShowingFavorites by remember(initialGenre) { mutableStateOf(initialGenre == "milista") }
     val context = LocalContext.current
@@ -117,36 +120,50 @@ fun SearchScreen(
             )
         }
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
+                .padding(padding)
                 .fillMaxSize()
-                .padding(padding),
-            contentAlignment = Alignment.Center
         ) {
-            when (val state = uiState) {
-                is SearchUiState.Idle -> {
-                    Text(text = "Start searching...")
-                }
-                is SearchUiState.Loading -> {
-                    CircularProgressIndicator()
-                }
-                is SearchUiState.Success -> {
-                    val gridState = rememberLazyStaggeredGridState()
-                    MovieList(
-                        movies = state.movies,
-                        state = gridState,
-                        onMovieClick = onMovieClick,
-                        onLoadMore = { if (!state.isFavorites) viewModel.loadMore() },
-                        onDeleteClick = if (state.isFavorites) { movie -> viewModel.removeFavorite(movie) } else null
-                    )
-                }
-                is SearchUiState.Empty -> {
-                    Text(text = "No results found")
-                }
-                is SearchUiState.Error -> {
-                    Text(text = state.message)
-                }
+            if (!isShowingFavorites) {
+                QualityChips(
+                    options = qualityOptions,
+                    selectedQuality = selectedQuality ?: "All",
+                    onQualityClick = { viewModel.setQuality(it) }
+                )
             }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                when (val state = uiState) {
+                        is SearchUiState.Idle -> {
+                            Text(text = "Start searching...")
+                        }
+                        is SearchUiState.Loading -> {
+                            CircularProgressIndicator()
+                        }
+                        is SearchUiState.Success -> {
+                            val gridState = rememberLazyStaggeredGridState()
+                            MovieList(
+                                movies = state.movies,
+                                state = gridState,
+                                onMovieClick = onMovieClick,
+                                onLoadMore = { if (!state.isFavorites) viewModel.loadMore() },
+                                onDeleteClick = if (state.isFavorites) { movie -> viewModel.removeFavorite(movie) } else null
+                            )
+                        }
+                        is SearchUiState.Empty -> {
+                            Text(text = "No results found")
+                        }
+                        is SearchUiState.Error -> {
+                            Text(text = state.message)
+                        }
+                    }
+                }
         }
     }
 }

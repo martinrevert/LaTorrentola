@@ -29,6 +29,11 @@ class HomeViewModel @Inject constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    private val _selectedQuality = MutableStateFlow<String?>(null)
+    val selectedQuality: StateFlow<String?> = _selectedQuality.asStateFlow()
+
+    val qualityOptions = listOf("All", "2160p", "1080p.x265", "1080p", "720p", "3D")
+
     val favoritesCount: StateFlow<Int> = ytsRepository.getFavoriteMovies()
         .map { it.size }
         .stateIn(
@@ -83,6 +88,13 @@ class HomeViewModel @Inject constructor(
             .launchIn(viewModelScope)
     }
 
+    fun setQuality(quality: String?) {
+        val q = if (quality == "All") null else quality
+        if (_selectedQuality.value == q) return
+        _selectedQuality.value = q
+        refresh()
+    }
+
     fun loadMovies() {
         if (isFetching || !canLoadMore) return
         isFetching = true
@@ -93,7 +105,7 @@ class HomeViewModel @Inject constructor(
                 
                 var foundNewMovies = false
                 while (canLoadMore && !foundNewMovies) {
-                    val result = ytsRepository.getMovies(currentPage)
+                    val result = ytsRepository.getMovies(currentPage, _selectedQuality.value)
                     val moviesFromApi = result.data?.movies
                     
                     if (moviesFromApi.isNullOrEmpty()) {
@@ -102,7 +114,7 @@ class HomeViewModel @Inject constructor(
                     }
 
                     // Filter only English movies as requested for the main screen
-                    val englishMovies = moviesFromApi.filter { it.language == "en" }
+                    val englishMovies = moviesFromApi.filter { it.language == "en" }.distinctBy { it.id }
                     
                     if (englishMovies.isNotEmpty()) {
                         // Add only new movies (by id) to avoid duplicates
@@ -150,7 +162,7 @@ class HomeViewModel @Inject constructor(
 
                 var foundNewMovies = false
                 while (canLoadMore && !foundNewMovies) {
-                    val result = ytsRepository.getMovies(currentPage)
+                    val result = ytsRepository.getMovies(currentPage, _selectedQuality.value)
                     val moviesFromApi = result.data?.movies
 
                     if (moviesFromApi.isNullOrEmpty()) {
@@ -159,12 +171,19 @@ class HomeViewModel @Inject constructor(
                     }
 
                     // Filter only English movies as requested for the main screen
-                    val englishMovies = moviesFromApi.filter { it.language == "en" }
+                    val englishMovies = moviesFromApi.filter { it.language == "en" }.distinctBy { it.id }
 
                     if (englishMovies.isNotEmpty()) {
-                        allMovies.addAll(englishMovies)
-                        _uiState.value = HomeUiState.Success(allMovies.toList())
-                        foundNewMovies = true
+                        // Add only new movies (by id) to avoid duplicates across pages
+                        val filteredNewMovies = englishMovies.filter { newMovie ->
+                            allMovies.none { it.id == newMovie.id }
+                        }
+
+                        if (filteredNewMovies.isNotEmpty()) {
+                            allMovies.addAll(filteredNewMovies)
+                            _uiState.value = HomeUiState.Success(allMovies.toList())
+                            foundNewMovies = true
+                        }
                     }
                     currentPage++
                 }
