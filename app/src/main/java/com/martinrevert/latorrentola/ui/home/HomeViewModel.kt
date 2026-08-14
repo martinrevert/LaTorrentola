@@ -95,6 +95,7 @@ class HomeViewModel @Inject constructor(
         val q = if (quality == "All") null else quality
         if (_selectedQuality.value == q) return
         _selectedQuality.value = q
+        clearLastClickedMovieId()
         refresh()
     }
 

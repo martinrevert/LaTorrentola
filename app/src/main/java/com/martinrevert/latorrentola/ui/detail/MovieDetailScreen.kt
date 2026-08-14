@@ -43,6 +43,7 @@ import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.Torrent
 import com.martinrevert.latorrentola.model.YTS.Cast
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.utils.isTvDevice
 import java.net.URLEncoder
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -112,10 +113,7 @@ fun MovieDetailScreen(
 @Composable
 fun MovieDetailContent(movie: Movie) {
     val context = LocalContext.current
-    val isTv = remember {
-        context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
-        context.packageManager.hasSystemFeature("android.hardware.type.television")
-    }
+    val isTv = remember(context) { context.isTvDevice() }
 
     Column(
         modifier = Modifier

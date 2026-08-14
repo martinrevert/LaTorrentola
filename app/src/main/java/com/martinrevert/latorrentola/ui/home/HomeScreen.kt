@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.yield
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
@@ -41,6 +42,7 @@ import android.content.pm.PackageManager
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.utils.isTvDevice
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
@@ -64,10 +66,7 @@ fun HomeScreen(
     var showGenreSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
     val context = LocalContext.current
-    val isTv = remember {
-        context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) || 
-        context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEVISION)
-    }
+    val isTv = remember(context) { context.isTvDevice() }
 
     // 1. Properly save and restore scroll state across configuration changes (rotation)
     val gridState = rememberLazyStaggeredGridState()
@@ -339,10 +338,7 @@ fun MovieList(
     onFocusRestored: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val isTv = remember {
-        context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) || 
-        context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEVISION)
-    }
+    val isTv = remember(context) { context.isTvDevice() }
 
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
@@ -379,8 +375,11 @@ fun MovieList(
         }
     }
 
-    LaunchedEffect(initialFocusId, movies) {
-        if (initialFocusId != null && movies.isNotEmpty()) {
+    // Focus restoration scroll: only run when initialFocusId changes
+    LaunchedEffect(initialFocusId) {
+        if (initialFocusId != null) {
+            // Give time for list to be fully populated and measured
+            snapshotFlow { movies }.first { list -> list.any { it.id == initialFocusId } }
             val index = movies.indexOfFirst { it.id == initialFocusId }
             if (index != -1) {
                 state.scrollToItem(index)
@@ -399,10 +398,7 @@ fun MovieItem(
     onFocusRestored: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val isTv = remember {
-        context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) || 
-        context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEVISION)
-    }
+    val isTv = remember(context) { context.isTvDevice() }
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(shouldRequestFocus) {

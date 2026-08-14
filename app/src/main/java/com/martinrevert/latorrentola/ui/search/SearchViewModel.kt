@@ -39,6 +39,7 @@ class SearchViewModel @Inject constructor(
         val q = if (quality == "All") null else quality
         if (_selectedQuality.value == q) return
         _selectedQuality.value = q
+        clearLastClickedMovieId()
         if (!isShowingFavorites) {
             resetAndLoad()
         }
@@ -54,6 +55,7 @@ class SearchViewModel @Inject constructor(
         isShowingFavorites = false
         lastQuery = query
         lastGenre = null
+        clearLastClickedMovieId()
         
         resetAndLoad()
     }
@@ -65,6 +67,7 @@ class SearchViewModel @Inject constructor(
         allResults.clear()
         currentPage = 1
         canLoadMore = true
+        clearLastClickedMovieId()
         _uiState.value = SearchUiState.Idle
     }
 
@@ -74,6 +77,7 @@ class SearchViewModel @Inject constructor(
         isShowingFavorites = false
         lastGenre = genre
         lastQuery = null
+        clearLastClickedMovieId()
         
         resetAndLoad()
     }
