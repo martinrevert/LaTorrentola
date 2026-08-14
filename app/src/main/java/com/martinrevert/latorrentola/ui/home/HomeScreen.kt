@@ -399,6 +399,10 @@ fun MovieItem(
     onFocusRestored: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val isTv = remember {
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) || 
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEVISION)
+    }
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(shouldRequestFocus) {
@@ -439,9 +443,12 @@ fun MovieItem(
                         contentScale = ContentScale.Crop
                     )
                     
-                    // NEW BADGE logic
+                    // NEW BADGE logic: Show if uploaded in the last 15 days
                     val movieUploadTime = (movie.dateUploadedUnix ?: 0L) * 1000
-                    if (lastVisitDate != null && movieUploadTime > lastVisitDate) {
+                    val fifteenDaysInMs = 15L * 24 * 60 * 60 * 1000
+                    val isRecent = movieUploadTime > (System.currentTimeMillis() - fifteenDaysInMs)
+                    
+                    if (isRecent) {
                         Icon(
                             painter = painterResource(com.martinrevert.latorrentola.R.drawable.new_badge),
                             contentDescription = "New",
@@ -486,26 +493,28 @@ fun MovieItem(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = {
-                                    val imdbUrl = "https://www.imdb.com/title/${movie.imdbCode}"
-                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(Intent.EXTRA_SUBJECT, movie.title)
-                                        putExtra(Intent.EXTRA_TEXT, "Check out this movie: ${movie.title}\n$imdbUrl")
-                                    }
-                                    context.startActivity(Intent.createChooser(shareIntent, "Share movie"))
-                                },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Share, 
-                                    contentDescription = "Share",
-                                    modifier = Modifier.size(16.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
+                            if (!isTv) {
+                                IconButton(
+                                    onClick = {
+                                        val imdbUrl = "https://www.imdb.com/title/${movie.imdbCode}"
+                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(Intent.EXTRA_SUBJECT, movie.title)
+                                            putExtra(Intent.EXTRA_TEXT, "Check out this movie: ${movie.title}\n$imdbUrl")
+                                        }
+                                        context.startActivity(Intent.createChooser(shareIntent, "Share movie"))
+                                    },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Share, 
+                                        contentDescription = "Share",
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
                             }
-                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = "⭐ ${movie.rating}",
                                 style = MaterialTheme.typography.labelSmall,
