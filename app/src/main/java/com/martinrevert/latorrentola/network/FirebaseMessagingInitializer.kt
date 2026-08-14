@@ -30,7 +30,6 @@ class FirebaseMessagingInitializer @Inject constructor(
     fun initialize() {
         ensureNotificationChannel()
         syncTopicSubscription(shouldSubscribeToNotifications())
-        ensureTokenSynced()
     }
 
     fun subscribeToDefaultTopic() {
@@ -67,60 +66,69 @@ class FirebaseMessagingInitializer @Inject constructor(
 
     fun syncTopicSubscription(shouldSubscribe: Boolean) {
         if (shouldSubscribe) {
-            if (preferenceManager.isFcmTopicSubscribed()) return
-
             FirebaseMessaging.getInstance().subscribeToTopic(FirebaseMessagingConfig.TOPIC_ALL)
                 .addOnCompleteListener { task ->
                     if (task.isSuccessful) {
                         preferenceManager.setFcmTopicSubscribed(true)
                         Log.d(TAG, "Subscribed to topic '${FirebaseMessagingConfig.TOPIC_ALL}'")
-                        preferenceManager.getFcmToken()?.let { token ->
-                            scope.launch {
-                                fcmRepository.subscribe(token)
-                            }
-                        }
+                        syncWithBackend(true)
                     } else {
                         Log.w(TAG, "Topic subscription failed", task.exception)
+                        // Even if topic fails, try backend sync to maintain consistency
+                        syncWithBackend(true)
                     }
                 }
             return
         }
-
-        if (!preferenceManager.isFcmTopicSubscribed()) return
 
         FirebaseMessaging.getInstance().unsubscribeFromTopic(FirebaseMessagingConfig.TOPIC_ALL)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     preferenceManager.setFcmTopicSubscribed(false)
                     Log.d(TAG, "Unsubscribed from topic '${FirebaseMessagingConfig.TOPIC_ALL}'")
-                    preferenceManager.getFcmToken()?.let { token ->
-                        scope.launch {
-                            fcmRepository.unsubscribe(token)
-                        }
-                    }
+                    syncWithBackend(false)
                 } else {
                     Log.w(TAG, "Topic unsubscription failed", task.exception)
+                    syncWithBackend(false)
                 }
             }
     }
 
-    private fun ensureTokenSynced() {
+    private fun syncWithBackend(shouldSubscribe: Boolean) {
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
             if (!task.isSuccessful) {
-                Log.w(TAG, "FCM token fetch failed", task.exception)
+                Log.w(TAG, "FCM token fetch failed for backend sync", task.exception)
                 return@addOnCompleteListener
             }
 
-            val newToken = task.result
-            if (!newToken.isNullOrBlank() && newToken != preferenceManager.getFcmToken()) {
-                preferenceManager.setFcmToken(newToken)
-                preferenceManager.setFcmTokenSynced(false)
-                Log.d(TAG, "FCM token updated")
-            }
+            val token = task.result
+            if (token.isNullOrBlank()) return@addOnCompleteListener
 
-            preferenceManager.getFcmToken()?.let { token ->
-                scope.launch {
-                    fcmRepository.syncToken(token)
+            scope.launch {
+                val success = fcmRepository.syncToken(token, shouldSubscribe)
+                if (shouldSubscribe) {
+                    if (success) {
+                        preferenceManager.setFcmRetryCount(0)
+                        preferenceManager.setFcmTokenSynced(true)
+                    } else {
+                        preferenceManager.incrementFcmRetryCount()
+                        val retryCount = preferenceManager.getFcmRetryCount()
+                        Log.w(TAG, "Backend sync failed. Retry count: $retryCount")
+                        if (retryCount >= 5) {
+                            Log.e(TAG, "Max retries reached. Disabling push notifications.")
+                            preferenceManager.setPushEnabled(false)
+                            preferenceManager.setFcmRetryCount(0)
+                            // We don't call syncTopicSubscription(false) here to avoid loops, 
+                            // but the user will see it disabled in UI.
+                        }
+                    }
+                } else {
+                    // On unsubscription we don't necessarily need retries as much, 
+                    // but we clear synced flag if it failed.
+                    if (success) {
+                        preferenceManager.setFcmTokenSynced(false)
+                        preferenceManager.setFcmRetryCount(0)
+                    }
                 }
             }
         }

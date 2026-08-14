@@ -70,6 +70,16 @@ class PreferenceManager @Inject constructor(
 
     fun isPushEnabled(): Boolean = sharedPreferences.getBoolean(KEY_PUSH_ENABLED, true)
 
+    fun getFcmRetryCount(): Int = sharedPreferences.getInt(KEY_FCM_RETRY_COUNT, 0)
+
+    fun setFcmRetryCount(count: Int) {
+        sharedPreferences.edit { putInt(KEY_FCM_RETRY_COUNT, count) }
+    }
+
+    fun incrementFcmRetryCount() {
+        setFcmRetryCount(getFcmRetryCount() + 1)
+    }
+
     fun setTheme(theme: Int) {
         sharedPreferences.edit { putInt(KEY_THEME, theme) }
         _themeFlow.value = theme
@@ -87,6 +97,7 @@ class PreferenceManager @Inject constructor(
         private const val KEY_FCM_TOKEN_SYNCED = "fcm_token_synced"
         private const val KEY_PUSH_ENABLED = "push_enabled"
         private const val KEY_THEME = "theme"
+        private const val KEY_FCM_RETRY_COUNT = "fcm_retry_count"
 
         const val THEME_SYSTEM = 0
         const val THEME_LIGHT = 1

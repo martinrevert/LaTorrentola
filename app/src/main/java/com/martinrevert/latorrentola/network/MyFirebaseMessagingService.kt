@@ -12,7 +12,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.TaskStackBuilder
 import androidx.core.content.ContextCompat
-import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.martinrevert.latorrentola.MainActivity
@@ -34,7 +33,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     @Inject
     lateinit var fcmRepository: FcmRepository
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Inject
+    lateinit var firebaseMessagingInitializer: FirebaseMessagingInitializer
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         val title = remoteMessage.notification?.title
@@ -63,34 +63,9 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         preferenceManager.setFcmToken(token)
         preferenceManager.setFcmTokenSynced(false)
-        serviceScope.launch {
-            fcmRepository.subscribe(token)
-        }
-
-        val messaging = FirebaseMessaging.getInstance()
-        if (canDeliverNotifications()) {
-            preferenceManager.setFcmTopicSubscribed(false)
-            messaging.subscribeToTopic(FirebaseMessagingConfig.TOPIC_ALL)
-                .addOnCompleteListener { task ->
-                    if (task.isSuccessful) {
-                        preferenceManager.setFcmTopicSubscribed(true)
-                        Log.d(TAG, "Re-subscribed to topic after token refresh")
-                    } else {
-                        Log.w(TAG, "Topic re-subscription failed after token refresh", task.exception)
-                    }
-                }
-        } else {
-            messaging.unsubscribeFromTopic(FirebaseMessagingConfig.TOPIC_ALL)
-                .addOnCompleteListener { task ->
-                    if (task.isSuccessful) {
-                        preferenceManager.setFcmTopicSubscribed(false)
-                        Log.d(TAG, "Unsubscribed from topic after token refresh due to disabled notifications")
-                    } else {
-                        Log.w(TAG, "Topic unsubscription failed after token refresh", task.exception)
-                    }
-                }
-        }
-        Log.d(TAG, "FCM token refreshed")
+        
+        firebaseMessagingInitializer.syncTopicSubscription(canDeliverNotifications())
+        Log.d(TAG, "FCM token refreshed and sync triggered")
     }
 
     private fun sendNotification(title: String, body: String, movieJson: String?, movieId: String?) {
