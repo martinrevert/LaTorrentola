@@ -77,13 +77,13 @@ fun SettingsScreen(
                     checked = uiState.vibrator,
                     onCheckedChange = { viewModel.toggleVibrator(it) }
                 )
+                
+                SettingsToggle(
+                    title = "Notificaciones Push",
+                    checked = uiState.pushEnabled,
+                    onCheckedChange = { viewModel.togglePushEnabled(it) }
+                )
             }
-            
-            SettingsToggle(
-                title = "Notificaciones Push",
-                checked = uiState.pushEnabled,
-                onCheckedChange = { viewModel.togglePushEnabled(it) }
-            )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
