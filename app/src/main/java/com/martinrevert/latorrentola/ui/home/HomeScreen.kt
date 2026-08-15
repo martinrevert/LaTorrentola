@@ -10,11 +10,11 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items as lazyItems
-import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
-import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
-import androidx.compose.foundation.lazy.staggeredgrid.items
-import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
@@ -69,7 +69,7 @@ fun HomeScreen(
     val isTv = remember(context) { context.isTvDevice() }
 
     // 1. Properly save and restore scroll state across configuration changes (rotation)
-    val gridState = rememberLazyStaggeredGridState()
+    val gridState = rememberLazyGridState()
 
     Scaffold(
         topBar = {
@@ -196,7 +196,7 @@ fun HomeScreen(
 @Composable
 private fun HomeContent(
     uiState: HomeUiState,
-    gridState: LazyStaggeredGridState,
+    gridState: LazyGridState,
     lastVisitDate: Long?,
     onMovieClick: (Movie) -> Unit,
     onLoadMore: () -> Unit,
@@ -329,7 +329,7 @@ fun GenreBottomSheet(
 @Composable
 fun MovieList(
     movies: List<Movie>,
-    state: LazyStaggeredGridState,
+    state: LazyGridState,
     lastVisitDate: Long? = null,
     onMovieClick: (Movie) -> Unit,
     onLoadMore: () -> Unit,
@@ -344,19 +344,19 @@ fun MovieList(
     val screenWidth = configuration.screenWidthDp.dp
     
     val columns = when {
-        isTv -> StaggeredGridCells.Fixed(6) // Enforce exactly 6 columns on TV devices
-        screenWidth < 600.dp -> StaggeredGridCells.Fixed(2)
-        screenWidth < 900.dp -> StaggeredGridCells.Adaptive(minSize = 160.dp)
-        else -> StaggeredGridCells.Adaptive(minSize = 200.dp) 
+        isTv -> GridCells.Fixed(6) // Enforce exactly 6 columns on TV devices
+        screenWidth < 600.dp -> GridCells.Fixed(2)
+        screenWidth < 900.dp -> GridCells.Adaptive(minSize = 160.dp)
+        else -> GridCells.Adaptive(minSize = 200.dp) 
     }
 
-    LazyVerticalStaggeredGrid(
+    LazyVerticalGrid(
         columns = columns,
         state = state,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalItemSpacing = 12.dp
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(movies, key = { it.id }) { movie ->
             MovieItem(
