@@ -1,10 +1,11 @@
 # AGENTS.md — Quick onboarding for AI coding agents
 
 Checklist for this agent run:
-- [ ] Understand app architecture and DI boundaries
+- [x] Understand app architecture and DI boundaries
 - [ ] Note project-specific serialization / DB / networking patterns
 - [ ] List dev workflows (build/install) and gotchas
 - [ ] Point to concrete files to inspect for changes
+- [x] Implement unit tests for core components
 
 Short summary
 - This is a Jetpack Compose + Hilt Android app (Kotlin). Core patterns: Retrofit (Gson), Room, kotlinx.serialization on models, coroutines + Flow, and androidx.navigation3 runtime for navigation keys.
@@ -40,6 +41,12 @@ Common tasks & exact commands (Windows PowerShell)
 adb shell am start -n com.martinrevert.latorrentola/.MainActivity
 ```
 
+- Run all unit tests:
+
+```powershell
+.\gradlew.bat testDebugUnitTest
+```
+
 - Build release (signed) APK / AAB (ensure `app/keys/release.keystore` is present and signing config is set in Gradle):
 
 ```powershell
@@ -59,7 +66,11 @@ Integration points & external dependencies
 - YouTube player library for trailers (dependency present in libs)
 
 Testing / CI notes
-- There are no real unit tests in the repo (test folders are empty). If adding tests, prefer coroutine test utilities (kotlinx-coroutines-test) and Hilt testing patterns.
+- Modern unit tests are located in `app/src/test/java`. They use MockK, Turbine, and Truth.
+- When testing ViewModels, use `MainDispatcherRule` (under `rules/`) to mock `Dispatchers.Main`.
+- The project forces a modern version of `byte-buddy` (1.18.12+) and uses `org.gradle.jvmargs` in `gradle.properties` to avoid `sun.misc.Unsafe` warnings across all build tasks (compilation and testing) on modern JDKs.
+- CI should run `./gradlew testDebugUnitTest` to verify changes.
+- If adding new testable components, follow the existing patterns in `YtsRepositoryTest`, `HomeViewModelTest`, or `ConvertersTest`.
 - CI must have `git` available (versionCode uses commit count) and Android SDK + buildtools matching AGP settings (`gradle/libs.versions.toml`).
 
 If you edit models:

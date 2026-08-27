@@ -161,5 +161,31 @@ To ensure the project compiles and runs correctly:
 - [ ] Predictive Back support.
 - [ ] Interactive Widgets for "New Releases".
 
+## 🧪 Testing
+
+The project includes a suite of modern Android unit tests focused on the data layer, business logic, and serialization.
+
+### Testing Stack
+- **JUnit 4:** Core testing framework.
+- **MockK:** A powerful mocking library for Kotlin.
+- **Turbine:** A small library for testing Kotlin Coroutines `Flow`.
+- **Google Truth:** A library for performing assertions with better readability.
+- **Kotlinx Coroutines Test:** Utilities for testing asynchronous code.
+
+### Running Tests
+To run all unit tests from the command line:
+```powershell
+./gradlew testDebugUnitTest
+```
+
+> [!NOTE]
+> The project is configured via `gradle.properties` to support modern JDKs (21+) by enabling dynamic agent loading and opening necessary internal packages for build tools and MockK/ByteBuddy. This avoids `sun.misc.Unsafe` warnings during both compilation and testing.
+
+### Coverage Areas
+- **Repositories:** Verifying the interaction between network services and local DAOs.
+- **ViewModels:** Testing state management, pagination, filtering, and side-effects (Voice, Translation).
+- **Room Converters:** Ensuring complex data types (Lists, Dates) are correctly converted to/from JSON/Long for persistence.
+- **Serialization:** Validating that models are correctly serialized for Navigation 3 payloads.
+
 ---
 

@@ -60,11 +60,37 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
+    testOptions {
+        unitTests.all {
+            jvmArgs(
+                "-XX:+EnableDynamicAgentLoading",
+                "--add-opens=java.base/java.lang=ALL-UNNAMED",
+                "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+                "--add-opens=java.base/java.util=ALL-UNNAMED",
+                "--add-opens=jdk.unsupported/sun.misc=ALL-UNNAMED",
+                "--add-opens=java.base/java.security=ALL-UNNAMED",
+                "--add-opens=java.base/sun.reflect.annotation=ALL-UNNAMED",
+                "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+                "-XX:+IgnoreUnrecognizedVMOptions"
+            )
+            systemProperty "net.bytebuddy.experimental", "true"
+            systemProperty "jdk.attach.allowAttachSelf", "true"
+        }
+    }
 }
 
 // Global base name for all generated archives (APKs, AABs, etc.)
 base {
     archivesName = "LaTorrentola-v2.0.${getGitVersionCount(providers)}"
+}
+
+configurations.configureEach {
+    resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+        if (details.requested.group == 'net.bytebuddy') {
+            details.useVersion '1.18.12'
+        }
+    }
 }
 
 dependencies {
@@ -114,4 +140,13 @@ dependencies {
 
     // YouTube Player
     implementation libs.youtube.player
+
+    // Testing
+    testImplementation libs.junit
+    testImplementation libs.mockk
+    testImplementation libs.turbine
+    testImplementation libs.truth
+    testImplementation libs.kotlinx.coroutines.test
+    testImplementation libs.byte.buddy
+    testImplementation libs.byte.buddy.agent
 }
