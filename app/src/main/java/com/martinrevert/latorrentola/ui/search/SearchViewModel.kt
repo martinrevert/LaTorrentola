@@ -3,17 +3,17 @@ package com.martinrevert.latorrentola.ui.search
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
-    private val ytsRepository: YtsRepository
+    private val ytsRepository: YtsRepository,
+    private val userLibraryRepository: UserLibraryRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
@@ -24,6 +24,15 @@ class SearchViewModel @Inject constructor(
 
     private val _lastClickedMovieId = MutableStateFlow<Int?>(null)
     val lastClickedMovieId: StateFlow<Int?> = _lastClickedMovieId.asStateFlow()
+
+    val downloadedMovieIds: StateFlow<Set<Int>> = userLibraryRepository.getDownloadedMovies()
+        .map { it.map { download -> download.movieId }.toSet() }
+        .catch { emit(emptySet()) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptySet()
+        )
 
     val qualityOptions = listOf("All", "2160p", "1080p.x265", "1080p", "720p", "3D")
 

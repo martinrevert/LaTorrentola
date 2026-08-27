@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
@@ -25,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -53,6 +55,7 @@ fun MovieDetailScreen(
     onBackClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val downloadedHashes by viewModel.downloadedHashes.collectAsState()
 
     DisposableEffect(Unit) {
         onDispose {
@@ -100,7 +103,13 @@ fun MovieDetailScreen(
                     CircularProgressIndicator()
                 }
                 is DetailUiState.Success -> {
-                    MovieDetailContent(movie = state.movie)
+                    MovieDetailContent(
+                        movie = state.movie,
+                        downloadedHashes = downloadedHashes,
+                        onTorrentClick = { torrent ->
+                            viewModel.markAsDownloaded(state.movie, torrent.hash ?: "", torrent.quality ?: "")
+                        }
+                    )
                 }
                 is DetailUiState.Error -> {
                     Text(text = state.message)
@@ -111,7 +120,11 @@ fun MovieDetailScreen(
 }
 
 @Composable
-fun MovieDetailContent(movie: Movie) {
+fun MovieDetailContent(
+    movie: Movie,
+    downloadedHashes: Set<String>,
+    onTorrentClick: (Torrent) -> Unit
+) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
 
@@ -178,7 +191,12 @@ fun MovieDetailContent(movie: Movie) {
         
         Text(text = "Torrents", style = MaterialTheme.typography.titleLarge)
         movie.torrents?.forEach { torrent ->
-            TorrentItem(movie = movie, torrent = torrent)
+            TorrentItem(
+                movie = movie,
+                torrent = torrent,
+                isDownloaded = downloadedHashes.contains(torrent.hash),
+                onTorrentClick = onTorrentClick
+            )
         }
     }
 }
@@ -260,10 +278,16 @@ fun CastItem(cast: Cast) {
 }
 
 @Composable
-fun TorrentItem(movie: Movie, torrent: Torrent) {
+fun TorrentItem(
+    movie: Movie,
+    torrent: Torrent,
+    isDownloaded: Boolean,
+    onTorrentClick: (Torrent) -> Unit
+) {
     val context = LocalContext.current
     Button(
         onClick = {
+            onTorrentClick(torrent)
             val hash = torrent.hash
             if (hash != null) {
                 try {
@@ -293,6 +317,20 @@ fun TorrentItem(movie: Movie, torrent: Torrent) {
             .padding(vertical = 4.dp)
             .focusHighlight(shape = MaterialTheme.shapes.extraLarge)
     ) {
-        Text(text = "${torrent.quality} - ${torrent.size} (${torrent.type})")
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(text = "${torrent.quality} - ${torrent.size} (${torrent.type})")
+            if (isDownloaded) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.Default.CloudDone,
+                    contentDescription = "Downloaded",
+                    tint = Color.Yellow,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
     }
 }

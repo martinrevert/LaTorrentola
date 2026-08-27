@@ -7,7 +7,7 @@ La Torrentola is a modern, high-performance Android application built with the l
 This project has been fully refactored to use the most cutting-edge libraries and patterns:
 
 -   **Language:** [Kotlin 2.4+](https://kotlinlang.org/) with the K2 compiler for faster builds and improved performance.
--   **Authentication:** [Firebase Auth](https://firebase.google.com/docs/auth) with **Google Sign-in** leveraging the [Credential Manager API](https://developer.android.com/training/sign-in/credential-manager).
+-   **Authentication & Sync:** [Firebase Auth](https://firebase.google.com/docs/auth) with **Google Sign-in** and [Cloud Firestore](https://firebase.google.com/docs/firestore) for cross-device library synchronization.
 -   **UI:** [Jetpack Compose](https://developer.android.com/compose) with **Material 3**, providing a declarative and reactive user interface.
 -   **Architecture:** [MVVM (Model-View-ViewModel)](https://developer.android.com/topic/architecture) with a clean separation of concerns.
 -   **Dependency Injection:** [Hilt](https://developer.android.com/training/dependency-injection/hilt-android) for robust and scalable DI.
@@ -43,6 +43,7 @@ graph TD
 
     subgraph Domain_Data_Layer [Data Layer]
         AREP[AuthRepository]
+        UREP[UserLibraryRepository - Firestore]
         REP[YtsRepository]
         RS[YtsService - Retrofit 3]
         DB[AppDatabase - Room]
@@ -58,6 +59,7 @@ graph TD
     
     AVM --> AREP
     AREP -->|Firebase Auth| FAN[Firebase]
+    HVM & DVM & SVM --> UREP
     HVM & DVM & SVM --> REP
     REP --> RS
     REP --> DB
@@ -69,7 +71,7 @@ graph TD
 
 ## 🛠️ Key Features
 
-1.  **Google Authentication:** Secure login using Firebase and Credential Manager, featuring a personalized user profile and automatic session persistence.
+1.  **Google Authentication & Cloud Sync:** Secure login using Firebase. Syncs your downloaded movies and specific versions across all your devices using Cloud Firestore.
 2.  **Declarative UI:** Entirely built with Jetpack Compose for a smooth, fluid user experience.
 3.  **State Management:** ViewModels leverage `StateFlow` and `collectAsStateWithLifecycle` to ensure UI state is handled safely.
 4.  **Adaptive Grids:** Staggered grids that adapt to screen size (Phones, Tablets, Foldables).

@@ -12,7 +12,7 @@ Short summary
 
 Essential places to read first
 - App entry and navigation: `app/src/main/java/com/martinrevert/latorrentola/MainActivity.kt` and `ui/navigation/AppNavigation.kt` (deep-link via Intent extra "PELI"; navigation transfers Movie as JSON using kotlinx.serialization). Navigation also handles auth-gating (Route.Login vs Route.Home).
-- Authentication: `network/AuthRepository.kt`, `ui/auth/AuthViewModel.kt`, `ui/auth/LoginScreen.kt`, and `di/AuthModule.kt` (Firebase + Credential Manager integration).
+- Authentication & Cloud Sync: `network/AuthRepository.kt`, `network/UserLibraryRepository.kt` (Firestore), `ui/auth/AuthViewModel.kt`, `ui/auth/LoginScreen.kt`, and `di/AuthModule.kt`.
 - Network & DI: `di/NetworkModule.kt`, `network/YtsService.kt`, `network/YtsRepository.kt` (Retrofit service + repository that mixes remote + Room).
 - Models & persistence: `model/YTS/*` (e.g. `Movie.kt`) and `database/Converters.kt`, `database/MovieDao.kt` (Room entities are also annotated with `@Serializable` and use Gson converters)
 - Build and dependency versions: `gradle/libs.versions.toml` and `app/build.gradle` (KSP, Hilt, Google services plugins; git-based versionCode)
@@ -57,7 +57,7 @@ adb shell am start -n com.martinrevert.latorrentola/.MainActivity
 
 Important files to update when changing behavior
 - Networking: `network/YtsService.kt` + `di/NetworkModule.kt` (Retrofit client and logging interceptor)
-- Authentication: `network/AuthRepository.kt` and `ui/auth/*` (Google Sign-in flow)
+- Authentication & Sync: `network/AuthRepository.kt`, `network/UserLibraryRepository.kt` and `ui/auth/*`
 - Data layer: `network/YtsRepository.kt` (combines remote + local flows) and `database/*` (DAO/Converters)
 - UI routing: `ui/navigation/AppNavigation.kt` (how Movie JSON is passed and auth-gating) and top-level Composables under `ui/*`
 

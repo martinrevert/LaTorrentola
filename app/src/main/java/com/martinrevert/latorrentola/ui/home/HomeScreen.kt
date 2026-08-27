@@ -63,6 +63,7 @@ fun HomeScreen(
     val favoritesCount by viewModel.favoritesCount.collectAsState()
     val selectedQuality by viewModel.selectedQuality.collectAsState()
     val lastClickedMovieId by viewModel.lastClickedMovieId.collectAsState()
+    val downloadedMovieIds by viewModel.downloadedMovieIds.collectAsState()
     val qualityOptions = viewModel.qualityOptions
     
     var showGenreSheet by remember { mutableStateOf(false) }
@@ -155,6 +156,7 @@ fun HomeScreen(
                         uiState = uiState,
                         gridState = gridState,
                         lastVisitDate = lastVisitDate,
+                        downloadedMovieIds = downloadedMovieIds,
                         onMovieClick = {
                             viewModel.setLastClickedMovieId(it.id)
                             onMovieClick(it)
@@ -178,6 +180,7 @@ fun HomeScreen(
                         uiState = uiState,
                         gridState = gridState,
                         lastVisitDate = lastVisitDate,
+                        downloadedMovieIds = downloadedMovieIds,
                         onMovieClick = {
                             viewModel.setLastClickedMovieId(it.id)
                             onMovieClick(it)
@@ -211,6 +214,7 @@ private fun HomeContent(
     uiState: HomeUiState,
     gridState: LazyGridState,
     lastVisitDate: Long?,
+    downloadedMovieIds: Set<Int>,
     onMovieClick: (Movie) -> Unit,
     onLoadMore: () -> Unit,
     lastClickedMovieId: Int? = null,
@@ -225,6 +229,7 @@ private fun HomeContent(
                 movies = uiState.movies,
                 state = gridState,
                 lastVisitDate = lastVisitDate,
+                downloadedMovieIds = downloadedMovieIds,
                 onMovieClick = onMovieClick,
                 onLoadMore = onLoadMore,
                 initialFocusId = lastClickedMovieId,
@@ -344,6 +349,7 @@ fun MovieList(
     movies: List<Movie>,
     state: LazyGridState,
     lastVisitDate: Long? = null,
+    downloadedMovieIds: Set<Int> = emptySet(),
     onMovieClick: (Movie) -> Unit,
     onLoadMore: () -> Unit,
     onDeleteClick: ((Movie) -> Unit)? = null,
@@ -375,6 +381,7 @@ fun MovieList(
             MovieItem(
                 movie = movie, 
                 lastVisitDate = lastVisitDate,
+                isDownloaded = downloadedMovieIds.contains(movie.id),
                 onClick = { onMovieClick(movie) },
                 onDeleteClick = onDeleteClick,
                 shouldRequestFocus = movie.id == initialFocusId,
@@ -405,6 +412,7 @@ fun MovieList(
 fun MovieItem(
     movie: Movie,
     lastVisitDate: Long? = null,
+    isDownloaded: Boolean = false,
     onClick: () -> Unit,
     onDeleteClick: ((Movie) -> Unit)? = null,
     shouldRequestFocus: Boolean = false,
@@ -467,6 +475,23 @@ fun MovieItem(
                                 .padding(8.dp)
                                 .size(32.dp)
                                 .rotate(-45f)
+                        )
+                    }
+
+                    if (isDownloaded) {
+                        Icon(
+                            imageVector = Icons.Default.CloudDone,
+                            contentDescription = "Downloaded",
+                            tint = Color.Yellow,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp)
+                                .size(24.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                    CircleShape
+                                )
+                                .padding(2.dp)
                         )
                     }
                 }
