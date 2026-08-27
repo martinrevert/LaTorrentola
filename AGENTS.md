@@ -8,11 +8,12 @@ Checklist for this agent run:
 - [x] Implement unit tests for core components
 
 Short summary
-- This is a Jetpack Compose + Hilt Android app (Kotlin). Core patterns: Retrofit (Gson), Room, kotlinx.serialization on models, coroutines + Flow, and androidx.navigation3 runtime for navigation keys.
+- This is a Jetpack Compose + Hilt Android app (Kotlin). Core patterns: Retrofit (Gson), Room, kotlinx.serialization on models, coroutines + Flow, and androidx.navigation3 runtime for navigation keys. Authentication is handled via Firebase + Google Sign-in (Credential Manager).
 
 Essential places to read first
-- App entry and navigation: `app/src/main/java/com/martinrevert/latorrentola/MainActivity.kt` and `ui/navigation/AppNavigation.kt` (deep-link via Intent extra "PELI"; navigation transfers Movie as JSON using kotlinx.serialization)
-- Network & DI: `di/NetworkModule.kt`, `network/YtsService.kt`, `network/YtsRepository.kt` (Retrofit service + repository that mixes remote + Room)
+- App entry and navigation: `app/src/main/java/com/martinrevert/latorrentola/MainActivity.kt` and `ui/navigation/AppNavigation.kt` (deep-link via Intent extra "PELI"; navigation transfers Movie as JSON using kotlinx.serialization). Navigation also handles auth-gating (Route.Login vs Route.Home).
+- Authentication: `network/AuthRepository.kt`, `ui/auth/AuthViewModel.kt`, `ui/auth/LoginScreen.kt`, and `di/AuthModule.kt` (Firebase + Credential Manager integration).
+- Network & DI: `di/NetworkModule.kt`, `network/YtsService.kt`, `network/YtsRepository.kt` (Retrofit service + repository that mixes remote + Room).
 - Models & persistence: `model/YTS/*` (e.g. `Movie.kt`) and `database/Converters.kt`, `database/MovieDao.kt` (Room entities are also annotated with `@Serializable` and use Gson converters)
 - Build and dependency versions: `gradle/libs.versions.toml` and `app/build.gradle` (KSP, Hilt, Google services plugins; git-based versionCode)
 - Firebase / Google services: `google-services.json` (project and app-level copies) and `app/keys/release.keystore` (release signing asset)
@@ -56,12 +57,13 @@ adb shell am start -n com.martinrevert.latorrentola/.MainActivity
 
 Important files to update when changing behavior
 - Networking: `network/YtsService.kt` + `di/NetworkModule.kt` (Retrofit client and logging interceptor)
+- Authentication: `network/AuthRepository.kt` and `ui/auth/*` (Google Sign-in flow)
 - Data layer: `network/YtsRepository.kt` (combines remote + local flows) and `database/*` (DAO/Converters)
-- UI routing: `ui/navigation/AppNavigation.kt` (how Movie JSON is passed) and top-level Composables under `ui/*`
+- UI routing: `ui/navigation/AppNavigation.kt` (how Movie JSON is passed and auth-gating) and top-level Composables under `ui/*`
 
 Integration points & external dependencies
 - YTS API: base URL defined in `constants/Constants.kt` (Constants.YTS_BASE_URL)
-- Firebase: Crashlytics / Messaging — google-services plugin is applied; `google-services.json` must be valid for messaging/crashlytics to work
+- Firebase: Auth (Google Sign-in), Crashlytics, and Messaging. `google-services.json` must be valid and SHA-1 registered in Firebase Console for Google Sign-in.
 - ML Kit Translate: used for on-device translations (dependency in gradle BOM)
 - YouTube player library for trailers (dependency present in libs)
 

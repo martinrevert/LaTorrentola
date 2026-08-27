@@ -7,6 +7,7 @@ La Torrentola is a modern, high-performance Android application built with the l
 This project has been fully refactored to use the most cutting-edge libraries and patterns:
 
 -   **Language:** [Kotlin 2.4+](https://kotlinlang.org/) with the K2 compiler for faster builds and improved performance.
+-   **Authentication:** [Firebase Auth](https://firebase.google.com/docs/auth) with **Google Sign-in** leveraging the [Credential Manager API](https://developer.android.com/training/sign-in/credential-manager).
 -   **UI:** [Jetpack Compose](https://developer.android.com/compose) with **Material 3**, providing a declarative and reactive user interface.
 -   **Architecture:** [MVVM (Model-View-ViewModel)](https://developer.android.com/topic/architecture) with a clean separation of concerns.
 -   **Dependency Injection:** [Hilt](https://developer.android.com/training/dependency-injection/hilt-android) for robust and scalable DI.
@@ -27,18 +28,21 @@ graph TD
     subgraph UI_Layer [UI Layer - Jetpack Compose]
         MA[MainActivity]
         NV[AppNavigation - Nav3]
+        LS[LoginScreen]
         HS[HomeScreen]
         DS[DetailScreen]
         SS[SearchScreen]
     end
 
     subgraph Presentation_Layer [Presentation Layer]
+        AVM[AuthViewModel]
         HVM[HomeViewModel]
         DVM[DetailViewModel]
         SVM[SearchViewModel]
     end
 
     subgraph Domain_Data_Layer [Data Layer]
+        AREP[AuthRepository]
         REP[YtsRepository]
         RS[YtsService - Retrofit 3]
         DB[AppDatabase - Room]
@@ -46,11 +50,14 @@ graph TD
     end
 
     MA --> NV
-    NV --> HS & DS & SS
+    NV --> LS & HS & DS & SS
+    LS --> AVM
     HS --> HVM
     DS --> DVM
     SS --> SVM
     
+    AVM --> AREP
+    AREP -->|Firebase Auth| FAN[Firebase]
     HVM & DVM & SVM --> REP
     REP --> RS
     REP --> DB
@@ -62,16 +69,17 @@ graph TD
 
 ## 🛠️ Key Features
 
-1.  **Declarative UI:** Entirely built with Jetpack Compose for a smooth, fluid user experience.
-2.  **State Management:** ViewModels leverage `StateFlow` and `collectAsStateWithLifecycle` to ensure UI state is handled safely.
-3.  **Adaptive Grids:** Staggered grids that adapt to screen size (Phones, Tablets, Foldables).
-4.  **Offline Support:** Room database caches movies for offline viewing and "Favorites" management.
-5.  **On-Device AI:** Real-time translation of movie summaries from English to Spanish without cloud dependencies.
-6.  **Navigation 3:** Uses the latest navigation APIs for passing complex data safely between screens.
-7.  **Edge-to-Edge:** Full support for Android 15's edge-to-edge requirements using `WindowInsets`.
-8.  **Android TV Support:** Optimized for leanback experience with a 16:9 banner and D-Pad focus handling.
-9.  **Theming & Accessibility:** Dynamic UI adjustments (e.g., App Bar icon tint) that adapt to surface luminance in both Light and Dark themes.
-10. **Performance:** Optimized with R8/ProGuard and modern serialization (Kotlinx Serialization + GSON).
+1.  **Google Authentication:** Secure login using Firebase and Credential Manager, featuring a personalized user profile and automatic session persistence.
+2.  **Declarative UI:** Entirely built with Jetpack Compose for a smooth, fluid user experience.
+3.  **State Management:** ViewModels leverage `StateFlow` and `collectAsStateWithLifecycle` to ensure UI state is handled safely.
+4.  **Adaptive Grids:** Staggered grids that adapt to screen size (Phones, Tablets, Foldables).
+5.  **Offline Support:** Room database caches movies for offline viewing and "Favorites" management.
+6.  **On-Device AI:** Real-time translation of movie summaries from English to Spanish without cloud dependencies.
+7.  **Navigation 3:** Uses the latest navigation APIs for passing complex data safely between screens.
+8.  **Edge-to-Edge:** Full support for Android 15's edge-to-edge requirements using `WindowInsets`.
+9.  **Android TV Support:** Optimized for leanback experience with a 16:9 banner and D-Pad focus handling.
+10. **Theming & Accessibility:** Dynamic UI adjustments (e.g., App Bar icon tint) that adapt to surface luminance in both Light and Dark themes.
+11. **Performance:** Optimized with R8/ProGuard and modern serialization (Kotlinx Serialization + GSON).
 
 ## 🔄 Core Workflows
 
@@ -138,6 +146,30 @@ sequenceDiagram
     DS->>TTS: Speak(Spanish Text)
 ```
 
+### 4. Authentication Workflow
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant LS as LoginScreen
+    participant VM as AuthViewModel
+    participant R as AuthRepository
+    participant CM as Credential Manager
+    participant F as Firebase Auth
+
+    U->>LS: Tap "Iniciar sesión con Google"
+    LS->>VM: signInWithGoogle()
+    VM->>R: signInWithGoogle()
+    R->>CM: getCredential()
+    CM-->>U: Show Google Account Picker
+    U->>CM: Select Account
+    CM-->>R: ID Token
+    R->>F: signInWithCredential(ID Token)
+    F-->>R: FirebaseUser
+    R-->>VM: Success
+    VM-->>LS: Update AuthState.Success
+    LS->>U: Navigate to Home
+```
+
 ## 📦 Requirements & Setup
 
 To ensure the project compiles and runs correctly:
@@ -148,9 +180,10 @@ To ensure the project compiles and runs correctly:
         const val YTS_BASE_URL = "https://movies-api.accel.li/api/v2/"
         const val PAGE_SIZE = 50
         const val MIN_RATING = "6"
+        const val WEB_CLIENT_ID = "YOUR_FIREBASE_WEB_CLIENT_ID"
     }
     ```
-2.  **Google Services:** Place your `google-services.json` in the `app/` directory for Firebase and ML Kit functionality.
+2.  **Google Services:** Place your `google-services.json` in the `app/` directory. Ensure your app's **SHA-1** is registered in the Firebase Console and **Google Sign-in** is enabled.
 3.  **Local Properties:** Define your signing keys if you plan to build release versions.
 
 ## 📈 Future Roadmap
