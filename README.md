@@ -1,6 +1,6 @@
 # La Torrentola 🎬
 
-La Torrentola is a modern, high-performance Android application built with the latest technologies in the Android ecosystem. It serves as a movie discovery tool and a companion for **[Transdrone](https://play.google.com/store/apps/details?id=com.nascent.transdrone)**, focusing on seamless browsing, data visualization, and accessibility.
+La Torrentola is a modern, high-performance Android application built with the latest technologies in the Android ecosystem. It serves as a movie discovery tool and a companion for **[Transdrone](https://play.google.com/store/apps/details?id=com.nascent.transdrone)** or **[DS Get](https://play.google.com/store/search?q=ds%20get&c=apps)** (if you use a Synolgy NAS), focusing on seamless browsing, data visualization, and accessibility.
 
 ## 🚀 Modern Android Stack
 
