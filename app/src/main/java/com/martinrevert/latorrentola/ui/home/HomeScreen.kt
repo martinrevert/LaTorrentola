@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import android.content.pm.PackageManager
+import androidx.compose.ui.draw.clip
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
@@ -48,6 +49,7 @@ import com.martinrevert.latorrentola.utils.isTvDevice
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
+    userPhotoUrl: String?,
     onMovieClick: (Movie) -> Unit,
     onSettingsClick: () -> Unit,
     onSearchClick: () -> Unit,
@@ -113,7 +115,18 @@ fun HomeScreen(
                         onClick = onSettingsClick,
                         modifier = Modifier.focusHighlight(shape = CircleShape)
                     ) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        if (userPhotoUrl != null) {
+                            AsyncImage(
+                                model = userPhotoUrl,
+                                contentDescription = "User profile",
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        }
                     }
                 }
             )

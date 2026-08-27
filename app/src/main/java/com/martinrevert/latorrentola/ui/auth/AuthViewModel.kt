@@ -1,0 +1,50 @@
+package com.martinrevert.latorrentola.ui.auth
+
+import android.content.Context
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.google.firebase.auth.FirebaseUser
+import com.martinrevert.latorrentola.network.AuthRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+@HiltViewModel
+class AuthViewModel @Inject constructor(
+    private val authRepository: AuthRepository
+) : ViewModel() {
+
+    private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
+    val authState: StateFlow<AuthState> = _authState.asStateFlow()
+
+    val currentUser: FirebaseUser? get() = authRepository.currentUser
+
+    fun signInWithGoogle(context: Context) {
+        viewModelScope.launch {
+            _authState.value = AuthState.Loading
+            val result = authRepository.signInWithGoogle(context)
+            if (result.isSuccess) {
+                _authState.value = AuthState.Success
+            } else {
+                _authState.value = AuthState.Error(result.exceptionOrNull()?.message ?: "Unknown error")
+            }
+        }
+    }
+
+    fun signOut() {
+        viewModelScope.launch {
+            authRepository.signOut()
+            _authState.value = AuthState.Idle
+        }
+    }
+}
+
+sealed interface AuthState {
+    object Idle : AuthState
+    object Loading : AuthState
+    object Success : AuthState
+    data class Error(val message: String) : AuthState
+}

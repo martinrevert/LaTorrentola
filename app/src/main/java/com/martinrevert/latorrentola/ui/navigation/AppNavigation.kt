@@ -7,6 +7,8 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
+import com.martinrevert.latorrentola.ui.auth.AuthViewModel
+import com.martinrevert.latorrentola.ui.auth.LoginScreen
 import com.martinrevert.latorrentola.ui.detail.DetailViewModel
 import com.martinrevert.latorrentola.ui.detail.MovieDetailScreen
 import com.martinrevert.latorrentola.ui.home.HomeScreen
@@ -21,6 +23,7 @@ import com.martinrevert.latorrentola.model.YTS.Movie
 
 @Serializable
 sealed interface Route : NavKey {
+    @Serializable object Login : Route
     @Serializable object Home : Route
     @Serializable data class Detail(val movieJson: String? = null, val movieId: Int? = null) : Route
     @Serializable object Settings : Route
@@ -33,11 +36,24 @@ fun AppNavigation(
     initialMovieId: Int? = null,
     onInitialDataHandled: () -> Unit = {}
 ) {
-    val backStack = rememberNavBackStack(Route.Home)
+    val authViewModel: AuthViewModel = hiltViewModel()
+    val isLoggedIn = authViewModel.currentUser != null
+    
+    val backStack = rememberNavBackStack(if (isLoggedIn) Route.Home else Route.Login)
+
+    // Handle session expiry or logout from other parts of the app
+    LaunchedEffect(authViewModel.currentUser) {
+        if (authViewModel.currentUser == null && backStack.firstOrNull() != Route.Login) {
+            while (backStack.isNotEmpty()) {
+                backStack.removeLastOrNull()
+            }
+            backStack.add(Route.Login)
+        }
+    }
 
     // Handle Deep Link / Notification navigation
     LaunchedEffect(initialMovieJson, initialMovieId) {
-        if (initialMovieJson != null || initialMovieId != null) {
+        if (isLoggedIn && (initialMovieJson != null || initialMovieId != null)) {
             initialMovieJson?.let {
                 backStack.add(Route.Detail(movieJson = it))
             }
@@ -52,11 +68,23 @@ fun AppNavigation(
         backStack = backStack,
         onBack = { backStack.removeLastOrNull() },
         entryProvider = entryProvider {
+            entry<Route.Login> {
+                LoginScreen(
+                    viewModel = authViewModel,
+                    onLoginSuccess = {
+                        while (backStack.isNotEmpty()) {
+                            backStack.removeLastOrNull()
+                        }
+                        backStack.add(Route.Home)
+                    }
+                )
+            }
             // Use the specific subclass in the entry definition
             entry<Route.Home> {
                 val viewModel: HomeViewModel = hiltViewModel()
                 HomeScreen(
                     viewModel = viewModel,
+                    userPhotoUrl = authViewModel.currentUser?.photoUrl?.toString(),
                     onMovieClick = { movie ->
                         val movieJson = Json.encodeToString(Movie.serializer(), movie)
                         backStack.add(Route.Detail(movieJson = movieJson))
@@ -83,7 +111,21 @@ fun AppNavigation(
             }
             entry<Route.Settings> {
                 val viewModel: SettingsViewModel = hiltViewModel()
-                SettingsScreen(viewModel = viewModel, onBackClick = { backStack.removeLastOrNull() })
+                val user = authViewModel.currentUser
+                SettingsScreen(
+                    viewModel = viewModel,
+                    userPhotoUrl = user?.photoUrl?.toString(),
+                    userName = user?.displayName,
+                    userEmail = user?.email,
+                    onBackClick = { backStack.removeLastOrNull() },
+                    onLogoutClick = {
+                        authViewModel.signOut()
+                        while (backStack.isNotEmpty()) {
+                            backStack.removeLastOrNull()
+                        }
+                        backStack.add(Route.Login)
+                    }
+                )
             }
             entry<Route.Search> { searchKey ->
                 val viewModel: SearchViewModel = hiltViewModel(key = searchKey.hashCode().toString())
