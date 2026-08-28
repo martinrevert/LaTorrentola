@@ -25,6 +25,9 @@ class SearchViewModel @Inject constructor(
     private val _lastClickedMovieId = MutableStateFlow<Int?>(null)
     val lastClickedMovieId: StateFlow<Int?> = _lastClickedMovieId.asStateFlow()
 
+    private val _selectedFavoriteIds = MutableStateFlow<Set<Int>>(emptySet())
+    val selectedFavoriteIds: StateFlow<Set<Int>> = _selectedFavoriteIds.asStateFlow()
+
     val downloadedMovieIds: StateFlow<Set<Int>> = userLibraryRepository.getDownloadedMovies()
         .map { it.map { download -> download.movieId }.toSet() }
         .catch { emit(emptySet()) }
@@ -123,6 +126,33 @@ class SearchViewModel @Inject constructor(
     fun removeFavorite(movie: Movie) {
         viewModelScope.launch {
             ytsRepository.removeFavorite(movie)
+        }
+    }
+
+    fun toggleFavoriteSelection(movieId: Int) {
+        val current = _selectedFavoriteIds.value
+        _selectedFavoriteIds.value = if (current.contains(movieId)) {
+            current - movieId
+        } else {
+            current + movieId
+        }
+    }
+
+    fun clearSelection() {
+        _selectedFavoriteIds.value = emptySet()
+    }
+
+    fun deleteSelectedFavorites() {
+        val idsToDelete = _selectedFavoriteIds.value
+        if (idsToDelete.isEmpty()) return
+
+        viewModelScope.launch {
+            // Find movies in allResults that match the ids to delete
+            val moviesToDelete = allResults.filter { it.id in idsToDelete }
+            moviesToDelete.forEach { movie ->
+                ytsRepository.removeFavorite(movie)
+            }
+            clearSelection()
         }
     }
 

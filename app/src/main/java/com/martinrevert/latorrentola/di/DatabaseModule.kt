@@ -4,7 +4,6 @@ import android.content.Context
 import com.martinrevert.latorrentola.database.AppDatabase
 import com.martinrevert.latorrentola.database.DateDao
 import com.martinrevert.latorrentola.database.GenreDao
-import com.martinrevert.latorrentola.database.MovieDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -20,11 +19,6 @@ object DatabaseModule {
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
         return AppDatabase.getAppDatabase(context)
-    }
-
-    @Provides
-    fun provideMovieDao(appDatabase: AppDatabase): MovieDao {
-        return appDatabase.movieDao()
     }
 
     @Provides

@@ -3,7 +3,6 @@ package com.martinrevert.latorrentola.network
 import com.martinrevert.latorrentola.constants.Constants
 import com.martinrevert.latorrentola.database.DateDao
 import com.martinrevert.latorrentola.database.GenreDao
-import com.martinrevert.latorrentola.database.MovieDao
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.MovieDetails
 import com.martinrevert.latorrentola.model.date.DateLastVisit
@@ -15,7 +14,7 @@ import javax.inject.Singleton
 @Singleton
 class YtsRepository @Inject constructor(
     private val ytsService: YtsService,
-    private val movieDao: MovieDao,
+    private val userLibraryRepository: UserLibraryRepository,
     private val genreDao: GenreDao,
     private val dateDao: DateDao
 ) {
@@ -37,19 +36,19 @@ class YtsRepository @Inject constructor(
     }
 
     fun getFavoriteMovies(): Flow<List<Movie>> {
-        return movieDao.getAll()
+        return userLibraryRepository.getFavoriteMovies()
     }
 
     suspend fun isFavorite(movieId: Int): Boolean {
-        return movieDao.getMovie(movieId) != null
+        return userLibraryRepository.isFavorite(movieId)
     }
 
     suspend fun addFavorite(movie: Movie) {
-        movieDao.insertMovie(movie)
+        userLibraryRepository.addFavorite(movie)
     }
 
     suspend fun removeFavorite(movie: Movie) {
-        movieDao.delete(movie)
+        userLibraryRepository.removeFavorite(movie)
     }
 
     suspend fun getMovieFullDetails(movieId: Int): MovieDetails {

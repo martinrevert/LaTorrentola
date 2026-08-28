@@ -1,5 +1,6 @@
 package com.martinrevert.latorrentola.ui.home
 
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -350,9 +351,11 @@ fun MovieList(
     state: LazyGridState,
     lastVisitDate: Long? = null,
     downloadedMovieIds: Set<Int> = emptySet(),
+    selectedIds: Set<Int> = emptySet(),
     onMovieClick: (Movie) -> Unit,
     onLoadMore: () -> Unit,
-    onDeleteClick: ((Movie) -> Unit)? = null,
+    onLongClick: ((Int) -> Unit)? = null,
+    onToggleSelection: ((Int) -> Unit)? = null,
     initialFocusId: Int? = null,
     onFocusRestored: () -> Unit = {}
 ) {
@@ -382,8 +385,10 @@ fun MovieList(
                 movie = movie, 
                 lastVisitDate = lastVisitDate,
                 isDownloaded = downloadedMovieIds.contains(movie.id),
+                isSelected = selectedIds.contains(movie.id),
                 onClick = { onMovieClick(movie) },
-                onDeleteClick = onDeleteClick,
+                onLongClick = onLongClick?.let { { it(movie.id) } },
+                onToggleSelection = onToggleSelection?.let { { it(movie.id) } },
                 shouldRequestFocus = movie.id == initialFocusId,
                 onFocusRestored = onFocusRestored
             )
@@ -413,8 +418,10 @@ fun MovieItem(
     movie: Movie,
     lastVisitDate: Long? = null,
     isDownloaded: Boolean = false,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
-    onDeleteClick: ((Movie) -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+    onToggleSelection: (() -> Unit)? = null,
     shouldRequestFocus: Boolean = false,
     onFocusRestored: () -> Unit = {}
 ) {
@@ -444,7 +451,10 @@ fun MovieItem(
                 }
             }
             .focusHighlight(shape = MaterialTheme.shapes.medium)
-            .clickable(onClick = onClick),
+            .combinedClickable(
+                onClick = onToggleSelection ?: onClick,
+                onLongClick = onLongClick
+            ),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         shape = MaterialTheme.shapes.medium
     ) {
@@ -560,22 +570,22 @@ fun MovieItem(
                 }
             }
             
-            if (onDeleteClick != null) {
-                IconButton(
-                    onClick = { onDeleteClick(movie) },
+            if (isSelected) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                )
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = "Selected",
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f), CircleShape)
+                        .padding(8.dp)
                         .size(32.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Delete, 
-                        contentDescription = "Delete",
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
+                        .background(Color.White, CircleShape)
+                )
             }
         }
     }

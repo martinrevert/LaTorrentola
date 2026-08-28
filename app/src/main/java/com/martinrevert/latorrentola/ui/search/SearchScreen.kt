@@ -8,6 +8,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -39,6 +41,7 @@ fun SearchScreen(
     val selectedQuality by viewModel.selectedQuality.collectAsState()
     val lastClickedMovieId by viewModel.lastClickedMovieId.collectAsState()
     val downloadedMovieIds by viewModel.downloadedMovieIds.collectAsState()
+    val selectedFavoriteIds by viewModel.selectedFavoriteIds.collectAsState()
     val qualityOptions = viewModel.qualityOptions
     var searchQuery by remember { mutableStateOf("") }
     var isShowingFavorites by remember(initialGenre) { mutableStateOf(initialGenre == "milista") }
@@ -59,6 +62,7 @@ fun SearchScreen(
     }
 
     LaunchedEffect(initialGenre) {
+        viewModel.clearSelection()
         if (initialGenre == "milista") {
             viewModel.showFavorites()
         } else if (initialGenre != null) {
@@ -73,7 +77,11 @@ fun SearchScreen(
             TopAppBar(
                 title = {
                     if (isShowingFavorites) {
-                        Text("My Favorites")
+                        if (selectedFavoriteIds.isNotEmpty()) {
+                            Text("${selectedFavoriteIds.size} seleccionados")
+                        } else {
+                            Text("My Favorites")
+                        }
                     } else {
                         TextField(
                             value = searchQuery,
@@ -111,15 +119,31 @@ fun SearchScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = onBackClick,
-                        modifier = Modifier.focusHighlight(shape = CircleShape)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    if (isShowingFavorites && selectedFavoriteIds.isNotEmpty()) {
+                        IconButton(
+                            onClick = { viewModel.clearSelection() },
+                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear selection")
+                        }
+                    } else {
+                        IconButton(
+                            onClick = onBackClick,
+                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
                 },
                 actions = {
-                    // Favorites toggle removed from here as per user request
+                    if (isShowingFavorites && selectedFavoriteIds.isNotEmpty()) {
+                        IconButton(
+                            onClick = { viewModel.deleteSelectedFavorites() },
+                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete selected")
+                        }
+                    }
                 }
             )
         }
@@ -155,12 +179,18 @@ fun SearchScreen(
                                 movies = state.movies,
                                 state = gridState,
                                 downloadedMovieIds = downloadedMovieIds,
+                                selectedIds = selectedFavoriteIds,
                                 onMovieClick = {
-                                    viewModel.setLastClickedMovieId(it.id)
-                                    onMovieClick(it)
+                                    if (selectedFavoriteIds.isNotEmpty()) {
+                                        viewModel.toggleFavoriteSelection(it.id)
+                                    } else {
+                                        viewModel.setLastClickedMovieId(it.id)
+                                        onMovieClick(it)
+                                    }
                                 },
+                                onLongClick = if (state.isFavorites) { id -> viewModel.toggleFavoriteSelection(id) } else null,
                                 onLoadMore = { if (!state.isFavorites) viewModel.loadMore() },
-                                onDeleteClick = if (state.isFavorites) { movie -> viewModel.removeFavorite(movie) } else null,
+                                onToggleSelection = null, // Logic moved to onMovieClick for standard feel
                                 initialFocusId = lastClickedMovieId,
                                 onFocusRestored = { viewModel.clearLastClickedMovieId() }
                             )

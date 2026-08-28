@@ -7,15 +7,13 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.date.DateLastVisit
 import com.martinrevert.latorrentola.model.stats.GenreStats
 
-@Database(entities = [Movie::class, DateLastVisit::class, GenreStats::class], version = 5, exportSchema = false)
+@Database(entities = [DateLastVisit::class, GenreStats::class], version = 6, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
-    abstract fun movieDao(): MovieDao
     abstract fun dateDao(): DateDao
     abstract fun genreDao(): GenreDao
 
@@ -30,10 +28,16 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "appdatabase"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build()
                 INSTANCE = instance
                 instance
+            }
+        }
+
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS `movies`")
             }
         }
 
