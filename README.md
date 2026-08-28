@@ -72,7 +72,8 @@ graph TD
 ## 🛠️ Key Features
 
 1.  **Google Authentication & Cloud Sync:** Secure login using Firebase. Syncs your downloaded movies and specific versions across all your devices using Cloud Firestore.
-2.  **Declarative UI:** Entirely built with Jetpack Compose for a smooth, fluid user experience.
+2.  **Smart Favorites Management:** D-pad optimized multi-selection mode. Short-press to view details, long-press to enter selection mode for bulk deletion.
+3.  **Declarative UI:** Entirely built with Jetpack Compose for a smooth, fluid user experience.
 3.  **State Management:** ViewModels leverage `StateFlow` and `collectAsStateWithLifecycle` to ensure UI state is handled safely.
 4.  **Adaptive Grids:** Staggered grids that adapt to screen size (Phones, Tablets, Foldables).
 5.  **Offline Support:** Room database caches movies for offline viewing and "Favorites" management.
@@ -176,17 +177,24 @@ sequenceDiagram
 
 To ensure the project compiles and runs correctly:
 
-1.  **Constants:** Ensure `app/src/main/java/com/martinrevert/latorrentola/constants/Constants.kt` exists:
+1.  **Credentials & `local.properties`:** Create a `local.properties` file in the project root (if not present) and add your Firebase Web Client ID. This prevents sensitive IDs from being committed to the repository:
+    ```properties
+    FIREBASE_WEB_CLIENT_ID=your_web_client_id_here
+    ```
+    The build system will automatically generate a `BuildConfig.WEB_CLIENT_ID` field for use in the app.
+
+2.  **Constants:** Ensure `app/src/main/java/com/martinrevert/latorrentola/constants/Constants.kt` references the generated config:
     ```kotlin
     object Constants {
         const val YTS_BASE_URL = "https://movies-api.accel.li/api/v2/"
-        const val PAGE_SIZE = 50
-        const val MIN_RATING = "6"
-        const val WEB_CLIENT_ID = "YOUR_FIREBASE_WEB_CLIENT_ID"
+        val WEB_CLIENT_ID = BuildConfig.WEB_CLIENT_ID
     }
     ```
-2.  **Google Services:** Place your `google-services.json` in the `app/` directory. Ensure your app's **SHA-1** is registered in the Firebase Console and **Google Sign-in** is enabled.
-3.  **Local Properties:** Define your signing keys if you plan to build release versions.
+
+3.  **Google Services:** Place your `google-services.json` in the `app/` directory. Ensure:
+    -   Your app's **SHA-1 fingerprint** is registered in the Firebase Console.
+    -   **Google Sign-in** is enabled as an Authentication provider.
+    -   **Cloud Firestore** is initialized with appropriate security rules.
 
 ## 📈 Future Roadmap
 

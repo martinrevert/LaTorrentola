@@ -12,17 +12,18 @@ Short summary
 
 Essential places to read first
 - App entry and navigation: `app/src/main/java/com/martinrevert/latorrentola/MainActivity.kt` and `ui/navigation/AppNavigation.kt` (deep-link via Intent extra "PELI"; navigation transfers Movie as JSON using kotlinx.serialization). Navigation also handles auth-gating (Route.Login vs Route.Home).
-- Authentication & Cloud Sync: `network/AuthRepository.kt`, `network/UserLibraryRepository.kt` (Firestore), `ui/auth/AuthViewModel.kt`, `ui/auth/LoginScreen.kt`, and `di/AuthModule.kt`.
-- Network & DI: `di/NetworkModule.kt`, `network/YtsService.kt`, `network/YtsRepository.kt` (Retrofit service + repository that mixes remote + Room).
-- Models & persistence: `model/YTS/*` (e.g. `Movie.kt`) and `database/Converters.kt`, `database/MovieDao.kt` (Room entities are also annotated with `@Serializable` and use Gson converters)
+- Authentication & Cloud Sync: `network/AuthRepository.kt`, `network/UserLibraryRepository.kt` (Firestore), `ui/auth/AuthViewModel.kt`, `ui/auth/LoginScreen.kt`, and `di/AuthModule.kt`. Sensitive credentials like `WEB_CLIENT_ID` are injected via `local.properties`.
+- Network & DI: `di/NetworkModule.kt`, `network/YtsService.kt`, `network/YtsRepository.kt` (Retrofit service + repository that mixes remote + Firestore sync).
+- Models & persistence: `model/YTS/*` (e.g. `Movie.kt`) and `database/Converters.kt`. Local persistence (Room) is reserved for session data (GenreStats, LastVisit); Favorites and Downloads are synced via Firestore.
 - Build and dependency versions: `gradle/libs.versions.toml` and `app/build.gradle` (KSP, Hilt, Google services plugins; git-based versionCode)
 - Firebase / Google services: `google-services.json` (project and app-level copies) and `app/keys/release.keystore` (release signing asset)
 
 Project-specific patterns and gotchas (do not assume defaults)
-- Mixed serialization: Models have both `kotlinx.serialization` (`@Serializable`) and Gson `@SerializedName`. Retrofit is configured with `GsonConverterFactory` and Room TypeConverters use Gson. When adding fields, add both annotations and make converters handle new nested types.
-  - Example: `Movie` (app/src/.../model/YTS/Movie.kt) uses `@Serializable` and `@SerializedName`. DB converters (`database/Converters.kt`) use Gson to persist `List<Torrent>` and `List<Cast>`.
+- Mixed serialization: Models have both `kotlinx.serialization` (`@Serializable`) and Gson `@SerializedName`. Retrofit is configured with `GsonConverterFactory`.
+- Cloud-First Persistence: Favorites and Download history are stored in Firebase Firestore (keyed by Google UID). Room is only used for local analytics and session metadata. Do not add new entities to Room if they need to persist across devices.
 - Navigation transfers entire Movie objects as JSON strings via `Json.encodeToString(Movie.serializer(), movie)` and `Json.decodeFromString(...)` in `AppNavigation.kt`. Keep serializers in sync with model changes.
-- Coroutines-first codebase: network and DAO methods are `suspend` or return `Flow` (e.g. `YtsService` uses `suspend`, `MovieDao.getAll()` returns `Flow<List<Movie>>`). Do not introduce RxJava; README mentions RxJava historically but code uses coroutines + Flow.
+- Multi-Selection Pattern: The `SearchScreen` (favorites view) implements a selection mode for D-pad compatibility. Short-press navigates to details, long-press enters selection mode. Once in selection mode, short-press toggles selection.
+- Credential Safety: Never hardcode API keys or Web Client IDs. Use `local.properties` with a corresponding `buildConfigField` in `app/build.gradle`. Reference them via `BuildConfig`.
 - DI scope: Hilt is used for singletons (see `di/NetworkModule.kt`). When adding bindings, follow the `@Module @InstallIn(SingletonComponent::class)` pattern.
 - Git-based versionCode: `app/build.gradle` runs `git rev-list --count HEAD` to set `versionCode`/`versionName`. Ensure git is present in CI or on developer machines when producing builds.
 

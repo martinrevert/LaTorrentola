@@ -33,10 +33,18 @@ android {
         versionName "2.0.$gitVersionCode"
         minSdkVersion 24
         targetSdkVersion 37
+
+        def localProperties = new Properties()
+        def localPropertiesFile = rootProject.file('local.properties')
+        if (localPropertiesFile.exists()) {
+            localProperties.load(new FileInputStream(localPropertiesFile))
+        }
+        buildConfigField "String", "WEB_CLIENT_ID", "\"${localProperties.getProperty('FIREBASE_WEB_CLIENT_ID', '')}\""
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {
