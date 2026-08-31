@@ -30,7 +30,7 @@ import androidx.core.view.WindowCompat
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 
-private val DarkColorScheme = darkColorScheme(
+internal val DarkColorScheme = darkColorScheme(
     primary = Color(0xFFD0BCFF),
     onPrimary = Color(0xFF381E72),
     primaryContainer = Color(0xFF4F378B),
@@ -61,7 +61,7 @@ private val DarkColorScheme = darkColorScheme(
     scrim = Color(0xFF000000)
 )
 
-private val LightColorScheme = lightColorScheme(
+internal val LightColorScheme = lightColorScheme(
     primary = Color(0xFF6750A4),
     onPrimary = Color(0xFFFFFFFF),
     primaryContainer = Color(0xFFEADDFF),

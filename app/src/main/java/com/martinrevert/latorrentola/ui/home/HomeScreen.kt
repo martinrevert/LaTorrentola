@@ -463,7 +463,7 @@ fun MovieItem(
                     }
                 }
         ) {
-            Column {
+            Column(modifier = Modifier.background(androidx.tv.material3.MaterialTheme.colorScheme.surface)) {
                 Box {
                     AsyncImage(
                         model = movie.mediumCoverImage,
@@ -510,8 +510,7 @@ fun MovieItem(
                 }
                 Column(
                     modifier = Modifier
-                        .background(androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f))
-                        .padding(8.dp)
+                        .padding(12.dp)
                         .fillMaxWidth()
                 ) {
                     androidx.tv.material3.Text(
@@ -650,28 +649,26 @@ fun MovieItem(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (!isTv) {
-                                    IconButton(
-                                        onClick = {
-                                            val imdbUrl = "https://www.imdb.com/title/${movie.imdbCode}"
-                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                                type = "text/plain"
-                                                putExtra(Intent.EXTRA_SUBJECT, movie.title)
-                                                putExtra(Intent.EXTRA_TEXT, "Check out this movie: ${movie.title}\n$imdbUrl")
-                                            }
-                                            context.startActivity(Intent.createChooser(shareIntent, "Share movie"))
-                                        },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Share, 
-                                            contentDescription = "Share",
-                                            modifier = Modifier.size(16.dp),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                IconButton(
+                                    onClick = {
+                                        val imdbUrl = "https://www.imdb.com/title/${movie.imdbCode}"
+                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(Intent.EXTRA_SUBJECT, movie.title)
+                                            putExtra(Intent.EXTRA_TEXT, "Check out this movie: ${movie.title}\n$imdbUrl")
+                                        }
+                                        context.startActivity(Intent.createChooser(shareIntent, "Share movie"))
+                                    },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Share, 
+                                        contentDescription = "Share",
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
                                 }
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = "⭐ ${movie.rating}",
                                     style = MaterialTheme.typography.labelSmall,
