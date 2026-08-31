@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola.ui.detail
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.view.ViewGroup
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,11 +19,9 @@ import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,8 +36,10 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.options.IFramePlayerOptions
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
@@ -156,8 +157,7 @@ fun MovieDetailContent(
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text(text = "Year: ${movie.year}", style = MaterialTheme.typography.bodyLarge)
-                    Text(text = "Rating: ⭐ ${movie.rating}", style = MaterialTheme.typography.bodyLarge)
+                    MovieMetadata(movie = movie)
                 }
             }
         } else {
@@ -177,9 +177,7 @@ fun MovieDetailContent(
             Spacer(modifier = Modifier.height(16.dp))
             
             Text(text = "Details", style = MaterialTheme.typography.titleLarge)
-            Text(text = "Year: ${movie.year}")
-            Text(text = "Language: ${movie.language}")
-            Text(text = "Rating: ${movie.rating}")
+            MovieMetadata(movie = movie)
         }
         
         Spacer(modifier = Modifier.height(24.dp))
@@ -202,27 +200,91 @@ fun MovieDetailContent(
 }
 
 @Composable
+fun MovieMetadata(movie: Movie, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(text = "Year: ${movie.year ?: "N/A"}", style = MaterialTheme.typography.bodyLarge)
+        Text(text = "Language: ${movie.language ?: "N/A"}", style = MaterialTheme.typography.bodyLarge)
+        Text(text = "Rating: ⭐ ${movie.rating ?: "N/A"}", style = MaterialTheme.typography.bodyLarge)
+        if (!movie.runtime.isNullOrEmpty()) {
+            Text(text = "Runtime: ${movie.runtime} min", style = MaterialTheme.typography.bodyLarge)
+        }
+        if (!movie.mpaRating.isNullOrEmpty()) {
+            Text(text = "MPA Rating: ${movie.mpaRating}", style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
+
+@Composable
 fun YoutubePlayer(
     youtubeVideoId: String,
     lifecycleOwner: androidx.lifecycle.LifecycleOwner
 ) {
-    AndroidView(
+    var playerState by remember { mutableStateOf(PlayerConstants.PlayerState.UNKNOWN) }
+    var youTubePlayerInstance by remember { mutableStateOf<YouTubePlayer?>(null) }
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(16 / 9f)
-            .clip(MaterialTheme.shapes.medium),
-        factory = { context ->
-            YouTubePlayerView(context).apply {
-                lifecycleOwner.lifecycle.addObserver(this)
+            .clip(MaterialTheme.shapes.medium)
+            .background(Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { context ->
+                YouTubePlayerView(context).apply {
+                    enableAutomaticInitialization = false
+                    lifecycleOwner.lifecycle.addObserver(this)
+                    
+                    // Disable D-pad focus on the player itself
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+                    descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
 
-                addYouTubePlayerListener(object : AbstractYouTubePlayerListener() {
-                    override fun onReady(youTubePlayer: YouTubePlayer) {
-                        youTubePlayer.cueVideo(youtubeVideoId, 0f)
-                    }
-                })
+                    val options = IFramePlayerOptions.Builder(context)
+                        .controls(0) // Hide web controls
+                        .build()
+
+                    initialize(object : AbstractYouTubePlayerListener() {
+                        override fun onReady(youTubePlayer: YouTubePlayer) {
+                            youTubePlayerInstance = youTubePlayer
+                            youTubePlayer.cueVideo(youtubeVideoId, 0f)
+                        }
+
+                        override fun onStateChange(
+                            youTubePlayer: YouTubePlayer,
+                            state: PlayerConstants.PlayerState
+                        ) {
+                            playerState = state
+                        }
+                    }, options)
+                }
             }
+        )
+
+        // Native Overlay: Single Focusable Play/Pause Button
+        val isPlaying = playerState == PlayerConstants.PlayerState.PLAYING
+        IconButton(
+            onClick = {
+                val player = youTubePlayerInstance
+                if (player != null) {
+                    if (isPlaying) player.pause() else player.play()
+                }
+            },
+            modifier = Modifier
+                .size(64.dp)
+                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                .focusHighlight(shape = CircleShape)
+        ) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = if (isPlaying) "Pause" else "Play",
+                tint = Color.White,
+                modifier = Modifier.size(48.dp)
+            )
         }
-    )
+    }
 }
 
 @Composable
