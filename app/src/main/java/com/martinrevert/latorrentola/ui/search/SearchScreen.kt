@@ -24,6 +24,12 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -55,6 +61,8 @@ fun SearchScreen(
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
     val focusRequester = remember { FocusRequester() }
+    val textFieldFocusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
 
     val gridState = rememberLazyGridState()
 
@@ -79,6 +87,14 @@ fun SearchScreen(
         } else {
             viewModel.resetSearch()
         }
+        
+        if (isTv && initialGenre != "milista") {
+            try {
+                focusRequester.requestFocus()
+            } catch (e: Exception) {
+                // Ignore if not attached
+            }
+        }
     }
 
     Scaffold(
@@ -94,7 +110,7 @@ fun SearchScreen(
                     } else {
                         if (isTv) {
                             Surface(
-                                onClick = { focusRequester.requestFocus() },
+                                onClick = { textFieldFocusRequester.requestFocus() },
                                 border = ClickableSurfaceDefaults.border(
                                     focusedBorder = Border(
                                         border = androidx.compose.foundation.BorderStroke(
@@ -124,7 +140,17 @@ fun SearchScreen(
                                         } catch (e: Exception) {
                                             // Handle case where speech recognition is not available
                                         }
-                                    }
+                                    },
+                                    modifier = Modifier
+                                        .focusRequester(textFieldFocusRequester)
+                                        .onPreviewKeyEvent { event ->
+                                            if (event.key == Key.Back || event.key == Key.Escape) {
+                                                if (event.type == KeyEventType.KeyUp) {
+                                                    focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Exit)
+                                                }
+                                                true
+                                            } else false
+                                        }
                                 )
                             }
                         } else {
@@ -243,13 +269,14 @@ fun SearchScreen(
 private fun SearchTextField(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
-    onVoiceSearchClick: () -> Unit
+    onVoiceSearchClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     TextField(
         value = searchQuery,
         onValueChange = onSearchQueryChange,
         placeholder = { Text("Search movies...") },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         singleLine = true,
         trailingIcon = {
             IconButton(

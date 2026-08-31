@@ -463,7 +463,7 @@ fun MovieItem(
                     }
                 }
         ) {
-            Column(modifier = Modifier.background(androidx.tv.material3.MaterialTheme.colorScheme.surface)) {
+            Column {
                 Box {
                     AsyncImage(
                         model = movie.mediumCoverImage,
@@ -510,6 +510,7 @@ fun MovieItem(
                 }
                 Column(
                     modifier = Modifier
+                        .background(androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant)
                         .padding(12.dp)
                         .fillMaxWidth()
                 ) {

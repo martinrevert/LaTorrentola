@@ -408,14 +408,18 @@ fun TorrentItem(
         androidx.tv.material3.Button(
             onClick = onTorrentClickInternal,
             modifier = Modifier
-                .widthIn(max = 500.dp)
+                .fillMaxWidth(0.5f)
                 .padding(vertical = 4.dp)
         ) {
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
-                androidx.tv.material3.Text(text = "${torrent.quality} - ${torrent.size} (${torrent.type})")
+                androidx.tv.material3.Text(
+                    text = "${torrent.quality} - ${torrent.size} (${torrent.type})",
+                    textAlign = TextAlign.Center
+                )
                 if (isDownloaded) {
                     Spacer(modifier = Modifier.width(8.dp))
                     androidx.tv.material3.Icon(

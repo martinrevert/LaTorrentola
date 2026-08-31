@@ -6,8 +6,7 @@
     *** Companion;
     *** $serializer;
 }
-# Keep serializable classes but allow obfuscation ONLY IF they are not used for Firestore/Reflection.
-# For models used with Firestore, we must keep them fully.
+# Keep serializable classes but allow obfuscation by default
 -keep,allowobfuscation,allowoptimization @kotlinx.serialization.Serializable class com.martinrevert.latorrentola.** { *; }
 -keepnames class kotlinx.serialization.internal.GeneratedSerializer { *; }
 
@@ -18,13 +17,22 @@
 
 # Firestore / Models
 # Firestore uses reflection to map documents to these classes.
-# We must keep the class names and all members (fields) from obfuscation.
+# We must keep the class names and all members (fields/methods) from obfuscation.
+# This "hard keep" overrides the more general allowobfuscation rule for these packages.
 -keep class com.martinrevert.latorrentola.model.** { *; }
--keepclassmembers class com.martinrevert.latorrentola.model.** { *; }
--keepattributes RuntimeVisibleAnnotations, RuntimeInvisibleAnnotations
+-keepclassmembers class com.martinrevert.latorrentola.model.** {
+    <fields>;
+    <methods>;
+    public <init>(...);
+}
+
+# Explicitly keep classes annotated for Firestore
+-keep @com.google.firebase.firestore.IgnoreExtraProperties class * { *; }
+-keepclassmembers @com.google.firebase.firestore.IgnoreExtraProperties class * { *; }
+
+-keepattributes RuntimeVisibleAnnotations, RuntimeInvisibleAnnotations, Signature
 
 # Retrofit 2 / OKHttp
-# Consumer rules are bundled with Retrofit 2.9.0+ and OkHttp 4.0+.
 -dontwarn org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
 -dontwarn javax.annotation.**
 -dontwarn kotlin.Unit
@@ -52,7 +60,7 @@
 -keep class com.google.mlkit.** { *; }
 -dontwarn com.google.mlkit.**
 
-# Keep entry points for reflection-heavy utilities if needed
+# Keep entry points for reflection-heavy utilities
 -keep class com.martinrevert.latorrentola.utils.** {
   public <fields>;
   public <methods>;

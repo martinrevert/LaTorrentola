@@ -120,7 +120,11 @@ fun SettingsScreen(
                         contentColor = MaterialTheme.colorScheme.onErrorContainer
                     )
                 ) {
-                    androidx.tv.material3.Text("Cerrar Sesión")
+                    androidx.tv.material3.Text(
+                        text = "Cerrar Sesión",
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
                 }
             } else {
                 Button(
