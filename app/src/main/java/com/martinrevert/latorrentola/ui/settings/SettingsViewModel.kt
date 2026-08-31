@@ -1,32 +1,68 @@
 package com.martinrevert.latorrentola.ui.settings
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.network.FirebaseMessagingInitializer
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val preferenceManager: PreferenceManager,
-    private val firebaseMessagingInitializer: FirebaseMessagingInitializer
+    private val firebaseMessagingInitializer: FirebaseMessagingInitializer,
+    private val userLibraryRepository: com.martinrevert.latorrentola.network.UserLibraryRepository,
+    private val authRepository: com.martinrevert.latorrentola.network.AuthRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+    
+    private var syncJob: kotlinx.coroutines.Job? = null
 
     init {
+        val localFiltered = preferenceManager.getFilteredLanguages()
         _uiState.value = SettingsUiState(
             voiceSystem = preferenceManager.getVoiceSystem(),
             voiceSummary = preferenceManager.getVoiceSummary(),
             voiceTranslation = preferenceManager.getVoiceTranslation(),
             vibrator = preferenceManager.getVibrator(),
             pushEnabled = preferenceManager.isPushEnabled(),
-            theme = preferenceManager.getTheme()
+            theme = preferenceManager.getTheme(),
+            filteredLanguages = localFiltered
         )
+        syncSettings()
+        observeSettingsChanges()
+    }
+
+    private fun observeSettingsChanges() {
+        viewModelScope.launch {
+            preferenceManager.filteredLanguagesFlow.collect { languages ->
+                if (_uiState.value.filteredLanguages != languages) {
+                    _uiState.value = _uiState.value.copy(filteredLanguages = languages)
+                }
+            }
+        }
+    }
+
+    private fun syncSettings() {
+        viewModelScope.launch {
+            authRepository.authStateFlow
+                .filterNotNull()
+                .flatMapLatest { user ->
+                    userLibraryRepository.observeRemoteFilteredLanguages(user.uid)
+                }
+                .collect { remoteFiltered ->
+                    if (remoteFiltered != null && remoteFiltered != preferenceManager.getFilteredLanguages()) {
+                        preferenceManager.setFilteredLanguages(remoteFiltered)
+                        _uiState.value = _uiState.value.copy(filteredLanguages = remoteFiltered)
+                    }
+                }
+        }
     }
 
     fun toggleVoiceSystem(enabled: Boolean) {
@@ -59,6 +95,17 @@ class SettingsViewModel @Inject constructor(
         preferenceManager.setTheme(theme)
         _uiState.value = _uiState.value.copy(theme = theme)
     }
+
+    fun setFilteredLanguages(languages: String) {
+        preferenceManager.setFilteredLanguages(languages)
+        _uiState.value = _uiState.value.copy(filteredLanguages = languages)
+        
+        syncJob?.cancel()
+        syncJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(1000) // Debounce 1 second
+            userLibraryRepository.saveFilteredLanguages(languages)
+        }
+    }
 }
 
 data class SettingsUiState(
@@ -67,5 +114,6 @@ data class SettingsUiState(
     val voiceTranslation: Boolean = false,
     val vibrator: Boolean = false,
     val pushEnabled: Boolean = true,
-    val theme: Int = PreferenceManager.THEME_SYSTEM
+    val theme: Int = PreferenceManager.THEME_SYSTEM,
+    val filteredLanguages: String = ""
 )

@@ -14,7 +14,9 @@ import javax.inject.Inject
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val userLibraryRepository: com.martinrevert.latorrentola.network.UserLibraryRepository,
+    private val preferenceManager: com.martinrevert.latorrentola.utils.PreferenceManager
 ) : ViewModel() {
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
@@ -27,6 +29,11 @@ class AuthViewModel @Inject constructor(
             _authState.value = AuthState.Loading
             val result = authRepository.signInWithGoogle(context)
             if (result.isSuccess) {
+                // Sync settings from Firestore after login
+                val remoteFiltered = userLibraryRepository.getRemoteFilteredLanguages()
+                if (remoteFiltered != null) {
+                    preferenceManager.setFilteredLanguages(remoteFiltered)
+                }
                 _authState.value = AuthState.Success
             } else {
                 _authState.value = AuthState.Error(result.exceptionOrNull()?.message ?: "Unknown error")

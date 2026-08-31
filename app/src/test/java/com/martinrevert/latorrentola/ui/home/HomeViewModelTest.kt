@@ -24,6 +24,7 @@ class HomeViewModelTest {
 
     private val repository: YtsRepository = mockk(relaxed = true)
     private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
+    private val preferenceManager: com.martinrevert.latorrentola.utils.PreferenceManager = mockk(relaxed = true)
     private lateinit var viewModel: HomeViewModel
 
     @Before
@@ -32,6 +33,8 @@ class HomeViewModelTest {
         every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
         every { repository.getFavoriteMovies() } returns flowOf(emptyList())
         every { repository.getTopGenres(any()) } returns flowOf(emptyList())
+        every { preferenceManager.getFilteredLanguages() } returns ""
+        every { preferenceManager.filteredLanguagesFlow } returns kotlinx.coroutines.flow.MutableStateFlow("")
         coEvery { repository.getLastVisitDate() } returns null
         // Default to empty list for any page to avoid infinite loops in ViewModel
         coEvery { repository.getMovies(any(), any()) } returns MovieDetails(data = Data(movies = emptyList()))
@@ -45,7 +48,7 @@ class HomeViewModelTest {
         )
         coEvery { repository.getMovies(1, null) } returns MovieDetails(data = Data(movies = movies))
 
-        viewModel = HomeViewModel(repository, userLibraryRepository)
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager)
 
         viewModel.uiState.test {
             // First item might be Loading or Success depending on how fast init runs with UnconfinedTestDispatcher
@@ -53,26 +56,27 @@ class HomeViewModelTest {
             if (first is HomeUiState.Loading) {
                 val second = awaitItem()
                 assertThat(second).isInstanceOf(HomeUiState.Success::class.java)
-                assertThat((second as HomeUiState.Success).movies).hasSize(1)
-                assertThat(second.movies[0].id).isEqualTo(1)
+                assertThat((second as HomeUiState.Success).movies).hasSize(2)
             } else {
                 assertThat(first).isInstanceOf(HomeUiState.Success::class.java)
-                assertThat((first as HomeUiState.Success).movies).hasSize(1)
+                assertThat((first as HomeUiState.Success).movies).hasSize(2)
             }
         }
     }
 
     @Test
-    fun `loadMovies should filter for English movies only`() = runTest {
+    fun `loadMovies should filter movies based on preferences`() = runTest {
         val movies = listOf(
             Movie(id = 1, title = "EN", language = "en"),
             Movie(id = 2, title = "ES", language = "es")
         )
+        every { preferenceManager.getFilteredLanguages() } returns "es"
+        
         // Return movies for page 1, then empty for page 2+ to avoid infinite loop in ViewModel
         coEvery { repository.getMovies(1, any()) } returns MovieDetails(data = Data(movies = movies))
         coEvery { repository.getMovies(more(1), any()) } returns MovieDetails(data = Data(movies = emptyList()))
 
-        viewModel = HomeViewModel(repository, userLibraryRepository)
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager)
         // init already calls loadMovies()
         
         val state = viewModel.uiState.value
@@ -87,7 +91,7 @@ class HomeViewModelTest {
         val initialMovies = listOf(Movie(id = 1, title = "EN 1", language = "en"))
         coEvery { repository.getMovies(1, null) } returns MovieDetails(data = Data(movies = initialMovies))
         
-        viewModel = HomeViewModel(repository, userLibraryRepository)
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager)
         assertThat(viewModel.uiState.value).isInstanceOf(HomeUiState.Success::class.java)
 
         val newMovies = listOf(Movie(id = 2, title = "EN 2", language = "en"))
@@ -105,7 +109,7 @@ class HomeViewModelTest {
     fun `error from repository should update uiState to Error`() = runTest {
         coEvery { repository.getMovies(any(), any()) } throws Exception("Network Error")
 
-        viewModel = HomeViewModel(repository, userLibraryRepository)
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager)
         // Since init calls loadMovies, it might already be in error state
         
         assertThat(viewModel.uiState.value).isInstanceOf(HomeUiState.Error::class.java)

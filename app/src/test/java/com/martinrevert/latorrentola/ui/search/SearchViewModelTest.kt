@@ -23,12 +23,15 @@ class SearchViewModelTest {
 
     private val repository: YtsRepository = mockk(relaxed = true)
     private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
+    private val preferenceManager: com.martinrevert.latorrentola.utils.PreferenceManager = mockk(relaxed = true)
     private lateinit var viewModel: SearchViewModel
 
     @Before
     fun setUp() {
         every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
-        viewModel = SearchViewModel(repository, userLibraryRepository)
+        every { preferenceManager.getFilteredLanguages() } returns ""
+        every { preferenceManager.filteredLanguagesFlow } returns kotlinx.coroutines.flow.MutableStateFlow("")
+        viewModel = SearchViewModel(repository, userLibraryRepository, preferenceManager)
     }
 
     @Test
@@ -114,5 +117,23 @@ class SearchViewModelTest {
 
         assertThat(viewModel.uiState.value).isInstanceOf(SearchUiState.Error::class.java)
         assertThat((viewModel.uiState.value as SearchUiState.Error).message).isEqualTo("Search Error")
+    }
+
+    @Test
+    fun `loadMore should filter movies based on preferences`() = runTest {
+        val movies = listOf(
+            Movie(id = 1, title = "EN", language = "en"),
+            Movie(id = 2, title = "ES", language = "es")
+        )
+        every { preferenceManager.getFilteredLanguages() } returns "es"
+        coEvery { repository.searchMovies("query", 1, null) } returns MovieDetails(data = Data(movies = movies))
+
+        viewModel.search("query")
+
+        val state = viewModel.uiState.value
+        assertThat(state).isInstanceOf(SearchUiState.Success::class.java)
+        val successState = state as SearchUiState.Success
+        assertThat(successState.movies).hasSize(1)
+        assertThat(successState.movies[0].language).isEqualTo("en")
     }
 }

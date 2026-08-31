@@ -11,11 +11,15 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Date
 import javax.inject.Inject
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val ytsRepository: YtsRepository,
-    private val userLibraryRepository: UserLibraryRepository
+    private val userLibraryRepository: UserLibraryRepository,
+    private val preferenceManager: com.martinrevert.latorrentola.utils.PreferenceManager,
+    private val authRepository: com.martinrevert.latorrentola.network.AuthRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
@@ -67,11 +71,35 @@ class HomeViewModel @Inject constructor(
     private var currentPage = 1
     private var isFetching = false
     private var canLoadMore = true
+    private var movieFetchJob: kotlinx.coroutines.Job? = null
 
     init {
         initVisitDate()
-        loadMovies()
         observeTopGenres()
+        observeFilteredLanguages()
+        syncRemoteSettings()
+    }
+
+    private fun syncRemoteSettings() {
+        viewModelScope.launch {
+            authRepository.authStateFlow
+                .filterNotNull()
+                .flatMapLatest { user ->
+                    userLibraryRepository.observeRemoteFilteredLanguages(user.uid)
+                }
+                .collect { remoteFiltered ->
+                    if (remoteFiltered != null && remoteFiltered != preferenceManager.getFilteredLanguages()) {
+                        preferenceManager.setFilteredLanguages(remoteFiltered)
+                        // Local flow observer will trigger refresh()
+                    }
+                }
+        }
+    }
+
+    private fun observeFilteredLanguages() {
+        preferenceManager.filteredLanguagesFlow
+            .onEach { refresh(force = true) }
+            .launchIn(viewModelScope)
     }
 
     private fun initVisitDate() {
@@ -114,7 +142,7 @@ class HomeViewModel @Inject constructor(
         if (isFetching || !canLoadMore) return
         isFetching = true
         
-        viewModelScope.launch {
+        movieFetchJob = viewModelScope.launch {
             try {
                 if (currentPage == 1) _uiState.value = HomeUiState.Loading
                 
@@ -123,17 +151,14 @@ class HomeViewModel @Inject constructor(
                     val result = ytsRepository.getMovies(currentPage, _selectedQuality.value)
                     val moviesFromApi = result.data?.movies
                     
-                    if (moviesFromApi.isNullOrEmpty()) {
-                        canLoadMore = false
-                        break
-                    }
-
-                    // Filter only English movies as requested for the main screen
-                    val englishMovies = moviesFromApi.filter { it.language == "en" }.distinctBy { it.id }
+                    // Filter movies based on user settings
+                    val excludedLangs = preferenceManager.getFilteredLanguages()
+                    val filteredMovies = com.martinrevert.latorrentola.utils.MovieFilter.filterMovies(moviesFromApi, excludedLangs)
+                        .distinctBy { it.id }
                     
-                    if (englishMovies.isNotEmpty()) {
+                    if (filteredMovies.isNotEmpty()) {
                         // Add only new movies (by id) to avoid duplicates
-                        val filteredNewMovies = englishMovies.filter { newMovie ->
+                        val filteredNewMovies = filteredMovies.filter { newMovie ->
                             allMovies.none { it.id == newMovie.id }
                         }
                         
@@ -148,10 +173,12 @@ class HomeViewModel @Inject constructor(
                 }
 
                 if (allMovies.isEmpty() && !canLoadMore) {
-                    _uiState.value = HomeUiState.Error("No English movies found")
+                    _uiState.value = HomeUiState.Error("No se encontraron películas con los filtros actuales")
                 }
             } catch (e: Exception) {
-                if (allMovies.isEmpty()) _uiState.value = HomeUiState.Error(e.localizedMessage ?: "Unknown error")
+                if (e !is kotlinx.coroutines.CancellationException && allMovies.isEmpty()) {
+                    _uiState.value = HomeUiState.Error(e.localizedMessage ?: "Unknown error")
+                }
             } finally {
                 isFetching = false
             }
@@ -163,9 +190,12 @@ class HomeViewModel @Inject constructor(
      * This method sets [_isRefreshing] while the network call is in progress
      * so UI pull-to-refresh indicators can react.
      */
-    fun refresh() {
-        if (isFetching) return
-        viewModelScope.launch {
+    fun refresh(force: Boolean = false) {
+        if (isFetching && !force) return
+        
+        movieFetchJob?.cancel()
+        
+        movieFetchJob = viewModelScope.launch {
             isFetching = true
             _isRefreshing.value = true
             try {
@@ -185,12 +215,14 @@ class HomeViewModel @Inject constructor(
                         break
                     }
 
-                    // Filter only English movies as requested for the main screen
-                    val englishMovies = moviesFromApi.filter { it.language == "en" }.distinctBy { it.id }
+                    // Filter movies based on user settings
+                    val excludedLangs = preferenceManager.getFilteredLanguages()
+                    val filteredMovies = com.martinrevert.latorrentola.utils.MovieFilter.filterMovies(moviesFromApi, excludedLangs)
+                        .distinctBy { it.id }
 
-                    if (englishMovies.isNotEmpty()) {
+                    if (filteredMovies.isNotEmpty()) {
                         // Add only new movies (by id) to avoid duplicates across pages
-                        val filteredNewMovies = englishMovies.filter { newMovie ->
+                        val filteredNewMovies = filteredMovies.filter { newMovie ->
                             allMovies.none { it.id == newMovie.id }
                         }
 
@@ -204,10 +236,12 @@ class HomeViewModel @Inject constructor(
                 }
 
                 if (allMovies.isEmpty() && !canLoadMore) {
-                    _uiState.value = HomeUiState.Error("No English movies found")
+                    _uiState.value = HomeUiState.Error("No se encontraron películas con los filtros actuales")
                 }
             } catch (e: Exception) {
-                if (allMovies.isEmpty()) _uiState.value = HomeUiState.Error(e.localizedMessage ?: "Unknown error")
+                if (e !is kotlinx.coroutines.CancellationException && allMovies.isEmpty()) {
+                    _uiState.value = HomeUiState.Error(e.localizedMessage ?: "Unknown error")
+                }
             } finally {
                 _isRefreshing.value = false
                 isFetching = false

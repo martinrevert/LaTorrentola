@@ -20,6 +20,9 @@ class PreferenceManager @Inject constructor(
     private val _themeFlow = MutableStateFlow(getTheme())
     val themeFlow: StateFlow<Int> = _themeFlow.asStateFlow()
 
+    private val _filteredLanguagesFlow = MutableStateFlow(getFilteredLanguages())
+    val filteredLanguagesFlow: StateFlow<String> = _filteredLanguagesFlow.asStateFlow()
+
     fun setVoiceSystem(enabled: Boolean) {
         sharedPreferences.edit { putBoolean(KEY_VOICE_SYSTEM, enabled) }
     }
@@ -87,6 +90,13 @@ class PreferenceManager @Inject constructor(
 
     fun getTheme(): Int = sharedPreferences.getInt(KEY_THEME, THEME_SYSTEM)
 
+    fun setFilteredLanguages(languages: String) {
+        sharedPreferences.edit { putString(KEY_FILTERED_LANGUAGES, languages) }
+        _filteredLanguagesFlow.value = languages
+    }
+
+    fun getFilteredLanguages(): String = sharedPreferences.getString(KEY_FILTERED_LANGUAGES, "") ?: ""
+
     companion object {
         private const val KEY_VOICE_SYSTEM = "voice_system"
         private const val KEY_VOICE_SUMMARY = "voice_summary"
@@ -98,6 +108,7 @@ class PreferenceManager @Inject constructor(
         private const val KEY_PUSH_ENABLED = "push_enabled"
         private const val KEY_THEME = "theme"
         private const val KEY_FCM_RETRY_COUNT = "fcm_retry_count"
+        private const val KEY_FILTERED_LANGUAGES = "filtered_languages"
 
         const val THEME_SYSTEM = 0
         const val THEME_LIGHT = 1

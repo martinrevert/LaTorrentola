@@ -13,7 +13,8 @@ import javax.inject.Inject
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val ytsRepository: YtsRepository,
-    private val userLibraryRepository: UserLibraryRepository
+    private val userLibraryRepository: UserLibraryRepository,
+    private val preferenceManager: com.martinrevert.latorrentola.utils.PreferenceManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
@@ -46,6 +47,26 @@ class SearchViewModel @Inject constructor(
     private var isShowingFavorites = false
     private var isFetching = false
     private var canLoadMore = true
+    private var favoritesJob: kotlinx.coroutines.Job? = null
+    private var searchJob: kotlinx.coroutines.Job? = null
+
+    init {
+        observeFilteredLanguages()
+    }
+
+    private fun observeFilteredLanguages() {
+        preferenceManager.filteredLanguagesFlow
+            .onEach { 
+                if (isShowingFavorites) {
+                    showFavorites()
+                } else if (lastQuery != null || lastGenre != null) {
+                    currentPage = 1
+                    allResults.clear()
+                    loadMore(force = true) 
+                }
+            }
+            .launchIn(viewModelScope)
+    }
 
     fun setQuality(quality: String?) {
         val q = if (quality == "All") null else quality
@@ -67,6 +88,7 @@ class SearchViewModel @Inject constructor(
         isShowingFavorites = false
         lastQuery = query
         lastGenre = null
+        favoritesJob?.cancel()
         clearLastClickedMovieId()
         
         resetAndLoad()
@@ -76,6 +98,7 @@ class SearchViewModel @Inject constructor(
         isShowingFavorites = false
         lastQuery = null
         lastGenre = null
+        favoritesJob?.cancel()
         allResults.clear()
         currentPage = 1
         canLoadMore = true
@@ -89,6 +112,7 @@ class SearchViewModel @Inject constructor(
         isShowingFavorites = false
         lastGenre = genre
         lastQuery = null
+        favoritesJob?.cancel()
         clearLastClickedMovieId()
         
         resetAndLoad()
@@ -99,12 +123,17 @@ class SearchViewModel @Inject constructor(
         lastQuery = null
         lastGenre = null
         canLoadMore = false
-        viewModelScope.launch {
+        favoritesJob?.cancel()
+        favoritesJob = viewModelScope.launch {
             _uiState.value = SearchUiState.Loading
             ytsRepository.getFavoriteMovies().collect { favorites ->
                 if (isShowingFavorites) {
                     allResults.clear()
-                    allResults.addAll(favorites)
+                    
+                    val excludedLangs = preferenceManager.getFilteredLanguages()
+                    val filteredFavorites = com.martinrevert.latorrentola.utils.MovieFilter.filterMovies(favorites, excludedLangs)
+                    
+                    allResults.addAll(filteredFavorites)
                     if (allResults.isEmpty()) {
                         _uiState.value = SearchUiState.Empty
                     } else {
@@ -160,19 +189,20 @@ class SearchViewModel @Inject constructor(
         allResults.clear()
         currentPage = 1
         canLoadMore = true
-        loadMore()
+        loadMore(force = true)
     }
 
-    fun loadMore() {
-        if (isFetching || !canLoadMore || isShowingFavorites) return
+    fun loadMore(force: Boolean = false) {
+        if ((isFetching && !force) || !canLoadMore || isShowingFavorites) return
         
         val query = lastQuery
         val genre = lastGenre
         
         if (query == null && genre == null) return
 
+        searchJob?.cancel()
         isFetching = true
-        viewModelScope.launch {
+        searchJob = viewModelScope.launch {
             try {
                 if (currentPage == 1) _uiState.value = SearchUiState.Loading
                 
@@ -193,8 +223,12 @@ class SearchViewModel @Inject constructor(
                     // Deduplicate API response first
                     val distinctFromApi = moviesFromApi.distinctBy { it.id }
                     
+                    // Filter movies based on user settings
+                    val excludedLangs = preferenceManager.getFilteredLanguages()
+                    val filteredMovies = com.martinrevert.latorrentola.utils.MovieFilter.filterMovies(distinctFromApi, excludedLangs)
+                    
                     // Filter duplicates against existing results
-                    val newMovies = distinctFromApi.filter { newMovie ->
+                    val newMovies = filteredMovies.filter { newMovie ->
                         allResults.none { it.id == newMovie.id }
                     }
                     
@@ -203,7 +237,7 @@ class SearchViewModel @Inject constructor(
                         _uiState.value = SearchUiState.Success(allResults.toList())
                         currentPage++
                     } else {
-                        // If all movies were duplicates, try next page automatically
+                        // If all movies were duplicates or filtered, try next page automatically
                         currentPage++
                         isFetching = false
                         loadMore()
@@ -211,7 +245,7 @@ class SearchViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                if (allResults.isEmpty()) {
+                if (e !is kotlinx.coroutines.CancellationException && allResults.isEmpty()) {
                     _uiState.value = SearchUiState.Error(e.localizedMessage ?: "Unknown error")
                 }
             } finally {

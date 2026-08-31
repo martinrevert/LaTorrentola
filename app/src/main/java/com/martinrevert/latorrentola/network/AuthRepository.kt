@@ -7,9 +7,13 @@ import androidx.credentials.GetCredentialRequest
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.martinrevert.latorrentola.constants.Constants
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,6 +24,14 @@ class AuthRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val credentialManager = CredentialManager.create(context)
+    private val _currentUserFlow = MutableStateFlow(firebaseAuth.currentUser)
+    val authStateFlow: StateFlow<FirebaseUser?> = _currentUserFlow.asStateFlow()
+
+    init {
+        firebaseAuth.addAuthStateListener { auth ->
+            _currentUserFlow.value = auth.currentUser
+        }
+    }
 
     val currentUser get() = firebaseAuth.currentUser
 

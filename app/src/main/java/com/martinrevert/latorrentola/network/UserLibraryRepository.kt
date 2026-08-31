@@ -3,11 +3,14 @@ package com.martinrevert.latorrentola.network
 import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.user.DownloadedMovie
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -127,6 +130,64 @@ class UserLibraryRepository @Inject constructor(
                 .exists()
         } catch (e: Exception) {
             false
+        }
+    }
+
+    suspend fun saveFilteredLanguages(languages: String) {
+        val uid = userId ?: return
+        Log.d("FirestoreSync", "Saving filtered languages for $uid: $languages")
+        try {
+            firestore.collection("users")
+                .document(uid)
+                .collection("settings")
+                .document("config")
+                .set(mapOf("filteredLanguages" to languages), SetOptions.merge())
+                .await()
+            Log.d("FirestoreSync", "Settings saved successfully in settings/config")
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Log.e("FirestoreSync", "Error saving settings: ${e.message}")
+        }
+    }
+
+    suspend fun getRemoteFilteredLanguages(): String? {
+        val uid = userId ?: return null
+        Log.d("FirestoreSync", "Fetching remote settings for $uid")
+        return try {
+            val document = firestore.collection("users")
+                .document(uid)
+                .collection("settings")
+                .document("config")
+                .get()
+                .await()
+            val lang = document.getString("filteredLanguages")
+            Log.d("FirestoreSync", "Fetched remote settings: $lang")
+            lang
+        } catch (e: Exception) {
+            Log.e("FirestoreSync", "Error fetching settings: ${e.message}")
+            null
+        }
+    }
+
+    fun observeRemoteFilteredLanguages(uid: String): Flow<String?> = callbackFlow {
+        Log.d("FirestoreSync", "Observing remote settings for $uid")
+        val subscription = firestore.collection("users")
+            .document(uid)
+            .collection("settings")
+            .document("config")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e("FirestoreSync", "Error observing settings: ${error.message}")
+                    return@addSnapshotListener
+                }
+                val lang = snapshot?.getString("filteredLanguages")
+                Log.d("FirestoreSync", "Remote settings received: $lang")
+                trySend(lang)
+            }
+
+        awaitClose { 
+            Log.d("FirestoreSync", "Stopping remote settings observation for $uid")
+            subscription.remove() 
         }
     }
 }

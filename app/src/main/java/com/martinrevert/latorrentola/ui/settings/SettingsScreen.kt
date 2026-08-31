@@ -109,6 +109,25 @@ fun SettingsScreen(
                 onThemeSelected = { viewModel.setTheme(it) }
             )
 
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text(text = "Filtrar Idiomas", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = "Excluir películas en estos idiomas (separados por coma, ej: cn, fr, hi)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            OutlinedTextField(
+                value = uiState.filteredLanguages,
+                onValueChange = { viewModel.setFilteredLanguages(it) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusHighlight(shape = OutlinedTextFieldDefaults.shape),
+                placeholder = { Text("cn, fr, hi...") },
+                singleLine = true
+            )
+
             Spacer(modifier = Modifier.height(24.dp))
 
             if (isRunningOnTv) {
