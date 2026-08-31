@@ -449,10 +449,21 @@ fun MovieItem(
     }
 
     if (isTv) {
-        androidx.tv.material3.CompactCard(
+        androidx.tv.material3.Surface(
             onClick = onToggleSelection ?: onClick,
             onLongClick = onLongClick,
-            image = {
+            scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+            shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focusRequester)
+                .onFocusChanged { state ->
+                    if (state.isFocused && shouldRequestFocus) {
+                        onFocusRestored()
+                    }
+                }
+        ) {
+            Column {
                 Box {
                     AsyncImage(
                         model = movie.mediumCoverImage,
@@ -497,45 +508,51 @@ fun MovieItem(
                         )
                     }
                 }
-            },
-            title = {
-                androidx.tv.material3.Text(
-                    text = movie.title ?: "",
-                    style = androidx.tv.material3.MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            },
-            subtitle = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .background(androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f))
+                        .padding(8.dp)
+                        .fillMaxWidth()
                 ) {
                     androidx.tv.material3.Text(
-                        text = "${movie.year}",
-                        style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
-                        color = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    androidx.tv.material3.Text(
-                        text = "⭐ ${movie.rating}",
-                        style = androidx.tv.material3.MaterialTheme.typography.labelSmall,
+                        text = movie.title ?: "",
+                        style = androidx.tv.material3.MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
-                        color = androidx.tv.material3.MaterialTheme.colorScheme.secondary
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(focusRequester)
-                .onFocusChanged { state ->
-                    if (state.isFocused && shouldRequestFocus) {
-                        onFocusRestored()
+                    
+                    if (!movie.genres.isNullOrEmpty()) {
+                        androidx.tv.material3.Text(
+                            text = movie.genres.joinToString(", "),
+                            style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
+                            color = androidx.tv.material3.MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(vertical = 2.dp)
+                        )
                     }
-                },
-            scale = androidx.tv.material3.CardDefaults.scale(focusedScale = 1.1f)
-        )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.tv.material3.Text(
+                            text = "${movie.year}",
+                            style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
+                            color = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        androidx.tv.material3.Text(
+                            text = "⭐ ${movie.rating}",
+                            style = androidx.tv.material3.MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = androidx.tv.material3.MaterialTheme.colorScheme.secondary
+                        )
+                    }
+                }
+            }
+        }
     } else {
         Card(
             modifier = Modifier

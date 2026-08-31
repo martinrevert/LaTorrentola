@@ -408,7 +408,7 @@ fun TorrentItem(
         androidx.tv.material3.Button(
             onClick = onTorrentClickInternal,
             modifier = Modifier
-                .fillMaxWidth()
+                .widthIn(max = 500.dp)
                 .padding(vertical = 4.dp)
         ) {
             Row(

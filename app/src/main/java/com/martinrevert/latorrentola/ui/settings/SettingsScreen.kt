@@ -199,12 +199,15 @@ fun UserSection(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
 @Composable
 fun ThemeSelector(
     selectedTheme: Int,
     onThemeSelected: (Int) -> Unit
 ) {
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
+    
     val options = listOf("Sistema", "Claro", "Oscuro")
     val themeValues = listOf(
         PreferenceManager.THEME_SYSTEM,
@@ -212,18 +215,34 @@ fun ThemeSelector(
         PreferenceManager.THEME_DARK
     )
 
-    SingleChoiceSegmentedButtonRow(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        options.forEachIndexed { index, label ->
-            val shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
-            SegmentedButton(
-                shape = shape,
-                onClick = { onThemeSelected(themeValues[index]) },
-                selected = selectedTheme == themeValues[index],
-                modifier = Modifier.focusHighlight(shape = shape)
-            ) {
-                Text(label)
+    if (isTv) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            options.forEachIndexed { index, label ->
+                androidx.tv.material3.FilterChip(
+                    selected = selectedTheme == themeValues[index],
+                    onClick = { onThemeSelected(themeValues[index]) }
+                ) {
+                    androidx.tv.material3.Text(label)
+                }
+            }
+        }
+    } else {
+        SingleChoiceSegmentedButtonRow(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            options.forEachIndexed { index, label ->
+                val shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
+                SegmentedButton(
+                    shape = shape,
+                    onClick = { onThemeSelected(themeValues[index]) },
+                    selected = selectedTheme == themeValues[index],
+                    modifier = Modifier.focusHighlight(shape = shape)
+                ) {
+                    Text(label)
+                }
             }
         }
     }
