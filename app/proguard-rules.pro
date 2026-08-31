@@ -6,6 +6,8 @@
     *** Companion;
     *** $serializer;
 }
+# Keep serializable classes but allow obfuscation ONLY IF they are not used for Firestore/Reflection.
+# For models used with Firestore, we must keep them fully.
 -keep,allowobfuscation,allowoptimization @kotlinx.serialization.Serializable class com.martinrevert.latorrentola.** { *; }
 -keepnames class kotlinx.serialization.internal.GeneratedSerializer { *; }
 
@@ -16,7 +18,10 @@
 
 # Firestore / Models
 # Firestore uses reflection to map documents to these classes.
+# We must keep the class names and all members (fields) from obfuscation.
 -keep class com.martinrevert.latorrentola.model.** { *; }
+-keepclassmembers class com.martinrevert.latorrentola.model.** { *; }
+-keepattributes RuntimeVisibleAnnotations, RuntimeInvisibleAnnotations
 
 # Retrofit 2 / OKHttp
 # Consumer rules are bundled with Retrofit 2.9.0+ and OkHttp 4.0+.

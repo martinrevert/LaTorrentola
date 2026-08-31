@@ -1,8 +1,10 @@
 package com.martinrevert.latorrentola.model.YTS
 
+import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.gson.annotations.SerializedName
 import kotlinx.serialization.Serializable
 
+@IgnoreExtraProperties
 @Serializable
 data class MovieDetails(
     @SerializedName("status")
@@ -13,6 +15,7 @@ data class MovieDetails(
     val data: Data? = null
 )
 
+@IgnoreExtraProperties
 @Serializable
 data class Data(
     @SerializedName("movie_count")
@@ -29,6 +32,7 @@ data class Data(
     val meta: Meta? = null
 )
 
+@IgnoreExtraProperties
 @Serializable
 data class Cast(
     @SerializedName("name")
@@ -41,6 +45,7 @@ data class Cast(
     val imdbCode: String? = null
 )
 
+@IgnoreExtraProperties
 @Serializable
 data class Meta(
     @SerializedName("server_time")

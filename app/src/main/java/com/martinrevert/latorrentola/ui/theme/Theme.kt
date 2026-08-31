@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.utils.isTvDevice
 
 private val DarkColorScheme = darkColorScheme(
     primary = Color(0xFFD0BCFF),
@@ -102,6 +103,14 @@ fun LaTorrentolaTheme(
         PreferenceManager.THEME_LIGHT -> false
         PreferenceManager.THEME_DARK -> true
         else -> isSystemInDarkTheme()
+    }
+
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
+
+    if (isTv) {
+        TvLaTorrentolaTheme(darkTheme = darkTheme, content = content)
+        return
     }
 
     val colorScheme = when {

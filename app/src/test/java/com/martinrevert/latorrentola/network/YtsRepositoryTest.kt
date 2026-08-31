@@ -4,7 +4,6 @@ import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.database.DateDao
 import com.martinrevert.latorrentola.database.GenreDao
-import com.martinrevert.latorrentola.database.MovieDao
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.MovieDetails
 import com.martinrevert.latorrentola.model.date.DateLastVisit
@@ -22,13 +21,13 @@ class YtsRepositoryTest {
 
     private lateinit var repository: YtsRepository
     private val ytsService: YtsService = mockk()
-    private val movieDao: MovieDao = mockk()
+    private val userLibraryRepository: UserLibraryRepository = mockk()
     private val genreDao: GenreDao = mockk()
     private val dateDao: DateDao = mockk()
 
     @Before
     fun setUp() {
-        repository = YtsRepository(ytsService, movieDao, genreDao, dateDao)
+        repository = YtsRepository(ytsService, userLibraryRepository, genreDao, dateDao)
     }
 
     @Test
@@ -45,9 +44,9 @@ class YtsRepositoryTest {
     }
 
     @Test
-    fun `getFavoriteMovies should return flow from dao`() = runTest {
+    fun `getFavoriteMovies should return flow from repository`() = runTest {
         val movies = listOf(Movie(id = 1, title = "Movie 1"))
-        every { movieDao.getAll() } returns flowOf(movies)
+        every { userLibraryRepository.getFavoriteMovies() } returns flowOf(movies)
 
         repository.getFavoriteMovies().test {
             assertThat(awaitItem()).isEqualTo(movies)
@@ -56,19 +55,18 @@ class YtsRepositoryTest {
     }
 
     @Test
-    fun `addFavorite should call dao`() = runTest {
+    fun `addFavorite should call repository`() = runTest {
         val movie = Movie(id = 1, title = "Movie 1")
-        coEvery { movieDao.insertMovie(movie) } returns Unit
+        coEvery { userLibraryRepository.addFavorite(movie) } returns Unit
 
         repository.addFavorite(movie)
 
-        coVerify { movieDao.insertMovie(movie) }
+        coVerify { userLibraryRepository.addFavorite(movie) }
     }
 
     @Test
     fun `isFavorite should return true if movie exists`() = runTest {
-        val movie = Movie(id = 1, title = "Movie 1")
-        coEvery { movieDao.getMovie(1) } returns movie
+        coEvery { userLibraryRepository.isFavorite(1) } returns true
 
         val result = repository.isFavorite(1)
 
@@ -77,7 +75,7 @@ class YtsRepositoryTest {
 
     @Test
     fun `isFavorite should return false if movie does not exist`() = runTest {
-        coEvery { movieDao.getMovie(1) } returns null
+        coEvery { userLibraryRepository.isFavorite(1) } returns false
 
         val result = repository.isFavorite(1)
 

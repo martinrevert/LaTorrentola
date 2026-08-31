@@ -1,8 +1,10 @@
 package com.martinrevert.latorrentola.model.YTS
 
+import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.gson.annotations.SerializedName
 import kotlinx.serialization.Serializable
 
+@IgnoreExtraProperties
 @Serializable
 data class Torrent(
     @SerializedName("url")

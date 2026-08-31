@@ -19,12 +19,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.tv.material3.ExperimentalTvMaterial3Api
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
@@ -110,17 +111,30 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Button(
-                onClick = onLogoutClick,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusHighlight(shape = ButtonDefaults.shape),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                )
-            ) {
-                Text("Cerrar Sesión")
+            if (isRunningOnTv) {
+                androidx.tv.material3.Button(
+                    onClick = onLogoutClick,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = androidx.tv.material3.ButtonDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                ) {
+                    androidx.tv.material3.Text("Cerrar Sesión")
+                }
+            } else {
+                Button(
+                    onClick = onLogoutClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusHighlight(shape = ButtonDefaults.shape),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                ) {
+                    Text("Cerrar Sesión")
+                }
             }
             
             // Add extra space at the bottom for TV overscan and comfort
@@ -215,6 +229,7 @@ fun ThemeSelector(
     }
 }
 
+@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun SettingsToggle(
     title: String,
@@ -222,16 +237,41 @@ fun SettingsToggle(
     enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .focusHighlight(shape = MaterialTheme.shapes.small)
-            .clickable(enabled = enabled) { onCheckedChange(!checked) }
-            .padding(vertical = 12.dp, horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(text = title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
+
+    if (isTv) {
+        androidx.tv.material3.ListItem(
+            selected = false,
+            enabled = enabled,
+            onClick = { onCheckedChange(!checked) },
+            headlineContent = {
+                androidx.tv.material3.Text(
+                    text = title,
+                    style = androidx.tv.material3.MaterialTheme.typography.bodyLarge
+                )
+            },
+            trailingContent = {
+                androidx.tv.material3.Switch(
+                    checked = checked,
+                    onCheckedChange = null,
+                    enabled = enabled
+                )
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+    } else {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusHighlight(shape = MaterialTheme.shapes.small)
+                .clickable(enabled = enabled) { onCheckedChange(!checked) }
+                .padding(vertical = 12.dp, horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+        }
     }
 }

@@ -22,14 +22,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.tv.material3.Border
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Surface
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.home.MovieList
 import com.martinrevert.latorrentola.ui.home.MovieItem
 import com.martinrevert.latorrentola.ui.home.QualityChips
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.utils.isTvDevice
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
 @Composable
 fun SearchScreen(
     viewModel: SearchViewModel,
@@ -46,6 +53,8 @@ fun SearchScreen(
     var searchQuery by remember { mutableStateOf("") }
     var isShowingFavorites by remember(initialGenre) { mutableStateOf(initialGenre == "milista") }
     val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
+    val focusRequester = remember { FocusRequester() }
 
     val gridState = rememberLazyGridState()
 
@@ -83,18 +92,28 @@ fun SearchScreen(
                             Text("My Favorites")
                         }
                     } else {
-                        TextField(
-                            value = searchQuery,
-                            onValueChange = { 
-                                searchQuery = it
-                                if (it.length > 2) viewModel.search(it)
-                            },
-                            placeholder = { Text("Search movies...") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            trailingIcon = {
-                                IconButton(
-                                    onClick = {
+                        if (isTv) {
+                            Surface(
+                                onClick = { focusRequester.requestFocus() },
+                                border = ClickableSurfaceDefaults.border(
+                                    focusedBorder = Border(
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            2.dp,
+                                            MaterialTheme.colorScheme.primary
+                                        )
+                                    )
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(focusRequester)
+                            ) {
+                                SearchTextField(
+                                    searchQuery = searchQuery,
+                                    onSearchQueryChange = {
+                                        searchQuery = it
+                                        if (it.length > 2) viewModel.search(it)
+                                    },
+                                    onVoiceSearchClick = {
                                         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                                             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                                             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
@@ -105,17 +124,30 @@ fun SearchScreen(
                                         } catch (e: Exception) {
                                             // Handle case where speech recognition is not available
                                         }
-                                    },
-                                    modifier = Modifier.focusHighlight(shape = CircleShape)
-                                ) {
-                                    Icon(Icons.Default.Mic, contentDescription = "Voice Search")
+                                    }
+                                )
+                            }
+                        } else {
+                            SearchTextField(
+                                searchQuery = searchQuery,
+                                onSearchQueryChange = {
+                                    searchQuery = it
+                                    if (it.length > 2) viewModel.search(it)
+                                },
+                                onVoiceSearchClick = {
+                                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                                        putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to search movies")
+                                    }
+                                    try {
+                                        speechLauncher.launch(intent)
+                                    } catch (e: Exception) {
+                                        // Handle case where speech recognition is not available
+                                    }
                                 }
-                            },
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
-                                unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent
                             )
-                        )
+                        }
                     }
                 },
                 navigationIcon = {
@@ -205,4 +237,31 @@ fun SearchScreen(
                 }
         }
     }
+}
+
+@Composable
+private fun SearchTextField(
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    onVoiceSearchClick: () -> Unit
+) {
+    TextField(
+        value = searchQuery,
+        onValueChange = onSearchQueryChange,
+        placeholder = { Text("Search movies...") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        trailingIcon = {
+            IconButton(
+                onClick = onVoiceSearchClick,
+                modifier = Modifier.focusHighlight(shape = CircleShape)
+            ) {
+                Icon(Icons.Default.Mic, contentDescription = "Voice Search")
+            }
+        },
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+            unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent
+        )
+    )
 }

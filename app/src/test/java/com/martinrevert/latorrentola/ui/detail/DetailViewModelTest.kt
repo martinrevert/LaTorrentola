@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.model.YTS.Data
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.MovieDetails
+import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
 import com.martinrevert.latorrentola.utils.PreferenceManager
@@ -22,6 +23,7 @@ class DetailViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val repository: YtsRepository = mockk(relaxed = true)
+    private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
     private val voiceManager: VoiceManager = mockk(relaxed = true)
     private val translationManager: TranslationManager = mockk(relaxed = true)
     private val preferenceManager: PreferenceManager = mockk(relaxed = true)
@@ -29,7 +31,7 @@ class DetailViewModelTest {
 
     @Before
     fun setUp() {
-        viewModel = DetailViewModel(repository, voiceManager, translationManager, preferenceManager)
+        viewModel = DetailViewModel(repository, userLibraryRepository, voiceManager, translationManager, preferenceManager)
     }
 
     @Test

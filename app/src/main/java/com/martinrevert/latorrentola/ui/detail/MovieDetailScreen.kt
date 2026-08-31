@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.ExperimentalTvMaterial3Api
 import coil3.compose.AsyncImage
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -47,9 +48,10 @@ import com.martinrevert.latorrentola.model.YTS.Torrent
 import com.martinrevert.latorrentola.model.YTS.Cast
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.isTvDevice
+import androidx.compose.ui.focus.focusRestorer
 import java.net.URLEncoder
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
 @Composable
 fun MovieDetailScreen(
     viewModel: DetailViewModel,
@@ -265,33 +267,59 @@ fun YoutubePlayer(
 
         // Native Overlay: Single Focusable Play/Pause Button
         val isPlaying = playerState == PlayerConstants.PlayerState.PLAYING
-        IconButton(
-            onClick = {
-                val player = youTubePlayerInstance
-                if (player != null) {
-                    if (isPlaying) player.pause() else player.play()
-                }
-            },
-            modifier = Modifier
-                .size(64.dp)
-                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                .focusHighlight(shape = CircleShape)
-        ) {
-            Icon(
-                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                contentDescription = if (isPlaying) "Pause" else "Play",
-                tint = Color.White,
-                modifier = Modifier.size(48.dp)
-            )
+        val context = LocalContext.current
+        val isTv = remember(context) { context.isTvDevice() }
+
+        if (isTv) {
+            androidx.tv.material3.IconButton(
+                onClick = {
+                    val player = youTubePlayerInstance
+                    if (player != null) {
+                        if (isPlaying) player.pause() else player.play()
+                    }
+                },
+                modifier = Modifier
+                    .size(64.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+            ) {
+                androidx.tv.material3.Icon(
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    tint = Color.White,
+                    modifier = Modifier.size(48.dp)
+                )
+            }
+        } else {
+            IconButton(
+                onClick = {
+                    val player = youTubePlayerInstance
+                    if (player != null) {
+                        if (isPlaying) player.pause() else player.play()
+                    }
+                },
+                modifier = Modifier
+                    .size(64.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .focusHighlight(shape = CircleShape)
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    tint = Color.White,
+                    modifier = Modifier.size(48.dp)
+                )
+            }
         }
     }
 }
 
+@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun CastSection(castList: List<Cast>) {
     Text(text = "Cast", style = MaterialTheme.typography.titleLarge)
     Spacer(modifier = Modifier.height(8.dp))
     LazyRow(
+        modifier = Modifier.focusRestorer(),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(vertical = 8.dp)
     ) {
@@ -347,51 +375,80 @@ fun TorrentItem(
     onTorrentClick: (Torrent) -> Unit
 ) {
     val context = LocalContext.current
-    Button(
-        onClick = {
-            onTorrentClick(torrent)
-            val hash = torrent.hash
-            if (hash != null) {
+    val isTv = remember(context) { context.isTvDevice() }
+
+    val onTorrentClickInternal = {
+        onTorrentClick(torrent)
+        val hash = torrent.hash
+        if (hash != null) {
+            try {
+                val encodedTitle = URLEncoder.encode(movie.title ?: "Movie", "UTF-8")
+                val magnetUri = "magnet:?xt=urn:btih:$hash" +
+                        "&dn=$encodedTitle" +
+                        "&tr=udp://open.demonii.com:1337/announce" +
+                        "&tr=udp://tracker.openbittorrent.com:80"
+                
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    data = Uri.parse(magnetUri)
+                    addCategory(Intent.CATEGORY_BROWSABLE)
+                }
+                
                 try {
-                    val encodedTitle = URLEncoder.encode(movie.title ?: "Movie", "UTF-8")
-                    val magnetUri = "magnet:?xt=urn:btih:$hash" +
-                            "&dn=$encodedTitle" +
-                            "&tr=udp://open.demonii.com:1337/announce" +
-                            "&tr=udp://tracker.openbittorrent.com:80"
-                    
-                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                        data = Uri.parse(magnetUri)
-                        addCategory(Intent.CATEGORY_BROWSABLE)
-                    }
-                    
-                    try {
-                        context.startActivity(intent)
-                    } catch (e: Exception) {
-                        Toast.makeText(context, "No torrent client installed", Toast.LENGTH_LONG).show()
-                    }
+                    context.startActivity(intent)
                 } catch (e: Exception) {
-                    Toast.makeText(context, "Error creating magnet link", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "No torrent client installed", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error creating magnet link", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    if (isTv) {
+        androidx.tv.material3.Button(
+            onClick = onTorrentClickInternal,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                androidx.tv.material3.Text(text = "${torrent.quality} - ${torrent.size} (${torrent.type})")
+                if (isDownloaded) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    androidx.tv.material3.Icon(
+                        imageVector = Icons.Default.CloudDone,
+                        contentDescription = "Downloaded",
+                        tint = Color.Yellow,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .focusHighlight(shape = MaterialTheme.shapes.extraLarge)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+        }
+    } else {
+        Button(
+            onClick = onTorrentClickInternal,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+                .focusHighlight(shape = MaterialTheme.shapes.extraLarge)
         ) {
-            Text(text = "${torrent.quality} - ${torrent.size} (${torrent.type})")
-            if (isDownloaded) {
-                Spacer(modifier = Modifier.width(8.dp))
-                Icon(
-                    imageVector = Icons.Default.CloudDone,
-                    contentDescription = "Downloaded",
-                    tint = Color.Yellow,
-                    modifier = Modifier.size(20.dp)
-                )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(text = "${torrent.quality} - ${torrent.size} (${torrent.type})")
+                if (isDownloaded) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        imageVector = Icons.Default.CloudDone,
+                        contentDescription = "Downloaded",
+                        tint = Color.Yellow,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }

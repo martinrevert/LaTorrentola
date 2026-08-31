@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.model.YTS.Data
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.MovieDetails
+import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
 import io.mockk.coEvery
@@ -21,11 +22,13 @@ class SearchViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val repository: YtsRepository = mockk(relaxed = true)
+    private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
     private lateinit var viewModel: SearchViewModel
 
     @Before
     fun setUp() {
-        viewModel = SearchViewModel(repository)
+        every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
+        viewModel = SearchViewModel(repository, userLibraryRepository)
     }
 
     @Test

@@ -115,6 +115,10 @@ dependencies {
     // Navigation
     implementation libs.androidx.navigation3.runtime
     implementation libs.androidx.navigation3.ui
+    
+    // TV optimized Compose
+    implementation libs.androidx.tv.foundation
+    implementation libs.androidx.tv.material
 
     // Hilt
     implementation libs.hilt.android

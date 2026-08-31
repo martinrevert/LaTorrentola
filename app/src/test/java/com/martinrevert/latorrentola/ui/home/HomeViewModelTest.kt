@@ -5,6 +5,7 @@ import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.model.YTS.Data
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.MovieDetails
+import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
 import io.mockk.coEvery
@@ -22,11 +23,13 @@ class HomeViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val repository: YtsRepository = mockk(relaxed = true)
+    private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
     private lateinit var viewModel: HomeViewModel
 
     @Before
     fun setUp() {
         // Default mocks to prevent crashes during init
+        every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
         every { repository.getFavoriteMovies() } returns flowOf(emptyList())
         every { repository.getTopGenres(any()) } returns flowOf(emptyList())
         coEvery { repository.getLastVisitDate() } returns null
@@ -42,7 +45,7 @@ class HomeViewModelTest {
         )
         coEvery { repository.getMovies(1, null) } returns MovieDetails(data = Data(movies = movies))
 
-        viewModel = HomeViewModel(repository)
+        viewModel = HomeViewModel(repository, userLibraryRepository)
 
         viewModel.uiState.test {
             // First item might be Loading or Success depending on how fast init runs with UnconfinedTestDispatcher
@@ -69,7 +72,7 @@ class HomeViewModelTest {
         coEvery { repository.getMovies(1, any()) } returns MovieDetails(data = Data(movies = movies))
         coEvery { repository.getMovies(more(1), any()) } returns MovieDetails(data = Data(movies = emptyList()))
 
-        viewModel = HomeViewModel(repository)
+        viewModel = HomeViewModel(repository, userLibraryRepository)
         // init already calls loadMovies()
         
         val state = viewModel.uiState.value
@@ -84,7 +87,7 @@ class HomeViewModelTest {
         val initialMovies = listOf(Movie(id = 1, title = "EN 1", language = "en"))
         coEvery { repository.getMovies(1, null) } returns MovieDetails(data = Data(movies = initialMovies))
         
-        viewModel = HomeViewModel(repository)
+        viewModel = HomeViewModel(repository, userLibraryRepository)
         assertThat(viewModel.uiState.value).isInstanceOf(HomeUiState.Success::class.java)
 
         val newMovies = listOf(Movie(id = 2, title = "EN 2", language = "en"))
@@ -102,7 +105,7 @@ class HomeViewModelTest {
     fun `error from repository should update uiState to Error`() = runTest {
         coEvery { repository.getMovies(any(), any()) } throws Exception("Network Error")
 
-        viewModel = HomeViewModel(repository)
+        viewModel = HomeViewModel(repository, userLibraryRepository)
         // Since init calls loadMovies, it might already be in error state
         
         assertThat(viewModel.uiState.value).isInstanceOf(HomeUiState.Error::class.java)

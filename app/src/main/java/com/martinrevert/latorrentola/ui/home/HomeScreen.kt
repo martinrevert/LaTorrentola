@@ -4,6 +4,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.foundation.clickable
 import android.content.Intent
 import androidx.compose.foundation.background
@@ -41,12 +42,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import android.content.pm.PackageManager
 import androidx.compose.ui.draw.clip
+import androidx.tv.material3.ExperimentalTvMaterial3Api
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.isTvDevice
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, ExperimentalTvMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
@@ -246,6 +248,7 @@ private fun HomeContent(
     }
 }
 
+@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun QualityChips(
     options: List<String>,
@@ -255,6 +258,7 @@ fun QualityChips(
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
+            .focusRestorer()
             .padding(bottom = 8.dp),
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -270,6 +274,7 @@ fun QualityChips(
     }
 }
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun GenreChips(
     genres: List<String>,
@@ -279,6 +284,7 @@ fun GenreChips(
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
+            .focusRestorer()
             .padding(vertical = 8.dp),
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -413,6 +419,7 @@ fun MovieList(
     }
 }
 
+@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun MovieItem(
     movie: Movie,
@@ -441,25 +448,11 @@ fun MovieItem(
         }
     }
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .focusRequester(focusRequester)
-            .onFocusChanged { state ->
-                if (state.isFocused && shouldRequestFocus) {
-                    onFocusRestored()
-                }
-            }
-            .focusHighlight(shape = MaterialTheme.shapes.medium)
-            .combinedClickable(
-                onClick = onToggleSelection ?: onClick,
-                onLongClick = onLongClick
-            ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        shape = MaterialTheme.shapes.medium
-    ) {
-        Box {
-            Column {
+    if (isTv) {
+        androidx.tv.material3.CompactCard(
+            onClick = onToggleSelection ?: onClick,
+            onLongClick = onLongClick,
+            image = {
                 Box {
                     AsyncImage(
                         model = movie.mediumCoverImage,
@@ -470,7 +463,6 @@ fun MovieItem(
                         contentScale = ContentScale.Crop
                     )
                     
-                    // NEW BADGE logic: Show if uploaded in the last 15 days
                     val movieUploadTime = (movie.dateUploadedUnix ?: 0L) * 1000
                     val fifteenDaysInMs = 15L * 24 * 60 * 60 * 1000
                     val isRecent = movieUploadTime > (System.currentTimeMillis() - fifteenDaysInMs)
@@ -505,87 +497,192 @@ fun MovieItem(
                         )
                     }
                 }
-                Column(modifier = Modifier.padding(8.dp)) {
-                    Text(
-                        text = movie.title ?: "",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+            },
+            title = {
+                androidx.tv.material3.Text(
+                    text = movie.title ?: "",
+                    style = androidx.tv.material3.MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
+            subtitle = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.tv.material3.Text(
+                        text = "${movie.year}",
+                        style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
+                        color = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    
-                    // RESTORED: Movie Genres
-                    if (!movie.genres.isNullOrEmpty()) {
-                        Text(
-                            text = movie.genres.joinToString(", "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(vertical = 2.dp)
-                        )
+                    androidx.tv.material3.Text(
+                        text = "⭐ ${movie.rating}",
+                        style = androidx.tv.material3.MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = androidx.tv.material3.MaterialTheme.colorScheme.secondary
+                    )
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focusRequester)
+                .onFocusChanged { state ->
+                    if (state.isFocused && shouldRequestFocus) {
+                        onFocusRestored()
                     }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "${movie.year}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            scale = androidx.tv.material3.CardDefaults.scale(focusedScale = 1.1f)
+        )
+    } else {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focusRequester)
+                .onFocusChanged { state ->
+                    if (state.isFocused && shouldRequestFocus) {
+                        onFocusRestored()
+                    }
+                }
+                .focusHighlight(shape = MaterialTheme.shapes.medium)
+                .combinedClickable(
+                    onClick = onToggleSelection ?: onClick,
+                    onLongClick = onLongClick
+                ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            shape = MaterialTheme.shapes.medium
+        ) {
+            Box {
+                Column {
+                    Box {
+                        AsyncImage(
+                            model = movie.mediumCoverImage,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(0.67f),
+                            contentScale = ContentScale.Crop
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (!isTv) {
-                                IconButton(
-                                    onClick = {
-                                        val imdbUrl = "https://www.imdb.com/title/${movie.imdbCode}"
-                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                            type = "text/plain"
-                                            putExtra(Intent.EXTRA_SUBJECT, movie.title)
-                                            putExtra(Intent.EXTRA_TEXT, "Check out this movie: ${movie.title}\n$imdbUrl")
-                                        }
-                                        context.startActivity(Intent.createChooser(shareIntent, "Share movie"))
-                                    },
-                                    modifier = Modifier.size(24.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Share, 
-                                        contentDescription = "Share",
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.primary
+                        
+                        // NEW BADGE logic: Show if uploaded in the last 15 days
+                        val movieUploadTime = (movie.dateUploadedUnix ?: 0L) * 1000
+                        val fifteenDaysInMs = 15L * 24 * 60 * 60 * 1000
+                        val isRecent = movieUploadTime > (System.currentTimeMillis() - fifteenDaysInMs)
+                        
+                        if (isRecent) {
+                            Icon(
+                                painter = painterResource(com.martinrevert.latorrentola.R.drawable.new_badge),
+                                contentDescription = "New",
+                                tint = Color.Yellow,
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(8.dp)
+                                    .size(32.dp)
+                                    .rotate(-45f)
+                            )
+                        }
+
+                        if (isDownloaded) {
+                            Icon(
+                                imageVector = Icons.Default.CloudDone,
+                                contentDescription = "Downloaded",
+                                tint = Color.Yellow,
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(8.dp)
+                                    .size(24.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                        CircleShape
                                     )
-                                }
-                                Spacer(modifier = Modifier.width(4.dp))
-                            }
-                            Text(
-                                text = "⭐ ${movie.rating}",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.secondary
+                                    .padding(2.dp)
                             )
                         }
                     }
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Text(
+                            text = movie.title ?: "",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        
+                        // RESTORED: Movie Genres
+                        if (!movie.genres.isNullOrEmpty()) {
+                            Text(
+                                text = movie.genres.joinToString(", "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${movie.year}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (!isTv) {
+                                    IconButton(
+                                        onClick = {
+                                            val imdbUrl = "https://www.imdb.com/title/${movie.imdbCode}"
+                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_SUBJECT, movie.title)
+                                                putExtra(Intent.EXTRA_TEXT, "Check out this movie: ${movie.title}\n$imdbUrl")
+                                            }
+                                            context.startActivity(Intent.createChooser(shareIntent, "Share movie"))
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Share, 
+                                            contentDescription = "Share",
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+                                Text(
+                                    text = "⭐ ${movie.rating}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                            }
+                        }
+                    }
                 }
-            }
-            
-            if (isSelected) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
-                )
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = "Selected",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .size(32.dp)
-                        .background(Color.White, CircleShape)
-                )
+                
+                if (isSelected) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                    )
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "Selected",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                            .size(32.dp)
+                            .background(Color.White, CircleShape)
+                    )
+                }
             }
         }
     }

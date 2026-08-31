@@ -31,6 +31,8 @@ firebaseFirestore = "25.1.4"
 playServicesAuth = "22.0.0"
 credentials = "1.6.0"
 googleid = "1.2.0"
+tv-material = "1.1.0"
+tv-foundation = "1.0.0"
 firebaseCrashlytics = "3.0.8"
 firebaseMessaging = "24.1.2"
 youtubePlayer = "13.0.0"
@@ -78,6 +80,8 @@ androidx-credentials = { group = "androidx.credentials", name = "credentials", v
 androidx-credentials-play-services-auth = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }
 googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleid" }
 youtube-player = { group = "com.pierfrancescosoffritti.androidyoutubeplayer", name = "core", version.ref = "youtubePlayer" }
+androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.ref = "tv-material" }
+androidx-tv-foundation = { group = "androidx.tv", name = "tv-foundation", version.ref = "tv-foundation" }
 androidx-compose-material = { group = "androidx.compose.material", name = "material", version.ref = "compose_material" }
 
 # Testing
