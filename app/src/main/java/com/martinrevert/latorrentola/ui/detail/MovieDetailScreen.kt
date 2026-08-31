@@ -190,13 +190,18 @@ fun MovieDetailContent(
         }
         
         Text(text = "Torrents", style = MaterialTheme.typography.titleLarge)
-        movie.torrents?.forEach { torrent ->
-            TorrentItem(
-                movie = movie,
-                torrent = torrent,
-                isDownloaded = downloadedHashes.contains(torrent.hash),
-                onTorrentClick = onTorrentClick
-            )
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = if (isTv) Alignment.CenterHorizontally else Alignment.Start
+        ) {
+            movie.torrents?.forEach { torrent ->
+                TorrentItem(
+                    movie = movie,
+                    torrent = torrent,
+                    isDownloaded = downloadedHashes.contains(torrent.hash),
+                    onTorrentClick = onTorrentClick
+                )
+            }
         }
     }
 }
