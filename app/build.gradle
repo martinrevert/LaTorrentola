@@ -94,14 +94,6 @@ base {
     archivesName = "LaTorrentola-v2.0.${getGitVersionCount(providers)}"
 }
 
-configurations.configureEach {
-    resolutionStrategy.eachDependency { DependencyResolveDetails details ->
-        if (details.requested.group == 'net.bytebuddy') {
-            details.useVersion '1.18.12'
-        }
-    }
-}
-
 dependencies {
     implementation libs.androidx.core.ktx
     implementation libs.androidx.appcompat

@@ -4,7 +4,9 @@ import android.content.Context
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.network.AuthRepository
+import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -21,11 +23,13 @@ class AuthViewModelTest {
 
     private lateinit var viewModel: AuthViewModel
     private val authRepository: AuthRepository = mockk(relaxed = true)
+    private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
+    private val preferenceManager: PreferenceManager = mockk(relaxed = true)
     private val context: Context = mockk()
 
     @Before
     fun setup() {
-        viewModel = AuthViewModel(authRepository)
+        viewModel = AuthViewModel(authRepository, userLibraryRepository, preferenceManager)
     }
 
     @Test
