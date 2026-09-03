@@ -29,12 +29,12 @@ android {
     def gitVersionCode = getGitVersionCount(providers)
 
     defaultConfig {
-        applicationId "com.martinrevert.latorrentola"
-        versionCode 20000 + gitVersionCode
-        versionName "2.0.$gitVersionCode"
-        minSdkVersion 24
-        targetSdkVersion 37
-        testInstrumentationRunner "com.martinrevert.latorrentola.HiltTestRunner"
+        applicationId = "com.martinrevert.latorrentola"
+        versionCode = 20000 + gitVersionCode
+        versionName = "2.0.$gitVersionCode"
+        minSdk = 24
+        targetSdk = 37
+        testInstrumentationRunner = "com.martinrevert.latorrentola.HiltTestRunner"
 
         def localProperties = new Properties()
         def localPropertiesFile = rootProject.file('local.properties')
@@ -49,23 +49,34 @@ android {
         buildConfig = true
     }
 
+    packaging {
+        resources {
+            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+        }
+        jniLibs {
+            useLegacyPackaging = true
+            keepDebugSymbols.add('**/libandroidx.graphics.path.so')
+            keepDebugSymbols.add('**/libtranslate_jni.so')
+        }
+    }
+
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     signingConfigs {
         release {
-            storeFile file("keys/release.keystore")
-            storePassword keystoreProperties['RELEASE_STORE_PASSWORD'] ?: project.findProperty("RELEASE_STORE_PASSWORD") ?: ""
-            keyAlias keystoreProperties['RELEASE_KEY_ALIAS'] ?: project.findProperty("RELEASE_KEY_ALIAS") ?: ""
-            keyPassword keystoreProperties['RELEASE_KEY_PASSWORD'] ?: project.findProperty("RELEASE_KEY_PASSWORD") ?: ""
+            storeFile = file("keys/release.keystore")
+            storePassword = keystoreProperties['RELEASE_STORE_PASSWORD'] ?: project.findProperty("RELEASE_STORE_PASSWORD") ?: ""
+            keyAlias = keystoreProperties['RELEASE_KEY_ALIAS'] ?: project.findProperty("RELEASE_KEY_ALIAS") ?: ""
+            keyPassword = keystoreProperties['RELEASE_KEY_PASSWORD'] ?: project.findProperty("RELEASE_KEY_PASSWORD") ?: ""
         }
     }
 
     buildTypes {
         debug {
-            enableUnitTestCoverage true
+            enableUnitTestCoverage = true
         }
         release {
             signingConfig = signingConfigs.release
