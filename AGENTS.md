@@ -22,6 +22,7 @@ Project-specific patterns and gotchas (do not assume defaults)
 - Mixed serialization: Models have both `kotlinx.serialization` (`@Serializable`) and Gson `@SerializedName`. Retrofit is configured with `GsonConverterFactory`.
 - Cloud-First Persistence: Favorites and Download history are stored in Firebase Firestore (keyed by Google UID). Room is only used for local analytics and session metadata. Do not add new entities to Room if they need to persist across devices.
 - Navigation transfers entire Movie objects as JSON strings via `Json.encodeToString(Movie.serializer(), movie)` and `Json.decodeFromString(...)` in `AppNavigation.kt`. Keep serializers in sync with model changes.
+- Translation & UI Utilities: `utils/UiText.kt` contains the `GenreTranslation` object, which is the single source of truth for mapping API genre strings to localized `UiText` resources. Use this in all screens (Home, Search, Details) to maintain consistency.
 - Multi-Selection Pattern: The `SearchScreen` (favorites view) implements a selection mode for D-pad compatibility. Short-press navigates to details, long-press enters selection mode. Once in selection mode, short-press toggles selection.
 - Credential Safety: Never hardcode API keys or Web Client IDs. Use `local.properties` with a corresponding `buildConfigField` in `app/build.gradle`. Reference them via `BuildConfig`.
 - DI scope: Hilt is used for singletons (see `di/NetworkModule.kt`). When adding bindings, follow the `@Module @InstallIn(SingletonComponent::class)` pattern.
@@ -102,4 +103,3 @@ Quick pointers for PR reviewers (what to check)
 - Navigation payload size: passing full Movie JSON is convenient but can grow; consider passing ID and fetching details if payload becomes large
 
 End of agent guide — keep this file in root as the single-source quick reference for code-modifying agents.
-

@@ -81,8 +81,10 @@ graph TD
 7.  **Navigation 3:** Uses the latest navigation APIs for passing complex data safely between screens.
 8.  **Edge-to-Edge:** Full support for Android 15's edge-to-edge requirements using `WindowInsets`.
 9.  **Android TV Support:** Optimized for leanback experience with a 16:9 banner and D-Pad focus handling.
-10. **Theming & Accessibility:** Dynamic UI adjustments (e.g., App Bar icon tint) that adapt to surface luminance in both Light and Dark themes.
-11. **Performance:** Optimized with R8/ProGuard and modern serialization (Kotlinx Serialization + GSON).
+10. **Movie Sharing:** Integrated sharing functionality in both Home cards and Movie Details app bar, allowing users to share movie info and IMDB links via the Android Share Sheet.
+11. **Theming & Accessibility:** Dynamic UI adjustments (e.g., App Bar icon tint) that adapt to surface luminance in both Light and Dark themes.
+12. **Multilingual Genres:** Automatic genre translation in Movie Details and Search filters using a centralized `GenreTranslation` utility.
+13. **Performance:** Optimized with R8/ProGuard and modern serialization (Kotlinx Serialization + GSON).
 
 ## 🔄 Core Workflows
 

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -48,6 +49,7 @@ import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.Torrent
 import com.martinrevert.latorrentola.model.YTS.Cast
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
 import androidx.compose.ui.focus.focusRestorer
 import java.net.URLEncoder
@@ -60,6 +62,7 @@ fun MovieDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val downloadedHashes by viewModel.downloadedHashes.collectAsState()
+    val context = LocalContext.current
 
     DisposableEffect(Unit) {
         onDispose {
@@ -82,6 +85,30 @@ fun MovieDetailScreen(
                 actions = {
                     val state = uiState
                     if (state is DetailUiState.Success) {
+                        IconButton(
+                            onClick = {
+                                val movie = state.movie
+                                val imdbUrl = "https://www.imdb.com/title/${movie.imdbCode}"
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, movie.title)
+                                    val shareText = context.getString(
+                                        R.string.share_movie_text,
+                                        movie.title,
+                                        imdbUrl
+                                    )
+                                    putExtra(Intent.EXTRA_TEXT, shareText)
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, context.getString(
+                                    R.string.share_movie_chooser)))
+                            },
+                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                        ) {
+                            Icon(
+                                Icons.Default.Share,
+                                contentDescription = stringResource(R.string.share_desc)
+                            )
+                        }
                         IconButton(
                             onClick = { viewModel.toggleFavorite(state.movie) },
                             modifier = Modifier.focusHighlight(shape = CircleShape)
@@ -210,6 +237,16 @@ fun MovieDetailContent(
 @Composable
 fun MovieMetadata(movie: Movie, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
+        if (!movie.genres.isNullOrEmpty()) {
+            val translatedGenres = movie.genres.map { GenreTranslation.getGenreText(it).asString() }
+            Text(
+                text = translatedGenres.joinToString(", "),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+        }
         Text(text = stringResource(R.string.metadata_year, movie.year ?: "N/A"), style = MaterialTheme.typography.bodyLarge)
         Text(text = stringResource(R.string.metadata_language, movie.language ?: "N/A"), style = MaterialTheme.typography.bodyLarge)
         Text(text = stringResource(R.string.metadata_rating, movie.rating ?: "N/A"), style = MaterialTheme.typography.bodyLarge)
