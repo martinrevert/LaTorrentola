@@ -44,10 +44,12 @@ import androidx.compose.ui.unit.dp
 import android.content.pm.PackageManager
 import androidx.compose.ui.draw.clip
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, ExperimentalTvMaterial3Api::class)
@@ -269,7 +271,9 @@ fun QualityChips(
             FilterChip(
                 selected = selectedQuality == quality,
                 onClick = { onQualityClick(quality) },
-                label = { Text(quality) },
+                label = { 
+                    Text(if (quality == "All") stringResource(R.string.quality_all) else quality)
+                },
                 modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
             )
         }
@@ -303,7 +307,7 @@ fun GenreChips(
         lazyItems(genres) { genre ->
             SuggestionChip(
                 onClick = { onGenreClick(genre) },
-                label = { Text(genre) },
+                label = { Text(GenreTranslation.getGenreText(genre).asString()) },
                 modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
             )
         }
@@ -343,7 +347,7 @@ fun GenreBottomSheet(
                     InputChip(
                         selected = false,
                         onClick = { onGenreClick(genre) },
-                        label = { Text(genre) },
+                        label = { Text(GenreTranslation.getGenreText(genre).asString()) },
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
                 }
@@ -525,8 +529,9 @@ fun MovieItem(
                     )
                     
                     if (!movie.genres.isNullOrEmpty()) {
-                        androidx.tv.material3.Text(
-                            text = movie.genres.joinToString(", "),
+                        val translatedGenres = movie.genres.map { GenreTranslation.getGenreText(it).asString() }
+                        Text(
+                            text = translatedGenres.joinToString(", "),
                             style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
                             color = androidx.tv.material3.MaterialTheme.colorScheme.primary,
                             maxLines = 1,
@@ -631,8 +636,9 @@ fun MovieItem(
                         
                         // RESTORED: Movie Genres
                         if (!movie.genres.isNullOrEmpty()) {
+                            val translatedGenres = movie.genres.map { GenreTranslation.getGenreText(it).asString() }
                             Text(
-                                text = movie.genres.joinToString(", "),
+                                text = translatedGenres.joinToString(", "),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 maxLines = 1,
