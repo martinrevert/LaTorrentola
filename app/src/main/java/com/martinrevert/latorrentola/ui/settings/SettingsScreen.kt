@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import coil3.compose.AsyncImage
+import com.martinrevert.latorrentola.BuildConfig
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.PreferenceManager
@@ -161,6 +162,24 @@ fun SettingsScreen(
                 ) {
                     Text(stringResource(com.martinrevert.latorrentola.R.string.logout_button))
                 }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = stringResource(R.string.app_version, BuildConfig.VERSION_NAME),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = stringResource(R.string.app_build, BuildConfig.VERSION_CODE),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
             }
             
             // Add extra space at the bottom for TV overscan and comfort
