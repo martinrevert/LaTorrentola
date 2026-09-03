@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
 
     private var movieJsonToOpen by mutableStateOf<String?>(null)
     private var movieIdToOpen by mutableStateOf<Int?>(null)
+    private var searchQueryToOpen by mutableStateOf<String?>(null)
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -61,9 +62,11 @@ class MainActivity : ComponentActivity() {
                 AppNavigation(
                     initialMovieJson = movieJsonToOpen,
                     initialMovieId = movieIdToOpen,
+                    initialSearchQuery = searchQueryToOpen,
                     onInitialDataHandled = {
                         movieJsonToOpen = null
                         movieIdToOpen = null
+                        searchQueryToOpen = null
                     }
                 )
             }
@@ -92,6 +95,28 @@ class MainActivity : ComponentActivity() {
 
             idExtra?.let { idStr ->
                 movieIdToOpen = idStr.toIntOrNull()
+            }
+
+            // Handle Deep Links (URI)
+            if (it.action == Intent.ACTION_VIEW) {
+                it.data?.let { uri ->
+                    when {
+                        uri.host?.contains("imdb.com") == true -> {
+                            // Extract ttID from /title/tt1234567/
+                            val segments = uri.pathSegments
+                            if (segments.size >= 2 && segments[0] == "title") {
+                                searchQueryToOpen = segments[1]
+                            }
+                        }
+                        uri.host?.contains("yts") == true -> {
+                            // Extract slug from /movies/movie-slug or /movie/movie-slug
+                            val segments = uri.pathSegments
+                            if (segments.size >= 2 && (segments[0] == "movies" || segments[0] == "movie")) {
+                                searchQueryToOpen = segments[1]
+                            }
+                        }
+                    }
+                }
             }
         }
     }

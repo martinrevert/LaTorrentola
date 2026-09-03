@@ -25,15 +25,20 @@ import com.martinrevert.latorrentola.model.YTS.Movie
 sealed interface Route : NavKey {
     @Serializable object Login : Route
     @Serializable object Home : Route
-    @Serializable data class Detail(val movieJson: String? = null, val movieId: Int? = null) : Route
+    @Serializable data class Detail(
+        val movieJson: String? = null, 
+        val movieId: Int? = null,
+        val query: String? = null
+    ) : Route
     @Serializable object Settings : Route
-    @Serializable data class Search(val genre: String? = null) : Route
+    @Serializable data class Search(val genre: String? = null, val query: String? = null) : Route
 }
 
 @Composable
 fun AppNavigation(
     initialMovieJson: String? = null, 
     initialMovieId: Int? = null,
+    initialSearchQuery: String? = null,
     onInitialDataHandled: () -> Unit = {}
 ) {
     val authViewModel: AuthViewModel = hiltViewModel()
@@ -52,13 +57,17 @@ fun AppNavigation(
     }
 
     // Handle Deep Link / Notification navigation
-    LaunchedEffect(initialMovieJson, initialMovieId) {
-        if (isLoggedIn && (initialMovieJson != null || initialMovieId != null)) {
+    LaunchedEffect(initialMovieJson, initialMovieId, initialSearchQuery) {
+        if (isLoggedIn && (initialMovieJson != null || initialMovieId != null || initialSearchQuery != null)) {
             initialMovieJson?.let {
                 backStack.add(Route.Detail(movieJson = it))
             }
             initialMovieId?.let {
                 backStack.add(Route.Detail(movieId = it))
+            }
+            initialSearchQuery?.let {
+                // Prioritize Detail screen for a better user experience as requested
+                backStack.add(Route.Detail(query = it))
             }
             onInitialDataHandled()
         }
@@ -105,6 +114,8 @@ fun AppNavigation(
                         viewModel.setMovie(movie)
                     } ?: detailKey.movieId?.let {
                         viewModel.setMovieById(it)
+                    } ?: detailKey.query?.let {
+                        viewModel.setMovieByQuery(it)
                     }
                 }
                 MovieDetailScreen(viewModel = viewModel, onBackClick = { backStack.removeLastOrNull() })
@@ -132,6 +143,7 @@ fun AppNavigation(
                 SearchScreen(
                     viewModel = viewModel,
                     initialGenre = searchKey.genre,
+                    initialQuery = searchKey.query,
                     onMovieClick = { movie ->
                         val movieJson = Json.encodeToString(Movie.serializer(), movie)
                         backStack.add(Route.Detail(movieJson = movieJson))

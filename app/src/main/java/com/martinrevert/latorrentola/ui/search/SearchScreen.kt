@@ -44,6 +44,7 @@ import java.util.Locale
 fun SearchScreen(
     viewModel: SearchViewModel,
     initialGenre: String? = null,
+    initialQuery: String? = null,
     onMovieClick: (Movie) -> Unit,
     onBackClick: () -> Unit
 ) {
@@ -53,7 +54,7 @@ fun SearchScreen(
     val downloadedMovieIds by viewModel.downloadedMovieIds.collectAsState()
     val selectedFavoriteIds by viewModel.selectedFavoriteIds.collectAsState()
     val qualityOptions = viewModel.qualityOptions
-    var searchQuery by remember { mutableStateOf("") }
+    var searchQuery by remember { mutableStateOf(initialQuery ?: "") }
     var isShowingFavorites by remember(initialGenre) { mutableStateOf(initialGenre == "milista") }
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
@@ -74,10 +75,13 @@ fun SearchScreen(
         }
     }
 
-    LaunchedEffect(initialGenre) {
+    LaunchedEffect(initialGenre, initialQuery) {
         viewModel.clearSelection()
         if (initialGenre == "milista") {
             viewModel.showFavorites()
+        } else if (initialQuery != null) {
+            searchQuery = initialQuery
+            viewModel.search(initialQuery)
         } else if (initialGenre != null) {
             viewModel.searchByGenre(initialGenre)
         } else {

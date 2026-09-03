@@ -80,6 +80,23 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    fun setMovieByQuery(query: String) {
+        viewModelScope.launch {
+            _uiState.value = DetailUiState.Loading
+            try {
+                val searchResponse = ytsRepository.searchMovies(query, 1)
+                val movie = searchResponse.data?.movies?.firstOrNull()
+                if (movie != null) {
+                    setMovie(movie)
+                } else {
+                    _uiState.value = DetailUiState.Error("Movie not found for: $query")
+                }
+            } catch (e: Exception) {
+                _uiState.value = DetailUiState.Error(e.localizedMessage ?: "Unknown error")
+            }
+        }
+    }
+
     private fun handleVoice(movie: Movie) {
         if (!preferenceManager.getVoiceSystem()) return
 
