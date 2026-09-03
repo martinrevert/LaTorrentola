@@ -100,20 +100,11 @@ class MainActivity : ComponentActivity() {
             // Handle Deep Links (URI)
             if (it.action == Intent.ACTION_VIEW) {
                 it.data?.let { uri ->
-                    when {
-                        uri.host?.contains("imdb.com") == true -> {
-                            // Extract ttID from /title/tt1234567/
-                            val segments = uri.pathSegments
-                            if (segments.size >= 2 && segments[0] == "title") {
-                                searchQueryToOpen = segments[1]
-                            }
-                        }
-                        uri.host?.contains("yts") == true -> {
-                            // Extract slug from /movies/movie-slug or /movie/movie-slug
-                            val segments = uri.pathSegments
-                            if (segments.size >= 2 && (segments[0] == "movies" || segments[0] == "movie")) {
-                                searchQueryToOpen = segments[1]
-                            }
+                    if (uri.host?.contains("imdb.com") == true) {
+                        // Extract ttID from /title/tt1234567/
+                        val segments = uri.pathSegments
+                        if (segments.size >= 2 && segments[0] == "title") {
+                            searchQueryToOpen = segments[1]
                         }
                     }
                 }

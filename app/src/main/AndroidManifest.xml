@@ -46,31 +46,16 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
 
-            <!-- Deep Links for YTS and IMDb -->
-            <intent-filter android:autoVerify="true">
+            <!-- Deep Links for IMDb -->
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="http" />
                 <data android:scheme="https" />
-
-                <!-- YTS Hosts -->
-                <data android:host="yts.mx" />
-                <data android:host="yts.pm" />
-                <data android:host="yts.rs" />
-                <data android:host="yts.lt" />
-                <data android:host="yts.do" />
-                <data android:host="yts.ag" />
-                <data android:host="yts.vc" />
-                <data android:host="yts.unblocked.app" />
-
-                <!-- IMDb Hosts -->
                 <data android:host="www.imdb.com" />
+                <data android:host="m.imdb.com" />
                 <data android:host="imdb.com" />
-
-                <!-- Path Prefixes -->
-                <data android:pathPrefix="/movies/" />
-                <data android:pathPrefix="/movie/" />
                 <data android:pathPrefix="/title/" />
             </intent-filter>
         </activity>
