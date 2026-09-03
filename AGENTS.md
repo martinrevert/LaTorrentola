@@ -4,8 +4,8 @@ Checklist for this agent run:
 - [x] Understand app architecture and DI boundaries
 - [ ] Note project-specific serialization / DB / networking patterns
 - [ ] List dev workflows (build/install) and gotchas
-- [ ] Point to concrete files to inspect for changes
-- [x] Implement unit tests for core components
+- [x] Point to concrete files to inspect for changes
+- [x] Implement unit and UI tests for core components
 
 Short summary
 - This is a Jetpack Compose + Hilt Android app (Kotlin). Core patterns: Retrofit (Gson), Room, kotlinx.serialization on models, coroutines + Flow, and androidx.navigation3 runtime for navigation keys. Authentication is handled via Firebase + Google Sign-in (Credential Manager).
@@ -49,6 +49,18 @@ adb shell am start -n com.martinrevert.latorrentola/.MainActivity
 .\gradlew.bat testDebugUnitTest
 ```
 
+- Run instrumented (UI) tests:
+
+```powershell
+.\gradlew.bat connectedDebugAndroidTest
+```
+
+- Generate JaCoCo coverage report:
+
+```powershell
+.\gradlew.bat testDebugUnitTest jacocoTestReport
+```
+
 - Build release (signed) APK / AAB (ensure `app/keys/release.keystore` is present and signing config is set in Gradle):
 
 ```powershell
@@ -70,10 +82,14 @@ Integration points & external dependencies
 
 Testing / CI notes
 - Modern unit tests are located in `app/src/test/java`. They use MockK, Turbine, and Truth.
+- Instrumented UI tests are located in `app/src/androidTest/java`. They use `createComposeRule()` and Hilt.
+- Instrumented tests use a custom runner: `com.martinrevert.latorrentola.HiltTestRunner`.
+- MockK Android (`mockk-android`) is included for instrumented test mocking.
 - When testing ViewModels, use `MainDispatcherRule` (under `rules/`) to mock `Dispatchers.Main`.
-- The project forces a modern version of `byte-buddy` (1.18.12+) and uses `org.gradle.jvmargs` in `gradle.properties` to avoid `sun.misc.Unsafe` warnings across all build tasks (compilation and testing) on modern JDKs.
-- CI should run `./gradlew testDebugUnitTest` to verify changes.
-- If adding new testable components, follow the existing patterns in `YtsRepositoryTest`, `HomeViewModelTest`, or `ConvertersTest`.
+- The project forces a modern version of `byte-buddy` (1.18.15+) and uses `org.gradle.jvmargs` in `gradle.properties` to avoid `sun.misc.Unsafe` warnings across all build tasks (compilation and testing) on modern JDKs.
+- JaCoCo is configured (v0.8.15) with broad exclusions for ByteBuddy/MockK proxy classes to prevent instrumentation errors on newer JDKs.
+- CI should run `./gradlew testDebugUnitTest` to verify logic and optionally `connectedDebugAndroidTest` for UI.
+- If adding new testable components, follow the existing patterns in `YtsRepositoryTest`, `HomeViewModelTest`, or `HomeUiTest`.
 - CI must have `git` available (versionCode uses commit count) and Android SDK + buildtools matching AGP settings (`gradle/libs.versions.toml`).
 
 If you edit models:

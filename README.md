@@ -210,16 +210,34 @@ The project includes a suite of modern Android unit tests focused on the data la
 
 ### Testing Stack
 - **JUnit 4:** Core testing framework.
-- **MockK:** A powerful mocking library for Kotlin.
+- **MockK / MockK Android:** A powerful mocking library for Kotlin (unit & instrumented).
+- **Hilt Testing:** For dependency injection in instrumented tests.
+- **Compose UI Test:** For verifying user interface behavior and rendering.
 - **Turbine:** A small library for testing Kotlin Coroutines `Flow`.
 - **Google Truth:** A library for performing assertions with better readability.
 - **Kotlinx Coroutines Test:** Utilities for testing asynchronous code.
 
 ### Running Tests
+
+#### Unit Tests
 To run all unit tests from the command line:
 ```powershell
 ./gradlew testDebugUnitTest
 ```
+
+#### Instrumented (UI) Tests
+To run Compose UI tests (requires a connected device or emulator):
+```powershell
+./gradlew connectedDebugAndroidTest
+```
+
+#### Code Coverage
+This project uses **JaCoCo** to track code coverage across ViewModels, Repositories, and Utilities.
+To generate a combined coverage report:
+```powershell
+./gradlew testDebugUnitTest jacocoTestReport
+```
+The HTML report will be available at `app/build/reports/jacoco/jacocoTestReport/html/index.html`.
 
 > [!NOTE]
 > The project is configured via `gradle.properties` to support modern JDKs (21+) by enabling dynamic agent loading and opening necessary internal packages for build tools and MockK/ByteBuddy. This avoids `sun.misc.Unsafe` warnings during both compilation and testing.
@@ -227,6 +245,7 @@ To run all unit tests from the command line:
 ### Coverage Areas
 - **Repositories:** Verifying the interaction between network services and local DAOs.
 - **ViewModels:** Testing state management, pagination, filtering, and side-effects (Voice, Translation).
+- **UI (Compose):** Verifying screen states (Loading, Success, Error) and user interactions.
 - **Room Converters:** Ensuring complex data types (Lists, Dates) are correctly converted to/from JSON/Long for persistence.
 - **Serialization:** Validating that models are correctly serialized for Navigation 3 payloads.
 
