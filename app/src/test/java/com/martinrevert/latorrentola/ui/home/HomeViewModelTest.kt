@@ -10,6 +10,7 @@ import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -118,5 +119,39 @@ class HomeViewModelTest {
         
         assertThat(viewModel.uiState.value).isInstanceOf(HomeUiState.Error::class.java)
         assertThat((viewModel.uiState.value as HomeUiState.Error).message).isEqualTo("Network Error")
+    }
+
+    @Test
+    fun `setQuality should update state and refresh`() = runTest {
+        coEvery { repository.getMovies(1, null) } returns MovieDetails(data = Data(movies = listOf(Movie(id = 1))))
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
+        
+        coEvery { repository.getMovies(1, "720p") } returns MovieDetails(data = Data(movies = listOf(Movie(id = 2))))
+        viewModel.setQuality("720p")
+
+        assertThat(viewModel.selectedQuality.value).isEqualTo("720p")
+        val state = viewModel.uiState.value
+        assertThat((state as HomeUiState.Success).movies[0].id).isEqualTo(2)
+    }
+
+    @Test
+    fun `toggleFavorite should call repository`() = runTest {
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
+        val movie = Movie(id = 1)
+        
+        coEvery { repository.isFavorite(1) } returns false
+        viewModel.toggleFavorite(movie)
+        coVerify { repository.addFavorite(movie) }
+        
+        coEvery { repository.isFavorite(1) } returns true
+        viewModel.toggleFavorite(movie)
+        coVerify { repository.removeFavorite(movie) }
+    }
+
+    @Test
+    fun `setLastClickedMovieId should update state`() = runTest {
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
+        viewModel.setLastClickedMovieId(456)
+        assertThat(viewModel.lastClickedMovieId.value).isEqualTo(456)
     }
 }

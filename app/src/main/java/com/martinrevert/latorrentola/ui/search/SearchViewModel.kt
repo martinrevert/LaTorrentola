@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
+import com.martinrevert.latorrentola.utils.MovieFilter
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -14,7 +16,7 @@ import javax.inject.Inject
 class SearchViewModel @Inject constructor(
     private val ytsRepository: YtsRepository,
     private val userLibraryRepository: UserLibraryRepository,
-    private val preferenceManager: com.martinrevert.latorrentola.utils.PreferenceManager
+    private val preferenceManager: PreferenceManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
@@ -131,7 +133,7 @@ class SearchViewModel @Inject constructor(
                     allResults.clear()
                     
                     val excludedLangs = preferenceManager.getFilteredLanguages()
-                    val filteredFavorites = com.martinrevert.latorrentola.utils.MovieFilter.filterMovies(favorites, excludedLangs)
+                    val filteredFavorites = MovieFilter.filterMovies(favorites, excludedLangs)
                     
                     allResults.addAll(filteredFavorites)
                     if (allResults.isEmpty()) {
@@ -206,43 +208,43 @@ class SearchViewModel @Inject constructor(
             try {
                 if (currentPage == 1) _uiState.value = SearchUiState.Loading
                 
-                val result = when {
-                    query != null -> ytsRepository.searchMovies(query, currentPage, _selectedQuality.value)
-                    genre != null -> ytsRepository.searchByGenre(genre, currentPage, _selectedQuality.value)
-                    else -> null
+                var foundNewMovies = false
+                while (canLoadMore && !foundNewMovies) {
+                    val result = when {
+                        query != null -> ytsRepository.searchMovies(query, currentPage, _selectedQuality.value)
+                        genre != null -> ytsRepository.searchByGenre(genre, currentPage, _selectedQuality.value)
+                        else -> null
+                    }
+
+                    val moviesFromApi = result?.data?.movies
+                    
+                    if (moviesFromApi.isNullOrEmpty()) {
+                        canLoadMore = false
+                    } else {
+                        // Deduplicate API response first
+                        val distinctFromApi = moviesFromApi.distinctBy { it.id }
+                        
+                        // Filter movies based on user settings
+                        val excludedLangs = preferenceManager.getFilteredLanguages()
+                        val filteredMovies = MovieFilter.filterMovies(distinctFromApi, excludedLangs)
+                        
+                        // Filter duplicates against existing results
+                        val newMovies = filteredMovies.filter { newMovie ->
+                            allResults.none { it.id == newMovie.id }
+                        }
+                        
+                        if (newMovies.isNotEmpty()) {
+                            allResults.addAll(newMovies)
+                            _uiState.value = SearchUiState.Success(allResults.toList())
+                            foundNewMovies = true
+                        }
+                    }
+                    
+                    currentPage++
                 }
 
-                val moviesFromApi = result?.data?.movies
-                
-                if (moviesFromApi.isNullOrEmpty()) {
-                    canLoadMore = false
-                    if (allResults.isEmpty()) {
-                        _uiState.value = SearchUiState.Empty
-                    }
-                } else {
-                    // Deduplicate API response first
-                    val distinctFromApi = moviesFromApi.distinctBy { it.id }
-                    
-                    // Filter movies based on user settings
-                    val excludedLangs = preferenceManager.getFilteredLanguages()
-                    val filteredMovies = com.martinrevert.latorrentola.utils.MovieFilter.filterMovies(distinctFromApi, excludedLangs)
-                    
-                    // Filter duplicates against existing results
-                    val newMovies = filteredMovies.filter { newMovie ->
-                        allResults.none { it.id == newMovie.id }
-                    }
-                    
-                    if (newMovies.isNotEmpty()) {
-                        allResults.addAll(newMovies)
-                        _uiState.value = SearchUiState.Success(allResults.toList())
-                        currentPage++
-                    } else {
-                        // If all movies were duplicates or filtered, try next page automatically
-                        currentPage++
-                        isFetching = false
-                        loadMore()
-                        return@launch
-                    }
+                if (allResults.isEmpty() && !canLoadMore) {
+                    _uiState.value = SearchUiState.Empty
                 }
             } catch (e: Exception) {
                 if (e !is kotlinx.coroutines.CancellationException && allResults.isEmpty()) {

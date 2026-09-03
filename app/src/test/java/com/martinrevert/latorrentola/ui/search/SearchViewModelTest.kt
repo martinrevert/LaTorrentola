@@ -8,8 +8,10 @@ import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
@@ -135,5 +137,89 @@ class SearchViewModelTest {
         val successState = state as SearchUiState.Success
         assertThat(successState.movies).hasSize(1)
         assertThat(successState.movies[0].language).isEqualTo("en")
+    }
+
+    @Test
+    fun `setQuality should reload results with new quality`() = runTest {
+        coEvery { repository.searchMovies("query", 1, null) } returns MovieDetails(data = Data(movies = listOf(Movie(id = 1))))
+        viewModel.search("query")
+        
+        coEvery { repository.searchMovies("query", 1, "720p") } returns MovieDetails(data = Data(movies = listOf(Movie(id = 2))))
+        viewModel.setQuality("720p")
+
+        assertThat(viewModel.selectedQuality.value).isEqualTo("720p")
+        val state = viewModel.uiState.value
+        assertThat((state as SearchUiState.Success).movies[0].id).isEqualTo(2)
+    }
+
+    @Test
+    fun `resetSearch should return state to Idle`() = runTest {
+        viewModel.search("query")
+        viewModel.resetSearch()
+
+        assertThat(viewModel.uiState.value).isEqualTo(SearchUiState.Idle)
+    }
+
+    @Test
+    fun `toggleFavoriteSelection should update selected ids`() {
+        viewModel.toggleFavoriteSelection(1)
+        assertThat(viewModel.selectedFavoriteIds.value).contains(1)
+
+        viewModel.toggleFavoriteSelection(1)
+        assertThat(viewModel.selectedFavoriteIds.value).doesNotContain(1)
+    }
+
+    @Test
+    fun `clearSelection should empty selected ids`() {
+        viewModel.toggleFavoriteSelection(1)
+        viewModel.clearSelection()
+        assertThat(viewModel.selectedFavoriteIds.value).isEmpty()
+    }
+
+    @Test
+    fun `deleteSelectedFavorites should call repository for each selected id`() = runTest {
+        val movie = Movie(id = 1)
+        every { repository.getFavoriteMovies() } returns flowOf(listOf(movie))
+        viewModel.showFavorites()
+        
+        viewModel.toggleFavoriteSelection(1)
+        viewModel.deleteSelectedFavorites()
+
+        coVerify { repository.removeFavorite(match { it.id == 1 }) }
+        assertThat(viewModel.selectedFavoriteIds.value).isEmpty()
+    }
+
+    @Test
+    fun `search with empty query should reset search`() = runTest {
+        viewModel.search("query")
+        viewModel.search("")
+
+        assertThat(viewModel.uiState.value).isEqualTo(SearchUiState.Idle)
+    }
+
+    @Test
+    fun `removeFavorite should call repository`() = runTest {
+        val movie = Movie(id = 1)
+        viewModel.removeFavorite(movie)
+        coVerify { repository.removeFavorite(movie) }
+    }
+
+    @Test
+    fun `setLastClickedMovieId should update state`() {
+        viewModel.setLastClickedMovieId(123)
+        assertThat(viewModel.lastClickedMovieId.value).isEqualTo(123)
+    }
+
+    @Test
+    fun `observeFilteredLanguages should reload when favorites showing`() = runTest {
+        val favorites = listOf(Movie(id = 1, title = "Fav"))
+        every { repository.getFavoriteMovies() } returns flowOf(favorites)
+        viewModel.showFavorites()
+        
+        // Trigger language change
+        (preferenceManager.filteredLanguagesFlow as MutableStateFlow).value = "en"
+        
+        // Should trigger showFavorites again
+        coVerify(exactly = 2) { repository.getFavoriteMovies() }
     }
 }

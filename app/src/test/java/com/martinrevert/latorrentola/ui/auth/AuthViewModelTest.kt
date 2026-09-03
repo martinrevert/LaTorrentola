@@ -3,12 +3,16 @@ package com.martinrevert.latorrentola.ui.auth
 import android.content.Context
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
+import com.google.firebase.auth.FirebaseUser
 import com.martinrevert.latorrentola.network.AuthRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
@@ -77,5 +81,14 @@ class AuthViewModelTest {
         viewModel.authState.test {
             assertThat(awaitItem()).isEqualTo(AuthState.Idle)
         }
+        coVerify { authRepository.signOut() }
+    }
+
+    @Test
+    fun `getCurrentUser should return user from repository`() {
+        val mockUser = mockk<FirebaseUser>()
+        every { authRepository.currentUser } returns mockUser
+        
+        assertThat(viewModel.currentUser).isEqualTo(mockUser)
     }
 }

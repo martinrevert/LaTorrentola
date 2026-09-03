@@ -2,7 +2,7 @@ package com.martinrevert.latorrentola.ui.detail
 
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
+import androidx.core.net.toUri
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -394,7 +394,7 @@ fun TorrentItem(
                         "&tr=udp://tracker.openbittorrent.com:80"
                 
                 val intent = Intent(Intent.ACTION_VIEW).apply {
-                    data = Uri.parse(magnetUri)
+                    data = magnetUri.toUri()
                     addCategory(Intent.CATEGORY_BROWSABLE)
                 }
                 

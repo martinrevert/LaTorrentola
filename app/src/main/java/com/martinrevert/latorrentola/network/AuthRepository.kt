@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
@@ -58,6 +60,10 @@ class AuthRepository @Inject constructor(
             
             firebaseAuth.signInWithCredential(authCredential).await()
             Result.success(Unit)
+        } catch (e: NoCredentialException) {
+            Result.failure(e)
+        } catch (e: GetCredentialException) {
+            Result.failure(e)
         } catch (e: Exception) {
             Result.failure(e)
         }

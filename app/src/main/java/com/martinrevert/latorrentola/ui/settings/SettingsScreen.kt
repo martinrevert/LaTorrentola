@@ -6,6 +6,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -111,21 +112,19 @@ fun SettingsScreen(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-            Text(text = "Filtrar Idiomas", style = MaterialTheme.typography.titleMedium)
-            Text(
-                text = "Excluir películas en estos idiomas (separados por coma, ej: cn, fr, hi)",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
             OutlinedTextField(
                 value = uiState.filteredLanguages,
                 onValueChange = { viewModel.setFilteredLanguages(it) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusHighlight(shape = OutlinedTextFieldDefaults.shape),
+                label = { Text("Filtrar Idiomas") },
                 placeholder = { Text("cn, fr, hi...") },
-                singleLine = true
+                supportingText = {
+                    Text("Excluir películas en estos idiomas (ej: cn, fr, hi)")
+                },
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) }
             )
 
             Spacer(modifier = Modifier.height(24.dp))

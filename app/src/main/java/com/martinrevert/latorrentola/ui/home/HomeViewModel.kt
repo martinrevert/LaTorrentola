@@ -6,6 +6,9 @@ import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.date.DateLastVisit
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
+import com.martinrevert.latorrentola.network.AuthRepository
+import com.martinrevert.latorrentola.utils.MovieFilter
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -18,8 +21,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 class HomeViewModel @Inject constructor(
     private val ytsRepository: YtsRepository,
     private val userLibraryRepository: UserLibraryRepository,
-    private val preferenceManager: com.martinrevert.latorrentola.utils.PreferenceManager,
-    private val authRepository: com.martinrevert.latorrentola.network.AuthRepository
+    private val preferenceManager: PreferenceManager,
+    private val authRepository: AuthRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
@@ -153,7 +156,7 @@ class HomeViewModel @Inject constructor(
                     
                     // Filter movies based on user settings
                     val excludedLangs = preferenceManager.getFilteredLanguages()
-                    val filteredMovies = com.martinrevert.latorrentola.utils.MovieFilter.filterMovies(moviesFromApi, excludedLangs)
+                    val filteredMovies = MovieFilter.filterMovies(moviesFromApi, excludedLangs)
                         .distinctBy { it.id }
                     
                     if (filteredMovies.isNotEmpty()) {
@@ -217,7 +220,7 @@ class HomeViewModel @Inject constructor(
 
                     // Filter movies based on user settings
                     val excludedLangs = preferenceManager.getFilteredLanguages()
-                    val filteredMovies = com.martinrevert.latorrentola.utils.MovieFilter.filterMovies(moviesFromApi, excludedLangs)
+                    val filteredMovies = MovieFilter.filterMovies(moviesFromApi, excludedLangs)
                         .distinctBy { it.id }
 
                     if (filteredMovies.isNotEmpty()) {

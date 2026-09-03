@@ -11,6 +11,7 @@ import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TranslationManager
 import com.martinrevert.latorrentola.utils.VoiceManager
 import io.mockk.*
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Rule
@@ -31,6 +32,11 @@ class DetailViewModelTest {
 
     @Before
     fun setUp() {
+        clearMocks(repository, userLibraryRepository, voiceManager, translationManager, preferenceManager)
+        every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
+        every { preferenceManager.getVoiceSystem() } returns true
+        every { preferenceManager.getVoiceTranslation() } returns false
+        every { preferenceManager.getVoiceSummary() } returns true
         viewModel = DetailViewModel(repository, userLibraryRepository, voiceManager, translationManager, preferenceManager)
     }
 
@@ -127,5 +133,61 @@ class DetailViewModelTest {
         viewModel.toggleFavorite(movie)
         coVerify { repository.removeFavorite(movie) }
         assertThat((viewModel.uiState.value as DetailUiState.Success).isFavorite).isFalse()
+    }
+
+    @Test
+    fun `markAsDownloaded should call user library repository`() = runTest {
+        val movie = Movie(id = 1, title = "Test Movie")
+        viewModel.markAsDownloaded(movie, "hash", "1080p")
+        
+        coVerify { 
+            userLibraryRepository.markAsDownloaded(match { 
+                it.movieId == 1 && it.hash == "hash" && it.quality == "1080p" 
+            }) 
+        }
+    }
+
+    @Test
+    fun `setMovieById should fetch details and update state`() = runTest {
+        val movie = Movie(id = 1, title = "Fetched Movie", genres = emptyList())
+        coEvery { repository.isFavorite(1) } returns true
+        coEvery { repository.getMovieFullDetails(1) } returns MovieDetails(data = Data(movie = movie))
+
+        viewModel.setMovieById(1)
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertThat(state).isInstanceOf(DetailUiState.Success::class.java)
+        val successState = state as DetailUiState.Success
+        assertThat(successState.movie.title).isEqualTo("Fetched Movie")
+        assertThat(successState.isFavorite).isTrue()
+    }
+
+    @Test
+    fun `setMovieById should show error when response is null`() = runTest {
+        coEvery { repository.getMovieFullDetails(1) } returns MovieDetails(data = null)
+
+        viewModel.setMovieById(1)
+        testScheduler.advanceUntilIdle()
+
+        assertThat(viewModel.uiState.value).isInstanceOf(DetailUiState.Error::class.java)
+    }
+
+    @Test
+    fun `setMovieById should show error when network fails`() = runTest {
+        coEvery { repository.getMovieFullDetails(1) } throws Exception("Network Error")
+
+        viewModel.setMovieById(1)
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertThat(state).isInstanceOf(DetailUiState.Error::class.java)
+        assertThat((state as DetailUiState.Error).message).isEqualTo("Network Error")
+    }
+
+    @Test
+    fun `stopVoice should call voice manager stop`() {
+        viewModel.stopVoice()
+        verify { voiceManager.stop() }
     }
 }

@@ -146,7 +146,6 @@ class DetailViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        super.onCleared()
         voiceManager.stop()
     }
 }

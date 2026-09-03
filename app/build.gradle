@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.firebase.crashlytics)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlin.serialization)
+    id 'jacoco'
 }
 
 def getGitVersionCount(providers) {
@@ -16,8 +17,8 @@ def getGitVersionCount(providers) {
 }
 
 android {
-    namespace 'com.martinrevert.latorrentola'
-    compileSdk 37
+    namespace = 'com.martinrevert.latorrentola'
+    compileSdk = 37
 
     def keystorePropertiesFile = rootProject.file("keystore.properties")
     def keystoreProperties = new Properties()
@@ -33,6 +34,7 @@ android {
         versionName "2.0.$gitVersionCode"
         minSdkVersion 24
         targetSdkVersion 37
+        testInstrumentationRunner "com.martinrevert.latorrentola.HiltTestRunner"
 
         def localProperties = new Properties()
         def localPropertiesFile = rootProject.file('local.properties')
@@ -62,10 +64,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            enableUnitTestCoverage true
+        }
         release {
-            signingConfig signingConfigs.release
-            minifyEnabled true
-            shrinkResources true
+            signingConfig = signingConfigs.release
+            minifyEnabled = true
+            shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -160,4 +165,94 @@ dependencies {
     testImplementation libs.kotlinx.coroutines.test
     testImplementation libs.byte.buddy
     testImplementation libs.byte.buddy.agent
+
+    // UI Testing
+    androidTestImplementation platform(libs.androidx.compose.bom)
+    androidTestImplementation libs.androidx.ui.test.junit4
+    androidTestImplementation libs.androidx.test.runner
+    androidTestImplementation libs.hilt.android.testing
+    androidTestImplementation libs.mockk.android
+    kspAndroidTest libs.hilt.compiler
+    debugImplementation libs.androidx.ui.test.manifest
+}
+
+jacoco {
+    toolVersion = libs.versions.jacoco.get()
+}
+
+tasks.withType(Test).configureEach {
+    jacoco.includeNoLocationClasses = true
+    jacoco.excludes = [
+        'jdk.internal.*',
+        'java.*',
+        'javax.*',
+        'com.sun.*',
+        'sun.*',
+        'jdk.proxy*.*',
+        'org.jcp.xml.dsig.**',
+        'android.*',
+        'net.bytebuddy.**',
+        'io.mockk.**',
+        'kotlin.*',
+        'kotlinx.**',
+        'com.google.**',
+        'com.pierfrancescosoffritti.**',
+        'okhttp3.**',
+        'retrofit2.**',
+        'org.junit.**',
+        '**.*$Subclass*',
+        '**.*$auxiliary*',
+        '**.*$MockitoMock*',
+        '**.*$HibernateProxy*',
+        'com.martinrevert.latorrentola.**$Subclass*',
+        'com.martinrevert.latorrentola.**$auxiliary*',
+        'com.martinrevert.latorrentola.**$ByteBuddy*'
+    ]
+}
+
+project.afterEvaluate {
+    tasks.register('jacocoTestReport', JacocoReport) {
+        dependsOn 'testDebugUnitTest'
+
+        reports {
+            xml.required = true
+            html.required = true
+        }
+
+        def fileFilter = [
+            '**/R.class',
+            '**/R$*.class',
+            '**/BuildConfig.*',
+            '**/Manifest*.*',
+            '**/*Test*.*',
+            'android/**/*.*',
+            '**/*$ViewInjector*.*',
+            '**/*$ViewBinder*.*',
+            '**/Lambda$*.class',
+            '**/Lambda.class',
+            '**/*Lambda.class',
+            '**/*Lambda*.class',
+            '**/*_MembersInjector.class',
+            '**/Dagger*Component*.*',
+            '**/*Module_*Factory.class',
+            '**/*_Factory*.*',
+            '**/*_Provide*Factory*.*',
+            '**/*Extensions*.*',
+            '**/*$Result.*',
+            '**/*$Result$*.*',
+            '**/*Args*.*',
+            '**/*Directions*.*'
+        ]
+
+        def kotlinClasses = fileTree(dir: "${project.layout.buildDirectory.get().asFile}/intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes", excludes: fileFilter)
+        def javaClasses = fileTree(dir: "${project.layout.buildDirectory.get().asFile}/intermediates/javac/debug/classes", excludes: fileFilter)
+        def debugTree = kotlinClasses + javaClasses
+        def mainSrc = "${project.projectDir}/src/main/java"
+
+        sourceDirectories.setFrom(files([mainSrc]))
+        classDirectories.setFrom(files([debugTree]))
+        executionData.setFrom(fileTree(dir: project.layout.buildDirectory.get().asFile, includes: [
+            'jacoco/testDebugUnitTest.exec', 'outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec'
+        ]))
+    }
 }
