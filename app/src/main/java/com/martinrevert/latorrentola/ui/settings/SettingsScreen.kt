@@ -15,13 +15,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import coil3.compose.AsyncImage
+import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
@@ -45,13 +48,14 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
                     IconButton(
                         onClick = onBackClick,
                         modifier = Modifier.focusHighlight(shape = CircleShape)
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(
+                            R.string.back_desc))
                     }
                 }
             )
@@ -71,17 +75,17 @@ fun SettingsScreen(
             }
 
             SettingsToggle(
-                title = "Emitir guias por voz (TTS)",
+                title = stringResource(R.string.settings_tts),
                 checked = uiState.voiceSystem,
                 onCheckedChange = { viewModel.toggleVoiceSystem(it) }
             )
             SettingsToggle(
-                title = "Sumario de peliculas por voz",
+                title = stringResource(R.string.settings_voice_summary),
                 checked = uiState.voiceSummary,
                 onCheckedChange = { viewModel.toggleVoiceSummary(it) }
             )
             SettingsToggle(
-                title = "Traducir sumario de peliculas",
+                title = stringResource(R.string.settings_voice_translation),
                 checked = uiState.voiceTranslation,
                 enabled = uiState.voiceSummary,
                 onCheckedChange = { viewModel.toggleVoiceTranslation(it) }
@@ -89,13 +93,13 @@ fun SettingsScreen(
             
             if (!isRunningOnTv) {
                 SettingsToggle(
-                    title = "Vibrar ante eventos",
+                    title = stringResource(com.martinrevert.latorrentola.R.string.settings_vibrator),
                     checked = uiState.vibrator,
                     onCheckedChange = { viewModel.toggleVibrator(it) }
                 )
                 
                 SettingsToggle(
-                    title = "Notificaciones Push",
+                    title = stringResource(com.martinrevert.latorrentola.R.string.settings_push),
                     checked = uiState.pushEnabled,
                     onCheckedChange = { viewModel.togglePushEnabled(it) }
                 )
@@ -103,7 +107,7 @@ fun SettingsScreen(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-            Text(text = "Tema", style = MaterialTheme.typography.titleMedium)
+            Text(text = stringResource(com.martinrevert.latorrentola.R.string.settings_theme), style = MaterialTheme.typography.titleMedium)
             
             ThemeSelector(
                 selectedTheme = uiState.theme,
@@ -118,10 +122,10 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusHighlight(shape = OutlinedTextFieldDefaults.shape),
-                label = { Text("Filtrar Idiomas") },
-                placeholder = { Text("cn, fr, hi...") },
+                label = { Text(stringResource(com.martinrevert.latorrentola.R.string.filter_languages_label)) },
+                placeholder = { Text(stringResource(R.string.filter_languages_placeholder)) },
                 supportingText = {
-                    Text("Excluir películas en estos idiomas (ej: cn, fr, hi)")
+                    Text(stringResource(R.string.filter_languages_support))
                 },
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) }
@@ -139,9 +143,9 @@ fun SettingsScreen(
                     )
                 ) {
                     androidx.tv.material3.Text(
-                        text = "Cerrar Sesión",
+                        text = stringResource(com.martinrevert.latorrentola.R.string.logout_button),
                         modifier = Modifier.fillMaxWidth(),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        textAlign = TextAlign.Center
                     )
                 }
             } else {
@@ -155,7 +159,7 @@ fun SettingsScreen(
                         contentColor = MaterialTheme.colorScheme.onErrorContainer
                     )
                 ) {
-                    Text("Cerrar Sesión")
+                    Text(stringResource(com.martinrevert.latorrentola.R.string.logout_button))
                 }
             }
             
@@ -180,7 +184,7 @@ fun UserSection(
         if (photoUrl != null) {
             AsyncImage(
                 model = photoUrl,
-                contentDescription = "User profile",
+                contentDescription = stringResource(com.martinrevert.latorrentola.R.string.user_profile_desc),
                 modifier = Modifier
                     .size(64.dp)
                     .clip(CircleShape),
@@ -206,7 +210,7 @@ fun UserSection(
         
         Column {
             Text(
-                text = name ?: "Usuario",
+                text = name ?: stringResource(com.martinrevert.latorrentola.R.string.default_user_name),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
@@ -227,7 +231,11 @@ fun ThemeSelector(
     selectedTheme: Int,
     onThemeSelected: (Int) -> Unit
 ) {
-    val options = listOf("Sistema", "Claro", "Oscuro")
+    val options = listOf(
+        stringResource(com.martinrevert.latorrentola.R.string.theme_system),
+        stringResource(R.string.theme_light),
+        stringResource(R.string.theme_dark)
+    )
     val themeValues = listOf(
         PreferenceManager.THEME_SYSTEM,
         PreferenceManager.THEME_LIGHT,

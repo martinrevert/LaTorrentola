@@ -2,12 +2,14 @@ package com.martinrevert.latorrentola.ui.detail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.user.DownloadedMovie
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TranslationManager
+import com.martinrevert.latorrentola.utils.UiText
 import com.martinrevert.latorrentola.utils.VoiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -72,10 +74,10 @@ class DetailViewModel @Inject constructor(
                         ytsRepository.recordGenreVisit(genre)
                     }
                 } ?: run {
-                    _uiState.value = DetailUiState.Error("Movie not found")
+                    _uiState.value = DetailUiState.Error(UiText.StringResource(R.string.movie_not_found))
                 }
             } catch (e: Exception) {
-                _uiState.value = DetailUiState.Error(e.localizedMessage ?: "Unknown error")
+                _uiState.value = DetailUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
             }
         }
     }
@@ -89,10 +91,10 @@ class DetailViewModel @Inject constructor(
                 if (movie != null) {
                     setMovie(movie)
                 } else {
-                    _uiState.value = DetailUiState.Error("Movie not found for: $query")
+                    _uiState.value = DetailUiState.Error(UiText.StringResource(R.string.movie_not_found_query, query))
                 }
             } catch (e: Exception) {
-                _uiState.value = DetailUiState.Error(e.localizedMessage ?: "Unknown error")
+                _uiState.value = DetailUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
             }
         }
     }
@@ -170,5 +172,5 @@ class DetailViewModel @Inject constructor(
 sealed interface DetailUiState {
     object Loading : DetailUiState
     data class Success(val movie: Movie, val isFavorite: Boolean) : DetailUiState
-    data class Error(val message: String) : DetailUiState
+    data class Error(val message: UiText) : DetailUiState
 }

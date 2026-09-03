@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseUser
+import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.network.AuthRepository
+import com.martinrevert.latorrentola.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,7 +38,9 @@ class AuthViewModel @Inject constructor(
                 }
                 _authState.value = AuthState.Success
             } else {
-                _authState.value = AuthState.Error(result.exceptionOrNull()?.message ?: "Unknown error")
+                val error = result.exceptionOrNull()?.message?.let { UiText.DynamicString(it) }
+                    ?: UiText.StringResource(R.string.unknown_error)
+                _authState.value = AuthState.Error(error)
             }
         }
     }
@@ -53,5 +57,5 @@ sealed interface AuthState {
     object Idle : AuthState
     object Loading : AuthState
     object Success : AuthState
-    data class Error(val message: String) : AuthState
+    data class Error(val message: UiText) : AuthState
 }

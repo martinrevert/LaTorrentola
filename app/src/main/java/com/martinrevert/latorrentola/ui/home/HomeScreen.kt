@@ -37,6 +37,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -44,6 +45,7 @@ import android.content.pm.PackageManager
 import androidx.compose.ui.draw.clip
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import coil3.compose.AsyncImage
+import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.isTvDevice
@@ -89,7 +91,7 @@ fun HomeScreen(
                             tint = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color.White else Color.Black
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("La Torrentola")
+                        Text(stringResource(R.string.app_name))
                     }
                 },
                 actions = {
@@ -97,7 +99,7 @@ fun HomeScreen(
                         onClick = onSearchClick,
                         modifier = Modifier.focusHighlight(shape = CircleShape)
                     ) {
-                        Icon(Icons.Default.Search, contentDescription = "Search")
+                        Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search_desc))
                     }
                     IconButton(
                         onClick = onFavoritesClick,
@@ -112,7 +114,7 @@ fun HomeScreen(
                                 }
                             }
                         ) {
-                            Icon(Icons.Default.Favorite, contentDescription = "Favorites")
+                            Icon(Icons.Default.Favorite, contentDescription = stringResource(R.string.favorites_desc))
                         }
                     }
                     IconButton(
@@ -122,14 +124,14 @@ fun HomeScreen(
                         if (userPhotoUrl != null) {
                             AsyncImage(
                                 model = userPhotoUrl,
-                                contentDescription = "User profile",
+                                contentDescription = stringResource(R.string.user_profile_desc),
                                 modifier = Modifier
                                     .size(32.dp)
                                     .clip(CircleShape),
                                 contentScale = ContentScale.Crop
                             )
                         } else {
-                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                            Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_desc))
                         }
                     }
                 }
@@ -241,7 +243,7 @@ private fun HomeContent(
         }
         is HomeUiState.Error -> {
             Text(
-                text = uiState.message,
+                text = uiState.message.asString(),
                 color = MaterialTheme.colorScheme.error
             )
         }
@@ -293,7 +295,7 @@ fun GenreChips(
             FilterChip(
                 selected = false,
                 onClick = onAllGenresClick,
-                label = { Text("All Genres") },
+                label = { Text(stringResource(com.martinrevert.latorrentola.R.string.all_genres)) },
                 leadingIcon = { Icon(Icons.Default.FilterList, contentDescription = null, modifier = Modifier.size(18.dp)) },
                 modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
             )
@@ -327,7 +329,7 @@ fun GenreBottomSheet(
                 .navigationBarsPadding()
         ) {
             Text(
-                text = "Browse by Genre",
+                text = stringResource(com.martinrevert.latorrentola.R.string.browse_by_genre),
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
@@ -481,7 +483,7 @@ fun MovieItem(
                     if (isRecent) {
                         Icon(
                             painter = painterResource(com.martinrevert.latorrentola.R.drawable.new_badge),
-                            contentDescription = "New",
+                            contentDescription = stringResource(R.string.new_desc),
                             tint = Color.Yellow,
                             modifier = Modifier
                                 .align(Alignment.TopStart)
@@ -494,7 +496,7 @@ fun MovieItem(
                     if (isDownloaded) {
                         Icon(
                             imageVector = Icons.Default.CloudDone,
-                            contentDescription = "Downloaded",
+                            contentDescription = stringResource(R.string.downloaded_desc),
                             tint = Color.Yellow,
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
@@ -591,7 +593,7 @@ fun MovieItem(
                         if (isRecent) {
                             Icon(
                                 painter = painterResource(com.martinrevert.latorrentola.R.drawable.new_badge),
-                                contentDescription = "New",
+                                contentDescription = stringResource(R.string.new_desc),
                                 tint = Color.Yellow,
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
@@ -604,7 +606,7 @@ fun MovieItem(
                         if (isDownloaded) {
                             Icon(
                                 imageVector = Icons.Default.CloudDone,
-                                contentDescription = "Downloaded",
+                                contentDescription = stringResource(R.string.downloaded_desc),
                                 tint = Color.Yellow,
                                 modifier = Modifier
                                     .align(Alignment.BottomEnd)
@@ -656,15 +658,21 @@ fun MovieItem(
                                         val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                             type = "text/plain"
                                             putExtra(Intent.EXTRA_SUBJECT, movie.title)
-                                            putExtra(Intent.EXTRA_TEXT, "Check out this movie: ${movie.title}\n$imdbUrl")
+                                            val shareText = context.getString(
+                                                R.string.share_movie_text,
+                                                movie.title,
+                                                imdbUrl
+                                            )
+                                            putExtra(Intent.EXTRA_TEXT, shareText)
                                         }
-                                        context.startActivity(Intent.createChooser(shareIntent, "Share movie"))
+                                        context.startActivity(Intent.createChooser(shareIntent, context.getString(
+                                            R.string.share_movie_chooser)))
                                     },
                                     modifier = Modifier.size(24.dp)
                                 ) {
                                     Icon(
                                         Icons.Default.Share, 
-                                        contentDescription = "Share",
+                                        contentDescription = stringResource(com.martinrevert.latorrentola.R.string.share_desc),
                                         modifier = Modifier.size(16.dp),
                                         tint = MaterialTheme.colorScheme.primary
                                     )
@@ -689,7 +697,7 @@ fun MovieItem(
                     )
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
-                        contentDescription = "Selected",
+                        contentDescription = stringResource(R.string.selected_desc),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
                             .align(Alignment.TopEnd)

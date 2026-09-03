@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
@@ -31,6 +32,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
+import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.home.MovieList
 import com.martinrevert.latorrentola.ui.home.MovieItem
@@ -103,9 +105,9 @@ fun SearchScreen(
                 title = {
                     if (isShowingFavorites) {
                         if (selectedFavoriteIds.isNotEmpty()) {
-                            Text("${selectedFavoriteIds.size} seleccionados")
+                            Text(stringResource(R.string.selected_count, selectedFavoriteIds.size))
                         } else {
-                            Text("My Favorites")
+                            Text(stringResource(R.string.my_favorites))
                         }
                     } else {
                         SearchTextField(
@@ -118,7 +120,7 @@ fun SearchScreen(
                                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                                     putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                                    putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to search movies")
+                                    putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.voice_search_prompt))
                                 }
                                 try {
                                     speechLauncher.launch(intent)
@@ -147,14 +149,15 @@ fun SearchScreen(
                             onClick = { viewModel.clearSelection() },
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear selection")
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.clear_selection_desc))
                         }
                     } else {
                         IconButton(
                             onClick = onBackClick,
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(
+                                R.string.back_desc))
                         }
                     }
                 },
@@ -164,7 +167,7 @@ fun SearchScreen(
                             onClick = { viewModel.deleteSelectedFavorites() },
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete selected")
+                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_selected_desc))
                         }
                     }
                 }
@@ -192,7 +195,7 @@ fun SearchScreen(
             ) {
                 when (val state = uiState) {
                         is SearchUiState.Idle -> {
-                            Text(text = "Start searching...")
+                            Text(text = stringResource(com.martinrevert.latorrentola.R.string.start_searching))
                         }
                         is SearchUiState.Loading -> {
                             CircularProgressIndicator()
@@ -219,10 +222,10 @@ fun SearchScreen(
                             )
                         }
                         is SearchUiState.Empty -> {
-                            Text(text = "No results found")
+                            Text(text = stringResource(com.martinrevert.latorrentola.R.string.no_results))
                         }
                         is SearchUiState.Error -> {
-                            Text(text = state.message)
+                            Text(text = state.message.asString())
                         }
                     }
                 }
@@ -241,7 +244,7 @@ private fun SearchTextField(
     TextField(
         value = searchQuery,
         onValueChange = onSearchQueryChange,
-        placeholder = { Text("Search movies...") },
+        placeholder = { Text(stringResource(com.martinrevert.latorrentola.R.string.search_placeholder)) },
         modifier = modifier.fillMaxWidth(),
         singleLine = true,
         trailingIcon = if (showVoiceSearch) {
@@ -250,7 +253,7 @@ private fun SearchTextField(
                     onClick = onVoiceSearchClick,
                     modifier = Modifier.focusHighlight(shape = CircleShape)
                 ) {
-                    Icon(Icons.Default.Mic, contentDescription = "Voice Search")
+                    Icon(Icons.Default.Mic, contentDescription = stringResource(com.martinrevert.latorrentola.R.string.voice_search_desc))
                 }
             }
         } else null,

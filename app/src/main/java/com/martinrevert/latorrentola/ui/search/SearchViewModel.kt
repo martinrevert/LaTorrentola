@@ -2,12 +2,15 @@ package com.martinrevert.latorrentola.ui.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.utils.MovieFilter
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -244,11 +247,11 @@ class SearchViewModel @Inject constructor(
                 }
 
                 if (allResults.isEmpty() && !canLoadMore) {
-                    _uiState.value = SearchUiState.Empty
+                    _uiState.value = SearchUiState.Error(UiText.StringResource(R.string.unknown_error))
                 }
             } catch (e: Exception) {
-                if (e !is kotlinx.coroutines.CancellationException && allResults.isEmpty()) {
-                    _uiState.value = SearchUiState.Error(e.localizedMessage ?: "Unknown error")
+                if (e !is CancellationException && allResults.isEmpty()) {
+                    _uiState.value = SearchUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
                 }
             } finally {
                 isFetching = false
@@ -262,5 +265,5 @@ sealed interface SearchUiState {
     object Loading : SearchUiState
     object Empty : SearchUiState
     data class Success(val movies: List<Movie>, val isFavorites: Boolean = false) : SearchUiState
-    data class Error(val message: String) : SearchUiState
+    data class Error(val message: UiText) : SearchUiState
 }

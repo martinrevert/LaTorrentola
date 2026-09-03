@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,13 +70,13 @@ fun MovieDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text((uiState as? DetailUiState.Success)?.movie?.title ?: "Details") },
+                title = { Text((uiState as? DetailUiState.Success)?.movie?.title ?: stringResource(R.string.details_title)) },
                 navigationIcon = {
                     IconButton(
                         onClick = onBackClick,
                         modifier = Modifier.focusHighlight(shape = CircleShape)
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back_desc))
                     }
                 },
                 actions = {
@@ -87,7 +88,7 @@ fun MovieDetailScreen(
                         ) {
                             Icon(
                                 if (state.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = "Favorite"
+                                contentDescription = stringResource(R.string.favorite_desc)
                             )
                         }
                     }
@@ -115,7 +116,7 @@ fun MovieDetailScreen(
                     )
                 }
                 is DetailUiState.Error -> {
-                    Text(text = state.message)
+                    Text(text = state.message.asString())
                 }
             }
         }
@@ -150,10 +151,10 @@ fun MovieDetailContent(
                     )
                 }
                 Column(modifier = Modifier.weight(0.4f)) {
-                    Text(text = "Summary", style = MaterialTheme.typography.titleLarge)
+                    Text(text = stringResource(R.string.summary_header), style = MaterialTheme.typography.titleLarge)
                     val summaryText = movie.summary?.ifEmpty { movie.descriptionFull } ?: movie.descriptionFull
                     Text(
-                        text = summaryText ?: "No summary available",
+                        text = summaryText ?: stringResource(R.string.no_summary),
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 8,
                         overflow = TextOverflow.Ellipsis
@@ -172,13 +173,13 @@ fun MovieDetailContent(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            Text(text = "Summary", style = MaterialTheme.typography.titleLarge)
+            Text(text = stringResource(R.string.summary_header), style = MaterialTheme.typography.titleLarge)
             val summaryText = movie.summary?.ifEmpty { movie.descriptionFull } ?: movie.descriptionFull
-            Text(text = summaryText ?: "No summary available", style = MaterialTheme.typography.bodyMedium)
+            Text(text = summaryText ?: stringResource(R.string.no_summary), style = MaterialTheme.typography.bodyMedium)
             
             Spacer(modifier = Modifier.height(16.dp))
             
-            Text(text = "Details", style = MaterialTheme.typography.titleLarge)
+            Text(text = stringResource(R.string.details_title), style = MaterialTheme.typography.titleLarge)
             MovieMetadata(movie = movie)
         }
         
@@ -189,7 +190,7 @@ fun MovieDetailContent(
             Spacer(modifier = Modifier.height(16.dp))
         }
         
-        Text(text = "Torrents", style = MaterialTheme.typography.titleLarge)
+        Text(text = stringResource(R.string.torrents_header), style = MaterialTheme.typography.titleLarge)
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = if (isTv) Alignment.CenterHorizontally else Alignment.Start
@@ -209,14 +210,14 @@ fun MovieDetailContent(
 @Composable
 fun MovieMetadata(movie: Movie, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
-        Text(text = "Year: ${movie.year ?: "N/A"}", style = MaterialTheme.typography.bodyLarge)
-        Text(text = "Language: ${movie.language ?: "N/A"}", style = MaterialTheme.typography.bodyLarge)
-        Text(text = "Rating: ⭐ ${movie.rating ?: "N/A"}", style = MaterialTheme.typography.bodyLarge)
+        Text(text = stringResource(R.string.metadata_year, movie.year ?: "N/A"), style = MaterialTheme.typography.bodyLarge)
+        Text(text = stringResource(R.string.metadata_language, movie.language ?: "N/A"), style = MaterialTheme.typography.bodyLarge)
+        Text(text = stringResource(R.string.metadata_rating, movie.rating ?: "N/A"), style = MaterialTheme.typography.bodyLarge)
         if (!movie.runtime.isNullOrEmpty()) {
-            Text(text = "Runtime: ${movie.runtime} min", style = MaterialTheme.typography.bodyLarge)
+            Text(text = stringResource(R.string.metadata_runtime, movie.runtime), style = MaterialTheme.typography.bodyLarge)
         }
         if (!movie.mpaRating.isNullOrEmpty()) {
-            Text(text = "MPA Rating: ${movie.mpaRating}", style = MaterialTheme.typography.bodyLarge)
+            Text(text = stringResource(R.string.metadata_mpa, movie.mpaRating), style = MaterialTheme.typography.bodyLarge)
         }
     }
 }
@@ -289,7 +290,7 @@ fun YoutubePlayer(
             ) {
                 androidx.tv.material3.Icon(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    contentDescription = if (isPlaying) stringResource(R.string.pause_desc) else stringResource(R.string.play_desc),
                     tint = Color.White,
                     modifier = Modifier.size(48.dp)
                 )
@@ -309,7 +310,7 @@ fun YoutubePlayer(
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    contentDescription = if (isPlaying) stringResource(R.string.pause_desc) else stringResource(R.string.play_desc),
                     tint = Color.White,
                     modifier = Modifier.size(48.dp)
                 )
@@ -321,7 +322,7 @@ fun YoutubePlayer(
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun CastSection(castList: List<Cast>) {
-    Text(text = "Cast", style = MaterialTheme.typography.titleLarge)
+    Text(text = stringResource(R.string.cast_header), style = MaterialTheme.typography.titleLarge)
     Spacer(modifier = Modifier.height(8.dp))
     LazyRow(
         modifier = Modifier.focusRestorer(),
@@ -401,10 +402,10 @@ fun TorrentItem(
                 try {
                     context.startActivity(intent)
                 } catch (e: Exception) {
-                    Toast.makeText(context, "No torrent client installed", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, context.getString(R.string.toast_no_torrent_client), Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
-                Toast.makeText(context, "Error creating magnet link", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.toast_magnet_error), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -429,7 +430,7 @@ fun TorrentItem(
                     Spacer(modifier = Modifier.width(8.dp))
                     androidx.tv.material3.Icon(
                         imageVector = Icons.Default.CloudDone,
-                        contentDescription = "Downloaded",
+                        contentDescription = stringResource(R.string.downloaded_desc),
                         tint = Color.Yellow,
                         modifier = Modifier.size(20.dp)
                     )
@@ -453,7 +454,7 @@ fun TorrentItem(
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(
                         imageVector = Icons.Default.CloudDone,
-                        contentDescription = "Downloaded",
+                        contentDescription = stringResource(R.string.downloaded_desc),
                         tint = Color.Yellow,
                         modifier = Modifier.size(20.dp)
                     )

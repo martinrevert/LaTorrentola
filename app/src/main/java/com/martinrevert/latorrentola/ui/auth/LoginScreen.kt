@@ -14,6 +14,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,7 +33,7 @@ fun LoginScreen(
         if (authState is AuthState.Success) {
             onLoginSuccess()
         } else if (authState is AuthState.Error) {
-            Toast.makeText(context, (authState as AuthState.Error).message, Toast.LENGTH_LONG).show()
+            Toast.makeText(context, (authState as AuthState.Error).message.asString(context), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -51,7 +52,7 @@ fun LoginScreen(
             ) {
                 Image(
                     painter = painterResource(id = R.drawable.ic_launcher_banner),
-                    contentDescription = "App Banner",
+                    contentDescription = stringResource(R.string.app_banner_desc),
                     modifier = Modifier
                         .size(width = 280.dp, height = 157.dp)
                         .clip(MaterialTheme.shapes.medium)
@@ -60,7 +61,7 @@ fun LoginScreen(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Text(
-                    text = "La Torrentola",
+                    text = stringResource(R.string.app_name),
                     fontSize = 32.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -84,13 +85,13 @@ fun LoginScreen(
                     ) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_google_logo),
-                            contentDescription = "Google Logo",
+                            contentDescription = stringResource(R.string.google_logo_desc),
                             tint = Color.Unspecified,
                             modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "Iniciar sesión con Google",
+                            text = stringResource(R.string.login_google),
                             fontWeight = FontWeight.Medium
                         )
                     }

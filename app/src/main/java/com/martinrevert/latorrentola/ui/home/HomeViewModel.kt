@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.date.DateLastVisit
 import com.martinrevert.latorrentola.network.UserLibraryRepository
@@ -9,7 +10,9 @@ import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.network.AuthRepository
 import com.martinrevert.latorrentola.utils.MovieFilter
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Date
@@ -176,11 +179,11 @@ class HomeViewModel @Inject constructor(
                 }
 
                 if (allMovies.isEmpty() && !canLoadMore) {
-                    _uiState.value = HomeUiState.Error("No se encontraron películas con los filtros actuales")
+                    _uiState.value = HomeUiState.Error(UiText.StringResource(R.string.error_no_movies_filtered))
                 }
             } catch (e: Exception) {
-                if (e !is kotlinx.coroutines.CancellationException && allMovies.isEmpty()) {
-                    _uiState.value = HomeUiState.Error(e.localizedMessage ?: "Unknown error")
+                if (e !is CancellationException && allMovies.isEmpty()) {
+                    _uiState.value = HomeUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
                 }
             } finally {
                 isFetching = false
@@ -239,11 +242,11 @@ class HomeViewModel @Inject constructor(
                 }
 
                 if (allMovies.isEmpty() && !canLoadMore) {
-                    _uiState.value = HomeUiState.Error("No se encontraron películas con los filtros actuales")
+                    _uiState.value = HomeUiState.Error(UiText.StringResource(R.string.error_no_movies_filtered))
                 }
             } catch (e: Exception) {
-                if (e !is kotlinx.coroutines.CancellationException && allMovies.isEmpty()) {
-                    _uiState.value = HomeUiState.Error(e.localizedMessage ?: "Unknown error")
+                if (e !is CancellationException && allMovies.isEmpty()) {
+                    _uiState.value = HomeUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
                 }
             } finally {
                 _isRefreshing.value = false
@@ -274,5 +277,5 @@ class HomeViewModel @Inject constructor(
 sealed interface HomeUiState {
     object Loading : HomeUiState
     data class Success(val movies: List<Movie>) : HomeUiState
-    data class Error(val message: String) : HomeUiState
+    data class Error(val message: UiText) : HomeUiState
 }
