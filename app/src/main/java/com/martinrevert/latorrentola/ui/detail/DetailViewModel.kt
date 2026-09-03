@@ -12,10 +12,13 @@ import com.martinrevert.latorrentola.utils.TranslationManager
 import com.martinrevert.latorrentola.utils.UiText
 import com.martinrevert.latorrentola.utils.VoiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Locale
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.seconds
 
 @HiltViewModel
 class DetailViewModel @Inject constructor(
@@ -38,6 +41,8 @@ class DetailViewModel @Inject constructor(
             initialValue = emptySet()
         )
 
+    private var voiceJob: Job? = null
+
     fun setMovie(movie: Movie) {
         viewModelScope.launch {
             _uiState.value = DetailUiState.Loading
@@ -46,7 +51,12 @@ class DetailViewModel @Inject constructor(
                 val fullDetailsResponse = ytsRepository.getMovieFullDetails(movie.id)
                 val fullMovie = fullDetailsResponse.data?.movie ?: movie
                 _uiState.value = DetailUiState.Success(fullMovie, isFavorite)
-                handleVoice(fullMovie)
+                
+                // Clear any existing voice job before starting a new one
+                voiceJob?.cancel()
+                voiceJob = viewModelScope.launch {
+                    handleVoice(fullMovie)
+                }
                 
                 // Record genre visits for personalization
                 fullMovie.genres?.forEach { genre ->
@@ -55,7 +65,11 @@ class DetailViewModel @Inject constructor(
             } catch (e: Exception) {
                 val isFavorite = ytsRepository.isFavorite(movie.id)
                 _uiState.value = DetailUiState.Success(movie, isFavorite)
-                handleVoice(movie)
+                
+                voiceJob?.cancel()
+                voiceJob = viewModelScope.launch {
+                    handleVoice(movie)
+                }
             }
         }
     }
@@ -68,7 +82,11 @@ class DetailViewModel @Inject constructor(
                 val fullDetailsResponse = ytsRepository.getMovieFullDetails(movieId)
                 fullDetailsResponse.data?.movie?.let { movie ->
                     _uiState.value = DetailUiState.Success(movie, isFavorite)
-                    handleVoice(movie)
+                    
+                    voiceJob?.cancel()
+                    voiceJob = viewModelScope.launch {
+                        handleVoice(movie)
+                    }
                     
                     movie.genres?.forEach { genre ->
                         ytsRepository.recordGenreVisit(genre)
@@ -99,7 +117,7 @@ class DetailViewModel @Inject constructor(
         }
     }
 
-    private fun handleVoice(movie: Movie) {
+    private suspend fun handleVoice(movie: Movie) {
         if (!preferenceManager.getVoiceSystem()) return
 
         val title = movie.title ?: ""
@@ -110,10 +128,13 @@ class DetailViewModel @Inject constructor(
         val englishLocale = Locale.US
         val spanishLocale = Locale.forLanguageTag("es-ES")
 
-        // Always read the title in English (unless translation is forced on titles)
+        // Always read the title in English (NEVER translated)
         if (title.isNotEmpty()) {
-            voiceManager.speak(title, if (useTranslation) spanishLocale else englishLocale)
+            voiceManager.speak(title, englishLocale)
         }
+
+        // Wait 3 seconds before reading the summary
+        delay(3.seconds)
 
         // Read summary if enabled
         if (preferenceManager.getVoiceSummary() && summary.isNotEmpty()) {
@@ -148,6 +169,7 @@ class DetailViewModel @Inject constructor(
     }
 
     fun stopVoice() {
+        voiceJob?.cancel()
         voiceManager.stop()
     }
 
@@ -165,6 +187,7 @@ class DetailViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        voiceJob?.cancel()
         voiceManager.stop()
     }
 }

@@ -247,7 +247,14 @@ class SearchViewModel @Inject constructor(
                 }
 
                 if (allResults.isEmpty() && !canLoadMore) {
-                    _uiState.value = SearchUiState.Error(UiText.StringResource(R.string.unknown_error))
+                    val error = if (query != null) {
+                        UiText.StringResource(R.string.movie_not_found_query, query)
+                    } else if (genre != null) {
+                        UiText.StringResource(R.string.movie_not_found_query, genre)
+                    } else {
+                        UiText.StringResource(R.string.no_results)
+                    }
+                    _uiState.value = SearchUiState.Error(error)
                 }
             } catch (e: Exception) {
                 if (e !is CancellationException && allResults.isEmpty()) {

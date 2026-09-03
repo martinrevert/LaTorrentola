@@ -42,9 +42,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import android.content.pm.PackageManager
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.draw.clip
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
@@ -110,8 +110,15 @@ fun HomeScreen(
                         BadgedBox(
                             badge = {
                                 if (favoritesCount > 0) {
-                                    Badge {
-                                        Text(favoritesCount.toString())
+                                    Badge(
+                                        containerColor = Color(0xFFB3261E), // Use same vibrant red in both modes
+                                        contentColor = Color.White
+                                    ) {
+                                        Text(
+                                            text = favoritesCount.toString(),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White
+                                        )
                                     }
                                 }
                             }
@@ -252,7 +259,7 @@ private fun HomeContent(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun QualityChips(
     options: List<String>,
@@ -322,6 +329,11 @@ fun GenreBottomSheet(
     onDismiss: () -> Unit,
     sheetState: SheetState
 ) {
+    val context = LocalContext.current
+    val sortedGenres = remember(genres) {
+        genres.sortedBy { GenreTranslation.getGenreText(it).asString(context) }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState
@@ -343,7 +355,7 @@ fun GenreBottomSheet(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                genres.forEach { genre ->
+                sortedGenres.forEach { genre ->
                     InputChip(
                         selected = false,
                         onClick = { onGenreClick(genre) },
