@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola
 
 import android.Manifest
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -15,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.core.content.ContextCompat
+import androidx.core.content.IntentSanitizer
 import com.martinrevert.latorrentola.network.FirebaseMessagingConfig
 import com.martinrevert.latorrentola.network.FirebaseMessagingInitializer
 import com.martinrevert.latorrentola.ui.navigation.AppNavigation
@@ -79,7 +81,35 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        intent?.let {
+        if (intent == null) return
+
+        val sanitizer = IntentSanitizer.Builder()
+            .allowComponent(ComponentName(this, MainActivity::class.java))
+            .allowAction(Intent.ACTION_MAIN)
+            .allowAction(Intent.ACTION_VIEW)
+            .allowCategory(Intent.CATEGORY_LAUNCHER)
+            .allowCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
+            .allowCategory(Intent.CATEGORY_DEFAULT)
+            .allowCategory(Intent.CATEGORY_BROWSABLE)
+            .allowExtra(FirebaseMessagingConfig.EXTRA_MOVIE_JSON, String::class.java)
+            .allowExtra(FirebaseMessagingConfig.EXTRA_MOVIE_ID, String::class.java)
+            .allowExtra(FirebaseMessagingConfig.EXTRA_MOVIE_ID, Int::class.javaObjectType)
+            .allowExtra("peli", String::class.java)
+            .allowExtra("id", String::class.java)
+            .allowExtra("id", Int::class.javaObjectType)
+            .allowData { uri ->
+                uri.host?.contains("imdb.com") == true && uri.path?.startsWith("/title/") == true
+            }
+            .build()
+
+        val safeIntent = try {
+            sanitizer.sanitizeByFiltering(intent)
+        } catch (e: Exception) {
+            Log.e("Security", "Intent sanitization failed", e)
+            return
+        }
+
+        safeIntent.let {
             // Check for Movie JSON (full object)
             it.getStringExtra(FirebaseMessagingConfig.EXTRA_MOVIE_JSON)?.let { json ->
                 movieJsonToOpen = json

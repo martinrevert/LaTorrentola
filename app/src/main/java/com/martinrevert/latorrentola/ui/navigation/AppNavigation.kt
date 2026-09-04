@@ -49,9 +49,7 @@ fun AppNavigation(
     // Handle session expiry or logout from other parts of the app
     LaunchedEffect(authViewModel.currentUser) {
         if (authViewModel.currentUser == null && backStack.firstOrNull() != Route.Login) {
-            while (backStack.isNotEmpty()) {
-                backStack.removeLastOrNull()
-            }
+            backStack.clear()
             backStack.add(Route.Login)
         }
     }
@@ -131,9 +129,7 @@ fun AppNavigation(
                     onBackClick = { backStack.removeLastOrNull() },
                     onLogoutClick = {
                         authViewModel.signOut()
-                        while (backStack.isNotEmpty()) {
-                            backStack.removeLastOrNull()
-                        }
+                        backStack.clear()
                         backStack.add(Route.Login)
                     }
                 )

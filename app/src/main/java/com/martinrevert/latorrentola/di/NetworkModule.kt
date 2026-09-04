@@ -1,5 +1,6 @@
 package com.martinrevert.latorrentola.di
 
+import com.martinrevert.latorrentola.BuildConfig
 import com.martinrevert.latorrentola.constants.Constants
 import com.martinrevert.latorrentola.network.FcmService
 import com.martinrevert.latorrentola.network.YtsService
@@ -21,7 +22,11 @@ object NetworkModule {
     @Singleton
     fun provideLoggingInterceptor(): HttpLoggingInterceptor {
         return HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = if (BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BODY
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
         }
     }
 

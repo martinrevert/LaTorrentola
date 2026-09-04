@@ -6,8 +6,8 @@
     *** Companion;
     *** $serializer;
 }
-# Keep serializable classes but allow obfuscation by default
--keep,allowobfuscation,allowoptimization @kotlinx.serialization.Serializable class com.martinrevert.latorrentola.** { *; }
+# Keep serializable classes but allow optimization by default
+-keep,allowoptimization @kotlinx.serialization.Serializable class com.martinrevert.latorrentola.** { *; }
 -keepnames class kotlinx.serialization.internal.GeneratedSerializer { *; }
 
 # Gson
