@@ -58,6 +58,9 @@ class MainActivity : ComponentActivity() {
         askNotificationPermission()
 
         enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
         setContent {
             val themeMode by preferenceManager.themeFlow.collectAsState()
             LaTorrentolaTheme(themeMode = themeMode) {

@@ -71,6 +71,7 @@ fun MovieDetailScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
                 title = { Text((uiState as? DetailUiState.Success)?.movie?.title ?: stringResource(R.string.details_title)) },
@@ -126,7 +127,8 @@ fun MovieDetailScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .padding(padding)
+                .consumeWindowInsets(padding),
             contentAlignment = Alignment.Center
         ) {
             when (val state = uiState) {

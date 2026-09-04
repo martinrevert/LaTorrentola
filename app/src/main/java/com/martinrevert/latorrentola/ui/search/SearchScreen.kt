@@ -100,6 +100,7 @@ fun SearchScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
                 title = {
@@ -177,6 +178,8 @@ fun SearchScreen(
         Column(
             modifier = Modifier
                 .padding(padding)
+                .consumeWindowInsets(padding)
+                .imePadding()
                 .fillMaxSize()
         ) {
             if (!isShowingFavorites) {

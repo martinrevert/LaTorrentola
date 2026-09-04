@@ -82,6 +82,7 @@ fun HomeScreen(
     val gridState = rememberLazyGridState()
 
     Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
                 title = {
@@ -147,7 +148,11 @@ fun HomeScreen(
             )
         }
     ) { padding ->
-        Column(modifier = Modifier.padding(padding)) {
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .consumeWindowInsets(padding)
+        ) {
             GenreChips(
                 genres = topGenres,
                 onGenreClick = onGenreClick,
