@@ -119,19 +119,16 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun observeTopGenres() {
-        ytsRepository.getTopGenres(limit = 7)
+        ytsRepository.getAllGenresWithCount()
             .onEach { stats ->
-                val topList = stats.map { it.genre }.toMutableList()
+                val topList = stats.map { it.genre }
                 
-                // Fill with defaults if not enough history
-                val defaults = listOf("Action", "Comedy", "Drama", "Horror", "Sci-Fi")
-                for (default in defaults) {
-                    if (topList.size >= 7) break
-                    if (!topList.contains(default)) {
-                        topList.add(default)
-                    }
+                // If no history, show some defaults so the row isn't completely empty
+                if (topList.isEmpty()) {
+                    _topGenres.value = listOf("Action", "Comedy", "Drama", "Horror", "Sci-Fi")
+                } else {
+                    _topGenres.value = topList
                 }
-                _topGenres.value = topList
             }
             .launchIn(viewModelScope)
     }

@@ -74,7 +74,7 @@ fun HomeScreen(
     val qualityOptions = viewModel.qualityOptions
     
     var showGenreSheet by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
 

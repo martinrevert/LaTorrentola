@@ -12,6 +12,9 @@ interface GenreDao {
     @Query("SELECT * FROM genre_stats ORDER BY count DESC LIMIT :limit")
     fun getTopGenres(limit: Int): Flow<List<GenreStats>>
 
+    @Query("SELECT * FROM genre_stats WHERE count > 0 ORDER BY count DESC")
+    fun getAllGenresWithCount(): Flow<List<GenreStats>>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertGenre(genreStat: GenreStats)
 

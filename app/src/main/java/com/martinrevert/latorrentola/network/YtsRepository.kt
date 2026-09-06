@@ -59,6 +59,10 @@ class YtsRepository @Inject constructor(
         return genreDao.getTopGenres(limit)
     }
 
+    fun getAllGenresWithCount(): Flow<List<GenreStats>> {
+        return genreDao.getAllGenresWithCount()
+    }
+
     suspend fun recordGenreVisit(genre: String) {
         genreDao.incrementOrInsert(genre)
     }
