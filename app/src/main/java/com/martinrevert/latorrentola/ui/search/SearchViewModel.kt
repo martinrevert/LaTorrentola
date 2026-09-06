@@ -11,6 +11,7 @@ import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -50,10 +51,12 @@ class SearchViewModel @Inject constructor(
     private var lastQuery: String? = null
     private var lastGenre: String? = null
     private var isShowingFavorites = false
+    private var isShowingDownloads = false
     private var isFetching = false
     private var canLoadMore = true
-    private var favoritesJob: kotlinx.coroutines.Job? = null
-    private var searchJob: kotlinx.coroutines.Job? = null
+    private var favoritesJob: Job? = null
+    private var downloadsJob: Job? = null
+    private var searchJob: Job? = null
 
     init {
         observeFilteredLanguages()
@@ -64,6 +67,8 @@ class SearchViewModel @Inject constructor(
             .onEach { 
                 if (isShowingFavorites) {
                     showFavorites()
+                } else if (isShowingDownloads) {
+                    showDownloadedMovies()
                 } else if (lastQuery != null || lastGenre != null) {
                     currentPage = 1
                     allResults.clear()
@@ -88,12 +93,14 @@ class SearchViewModel @Inject constructor(
             resetSearch()
             return
         }
-        if (query == lastQuery && !isShowingFavorites) return
+        if (query == lastQuery && !isShowingFavorites && !isShowingDownloads) return
         
         isShowingFavorites = false
+        isShowingDownloads = false
         lastQuery = query
         lastGenre = null
         favoritesJob?.cancel()
+        downloadsJob?.cancel()
         clearLastClickedMovieId()
         
         resetAndLoad()
@@ -101,9 +108,11 @@ class SearchViewModel @Inject constructor(
 
     fun resetSearch() {
         isShowingFavorites = false
+        isShowingDownloads = false
         lastQuery = null
         lastGenre = null
         favoritesJob?.cancel()
+        downloadsJob?.cancel()
         allResults.clear()
         currentPage = 1
         canLoadMore = true
@@ -112,12 +121,18 @@ class SearchViewModel @Inject constructor(
     }
 
     fun searchByGenre(genre: String) {
-        if (genre == lastGenre && !isShowingFavorites) return
+        if (genre == "ya_vistas") {
+            showDownloadedMovies()
+            return
+        }
+        if (genre == lastGenre && !isShowingFavorites && !isShowingDownloads) return
         
         isShowingFavorites = false
+        isShowingDownloads = false
         lastGenre = genre
         lastQuery = null
         favoritesJob?.cancel()
+        downloadsJob?.cancel()
         clearLastClickedMovieId()
         
         resetAndLoad()
@@ -125,9 +140,11 @@ class SearchViewModel @Inject constructor(
 
     fun showFavorites() {
         isShowingFavorites = true
+        isShowingDownloads = false
         lastQuery = null
         lastGenre = null
         canLoadMore = false
+        downloadsJob?.cancel()
         favoritesJob?.cancel()
         favoritesJob = viewModelScope.launch {
             _uiState.value = SearchUiState.Loading
@@ -143,6 +160,68 @@ class SearchViewModel @Inject constructor(
                         _uiState.value = SearchUiState.Empty
                     } else {
                         _uiState.value = SearchUiState.Success(allResults.toList(), isFavorites = true)
+                    }
+                }
+            }
+        }
+    }
+
+    fun showDownloadedMovies() {
+        isShowingDownloads = true
+        isShowingFavorites = false
+        lastQuery = null
+        lastGenre = "ya_vistas"
+        canLoadMore = false
+        favoritesJob?.cancel()
+        downloadsJob?.cancel()
+        downloadsJob = viewModelScope.launch {
+            _uiState.value = SearchUiState.Loading
+            userLibraryRepository.getDownloadedMovies().collect { downloads ->
+                if (!isShowingDownloads) return@collect
+                
+                val excludedLangs = preferenceManager.getFilteredLanguages()
+                
+                // Keep track of movies we have metadata for
+                val moviesMap = mutableMapOf<Int, Movie>()
+                downloads.forEach { dl ->
+                    dl.movie?.let { moviesMap[dl.movieId] = it }
+                }
+
+                fun updateState() {
+                    val sortedMovies = downloads.mapNotNull { moviesMap[it.movieId] }.distinctBy { it.id }
+                    val filtered = MovieFilter.filterMovies(sortedMovies, excludedLangs)
+                    allResults.clear()
+                    allResults.addAll(filtered)
+                    
+                    if (allResults.isEmpty()) {
+                        if (downloads.isEmpty()) {
+                            _uiState.value = SearchUiState.Empty
+                        } else if (moviesMap.size == downloads.distinctBy { it.movieId }.size) {
+                            // We fetched everything and it was all filtered out by language
+                            _uiState.value = SearchUiState.Empty
+                        } else {
+                            // Still fetching or loading
+                            _uiState.value = SearchUiState.Loading
+                        }
+                    } else {
+                        _uiState.value = SearchUiState.Success(allResults.toList(), isDownloads = true)
+                    }
+                }
+
+                updateState()
+
+                // Fetch missing metadata for older records
+                downloads.filter { it.movie == null }.distinctBy { it.movieId }.forEach { dl ->
+                    launch {
+                        try {
+                            val details = ytsRepository.getMovieFullDetails(dl.movieId)
+                            details.data?.movie?.let { movie ->
+                                moviesMap[dl.movieId] = movie
+                                updateState()
+                            }
+                        } catch (_: Exception) {
+                            // If fetch fails, we just won't show this movie
+                        }
                     }
                 }
             }
@@ -238,7 +317,7 @@ class SearchViewModel @Inject constructor(
                         
                         if (newMovies.isNotEmpty()) {
                             allResults.addAll(newMovies)
-                            _uiState.value = SearchUiState.Success(allResults.toList())
+                            _uiState.value = SearchUiState.Success(allResults.toList(), genre = lastGenre)
                             foundNewMovies = true
                         }
                     }
@@ -271,6 +350,11 @@ sealed interface SearchUiState {
     object Idle : SearchUiState
     object Loading : SearchUiState
     object Empty : SearchUiState
-    data class Success(val movies: List<Movie>, val isFavorites: Boolean = false) : SearchUiState
+    data class Success(
+        val movies: List<Movie>, 
+        val isFavorites: Boolean = false,
+        val isDownloads: Boolean = false,
+        val genre: String? = null
+    ) : SearchUiState
     data class Error(val message: UiText) : SearchUiState
 }

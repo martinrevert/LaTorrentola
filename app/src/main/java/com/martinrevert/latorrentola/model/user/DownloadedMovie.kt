@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.model.user
 
 import com.google.firebase.firestore.IgnoreExtraProperties
+import com.martinrevert.latorrentola.model.YTS.Movie
 import kotlinx.serialization.Serializable
 
 @IgnoreExtraProperties
@@ -10,5 +11,6 @@ data class DownloadedMovie(
     val movieTitle: String = "",
     val quality: String = "",
     val hash: String = "", // Unique identifier for the torrent version
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val movie: Movie? = null
 )

@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola.network
 import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.user.DownloadedMovie
@@ -41,7 +42,7 @@ class UserLibraryRepository @Inject constructor(
                 
                 val downloads = snapshot?.documents?.mapNotNull { 
                     it.toObject(DownloadedMovie::class.java) 
-                } ?: emptyList()
+                }?.sortedByDescending { it.timestamp } ?: emptyList()
                 
                 trySend(downloads)
             }

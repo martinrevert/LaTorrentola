@@ -38,6 +38,7 @@ import com.martinrevert.latorrentola.ui.home.MovieList
 import com.martinrevert.latorrentola.ui.home.MovieItem
 import com.martinrevert.latorrentola.ui.home.QualityChips
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
 import java.util.Locale
 
@@ -58,6 +59,10 @@ fun SearchScreen(
     val qualityOptions = viewModel.qualityOptions
     var searchQuery by remember { mutableStateOf(initialQuery ?: "") }
     var isShowingFavorites by remember(initialGenre) { mutableStateOf(initialGenre == "milista") }
+    var isShowingDownloads by remember(initialGenre) { mutableStateOf(initialGenre == "ya_vistas") }
+    var isShowingGenre by remember(initialGenre) { 
+        mutableStateOf(initialGenre != null && initialGenre != "milista" && initialGenre != "ya_vistas") 
+    }
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
     val focusRequester = remember { FocusRequester() }
@@ -79,8 +84,14 @@ fun SearchScreen(
 
     LaunchedEffect(initialGenre, initialQuery) {
         viewModel.clearSelection()
-        if (initialGenre == "milista") {
+        isShowingFavorites = initialGenre == "milista"
+        isShowingDownloads = initialGenre == "ya_vistas"
+        isShowingGenre = initialGenre != null && initialGenre != "milista" && initialGenre != "ya_vistas"
+        
+        if (isShowingFavorites) {
             viewModel.showFavorites()
+        } else if (isShowingDownloads) {
+            viewModel.showDownloadedMovies()
         } else if (initialQuery != null) {
             searchQuery = initialQuery
             viewModel.search(initialQuery)
@@ -90,7 +101,7 @@ fun SearchScreen(
             viewModel.resetSearch()
         }
         
-        if (isTv && initialGenre != "milista") {
+        if (isTv && !isShowingFavorites && !isShowingDownloads && !isShowingGenre) {
             try {
                 focusRequester.requestFocus()
             } catch (e: Exception) {
@@ -110,12 +121,21 @@ fun SearchScreen(
                         } else {
                             Text(stringResource(R.string.my_favorites))
                         }
+                    } else if (isShowingDownloads) {
+                        Text(stringResource(R.string.already_seen))
+                    } else if (isShowingGenre && initialGenre != null) {
+                        Text(GenreTranslation.getGenreText(initialGenre).asString())
                     } else {
                         SearchTextField(
                             searchQuery = searchQuery,
                             onSearchQueryChange = {
                                 searchQuery = it
-                                if (it.length > 2) viewModel.search(it)
+                                if (it.length > 2) {
+                                    isShowingFavorites = false
+                                    isShowingDownloads = false
+                                    isShowingGenre = false
+                                    viewModel.search(it)
+                                }
                             },
                             onVoiceSearchClick = {
                                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -182,7 +202,7 @@ fun SearchScreen(
                 .imePadding()
                 .fillMaxSize()
         ) {
-            if (!isShowingFavorites) {
+            if (!isShowingFavorites && !isShowingDownloads && !isShowingGenre) {
                 QualityChips(
                     options = qualityOptions,
                     selectedQuality = selectedQuality ?: "All",
@@ -218,7 +238,7 @@ fun SearchScreen(
                                     }
                                 },
                                 onLongClick = if (state.isFavorites) { id -> viewModel.toggleFavoriteSelection(id) } else null,
-                                onLoadMore = { if (!state.isFavorites) viewModel.loadMore() },
+                                onLoadMore = { if (!state.isFavorites && !state.isDownloads) viewModel.loadMore() },
                                 onToggleSelection = null, // Logic moved to onMovieClick for standard feel
                                 initialFocusId = lastClickedMovieId,
                                 onFocusRestored = { viewModel.clearLastClickedMovieId() }

@@ -316,6 +316,15 @@ fun GenreChips(
                 modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
             )
         }
+        item {
+            FilterChip(
+                selected = false,
+                onClick = { onGenreClick("ya_vistas") },
+                label = { Text(stringResource(R.string.already_seen)) },
+                leadingIcon = { Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
+            )
+        }
         lazyItems(genres) { genre ->
             SuggestionChip(
                 onClick = { onGenreClick(genre) },

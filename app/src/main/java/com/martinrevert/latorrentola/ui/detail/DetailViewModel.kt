@@ -180,7 +180,9 @@ class DetailViewModel @Inject constructor(
                     movieId = movie.id,
                     movieTitle = movie.title ?: "",
                     quality = quality,
-                    hash = torrentHash
+                    hash = torrentHash,
+                    timestamp = System.currentTimeMillis(),
+                    movie = movie
                 )
             )
         }
