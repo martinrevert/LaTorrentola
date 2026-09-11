@@ -440,7 +440,7 @@ fun MovieList(
                 onFocusRestored = onFocusRestored
             )
         }
-        item {
+        item(key = "load_more_indicator") {
             LaunchedEffect(Unit) {
                 onLoadMore()
             }

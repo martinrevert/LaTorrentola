@@ -13,6 +13,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -87,7 +88,14 @@ class SearchViewModel @Inject constructor(
         if (_selectedQuality.value == q) return
         _selectedQuality.value = q
         clearLastClickedMovieId()
-        if (!isShowingFavorites) {
+        
+        if (isShowingFavorites) {
+            showFavorites()
+        } else if (isShowingDownloads) {
+            showDownloadedMovies()
+        } else if (isShowingNew) {
+            showNewMovies()
+        } else {
             resetAndLoad()
         }
     }
@@ -169,7 +177,11 @@ class SearchViewModel @Inject constructor(
                     allResults.clear()
                     
                     val excludedLangs = preferenceManager.getFilteredLanguages()
-                    val filteredFavorites = MovieFilter.filterMovies(favorites, excludedLangs)
+                    val filteredFavorites = MovieFilter.filterMovies(
+                        favorites,
+                        excludedLangs,
+                        _selectedQuality.value
+                    ).distinctBy { it.id }
                     
                     allResults.addAll(filteredFavorites)
                     if (allResults.isEmpty()) {
@@ -207,7 +219,11 @@ class SearchViewModel @Inject constructor(
 
                 fun updateState() {
                     val sortedMovies = downloads.mapNotNull { moviesMap[it.movieId] }.distinctBy { it.id }
-                    val filtered = MovieFilter.filterMovies(sortedMovies, excludedLangs)
+                    val filtered = MovieFilter.filterMovies(
+                        sortedMovies,
+                        excludedLangs,
+                        _selectedQuality.value
+                    ).distinctBy { it.id }
                     allResults.clear()
                     allResults.addAll(filtered)
                     
@@ -228,20 +244,24 @@ class SearchViewModel @Inject constructor(
 
                 updateState()
 
-                // Fetch missing metadata for older records
-                downloads.filter { it.movie == null }.distinctBy { it.movieId }.forEach { dl ->
-                    launch {
-                        try {
-                            val details = ytsRepository.getMovieFullDetails(dl.movieId)
-                            details.data?.movie?.let { movie ->
-                                moviesMap[dl.movieId] = movie
-                                updateState()
+                // Fetch missing metadata for older records in batches
+                downloads.filter { it.movie == null }
+                    .distinctBy { it.movieId }
+                    .chunked(5)
+                    .forEach { batch ->
+                        batch.map { dl ->
+                            launch {
+                                try {
+                                    val details = ytsRepository.getMovieSummary(dl.movieId)
+                                    details.data?.movie?.let { movie ->
+                                        moviesMap[dl.movieId] = movie
+                                    }
+                                } catch (_: Exception) {
+                                }
                             }
-                        } catch (_: Exception) {
-                            // If fetch fails, we just won't show this movie
-                        }
+                        }.joinAll()
+                        updateState()
                     }
-                }
             }
         }
     }
@@ -264,8 +284,12 @@ class SearchViewModel @Inject constructor(
                 val moviesMap = mutableMapOf<Int, Movie>()
 
                 fun updateState() {
-                    val sortedMovies = recentIds.mapNotNull { moviesMap[it] }
-                    val filtered = MovieFilter.filterMovies(sortedMovies, excludedLangs)
+                    val sortedMovies = recentIds.mapNotNull { moviesMap[it] }.distinctBy { it.id }
+                    val filtered = MovieFilter.filterMovies(
+                        sortedMovies,
+                        excludedLangs,
+                        _selectedQuality.value
+                    ).distinctBy { it.id }
                     allResults.clear()
                     allResults.addAll(filtered)
                     
@@ -287,17 +311,20 @@ class SearchViewModel @Inject constructor(
                     return@launch
                 }
 
-                recentIds.forEach { id ->
-                    launch {
-                        try {
-                            val details = ytsRepository.getMovieFullDetails(id)
-                            details.data?.movie?.let { movie ->
-                                moviesMap[id] = movie
-                                updateState()
+                // Optimization: Fetch all summaries in parallel but update state in batches
+                recentIds.chunked(5).forEach { batchIds ->
+                    batchIds.map { id ->
+                        launch {
+                            try {
+                                val details = ytsRepository.getMovieSummary(id)
+                                details.data?.movie?.let { movie ->
+                                    moviesMap[id] = movie
+                                }
+                            } catch (_: Exception) {
                             }
-                        } catch (_: Exception) {
                         }
-                    }
+                    }.joinAll()
+                    updateState()
                 }
             } catch (e: Exception) {
                 _uiState.value = SearchUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
@@ -367,11 +394,16 @@ class SearchViewModel @Inject constructor(
             try {
                 if (currentPage == 1) _uiState.value = SearchUiState.Loading
                 
+                val apiQuality = when (_selectedQuality.value) {
+                    "1080p.x265" -> "1080p"
+                    else -> _selectedQuality.value
+                }
+
                 var foundNewMovies = false
                 while (canLoadMore && !foundNewMovies) {
                     val result = when {
-                        query != null -> ytsRepository.searchMovies(query, currentPage, _selectedQuality.value)
-                        genre != null -> ytsRepository.searchByGenre(genre, currentPage, _selectedQuality.value)
+                        query != null -> ytsRepository.searchMovies(query, currentPage, apiQuality)
+                        genre != null -> ytsRepository.searchByGenre(genre, currentPage, apiQuality)
                         else -> null
                     }
 
@@ -385,7 +417,11 @@ class SearchViewModel @Inject constructor(
                         
                         // Filter movies based on user settings
                         val excludedLangs = preferenceManager.getFilteredLanguages()
-                        val filteredMovies = MovieFilter.filterMovies(distinctFromApi, excludedLangs)
+                        val filteredMovies = MovieFilter.filterMovies(
+                            distinctFromApi,
+                            excludedLangs,
+                            _selectedQuality.value
+                        )
                         
                         // Filter duplicates against existing results
                         val newMovies = filteredMovies.filter { newMovie ->

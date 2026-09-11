@@ -56,6 +56,10 @@ class YtsRepository @Inject constructor(
         return ytsService.getMovieFullDetails(movieId)
     }
 
+    suspend fun getMovieSummary(movieId: Int): MovieDetails {
+        return ytsService.getMovieFullDetails(movieId, withImages = false, withCast = false)
+    }
+
     suspend fun getRecentMovieIds(): List<Int> {
         return fcmService.getRecentMovieIds().map { it.movieId }
     }

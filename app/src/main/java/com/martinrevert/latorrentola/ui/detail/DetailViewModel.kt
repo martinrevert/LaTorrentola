@@ -45,9 +45,13 @@ class DetailViewModel @Inject constructor(
 
     fun setMovie(movie: Movie) {
         viewModelScope.launch {
-            _uiState.value = DetailUiState.Loading
+            // Optimization: Show passed movie immediately to avoid blank loading screen
+            // We check favorite status quickly and show what we have
+            val isFavorite = ytsRepository.isFavorite(movie.id)
+            _uiState.value = DetailUiState.Success(movie, isFavorite)
+
             try {
-                val isFavorite = ytsRepository.isFavorite(movie.id)
+                // Fetch full details (cast, images, etc.) in the background
                 val fullDetailsResponse = ytsRepository.getMovieFullDetails(movie.id)
                 val fullMovie = fullDetailsResponse.data?.movie ?: movie
                 _uiState.value = DetailUiState.Success(fullMovie, isFavorite)

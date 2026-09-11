@@ -206,16 +206,18 @@ fun SearchScreen(
             modifier = Modifier
                 .padding(padding)
                 .consumeWindowInsets(padding)
-                .imePadding()
-                .fillMaxSize()
         ) {
-            if (!isShowingFavorites && !isShowingDownloads && !isShowingGenre && !isShowingNew) {
-                QualityChips(
-                    options = qualityOptions,
-                    selectedQuality = selectedQuality ?: "All",
-                    onQualityClick = { viewModel.setQuality(it) }
-                )
-            }
+            Spacer(modifier = Modifier.height(8.dp))
+            QualityChips(
+                options = qualityOptions,
+                selectedQuality = selectedQuality ?: "All",
+                onQualityClick = { viewModel.setQuality(it) }
+            )
+            HorizontalDivider(
+                modifier = Modifier.padding(top = 8.dp),
+                thickness = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            )
 
             Box(
                 modifier = Modifier
