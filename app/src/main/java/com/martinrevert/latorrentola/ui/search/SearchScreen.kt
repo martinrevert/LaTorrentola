@@ -60,8 +60,9 @@ fun SearchScreen(
     var searchQuery by remember { mutableStateOf(initialQuery ?: "") }
     var isShowingFavorites by remember(initialGenre) { mutableStateOf(initialGenre == "milista") }
     var isShowingDownloads by remember(initialGenre) { mutableStateOf(initialGenre == "ya_vistas") }
+    var isShowingNew by remember(initialGenre) { mutableStateOf(initialGenre == "nuevas") }
     var isShowingGenre by remember(initialGenre) { 
-        mutableStateOf(initialGenre != null && initialGenre != "milista" && initialGenre != "ya_vistas") 
+        mutableStateOf(initialGenre != null && initialGenre != "milista" && initialGenre != "ya_vistas" && initialGenre != "nuevas") 
     }
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
@@ -86,12 +87,15 @@ fun SearchScreen(
         viewModel.clearSelection()
         isShowingFavorites = initialGenre == "milista"
         isShowingDownloads = initialGenre == "ya_vistas"
-        isShowingGenre = initialGenre != null && initialGenre != "milista" && initialGenre != "ya_vistas"
+        isShowingNew = initialGenre == "nuevas"
+        isShowingGenre = initialGenre != null && initialGenre != "milista" && initialGenre != "ya_vistas" && initialGenre != "nuevas"
         
         if (isShowingFavorites) {
             viewModel.showFavorites()
         } else if (isShowingDownloads) {
             viewModel.showDownloadedMovies()
+        } else if (isShowingNew) {
+            viewModel.showNewMovies()
         } else if (initialQuery != null) {
             searchQuery = initialQuery
             viewModel.search(initialQuery)
@@ -101,7 +105,7 @@ fun SearchScreen(
             viewModel.resetSearch()
         }
         
-        if (isTv && !isShowingFavorites && !isShowingDownloads && !isShowingGenre) {
+        if (isTv && !isShowingFavorites && !isShowingDownloads && !isShowingGenre && !isShowingNew) {
             try {
                 focusRequester.requestFocus()
             } catch (e: Exception) {
@@ -123,6 +127,8 @@ fun SearchScreen(
                         }
                     } else if (isShowingDownloads) {
                         Text(stringResource(R.string.already_seen))
+                    } else if (isShowingNew) {
+                        Text(stringResource(R.string.new_movies))
                     } else if (isShowingGenre && initialGenre != null) {
                         Text(GenreTranslation.getGenreText(initialGenre).asString())
                     } else {
@@ -133,6 +139,7 @@ fun SearchScreen(
                                 if (it.length > 2) {
                                     isShowingFavorites = false
                                     isShowingDownloads = false
+                                    isShowingNew = false
                                     isShowingGenre = false
                                     viewModel.search(it)
                                 }
@@ -202,7 +209,7 @@ fun SearchScreen(
                 .imePadding()
                 .fillMaxSize()
         ) {
-            if (!isShowingFavorites && !isShowingDownloads && !isShowingGenre) {
+            if (!isShowingFavorites && !isShowingDownloads && !isShowingGenre && !isShowingNew) {
                 QualityChips(
                     options = qualityOptions,
                     selectedQuality = selectedQuality ?: "All",
@@ -238,7 +245,7 @@ fun SearchScreen(
                                     }
                                 },
                                 onLongClick = if (state.isFavorites) { id -> viewModel.toggleFavoriteSelection(id) } else null,
-                                onLoadMore = { if (!state.isFavorites && !state.isDownloads) viewModel.loadMore() },
+                                onLoadMore = { if (!state.isFavorites && !state.isDownloads && !state.isNew) viewModel.loadMore() },
                                 onToggleSelection = null, // Logic moved to onMovieClick for standard feel
                                 initialFocusId = lastClickedMovieId,
                                 onFocusRestored = { viewModel.clearLastClickedMovieId() }

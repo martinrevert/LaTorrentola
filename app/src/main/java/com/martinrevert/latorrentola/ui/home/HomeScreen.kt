@@ -319,6 +319,15 @@ fun GenreChips(
         item {
             FilterChip(
                 selected = false,
+                onClick = { onGenreClick("nuevas") },
+                label = { Text(stringResource(R.string.new_movies)) },
+                leadingIcon = { Icon(Icons.Default.NewReleases, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
+            )
+        }
+        item {
+            FilterChip(
+                selected = false,
                 onClick = { onGenreClick("ya_vistas") },
                 label = { Text(stringResource(R.string.already_seen)) },
                 leadingIcon = { Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(18.dp)) },

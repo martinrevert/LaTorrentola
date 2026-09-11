@@ -14,6 +14,7 @@ import javax.inject.Singleton
 @Singleton
 class YtsRepository @Inject constructor(
     private val ytsService: YtsService,
+    private val fcmService: FcmService,
     private val userLibraryRepository: UserLibraryRepository,
     private val genreDao: GenreDao,
     private val dateDao: DateDao
@@ -53,6 +54,10 @@ class YtsRepository @Inject constructor(
 
     suspend fun getMovieFullDetails(movieId: Int): MovieDetails {
         return ytsService.getMovieFullDetails(movieId)
+    }
+
+    suspend fun getRecentMovieIds(): List<Int> {
+        return fcmService.getRecentMovieIds().map { it.movieId }
     }
 
     fun getTopGenres(limit: Int): Flow<List<GenreStats>> {

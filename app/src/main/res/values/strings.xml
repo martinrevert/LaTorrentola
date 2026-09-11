@@ -35,6 +35,7 @@
     <string name="toast_magnet_error">Error creating magnet link</string>
     <string name="all_genres">All Genres</string>
     <string name="already_seen">Already seen</string>
+    <string name="new_movies">New</string>
     <string name="browse_by_genre">Browse by Genre</string>
     <string name="share_movie_chooser">Share movie</string>
     <string name="share_movie_text">Check out this movie: %1$s\n%2$s</string>

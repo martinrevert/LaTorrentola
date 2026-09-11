@@ -52,10 +52,12 @@ class SearchViewModel @Inject constructor(
     private var lastGenre: String? = null
     private var isShowingFavorites = false
     private var isShowingDownloads = false
+    private var isShowingNew = false
     private var isFetching = false
     private var canLoadMore = true
     private var favoritesJob: Job? = null
     private var downloadsJob: Job? = null
+    private var newMoviesJob: Job? = null
     private var searchJob: Job? = null
 
     init {
@@ -69,6 +71,8 @@ class SearchViewModel @Inject constructor(
                     showFavorites()
                 } else if (isShowingDownloads) {
                     showDownloadedMovies()
+                } else if (isShowingNew) {
+                    showNewMovies()
                 } else if (lastQuery != null || lastGenre != null) {
                     currentPage = 1
                     allResults.clear()
@@ -93,14 +97,16 @@ class SearchViewModel @Inject constructor(
             resetSearch()
             return
         }
-        if (query == lastQuery && !isShowingFavorites && !isShowingDownloads) return
+        if (query == lastQuery && !isShowingFavorites && !isShowingDownloads && !isShowingNew) return
         
         isShowingFavorites = false
         isShowingDownloads = false
+        isShowingNew = false
         lastQuery = query
         lastGenre = null
         favoritesJob?.cancel()
         downloadsJob?.cancel()
+        newMoviesJob?.cancel()
         clearLastClickedMovieId()
         
         resetAndLoad()
@@ -109,10 +115,12 @@ class SearchViewModel @Inject constructor(
     fun resetSearch() {
         isShowingFavorites = false
         isShowingDownloads = false
+        isShowingNew = false
         lastQuery = null
         lastGenre = null
         favoritesJob?.cancel()
         downloadsJob?.cancel()
+        newMoviesJob?.cancel()
         allResults.clear()
         currentPage = 1
         canLoadMore = true
@@ -125,14 +133,20 @@ class SearchViewModel @Inject constructor(
             showDownloadedMovies()
             return
         }
-        if (genre == lastGenre && !isShowingFavorites && !isShowingDownloads) return
+        if (genre == "nuevas") {
+            showNewMovies()
+            return
+        }
+        if (genre == lastGenre && !isShowingFavorites && !isShowingDownloads && !isShowingNew) return
         
         isShowingFavorites = false
         isShowingDownloads = false
+        isShowingNew = false
         lastGenre = genre
         lastQuery = null
         favoritesJob?.cancel()
         downloadsJob?.cancel()
+        newMoviesJob?.cancel()
         clearLastClickedMovieId()
         
         resetAndLoad()
@@ -141,10 +155,12 @@ class SearchViewModel @Inject constructor(
     fun showFavorites() {
         isShowingFavorites = true
         isShowingDownloads = false
+        isShowingNew = false
         lastQuery = null
         lastGenre = null
         canLoadMore = false
         downloadsJob?.cancel()
+        newMoviesJob?.cancel()
         favoritesJob?.cancel()
         favoritesJob = viewModelScope.launch {
             _uiState.value = SearchUiState.Loading
@@ -169,10 +185,12 @@ class SearchViewModel @Inject constructor(
     fun showDownloadedMovies() {
         isShowingDownloads = true
         isShowingFavorites = false
+        isShowingNew = false
         lastQuery = null
         lastGenre = "ya_vistas"
         canLoadMore = false
         favoritesJob?.cancel()
+        newMoviesJob?.cancel()
         downloadsJob?.cancel()
         downloadsJob = viewModelScope.launch {
             _uiState.value = SearchUiState.Loading
@@ -224,6 +242,65 @@ class SearchViewModel @Inject constructor(
                         }
                     }
                 }
+            }
+        }
+    }
+
+    fun showNewMovies() {
+        isShowingNew = true
+        isShowingFavorites = false
+        isShowingDownloads = false
+        lastQuery = null
+        lastGenre = "nuevas"
+        canLoadMore = false
+        favoritesJob?.cancel()
+        downloadsJob?.cancel()
+        newMoviesJob?.cancel()
+        newMoviesJob = viewModelScope.launch {
+            _uiState.value = SearchUiState.Loading
+            try {
+                val recentIds = ytsRepository.getRecentMovieIds()
+                val excludedLangs = preferenceManager.getFilteredLanguages()
+                val moviesMap = mutableMapOf<Int, Movie>()
+
+                fun updateState() {
+                    val sortedMovies = recentIds.mapNotNull { moviesMap[it] }
+                    val filtered = MovieFilter.filterMovies(sortedMovies, excludedLangs)
+                    allResults.clear()
+                    allResults.addAll(filtered)
+                    
+                    if (allResults.isEmpty()) {
+                        if (recentIds.isEmpty()) {
+                            _uiState.value = SearchUiState.Empty
+                        } else if (moviesMap.size == recentIds.distinct().size) {
+                            _uiState.value = SearchUiState.Empty
+                        } else {
+                            _uiState.value = SearchUiState.Loading
+                        }
+                    } else {
+                        _uiState.value = SearchUiState.Success(allResults.toList(), isNew = true)
+                    }
+                }
+
+                if (recentIds.isEmpty()) {
+                    _uiState.value = SearchUiState.Empty
+                    return@launch
+                }
+
+                recentIds.forEach { id ->
+                    launch {
+                        try {
+                            val details = ytsRepository.getMovieFullDetails(id)
+                            details.data?.movie?.let { movie ->
+                                moviesMap[id] = movie
+                                updateState()
+                            }
+                        } catch (_: Exception) {
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.value = SearchUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
             }
         }
     }
@@ -354,6 +431,7 @@ sealed interface SearchUiState {
         val movies: List<Movie>, 
         val isFavorites: Boolean = false,
         val isDownloads: Boolean = false,
+        val isNew: Boolean = false,
         val genre: String? = null
     ) : SearchUiState
     data class Error(val message: UiText) : SearchUiState
