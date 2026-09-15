@@ -10,11 +10,75 @@ plugins {
 }
 
 def getGitVersionCount(providers) {
-    return providers.exec {
-        commandLine 'git', 'rev-list', '--count', 'HEAD'
-        ignoreExitValue = true
-    }.standardOutput.asText.map { it.trim() }.map { it.isInteger() ? it.toInteger() : 0 }.getOrElse(0)
+    def gitPath = null
+    
+    // 1. Try 'where' command on Windows to find absolute path
+    try {
+        if (System.getProperty("os.name").toLowerCase().contains("windows")) {
+            def where = providers.exec {
+                commandLine 'cmd', '/c', 'where git'
+                ignoreExitValue = true
+            }.standardOutput.asText.getOrNull()?.trim()
+            if (where) {
+                gitPath = where.split("[\r\n]+")[0].trim()
+            }
+        }
+    } catch (Exception e) {}
+    
+    // 2. Fallback to manual PATH search
+    if (!gitPath) {
+        try {
+            def searchDirs = []
+            def path = System.getenv("PATH")
+            if (path != null) {
+                def sep = System.getProperty("path.separator") ?: ";"
+                searchDirs.addAll(path.split(sep))
+            }
+            
+            // Common Git paths on Windows
+            if (System.getProperty("os.name").toLowerCase().contains("windows")) {
+                searchDirs.add("C:\\Program Files\\Git\\bin")
+                searchDirs.add("C:\\Program Files (x86)\\Git\\bin")
+            }
+
+            for (def dir : searchDirs) {
+                if (!dir) continue
+                def d = new File(dir.trim())
+                if (d.isDirectory()) {
+                    def ge = new File(d, "git.exe")
+                    def gc = new File(d, "git.cmd")
+                    def g = new File(d, "git")
+                    if (ge.isFile()) { gitPath = ge.absolutePath; break }
+                    if (gc.isFile()) { gitPath = gc.absolutePath; break }
+                    if (g.isFile()) { gitPath = g.absolutePath; break }
+                }
+            }
+        } catch (Exception e) {}
+    }
+    
+    // 3. Final Check & Execution
+    if (!gitPath) {
+        throw new GradleException("CRITICAL: 'git' executable not found in PATH or common locations. " +
+            "Please ensure Git is installed and added to your system PATH. " +
+            "The project requires Git to calculate the version code (last successful was 20159+).")
+    }
+
+    try {
+        def output = providers.exec {
+            commandLine gitPath, 'rev-list', '--count', 'HEAD'
+            ignoreExitValue = false // Fail if the command itself fails
+        }.standardOutput.asText.get().trim()
+        
+        if (output.isInteger()) return output.toInteger()
+    } catch (Exception e) {
+        throw new GradleException("CRITICAL: Failed to execute git at '$gitPath'. " +
+            "Error: ${e.message}. Ensure the current directory is a valid git repository.")
+    }
+    
+    return 0
 }
+
+def gitVersionCount = getGitVersionCount(providers)
 
 android {
     namespace = 'com.martinrevert.latorrentola'
@@ -26,7 +90,7 @@ android {
         keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
     }
 
-    def gitVersionCode = getGitVersionCount(providers)
+    def gitVersionCode = gitVersionCount
 
     defaultConfig {
         applicationId = "com.martinrevert.latorrentola"
@@ -107,7 +171,7 @@ android {
 
 // Global base name for all generated archives (APKs, AABs, etc.)
 base {
-    archivesName = "LaTorrentola-v2.0.${getGitVersionCount(providers)}"
+    archivesName = "LaTorrentola-v2.0.$gitVersionCount"
 }
 
 dependencies {

@@ -21,13 +21,14 @@ class YtsRepositoryTest {
 
     private lateinit var repository: YtsRepository
     private val ytsService: YtsService = mockk()
+    private val fcmService: FcmService = mockk()
     private val userLibraryRepository: UserLibraryRepository = mockk()
     private val genreDao: GenreDao = mockk()
     private val dateDao: DateDao = mockk()
 
     @Before
     fun setUp() {
-        repository = YtsRepository(ytsService, userLibraryRepository, genreDao, dateDao)
+        repository = YtsRepository(ytsService, fcmService, userLibraryRepository, genreDao, dateDao)
     }
 
     @Test

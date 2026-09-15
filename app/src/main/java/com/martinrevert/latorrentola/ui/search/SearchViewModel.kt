@@ -90,11 +90,11 @@ class SearchViewModel @Inject constructor(
         clearLastClickedMovieId()
         
         if (isShowingFavorites) {
-            showFavorites()
+            showFavorites(force = true)
         } else if (isShowingDownloads) {
-            showDownloadedMovies()
+            showDownloadedMovies(force = true)
         } else if (isShowingNew) {
-            showNewMovies()
+            showNewMovies(force = true)
         } else {
             resetAndLoad()
         }
@@ -160,7 +160,9 @@ class SearchViewModel @Inject constructor(
         resetAndLoad()
     }
 
-    fun showFavorites() {
+    fun showFavorites(force: Boolean = false) {
+        if (!force && isShowingFavorites && (favoritesJob?.isActive == true || _uiState.value is SearchUiState.Success)) return
+
         isShowingFavorites = true
         isShowingDownloads = false
         isShowingNew = false
@@ -194,7 +196,9 @@ class SearchViewModel @Inject constructor(
         }
     }
 
-    fun showDownloadedMovies() {
+    fun showDownloadedMovies(force: Boolean = false) {
+        if (!force && isShowingDownloads && (downloadsJob?.isActive == true || _uiState.value is SearchUiState.Success)) return
+
         isShowingDownloads = true
         isShowingFavorites = false
         isShowingNew = false
@@ -266,7 +270,9 @@ class SearchViewModel @Inject constructor(
         }
     }
 
-    fun showNewMovies() {
+    fun showNewMovies(force: Boolean = false) {
+        if (!force && isShowingNew && (newMoviesJob?.isActive == true || _uiState.value is SearchUiState.Success)) return
+
         isShowingNew = true
         isShowingFavorites = false
         isShowingDownloads = false
