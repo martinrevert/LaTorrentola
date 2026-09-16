@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -31,6 +32,8 @@ import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.tv.material3.Button
+import androidx.tv.material3.Text
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
 @Composable
@@ -82,6 +85,8 @@ private fun SettingsScreenContent(
     onSetTheme: (Int) -> Unit,
     onSetFilteredLanguages: (String) -> Unit
 ) {
+    val configuration = LocalConfiguration.current
+    val isWideScreen = configuration.screenWidthDp >= 600 || isTv
     val scrollState = rememberScrollState()
 
     Scaffold(
@@ -101,132 +106,228 @@ private fun SettingsScreenContent(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .consumeWindowInsets(padding)
-                .fillMaxSize()
-                .verticalScroll(scrollState)
-                .imePadding()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            if (userPhotoUrl != null || userName != null) {
-                UserSection(userPhotoUrl, userName, userEmail)
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            }
+        if (isWideScreen) {
+            Row(
+                modifier = Modifier
+                    .padding(padding)
+                    .consumeWindowInsets(padding)
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(48.dp)
+            ) {
+                // Left Column: User, Theme, Actions
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    if (userPhotoUrl != null || userName != null) {
+                        UserSection(userPhotoUrl, userName, userEmail)
+                        LogoutButton(isTv = isTv, onClick = onLogoutClick)
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    }
 
-            SettingsToggle(
-                title = stringResource(R.string.settings_tts),
-                checked = uiState.voiceSystem,
-                onCheckedChange = onToggleVoiceSystem
-            )
-            SettingsToggle(
-                title = stringResource(R.string.settings_voice_summary),
-                checked = uiState.voiceSummary,
-                onCheckedChange = onToggleVoiceSummary
-            )
-            SettingsToggle(
-                title = stringResource(R.string.settings_voice_translation),
-                checked = uiState.voiceTranslation,
-                enabled = uiState.voiceSummary,
-                onCheckedChange = onToggleVoiceTranslation
-            )
-            
-            if (!isTv) {
+                    Text(text = stringResource(R.string.settings_theme), style = MaterialTheme.typography.titleMedium)
+                    ThemeSelector(selectedTheme = uiState.theme, onThemeSelected = onSetTheme)
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    AppVersionInfo()
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                // Right Column: Toggles and Language Filter
+                Column(
+                    modifier = Modifier
+                        .weight(1.2f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    SettingsToggle(
+                        title = stringResource(R.string.settings_tts),
+                        checked = uiState.voiceSystem,
+                        onCheckedChange = onToggleVoiceSystem
+                    )
+                    SettingsToggle(
+                        title = stringResource(R.string.settings_voice_summary),
+                        checked = uiState.voiceSummary,
+                        onCheckedChange = onToggleVoiceSummary
+                    )
+                    SettingsToggle(
+                        title = stringResource(R.string.settings_voice_translation),
+                        checked = uiState.voiceTranslation,
+                        enabled = uiState.voiceSummary,
+                        onCheckedChange = onToggleVoiceTranslation
+                    )
+
+                    if (!isTv) {
+                        SettingsToggle(
+                            title = stringResource(R.string.settings_vibrator),
+                            checked = uiState.vibrator,
+                            onCheckedChange = onToggleVibrator
+                        )
+                        SettingsToggle(
+                            title = stringResource(R.string.settings_push),
+                            checked = uiState.pushEnabled,
+                            onCheckedChange = onTogglePushEnabled
+                        )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    OutlinedTextField(
+                        value = uiState.filteredLanguages,
+                        onValueChange = onSetFilteredLanguages,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusHighlight(shape = OutlinedTextFieldDefaults.shape),
+                        label = { Text(stringResource(R.string.filter_languages_label)) },
+                        placeholder = { Text(stringResource(R.string.filter_languages_placeholder)) },
+                        supportingText = { Text(stringResource(R.string.filter_languages_support)) },
+                        singleLine = true,
+                        leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) }
+                    )
+                    Spacer(modifier = Modifier.height(32.dp))
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .padding(padding)
+                    .consumeWindowInsets(padding)
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .imePadding()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                if (userPhotoUrl != null || userName != null) {
+                    UserSection(userPhotoUrl, userName, userEmail)
+                    LogoutButton(isTv = isTv, onClick = onLogoutClick)
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                }
+
                 SettingsToggle(
-                    title = stringResource(R.string.settings_vibrator),
-                    checked = uiState.vibrator,
-                    onCheckedChange = onToggleVibrator
+                    title = stringResource(R.string.settings_tts),
+                    checked = uiState.voiceSystem,
+                    onCheckedChange = onToggleVoiceSystem
+                )
+                SettingsToggle(
+                    title = stringResource(R.string.settings_voice_summary),
+                    checked = uiState.voiceSummary,
+                    onCheckedChange = onToggleVoiceSummary
+                )
+                SettingsToggle(
+                    title = stringResource(R.string.settings_voice_translation),
+                    checked = uiState.voiceTranslation,
+                    enabled = uiState.voiceSummary,
+                    onCheckedChange = onToggleVoiceTranslation
                 )
                 
-                SettingsToggle(
-                    title = stringResource(R.string.settings_push),
-                    checked = uiState.pushEnabled,
-                    onCheckedChange = onTogglePushEnabled
-                )
-            }
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-            Text(text = stringResource(R.string.settings_theme), style = MaterialTheme.typography.titleMedium)
-            
-            ThemeSelector(
-                selectedTheme = uiState.theme,
-                onThemeSelected = onSetTheme
-            )
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-            OutlinedTextField(
-                value = uiState.filteredLanguages,
-                onValueChange = onSetFilteredLanguages,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusHighlight(shape = OutlinedTextFieldDefaults.shape),
-                label = { Text(stringResource(R.string.filter_languages_label)) },
-                placeholder = { Text(stringResource(R.string.filter_languages_placeholder)) },
-                supportingText = {
-                    Text(stringResource(R.string.filter_languages_support))
-                },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) }
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            if (isTv) {
-                androidx.tv.material3.Button(
-                    onClick = onLogoutClick,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = androidx.tv.material3.ButtonDefaults.colors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                if (!isTv) {
+                    SettingsToggle(
+                        title = stringResource(R.string.settings_vibrator),
+                        checked = uiState.vibrator,
+                        onCheckedChange = onToggleVibrator
                     )
-                ) {
-                    androidx.tv.material3.Text(
-                        text = stringResource(R.string.logout_button),
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center
+                    
+                    SettingsToggle(
+                        title = stringResource(R.string.settings_push),
+                        checked = uiState.pushEnabled,
+                        onCheckedChange = onTogglePushEnabled
                     )
                 }
-            } else {
-                Button(
-                    onClick = onLogoutClick,
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                Text(text = stringResource(R.string.settings_theme), style = MaterialTheme.typography.titleMedium)
+                
+                ThemeSelector(
+                    selectedTheme = uiState.theme,
+                    onThemeSelected = onSetTheme
+                )
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                OutlinedTextField(
+                    value = uiState.filteredLanguages,
+                    onValueChange = onSetFilteredLanguages,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .focusHighlight(shape = ButtonDefaults.shape),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                ) {
-                    Text(stringResource(R.string.logout_button))
-                }
-            }
+                        .focusHighlight(shape = OutlinedTextFieldDefaults.shape),
+                    label = { Text(stringResource(R.string.filter_languages_label)) },
+                    placeholder = { Text(stringResource(R.string.filter_languages_placeholder)) },
+                    supportingText = {
+                        Text(stringResource(R.string.filter_languages_support))
+                    },
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) }
+                )
 
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = stringResource(R.string.app_version, BuildConfig.VERSION_NAME),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = stringResource(R.string.app_build, BuildConfig.VERSION_CODE),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                AppVersionInfo()
+                
+                Spacer(modifier = Modifier.height(32.dp))
             }
-            
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
+
+@Composable
+private fun LogoutButton(isTv: Boolean, onClick: () -> Unit) {
+    if (isTv) {
+        Button(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth(),
+            colors = androidx.tv.material3.ButtonDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer
+            )
+        ) {
+            Text(
+                text = stringResource(R.string.logout_button),
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
+            )
+        }
+    } else {
+        Button(
+            onClick = onClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusHighlight(shape = ButtonDefaults.shape),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer
+            )
+        ) {
+            Text(stringResource(R.string.logout_button))
+        }
+    }
+}
+
+@Composable
+private fun AppVersionInfo() {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = stringResource(R.string.app_version, BuildConfig.VERSION_NAME),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = stringResource(R.string.app_build, BuildConfig.VERSION_CODE),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+        )
+    }
+}
+
 
 
 @Composable
