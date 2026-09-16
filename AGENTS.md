@@ -27,6 +27,12 @@ Project-specific patterns and gotchas (do not assume defaults)
 - Credential Safety: Never hardcode API keys or Web Client IDs. Use `local.properties` with a corresponding `buildConfigField` in `app/build.gradle`. Reference them via `BuildConfig`.
 - DI scope: Hilt is used for singletons (see `di/NetworkModule.kt`). When adding bindings, follow the `@Module @InstallIn(SingletonComponent::class)` pattern.
 - Theme and Readability: Always respect the app's themes. Ensure all UI changes are compatible with both light and dark modes without losing human readability. Avoid hardcoding colors like `Color.Black` or `Color.White` unless they are specifically meant to be static; instead, use `MaterialTheme.colorScheme` tokens. Be careful with imports to avoid shadowing standard Material3 components with TV-specific ones that might have different default behaviors.
+- Adaptive UI & Multi-Device Support: The app is designed for phones, tablets, foldables, and Android TV. 
+    *   **Device Detection**: Use `Context.isTvDevice()` (from `DeviceUtils.kt`) for TV-specific logic. 
+    *   **Wide Screens**: Use `LocalConfiguration.current.screenWidthDp >= 600` (often referred to as `isWideScreen`) to detect tablets and foldables in landscape.
+    *   **Layout Differences**: TVs and wide screens use side-by-side layouts (e.g., in `MovieDetailScreen` and `SettingsScreen`) and larger grid column counts. 
+    *   **Input Handling**: TVs require D-pad focus handling. Use `Modifier.focusHighlight()`, `focusRestorer()`, and avoid touch-only interactions like `PullToRefresh` on TV.
+    *   **Previews**: Every screen MUST have multiple `@Preview` functions: `PreviewLightDark` for mobile (light/dark) and `*TvPreview` with `uiMode` variations for TV (light/dark).
 - Git-based versionCode: `app/build.gradle` runs `git rev-list --count HEAD` to set `versionCode`/`versionName`. Ensure git is present in CI or on developer machines when producing builds.
 
 Common tasks & exact commands (Windows PowerShell)

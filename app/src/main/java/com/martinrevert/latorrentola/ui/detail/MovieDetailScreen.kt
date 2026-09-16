@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -69,7 +70,9 @@ fun MovieDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val downloadedHashes by viewModel.downloadedHashes.collectAsState()
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
     val isTv = remember(context) { context.isTvDevice() }
+    val isWideScreen = configuration.screenWidthDp >= 600 || isTv
 
     DisposableEffect(Unit) {
         onDispose {
@@ -80,6 +83,7 @@ fun MovieDetailScreen(
     MovieDetailScreenContent(
         uiState = uiState,
         downloadedHashes = downloadedHashes,
+        isWideScreen = isWideScreen,
         isTv = isTv,
         onBackClick = onBackClick,
         onShareClick = { movie ->
@@ -109,6 +113,7 @@ fun MovieDetailScreen(
 private fun MovieDetailScreenContent(
     uiState: DetailUiState,
     downloadedHashes: Set<String>,
+    isWideScreen: Boolean,
     isTv: Boolean,
     onBackClick: () -> Unit,
     onShareClick: (Movie) -> Unit,
@@ -169,6 +174,7 @@ private fun MovieDetailScreenContent(
                     MovieDetailContent(
                         movie = state.movie,
                         downloadedHashes = downloadedHashes,
+                        isWideScreen = isWideScreen,
                         isTv = isTv,
                         onTorrentClick = { onTorrentClick(state.movie, it) }
                     )
@@ -186,6 +192,7 @@ private fun MovieDetailScreenContent(
 fun MovieDetailContent(
     movie: Movie,
     downloadedHashes: Set<String>,
+    isWideScreen: Boolean,
     isTv: Boolean,
     onTorrentClick: (Torrent) -> Unit
 ) {
@@ -195,8 +202,8 @@ fun MovieDetailContent(
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        if (isTv && !movie.ytTrailerCode.isNullOrEmpty()) {
-            // TV Layout: Side-by-side Video and Summary
+        if (isWideScreen && !movie.ytTrailerCode.isNullOrEmpty()) {
+            // Wide Layout: Side-by-side Video and Summary
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(24.dp)
@@ -559,6 +566,7 @@ fun MovieDetailScreenTvPreview() {
         MovieDetailScreenContent(
             uiState = DetailUiState.Success(sampleMovie, isFavorite = true),
             downloadedHashes = setOf("HASH1"),
+            isWideScreen = true,
             isTv = true,
             onBackClick = {},
             onShareClick = {},
@@ -595,6 +603,7 @@ fun MovieDetailScreenPreview() {
         MovieDetailScreenContent(
             uiState = DetailUiState.Success(sampleMovie, isFavorite = true),
             downloadedHashes = setOf("HASH1"),
+            isWideScreen = false,
             isTv = false,
             onBackClick = {},
             onShareClick = {},
@@ -603,4 +612,43 @@ fun MovieDetailScreenPreview() {
         )
     }
 }
+
+@Preview(name = "Tablet Light", showBackground = true, device = "spec:width=1280dp,height=800dp,dpi=240", uiMode = Configuration.UI_MODE_NIGHT_NO)
+@Preview(name = "Tablet Dark", showBackground = true, device = "spec:width=1280dp,height=800dp,dpi=240", uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun MovieDetailScreenTabletPreview() {
+    val sampleMovie = Movie(
+        id = 1,
+        title = "Inception",
+        year = 2010,
+        rating = "8.8",
+        runtime = "148 min",
+        genres = listOf("Action", "Sci-Fi", "Adventure"),
+        summary = "A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O.",
+        ytTrailerCode = "YoHD9XEInc0",
+        language = "English",
+        torrents = listOf(
+            Torrent(quality = "1080p", size = "2.2 GB", type = "bluray", hash = "HASH1"),
+            Torrent(quality = "720p", size = "1.1 GB", type = "bluray", hash = "HASH2")
+        ),
+        cast = listOf(
+            Cast(name = "Leonardo DiCaprio", characterName = "Cobb", urlSmallImage = ""),
+            Cast(name = "Joseph Gordon-Levitt", characterName = "Arthur", urlSmallImage = "")
+        )
+    )
+
+    LaTorrentolaTheme {
+        MovieDetailScreenContent(
+            uiState = DetailUiState.Success(sampleMovie, isFavorite = true),
+            downloadedHashes = setOf("HASH1"),
+            isWideScreen = true,
+            isTv = false,
+            onBackClick = {},
+            onShareClick = {},
+            onFavoriteToggle = {},
+            onTorrentClick = { _, _ -> }
+        )
+    }
+}
+
 

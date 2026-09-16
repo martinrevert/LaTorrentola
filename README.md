@@ -32,6 +32,7 @@ graph TD
         HS[HomeScreen]
         DS[DetailScreen]
         SS[SearchScreen]
+        STS[SettingsScreen]
     end
 
     subgraph Presentation_Layer [Presentation Layer]
@@ -39,6 +40,7 @@ graph TD
         HVM[HomeViewModel]
         DVM[DetailViewModel]
         SVM[SearchViewModel]
+        STVM[SettingsViewModel]
     end
 
     subgraph Domain_Data_Layer [Data Layer]
@@ -48,42 +50,45 @@ graph TD
         RS[YtsService - Retrofit 3]
         DB[AppDatabase - Room]
         MLK[ML Kit Translator]
+        PM[PreferenceManager]
     end
 
     MA --> NV
-    NV --> LS & HS & DS & SS
+    NV --> LS & HS & DS & SS & STS
     LS --> AVM
     HS --> HVM
     DS --> DVM
     SS --> SVM
+    STS --> STVM
     
     AVM --> AREP
     AREP -->|Firebase Auth| FAN[Firebase]
-    HVM & DVM & SVM --> UREP
+    HVM & DVM & SVM & STVM --> UREP
     HVM & DVM & SVM --> REP
+    STVM --> PM
     REP --> RS
     REP --> DB
     REP --> MLK
-    
-    RS -->|YTS API| WAN[Web API]
-    DB -->|SQLite| DISK[Local Storage]
+    REP --> UREP
 ```
 
 ## 🛠️ Key Features
 
 1.  **Google Authentication & Cloud Sync:** Secure login using Firebase. Syncs your downloaded movies and specific versions across all your devices using Cloud Firestore.
 2.  **Smart Favorites Management:** D-pad optimized multi-selection mode. Short-press to view details, long-press to enter selection mode for bulk deletion.
-3.  **Declarative UI:** Entirely built with Jetpack Compose for a smooth, fluid user experience.
-3.  **State Management:** ViewModels leverage `StateFlow` and `collectAsStateWithLifecycle` to ensure UI state is handled safely.
-4.  **Adaptive Grids:** Staggered grids that adapt to screen size (Phones, Tablets, Foldables).
-5.  **Offline Support:** Room database caches movies for offline viewing and "Favorites" management.
-6.  **On-Device AI:** Real-time translation of movie summaries from English to Spanish without cloud dependencies.
-7.  **Navigation 3:** Uses the latest navigation APIs for passing complex data safely between screens.
-8.  **Edge-to-Edge:** Full support for Android 15's edge-to-edge requirements using `WindowInsets`.
-9.  **Android TV Support:** Optimized for leanback experience with a 16:9 banner and D-Pad focus handling.
+3.  **Declarative & Adaptive UI:** Entirely built with Jetpack Compose for a smooth, fluid user experience. The UI adapts dynamically to different form factors:
+    *   **Phones:** Vertical stacked layouts and mobile-optimized grids.
+    *   **Tablets & Foldables:** Adaptive side-by-side layouts for details and settings to maximize horizontal space.
+    *   **Android TV:** Optimized Leanback-style experience with 16:9 banners, D-pad focus handling (`focusHighlight`), and TV-specific components.
+4.  **State Management:** ViewModels leverage `StateFlow` and `collectAsStateWithLifecycle` to ensure UI state is handled safely.
+5.  **Multi-Theme Support:** Comprehensive support for **Light and Dark modes** with focus on readability and accessibility across all device types.
+6.  **Offline Support:** Room database caches movies for offline viewing and "Favorites" management.
+7.  **On-Device AI:** Real-time translation of movie summaries from English to Spanish using Google ML Kit without cloud dependencies.
+8.  **Navigation 3:** Uses the latest navigation APIs for passing complex data safely between screens.
+9.  **Edge-to-Edge:** Full support for Android 15's edge-to-edge requirements using `WindowInsets`.
 10. **Movie Sharing:** Integrated sharing functionality in both Home cards and Movie Details app bar, allowing users to share movie info and IMDB links via the Android Share Sheet.
-11. **Theming & Accessibility:** Dynamic UI adjustments (e.g., App Bar icon tint) that adapt to surface luminance in both Light and Dark themes.
-12. **Multilingual Genres:** Automatic genre translation in Movie Details and Search filters using a centralized `GenreTranslation` utility.
+11. **Multilingual Genres:** Automatic genre translation in Movie Details and Search filters using a centralized `GenreTranslation` utility.
+12. **Interactive Development:** All screens feature comprehensive **Compose Previews**, including side-by-side Light/Dark mode comparisons and dedicated TV layout previews.
 13. **Performance:** Optimized with R8/ProGuard and modern serialization (Kotlinx Serialization + GSON).
 
 ## 🔄 Core Workflows
@@ -117,17 +122,20 @@ sequenceDiagram
     participant SS as SearchScreen
     participant VM as SearchViewModel
     participant R as YtsRepository
-    participant DB as Room DB
+    participant UR as UserLibraryRepository
+    participant FS as Cloud Firestore
 
     U->>SS: Enter Query
     SS->>VM: onSearch(query)
     alt Remote Search
         VM->>R: searchMovies(query)
         R-->>VM: Results
-    else Local Favorites
-        VM->>R: getFavorites()
-        R->>DB: Query
-        DB-->>R: List<Movie>
+    else Cloud Favorites
+        VM->>R: getFavoriteMovies()
+        R->>UR: getFavoriteMovies()
+        UR->>FS: Query (Sync)
+        FS-->>UR: List<Movie>
+        UR-->>R: List<Movie>
         R-->>VM: Results
     end
     VM-->>SS: Update UI State
