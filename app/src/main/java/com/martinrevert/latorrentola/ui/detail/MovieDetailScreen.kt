@@ -48,6 +48,7 @@ import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.Torrent
 import com.martinrevert.latorrentola.model.YTS.Cast
+import com.martinrevert.latorrentola.ui.components.MovieDetailPlaceholder
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
@@ -129,11 +130,11 @@ fun MovieDetailScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .consumeWindowInsets(padding),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.TopCenter
         ) {
             when (val state = uiState) {
                 is DetailUiState.Loading -> {
-                    CircularProgressIndicator()
+                    MovieDetailPlaceholder()
                 }
                 is DetailUiState.Success -> {
                     MovieDetailContent(

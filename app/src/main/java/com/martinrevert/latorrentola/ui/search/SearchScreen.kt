@@ -34,6 +34,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.home.MovieList
 import com.martinrevert.latorrentola.ui.home.MovieItem
 import com.martinrevert.latorrentola.ui.home.QualityChips
@@ -230,7 +231,7 @@ fun SearchScreen(
                             Text(text = stringResource(com.martinrevert.latorrentola.R.string.start_searching))
                         }
                         is SearchUiState.Loading -> {
-                            CircularProgressIndicator()
+                            MovieListPlaceholder()
                         }
                         is SearchUiState.Success -> {
                             MovieList(

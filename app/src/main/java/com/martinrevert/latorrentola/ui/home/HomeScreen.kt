@@ -48,6 +48,7 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
@@ -241,7 +242,7 @@ private fun HomeContent(
 ) {
     when (uiState) {
         is HomeUiState.Loading -> {
-            CircularProgressIndicator()
+            MovieListPlaceholder()
         }
         is HomeUiState.Success -> {
             MovieList(
