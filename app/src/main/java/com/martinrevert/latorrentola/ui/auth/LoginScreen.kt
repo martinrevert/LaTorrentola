@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.ui.auth
 
 import android.widget.Toast
+import android.content.res.Configuration
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -19,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
@@ -117,7 +119,8 @@ private fun LoginScreenContent(
     }
 }
 
-@Preview(showBackground = true, device = "id:tv_720p")
+@Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
+@Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun LoginScreenTvPreview() {
     LaTorrentolaTheme {
@@ -128,7 +131,7 @@ fun LoginScreenTvPreview() {
     }
 }
 
-@Preview(showBackground = true)
+@PreviewLightDark
 @Composable
 fun LoginScreenPreview() {
     LaTorrentolaTheme {
@@ -139,7 +142,7 @@ fun LoginScreenPreview() {
     }
 }
 
-@Preview(showBackground = true)
+@PreviewLightDark
 @Composable
 fun LoginScreenLoadingPreview() {
     LaTorrentolaTheme {

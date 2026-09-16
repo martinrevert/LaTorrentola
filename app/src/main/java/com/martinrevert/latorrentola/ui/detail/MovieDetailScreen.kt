@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.ui.detail
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.pm.PackageManager
 import androidx.core.net.toUri
 import android.view.ViewGroup
@@ -54,6 +55,7 @@ import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.UiText
 import java.net.URLEncoder
@@ -529,7 +531,8 @@ fun TorrentItem(
     }
 }
 
-@Preview(showBackground = true, device = "id:tv_720p")
+@Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
+@Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun MovieDetailScreenTvPreview() {
     val sampleMovie = Movie(
@@ -565,7 +568,7 @@ fun MovieDetailScreenTvPreview() {
     }
 }
 
-@Preview(showBackground = true)
+@PreviewLightDark
 @Composable
 fun MovieDetailScreenPreview() {
     val sampleMovie = Movie(

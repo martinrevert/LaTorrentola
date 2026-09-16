@@ -7,6 +7,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.foundation.clickable
 import android.content.Intent
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.*
@@ -45,6 +46,7 @@ import android.content.pm.PackageManager
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
@@ -808,7 +810,8 @@ fun MovieItem(
     }
 }
 
-@Preview(showBackground = true, device = "id:tv_720p")
+@Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
+@Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun HomeScreenTvPreview() {
     val sampleMovies = listOf(
@@ -858,7 +861,7 @@ fun HomeScreenTvPreview() {
     }
 }
 
-@Preview(showBackground = true)
+@PreviewLightDark
 @Composable
 fun HomeScreenPreview() {
     val sampleMovies = listOf(

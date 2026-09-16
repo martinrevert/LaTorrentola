@@ -26,6 +26,7 @@ Project-specific patterns and gotchas (do not assume defaults)
 - Multi-Selection Pattern: The `SearchScreen` (favorites view) implements a selection mode for D-pad compatibility. Short-press navigates to details, long-press enters selection mode. Once in selection mode, short-press toggles selection.
 - Credential Safety: Never hardcode API keys or Web Client IDs. Use `local.properties` with a corresponding `buildConfigField` in `app/build.gradle`. Reference them via `BuildConfig`.
 - DI scope: Hilt is used for singletons (see `di/NetworkModule.kt`). When adding bindings, follow the `@Module @InstallIn(SingletonComponent::class)` pattern.
+- Theme and Readability: Always respect the app's themes. Ensure all UI changes are compatible with both light and dark modes without losing human readability. Avoid hardcoding colors like `Color.Black` or `Color.White` unless they are specifically meant to be static; instead, use `MaterialTheme.colorScheme` tokens. Be careful with imports to avoid shadowing standard Material3 components with TV-specific ones that might have different default behaviors.
 - Git-based versionCode: `app/build.gradle` runs `git rev-list --count HEAD` to set `versionCode`/`versionName`. Ensure git is present in CI or on developer machines when producing builds.
 
 Common tasks & exact commands (Windows PowerShell)

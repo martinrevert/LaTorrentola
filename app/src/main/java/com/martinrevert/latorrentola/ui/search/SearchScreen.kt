@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.ui.search
 
 import android.app.Activity
+import android.content.res.Configuration
 import android.content.Intent
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -44,6 +45,7 @@ import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
 import com.martinrevert.latorrentola.utils.UiText
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -355,7 +357,8 @@ private fun SearchTextField(
     )
 }
 
-@Preview(showBackground = true, device = "id:tv_720p")
+@Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
+@Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun SearchScreenTvPreview() {
     val sampleMovies = listOf(
@@ -393,7 +396,7 @@ fun SearchScreenTvPreview() {
     }
 }
 
-@Preview(showBackground = true)
+@PreviewLightDark
 @Composable
 fun SearchScreenPreview() {
     val sampleMovies = listOf(
