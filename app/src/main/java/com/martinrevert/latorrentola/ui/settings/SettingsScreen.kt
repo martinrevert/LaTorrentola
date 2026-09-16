@@ -26,9 +26,11 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.BuildConfig
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
+import androidx.compose.ui.tooling.preview.Preview
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
 @Composable
@@ -42,8 +44,44 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    val isRunningOnTv = remember(context) { context.isTvDevice() }
+    val isTv = remember(context) { context.isTvDevice() }
     
+    SettingsScreenContent(
+        uiState = uiState,
+        userPhotoUrl = userPhotoUrl,
+        userName = userName,
+        userEmail = userEmail,
+        isTv = isTv,
+        onBackClick = onBackClick,
+        onLogoutClick = onLogoutClick,
+        onToggleVoiceSystem = { viewModel.toggleVoiceSystem(it) },
+        onToggleVoiceSummary = { viewModel.toggleVoiceSummary(it) },
+        onToggleVoiceTranslation = { viewModel.toggleVoiceTranslation(it) },
+        onToggleVibrator = { viewModel.toggleVibrator(it) },
+        onTogglePushEnabled = { viewModel.togglePushEnabled(it) },
+        onSetTheme = { viewModel.setTheme(it) },
+        onSetFilteredLanguages = { viewModel.setFilteredLanguages(it) }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
+@Composable
+private fun SettingsScreenContent(
+    uiState: SettingsUiState,
+    userPhotoUrl: String?,
+    userName: String?,
+    userEmail: String?,
+    isTv: Boolean,
+    onBackClick: () -> Unit,
+    onLogoutClick: () -> Unit,
+    onToggleVoiceSystem: (Boolean) -> Unit,
+    onToggleVoiceSummary: (Boolean) -> Unit,
+    onToggleVoiceTranslation: (Boolean) -> Unit,
+    onToggleVibrator: (Boolean) -> Unit,
+    onTogglePushEnabled: (Boolean) -> Unit,
+    onSetTheme: (Int) -> Unit,
+    onSetFilteredLanguages: (String) -> Unit
+) {
     val scrollState = rememberScrollState()
 
     Scaffold(
@@ -81,52 +119,52 @@ fun SettingsScreen(
             SettingsToggle(
                 title = stringResource(R.string.settings_tts),
                 checked = uiState.voiceSystem,
-                onCheckedChange = { viewModel.toggleVoiceSystem(it) }
+                onCheckedChange = onToggleVoiceSystem
             )
             SettingsToggle(
                 title = stringResource(R.string.settings_voice_summary),
                 checked = uiState.voiceSummary,
-                onCheckedChange = { viewModel.toggleVoiceSummary(it) }
+                onCheckedChange = onToggleVoiceSummary
             )
             SettingsToggle(
                 title = stringResource(R.string.settings_voice_translation),
                 checked = uiState.voiceTranslation,
                 enabled = uiState.voiceSummary,
-                onCheckedChange = { viewModel.toggleVoiceTranslation(it) }
+                onCheckedChange = onToggleVoiceTranslation
             )
             
-            if (!isRunningOnTv) {
+            if (!isTv) {
                 SettingsToggle(
-                    title = stringResource(com.martinrevert.latorrentola.R.string.settings_vibrator),
+                    title = stringResource(R.string.settings_vibrator),
                     checked = uiState.vibrator,
-                    onCheckedChange = { viewModel.toggleVibrator(it) }
+                    onCheckedChange = onToggleVibrator
                 )
                 
                 SettingsToggle(
-                    title = stringResource(com.martinrevert.latorrentola.R.string.settings_push),
+                    title = stringResource(R.string.settings_push),
                     checked = uiState.pushEnabled,
-                    onCheckedChange = { viewModel.togglePushEnabled(it) }
+                    onCheckedChange = onTogglePushEnabled
                 )
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-            Text(text = stringResource(com.martinrevert.latorrentola.R.string.settings_theme), style = MaterialTheme.typography.titleMedium)
+            Text(text = stringResource(R.string.settings_theme), style = MaterialTheme.typography.titleMedium)
             
             ThemeSelector(
                 selectedTheme = uiState.theme,
-                onThemeSelected = { viewModel.setTheme(it) }
+                onThemeSelected = onSetTheme
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             OutlinedTextField(
                 value = uiState.filteredLanguages,
-                onValueChange = { viewModel.setFilteredLanguages(it) },
+                onValueChange = onSetFilteredLanguages,
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusHighlight(shape = OutlinedTextFieldDefaults.shape),
-                label = { Text(stringResource(com.martinrevert.latorrentola.R.string.filter_languages_label)) },
+                label = { Text(stringResource(R.string.filter_languages_label)) },
                 placeholder = { Text(stringResource(R.string.filter_languages_placeholder)) },
                 supportingText = {
                     Text(stringResource(R.string.filter_languages_support))
@@ -137,7 +175,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            if (isRunningOnTv) {
+            if (isTv) {
                 androidx.tv.material3.Button(
                     onClick = onLogoutClick,
                     modifier = Modifier.fillMaxWidth(),
@@ -147,7 +185,7 @@ fun SettingsScreen(
                     )
                 ) {
                     androidx.tv.material3.Text(
-                        text = stringResource(com.martinrevert.latorrentola.R.string.logout_button),
+                        text = stringResource(R.string.logout_button),
                         modifier = Modifier.fillMaxWidth(),
                         textAlign = TextAlign.Center
                     )
@@ -163,7 +201,7 @@ fun SettingsScreen(
                         contentColor = MaterialTheme.colorScheme.onErrorContainer
                     )
                 ) {
-                    Text(stringResource(com.martinrevert.latorrentola.R.string.logout_button))
+                    Text(stringResource(R.string.logout_button))
                 }
             }
 
@@ -185,11 +223,11 @@ fun SettingsScreen(
                 )
             }
             
-            // Add extra space at the bottom for TV overscan and comfort
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
+
 
 @Composable
 fun UserSection(
@@ -206,7 +244,7 @@ fun UserSection(
         if (photoUrl != null) {
             AsyncImage(
                 model = photoUrl,
-                contentDescription = stringResource(com.martinrevert.latorrentola.R.string.user_profile_desc),
+                contentDescription = stringResource(R.string.user_profile_desc),
                 modifier = Modifier
                     .size(64.dp)
                     .clip(CircleShape),
@@ -254,7 +292,7 @@ fun ThemeSelector(
     onThemeSelected: (Int) -> Unit
 ) {
     val options = listOf(
-        stringResource(com.martinrevert.latorrentola.R.string.theme_system),
+        stringResource(R.string.theme_system),
         stringResource(R.string.theme_light),
         stringResource(R.string.theme_dark)
     )
@@ -327,3 +365,60 @@ fun SettingsToggle(
         }
     }
 }
+
+@Preview(showBackground = true, device = "id:tv_720p")
+@Composable
+fun SettingsScreenTvPreview() {
+    LaTorrentolaTheme {
+        SettingsScreenContent(
+            uiState = SettingsUiState(
+                voiceSystem = true,
+                voiceSummary = true,
+                voiceTranslation = false,
+                filteredLanguages = "en, es"
+            ),
+            userPhotoUrl = null,
+            userName = "Martin Revert",
+            userEmail = "martin@example.com",
+            isTv = true,
+            onBackClick = {},
+            onLogoutClick = {},
+            onToggleVoiceSystem = {},
+            onToggleVoiceSummary = {},
+            onToggleVoiceTranslation = {},
+            onToggleVibrator = {},
+            onTogglePushEnabled = {},
+            onSetTheme = {},
+            onSetFilteredLanguages = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun SettingsScreenPreview() {
+    LaTorrentolaTheme {
+        SettingsScreenContent(
+            uiState = SettingsUiState(
+                voiceSystem = true,
+                voiceSummary = true,
+                voiceTranslation = false,
+                filteredLanguages = "en, es"
+            ),
+            userPhotoUrl = null,
+            userName = "Martin Revert",
+            userEmail = "martin@example.com",
+            isTv = false,
+            onBackClick = {},
+            onLogoutClick = {},
+            onToggleVoiceSystem = {},
+            onToggleVoiceSummary = {},
+            onToggleVoiceTranslation = {},
+            onToggleVibrator = {},
+            onTogglePushEnabled = {},
+            onSetTheme = {},
+            onSetFilteredLanguages = {}
+        )
+    }
+}
+

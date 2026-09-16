@@ -39,8 +39,11 @@ import com.martinrevert.latorrentola.ui.home.MovieList
 import com.martinrevert.latorrentola.ui.home.MovieItem
 import com.martinrevert.latorrentola.ui.home.QualityChips
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
+import com.martinrevert.latorrentola.utils.UiText
+import androidx.compose.ui.tooling.preview.Preview
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -68,9 +71,6 @@ fun SearchScreen(
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
     val focusRequester = remember { FocusRequester() }
-    val focusManager = LocalFocusManager.current
-
-    val gridState = rememberLazyGridState()
 
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -115,6 +115,91 @@ fun SearchScreen(
         }
     }
 
+    SearchScreenContent(
+        uiState = uiState,
+        selectedQuality = selectedQuality,
+        lastClickedMovieId = lastClickedMovieId,
+        downloadedMovieIds = downloadedMovieIds,
+        selectedFavoriteIds = selectedFavoriteIds,
+        qualityOptions = qualityOptions,
+        searchQuery = searchQuery,
+        isShowingFavorites = isShowingFavorites,
+        isShowingDownloads = isShowingDownloads,
+        isShowingNew = isShowingNew,
+        isShowingGenre = isShowingGenre,
+        initialGenre = initialGenre,
+        isTv = isTv,
+        focusRequester = focusRequester,
+        onSearchQueryChange = {
+            searchQuery = it
+            if (it.length > 2) {
+                isShowingFavorites = false
+                isShowingDownloads = false
+                isShowingNew = false
+                isShowingGenre = false
+                viewModel.search(it)
+            }
+        },
+        onVoiceSearchClick = {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.voice_search_prompt))
+            }
+            try {
+                speechLauncher.launch(intent)
+            } catch (e: Exception) {
+            }
+        },
+        onQualityClick = { viewModel.setQuality(it) },
+        onMovieClick = {
+            if (selectedFavoriteIds.isNotEmpty()) {
+                viewModel.toggleFavoriteSelection(it.id)
+            } else {
+                viewModel.setLastClickedMovieId(it.id)
+                onMovieClick(it)
+            }
+        },
+        onLongClick = { viewModel.toggleFavoriteSelection(it) },
+        onLoadMore = { viewModel.loadMore() },
+        onBackClick = onBackClick,
+        onClearSelection = { viewModel.clearSelection() },
+        onDeleteSelectedFavorites = { viewModel.deleteSelectedFavorites() },
+        onFocusRestored = { viewModel.clearLastClickedMovieId() }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SearchScreenContent(
+    uiState: SearchUiState,
+    selectedQuality: String?,
+    lastClickedMovieId: Int?,
+    downloadedMovieIds: Set<Int>,
+    selectedFavoriteIds: Set<Int>,
+    qualityOptions: List<String>,
+    searchQuery: String,
+    isShowingFavorites: Boolean,
+    isShowingDownloads: Boolean,
+    isShowingNew: Boolean,
+    isShowingGenre: Boolean,
+    initialGenre: String?,
+    isTv: Boolean,
+    focusRequester: FocusRequester,
+    onSearchQueryChange: (String) -> Unit,
+    onVoiceSearchClick: () -> Unit,
+    onQualityClick: (String) -> Unit,
+    onMovieClick: (Movie) -> Unit,
+    onLongClick: (Int) -> Unit,
+    onLoadMore: () -> Unit,
+    onBackClick: () -> Unit,
+    onClearSelection: () -> Unit,
+    onDeleteSelectedFavorites: () -> Unit,
+    onFocusRestored: () -> Unit
+) {
+    val focusManager = LocalFocusManager.current
+    val gridState = rememberLazyGridState()
+
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
@@ -135,28 +220,8 @@ fun SearchScreen(
                     } else {
                         SearchTextField(
                             searchQuery = searchQuery,
-                            onSearchQueryChange = {
-                                searchQuery = it
-                                if (it.length > 2) {
-                                    isShowingFavorites = false
-                                    isShowingDownloads = false
-                                    isShowingNew = false
-                                    isShowingGenre = false
-                                    viewModel.search(it)
-                                }
-                            },
-                            onVoiceSearchClick = {
-                                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                                    putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.voice_search_prompt))
-                                }
-                                try {
-                                    speechLauncher.launch(intent)
-                                } catch (e: Exception) {
-                                    // Handle case where speech recognition is not available
-                                }
-                            },
+                            onSearchQueryChange = onSearchQueryChange,
+                            onVoiceSearchClick = onVoiceSearchClick,
                             showVoiceSearch = !isTv,
                             modifier = Modifier
                                 .focusRequester(focusRequester)
@@ -175,7 +240,7 @@ fun SearchScreen(
                 navigationIcon = {
                     if (isShowingFavorites && selectedFavoriteIds.isNotEmpty()) {
                         IconButton(
-                            onClick = { viewModel.clearSelection() },
+                            onClick = onClearSelection,
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
                             Icon(Icons.Default.Close, contentDescription = stringResource(R.string.clear_selection_desc))
@@ -193,7 +258,7 @@ fun SearchScreen(
                 actions = {
                     if (isShowingFavorites && selectedFavoriteIds.isNotEmpty()) {
                         IconButton(
-                            onClick = { viewModel.deleteSelectedFavorites() },
+                            onClick = onDeleteSelectedFavorites,
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
                             Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_selected_desc))
@@ -212,7 +277,7 @@ fun SearchScreen(
             QualityChips(
                 options = qualityOptions,
                 selectedQuality = selectedQuality ?: "All",
-                onQualityClick = { viewModel.setQuality(it) }
+                onQualityClick = onQualityClick
             )
             HorizontalDivider(
                 modifier = Modifier.padding(top = 8.dp),
@@ -228,7 +293,7 @@ fun SearchScreen(
             ) {
                 when (val state = uiState) {
                         is SearchUiState.Idle -> {
-                            Text(text = stringResource(com.martinrevert.latorrentola.R.string.start_searching))
+                            Text(text = stringResource(R.string.start_searching))
                         }
                         is SearchUiState.Loading -> {
                             MovieListPlaceholder()
@@ -239,23 +304,15 @@ fun SearchScreen(
                                 state = gridState,
                                 downloadedMovieIds = downloadedMovieIds,
                                 selectedIds = selectedFavoriteIds,
-                                onMovieClick = {
-                                    if (selectedFavoriteIds.isNotEmpty()) {
-                                        viewModel.toggleFavoriteSelection(it.id)
-                                    } else {
-                                        viewModel.setLastClickedMovieId(it.id)
-                                        onMovieClick(it)
-                                    }
-                                },
-                                onLongClick = if (state.isFavorites) { id -> viewModel.toggleFavoriteSelection(id) } else null,
-                                onLoadMore = { if (!state.isFavorites && !state.isDownloads && !state.isNew) viewModel.loadMore() },
-                                onToggleSelection = null, // Logic moved to onMovieClick for standard feel
+                                onMovieClick = onMovieClick,
+                                onLongClick = if (state.isFavorites) onLongClick else null,
+                                onLoadMore = { if (!state.isFavorites && !state.isDownloads && !state.isNew) onLoadMore() },
                                 initialFocusId = lastClickedMovieId,
-                                onFocusRestored = { viewModel.clearLastClickedMovieId() }
+                                onFocusRestored = onFocusRestored
                             )
                         }
                         is SearchUiState.Empty -> {
-                            Text(text = stringResource(com.martinrevert.latorrentola.R.string.no_results))
+                            Text(text = stringResource(R.string.no_results))
                         }
                         is SearchUiState.Error -> {
                             Text(text = state.message.asString())
@@ -265,6 +322,7 @@ fun SearchScreen(
         }
     }
 }
+
 
 @Composable
 private fun SearchTextField(
@@ -296,3 +354,80 @@ private fun SearchTextField(
         )
     )
 }
+
+@Preview(showBackground = true, device = "id:tv_720p")
+@Composable
+fun SearchScreenTvPreview() {
+    val sampleMovies = listOf(
+        Movie(id = 1, title = "Inception", year = 2010, rating = "8.8"),
+        Movie(id = 2, title = "Interstellar", year = 2014, rating = "8.6")
+    )
+
+    LaTorrentolaTheme {
+        SearchScreenContent(
+            uiState = SearchUiState.Success(sampleMovies),
+            selectedQuality = "All",
+            lastClickedMovieId = null,
+            downloadedMovieIds = emptySet(),
+            selectedFavoriteIds = emptySet(),
+            qualityOptions = listOf("All", "1080p", "720p"),
+            searchQuery = "Inception",
+            isShowingFavorites = false,
+            isShowingDownloads = false,
+            isShowingNew = false,
+            isShowingGenre = false,
+            initialGenre = null,
+            isTv = true,
+            focusRequester = remember { FocusRequester() },
+            onSearchQueryChange = {},
+            onVoiceSearchClick = {},
+            onQualityClick = {},
+            onMovieClick = {},
+            onLongClick = {},
+            onLoadMore = {},
+            onBackClick = {},
+            onClearSelection = {},
+            onDeleteSelectedFavorites = {},
+            onFocusRestored = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun SearchScreenPreview() {
+    val sampleMovies = listOf(
+        Movie(id = 1, title = "Inception", year = 2010, rating = "8.8"),
+        Movie(id = 2, title = "Interstellar", year = 2014, rating = "8.6")
+    )
+
+    LaTorrentolaTheme {
+        SearchScreenContent(
+            uiState = SearchUiState.Success(sampleMovies),
+            selectedQuality = "All",
+            lastClickedMovieId = null,
+            downloadedMovieIds = emptySet(),
+            selectedFavoriteIds = emptySet(),
+            qualityOptions = listOf("All", "1080p", "720p"),
+            searchQuery = "Inception",
+            isShowingFavorites = false,
+            isShowingDownloads = false,
+            isShowingNew = false,
+            isShowingGenre = false,
+            initialGenre = null,
+            isTv = false,
+            focusRequester = remember { FocusRequester() },
+            onSearchQueryChange = {},
+            onVoiceSearchClick = {},
+            onQualityClick = {},
+            onMovieClick = {},
+            onLongClick = {},
+            onLoadMore = {},
+            onBackClick = {},
+            onClearSelection = {},
+            onDeleteSelectedFavorites = {},
+            onFocusRestored = {}
+        )
+    }
+}
+

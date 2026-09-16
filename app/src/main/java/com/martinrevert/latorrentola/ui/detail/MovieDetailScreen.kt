@@ -53,6 +53,9 @@ import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.tooling.preview.Preview
+import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
+import com.martinrevert.latorrentola.utils.UiText
 import java.net.URLEncoder
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
@@ -64,6 +67,7 @@ fun MovieDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val downloadedHashes by viewModel.downloadedHashes.collectAsState()
     val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -71,6 +75,44 @@ fun MovieDetailScreen(
         }
     }
 
+    MovieDetailScreenContent(
+        uiState = uiState,
+        downloadedHashes = downloadedHashes,
+        isTv = isTv,
+        onBackClick = onBackClick,
+        onShareClick = { movie ->
+            val imdbUrl = "https://www.imdb.com/title/${movie.imdbCode}"
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, movie.title)
+                val shareText = context.getString(
+                    R.string.share_movie_text,
+                    movie.title,
+                    imdbUrl
+                )
+                putExtra(Intent.EXTRA_TEXT, shareText)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, context.getString(
+                R.string.share_movie_chooser)))
+        },
+        onFavoriteToggle = { movie -> viewModel.toggleFavorite(movie) },
+        onTorrentClick = { movie, torrent ->
+            viewModel.markAsDownloaded(movie, torrent.hash ?: "", torrent.quality ?: "")
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
+@Composable
+private fun MovieDetailScreenContent(
+    uiState: DetailUiState,
+    downloadedHashes: Set<String>,
+    isTv: Boolean,
+    onBackClick: () -> Unit,
+    onShareClick: (Movie) -> Unit,
+    onFavoriteToggle: (Movie) -> Unit,
+    onTorrentClick: (Movie, Torrent) -> Unit
+) {
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
@@ -88,22 +130,7 @@ fun MovieDetailScreen(
                     val state = uiState
                     if (state is DetailUiState.Success) {
                         IconButton(
-                            onClick = {
-                                val movie = state.movie
-                                val imdbUrl = "https://www.imdb.com/title/${movie.imdbCode}"
-                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_SUBJECT, movie.title)
-                                    val shareText = context.getString(
-                                        R.string.share_movie_text,
-                                        movie.title,
-                                        imdbUrl
-                                    )
-                                    putExtra(Intent.EXTRA_TEXT, shareText)
-                                }
-                                context.startActivity(Intent.createChooser(shareIntent, context.getString(
-                                    R.string.share_movie_chooser)))
-                            },
+                            onClick = { onShareClick(state.movie) },
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
                             Icon(
@@ -112,7 +139,7 @@ fun MovieDetailScreen(
                             )
                         }
                         IconButton(
-                            onClick = { viewModel.toggleFavorite(state.movie) },
+                            onClick = { onFavoriteToggle(state.movie) },
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
                             Icon(
@@ -140,9 +167,8 @@ fun MovieDetailScreen(
                     MovieDetailContent(
                         movie = state.movie,
                         downloadedHashes = downloadedHashes,
-                        onTorrentClick = { torrent ->
-                            viewModel.markAsDownloaded(state.movie, torrent.hash ?: "", torrent.quality ?: "")
-                        }
+                        isTv = isTv,
+                        onTorrentClick = { onTorrentClick(state.movie, it) }
                     )
                 }
                 is DetailUiState.Error -> {
@@ -153,15 +179,14 @@ fun MovieDetailScreen(
     }
 }
 
+
 @Composable
 fun MovieDetailContent(
     movie: Movie,
     downloadedHashes: Set<String>,
+    isTv: Boolean,
     onTorrentClick: (Torrent) -> Unit
 ) {
-    val context = LocalContext.current
-    val isTv = remember(context) { context.isTvDevice() }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -326,7 +351,7 @@ fun YoutubePlayer(
                 },
                 modifier = Modifier
                     .size(64.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .background(Color.Black.copy(alpha = 0.15f), CircleShape)
             ) {
                 androidx.tv.material3.Icon(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -345,7 +370,7 @@ fun YoutubePlayer(
                 },
                 modifier = Modifier
                     .size(64.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .background(Color.Black.copy(alpha = 0.15f), CircleShape)
                     .focusHighlight(shape = CircleShape)
             ) {
                 Icon(
@@ -503,3 +528,76 @@ fun TorrentItem(
         }
     }
 }
+
+@Preview(showBackground = true, device = "id:tv_720p")
+@Composable
+fun MovieDetailScreenTvPreview() {
+    val sampleMovie = Movie(
+        id = 1,
+        title = "Inception",
+        year = 2010,
+        rating = "8.8",
+        runtime = "148 min",
+        genres = listOf("Action", "Sci-Fi", "Adventure"),
+        summary = "A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O.",
+        ytTrailerCode = "YoHD9XEInc0",
+        language = "English",
+        torrents = listOf(
+            Torrent(quality = "1080p", size = "2.2 GB", type = "bluray", hash = "HASH1"),
+            Torrent(quality = "720p", size = "1.1 GB", type = "bluray", hash = "HASH2")
+        ),
+        cast = listOf(
+            Cast(name = "Leonardo DiCaprio", characterName = "Cobb", urlSmallImage = ""),
+            Cast(name = "Joseph Gordon-Levitt", characterName = "Arthur", urlSmallImage = "")
+        )
+    )
+
+    LaTorrentolaTheme {
+        MovieDetailScreenContent(
+            uiState = DetailUiState.Success(sampleMovie, isFavorite = true),
+            downloadedHashes = setOf("HASH1"),
+            isTv = true,
+            onBackClick = {},
+            onShareClick = {},
+            onFavoriteToggle = {},
+            onTorrentClick = { _, _ -> }
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun MovieDetailScreenPreview() {
+    val sampleMovie = Movie(
+        id = 1,
+        title = "Inception",
+        year = 2010,
+        rating = "8.8",
+        runtime = "148 min",
+        genres = listOf("Action", "Sci-Fi", "Adventure"),
+        summary = "A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O.",
+        ytTrailerCode = "YoHD9XEInc0",
+        language = "English",
+        torrents = listOf(
+            Torrent(quality = "1080p", size = "2.2 GB", type = "bluray", hash = "HASH1"),
+            Torrent(quality = "720p", size = "1.1 GB", type = "bluray", hash = "HASH2")
+        ),
+        cast = listOf(
+            Cast(name = "Leonardo DiCaprio", characterName = "Cobb", urlSmallImage = ""),
+            Cast(name = "Joseph Gordon-Levitt", characterName = "Arthur", urlSmallImage = "")
+        )
+    )
+
+    LaTorrentolaTheme {
+        MovieDetailScreenContent(
+            uiState = DetailUiState.Success(sampleMovie, isFavorite = true),
+            downloadedHashes = setOf("HASH1"),
+            isTv = false,
+            onBackClick = {},
+            onShareClick = {},
+            onFavoriteToggle = {},
+            onTorrentClick = { _, _ -> }
+        )
+    }
+}
+

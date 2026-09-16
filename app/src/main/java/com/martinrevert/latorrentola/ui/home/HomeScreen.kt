@@ -44,11 +44,13 @@ import androidx.compose.ui.unit.dp
 import android.content.pm.PackageManager
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
+import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
@@ -73,11 +75,64 @@ fun HomeScreen(
     val lastClickedMovieId by viewModel.lastClickedMovieId.collectAsState()
     val downloadedMovieIds by viewModel.downloadedMovieIds.collectAsState()
     val qualityOptions = viewModel.qualityOptions
-    
-    var showGenreSheet by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val allGenres = viewModel.allGenres
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
+
+    HomeScreenContent(
+        uiState = uiState,
+        topGenres = topGenres,
+        allGenres = allGenres,
+        lastVisitDate = lastVisitDate,
+        isRefreshing = isRefreshing,
+        favoritesCount = favoritesCount,
+        selectedQuality = selectedQuality,
+        lastClickedMovieId = lastClickedMovieId,
+        downloadedMovieIds = downloadedMovieIds,
+        qualityOptions = qualityOptions,
+        userPhotoUrl = userPhotoUrl,
+        isTv = isTv,
+        onMovieClick = onMovieClick,
+        onSettingsClick = onSettingsClick,
+        onSearchClick = onSearchClick,
+        onFavoritesClick = onFavoritesClick,
+        onGenreClick = onGenreClick,
+        onQualityClick = { viewModel.setQuality(it) },
+        onLoadMore = { viewModel.loadMovies() },
+        onRefresh = { viewModel.refresh() },
+        onSetLastClickedMovieId = { viewModel.setLastClickedMovieId(it) },
+        onFocusRestored = { viewModel.clearLastClickedMovieId() }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, ExperimentalTvMaterial3Api::class)
+@Composable
+private fun HomeScreenContent(
+    uiState: HomeUiState,
+    topGenres: List<String>,
+    allGenres: List<String>,
+    lastVisitDate: Long?,
+    isRefreshing: Boolean,
+    favoritesCount: Int,
+    selectedQuality: String?,
+    lastClickedMovieId: Int?,
+    downloadedMovieIds: Set<Int>,
+    qualityOptions: List<String>,
+    userPhotoUrl: String?,
+    isTv: Boolean,
+    onMovieClick: (Movie) -> Unit,
+    onSettingsClick: () -> Unit,
+    onSearchClick: () -> Unit,
+    onFavoritesClick: () -> Unit,
+    onGenreClick: (String) -> Unit,
+    onQualityClick: (String) -> Unit,
+    onLoadMore: () -> Unit,
+    onRefresh: () -> Unit,
+    onSetLastClickedMovieId: (Int) -> Unit,
+    onFocusRestored: () -> Unit
+) {
+    var showGenreSheet by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     // 1. Properly save and restore scroll state across configuration changes (rotation)
     val gridState = rememberLazyGridState()
@@ -89,7 +144,7 @@ fun HomeScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            painter = painterResource(com.martinrevert.latorrentola.R.drawable.ic_launcher_foreground),
+                            painter = painterResource(R.drawable.ic_launcher_foreground),
                             contentDescription = null,
                             modifier = Modifier.size(32.dp),
                             tint = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color.White else Color.Black
@@ -163,7 +218,7 @@ fun HomeScreen(
             QualityChips(
                 options = qualityOptions,
                 selectedQuality = selectedQuality ?: "All",
-                onQualityClick = { viewModel.setQuality(it) }
+                onQualityClick = onQualityClick
             )
 
             if (isTv) {
@@ -178,17 +233,17 @@ fun HomeScreen(
                         lastVisitDate = lastVisitDate,
                         downloadedMovieIds = downloadedMovieIds,
                         onMovieClick = {
-                            viewModel.setLastClickedMovieId(it.id)
+                            onSetLastClickedMovieId(it.id)
                             onMovieClick(it)
                         },
-                        onLoadMore = { viewModel.loadMovies() },
+                        onLoadMore = onLoadMore,
                         lastClickedMovieId = lastClickedMovieId,
-                        onFocusRestored = { viewModel.clearLastClickedMovieId() }
+                        onFocusRestored = onFocusRestored
                     )
                 }
             } else {
                 // Handheld Layout: With pull-to-refresh
-                val pullRefreshState = rememberPullRefreshState(isRefreshing, onRefresh = { viewModel.refresh() })
+                val pullRefreshState = rememberPullRefreshState(isRefreshing, onRefresh = onRefresh)
 
                 Box(
                     modifier = Modifier
@@ -202,12 +257,12 @@ fun HomeScreen(
                         lastVisitDate = lastVisitDate,
                         downloadedMovieIds = downloadedMovieIds,
                         onMovieClick = {
-                            viewModel.setLastClickedMovieId(it.id)
+                            onSetLastClickedMovieId(it.id)
                             onMovieClick(it)
                         },
-                        onLoadMore = { viewModel.loadMovies() },
+                        onLoadMore = onLoadMore,
                         lastClickedMovieId = lastClickedMovieId,
-                        onFocusRestored = { viewModel.clearLastClickedMovieId() }
+                        onFocusRestored = onFocusRestored
                     )
                     // Pull-to-refresh indicator (official Compose implementation)
                     PullRefreshIndicator(isRefreshing, pullRefreshState, Modifier.align(Alignment.TopCenter))
@@ -218,7 +273,7 @@ fun HomeScreen(
 
     if (showGenreSheet) {
         GenreBottomSheet(
-            genres = viewModel.allGenres,
+            genres = allGenres,
             onGenreClick = {
                 onGenreClick(it)
                 showGenreSheet = false
@@ -312,7 +367,7 @@ fun GenreChips(
             FilterChip(
                 selected = false,
                 onClick = onAllGenresClick,
-                label = { Text(stringResource(com.martinrevert.latorrentola.R.string.all_genres)) },
+                label = { Text(stringResource(R.string.all_genres)) },
                 leadingIcon = { Icon(Icons.Default.FilterList, contentDescription = null, modifier = Modifier.size(18.dp)) },
                 modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
             )
@@ -369,7 +424,7 @@ fun GenreBottomSheet(
                 .navigationBarsPadding()
         ) {
             Text(
-                text = stringResource(com.martinrevert.latorrentola.R.string.browse_by_genre),
+                text = stringResource(R.string.browse_by_genre),
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
@@ -714,7 +769,7 @@ fun MovieItem(
                                 ) {
                                     Icon(
                                         Icons.Default.Share, 
-                                        contentDescription = stringResource(com.martinrevert.latorrentola.R.string.share_desc),
+                                        contentDescription = stringResource(R.string.share_desc),
                                         modifier = Modifier.size(16.dp),
                                         tint = MaterialTheme.colorScheme.primary
                                     )
@@ -752,3 +807,112 @@ fun MovieItem(
         }
     }
 }
+
+@Preview(showBackground = true, device = "id:tv_720p")
+@Composable
+fun HomeScreenTvPreview() {
+    val sampleMovies = listOf(
+        Movie(
+            id = 1,
+            title = "Inception",
+            year = 2010,
+            rating = "8.8",
+            mediumCoverImage = "https://yts.mx/assets/images/movies/inception_2010/medium-cover.jpg",
+            genres = listOf("Action", "Sci-Fi")
+        ),
+        Movie(
+            id = 2,
+            title = "The Dark Knight",
+            year = 2008,
+            rating = "9.0",
+            mediumCoverImage = "https://yts.mx/assets/images/movies/the_dark_knight_2008/medium-cover.jpg",
+            genres = listOf("Action", "Crime")
+        )
+    )
+
+    LaTorrentolaTheme {
+        HomeScreenContent(
+            uiState = HomeUiState.Success(sampleMovies),
+            topGenres = listOf("Action", "Adventure", "Animation"),
+            allGenres = listOf("Action", "Adventure", "Animation", "Biography", "Comedy"),
+            lastVisitDate = System.currentTimeMillis(),
+            isRefreshing = false,
+            favoritesCount = 5,
+            selectedQuality = "All",
+            lastClickedMovieId = null,
+            downloadedMovieIds = setOf(1),
+            qualityOptions = listOf("All", "2160p", "1080p", "720p"),
+            userPhotoUrl = null,
+            isTv = true,
+            onMovieClick = {},
+            onSettingsClick = {},
+            onSearchClick = {},
+            onFavoritesClick = {},
+            onGenreClick = {},
+            onQualityClick = {},
+            onLoadMore = {},
+            onRefresh = {},
+            onSetLastClickedMovieId = {},
+            onFocusRestored = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun HomeScreenPreview() {
+    val sampleMovies = listOf(
+        Movie(
+            id = 1,
+            title = "Inception",
+            year = 2010,
+            rating = "8.8",
+            mediumCoverImage = "https://yts.mx/assets/images/movies/inception_2010/medium-cover.jpg",
+            genres = listOf("Action", "Sci-Fi")
+        ),
+        Movie(
+            id = 2,
+            title = "The Dark Knight",
+            year = 2008,
+            rating = "9.0",
+            mediumCoverImage = "https://yts.mx/assets/images/movies/the_dark_knight_2008/medium-cover.jpg",
+            genres = listOf("Action", "Crime")
+        ),
+        Movie(
+            id = 3,
+            title = "Interstellar",
+            year = 2014,
+            rating = "8.6",
+            mediumCoverImage = "https://yts.mx/assets/images/movies/interstellar_2014/medium-cover.jpg",
+            genres = listOf("Adventure", "Drama")
+        )
+    )
+
+    LaTorrentolaTheme {
+        HomeScreenContent(
+            uiState = HomeUiState.Success(sampleMovies),
+            topGenres = listOf("Action", "Adventure", "Animation"),
+            allGenres = listOf("Action", "Adventure", "Animation", "Biography", "Comedy"),
+            lastVisitDate = System.currentTimeMillis(),
+            isRefreshing = false,
+            favoritesCount = 5,
+            selectedQuality = "All",
+            lastClickedMovieId = null,
+            downloadedMovieIds = setOf(1),
+            qualityOptions = listOf("All", "2160p", "1080p", "720p"),
+            userPhotoUrl = null,
+            isTv = false,
+            onMovieClick = {},
+            onSettingsClick = {},
+            onSearchClick = {},
+            onFavoritesClick = {},
+            onGenreClick = {},
+            onQualityClick = {},
+            onLoadMore = {},
+            onRefresh = {},
+            onSetLastClickedMovieId = {},
+            onFocusRestored = {}
+        )
+    }
+}
+

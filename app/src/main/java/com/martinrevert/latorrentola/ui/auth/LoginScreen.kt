@@ -18,8 +18,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.tooling.preview.Preview
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.utils.UiText
 
 @Composable
 fun LoginScreen(
@@ -37,6 +40,17 @@ fun LoginScreen(
         }
     }
 
+    LoginScreenContent(
+        authState = authState,
+        onSignInClick = { viewModel.signInWithGoogle(context) }
+    )
+}
+
+@Composable
+private fun LoginScreenContent(
+    authState: AuthState,
+    onSignInClick: () -> Unit
+) {
     Surface(
         modifier = Modifier
             .fillMaxSize()
@@ -75,7 +89,7 @@ fun LoginScreen(
                     CircularProgressIndicator()
                 } else {
                     Button(
-                        onClick = { viewModel.signInWithGoogle(context) },
+                        onClick = onSignInClick,
                         modifier = Modifier
                             .fillMaxWidth(0.8f)
                             .height(56.dp)
@@ -102,3 +116,37 @@ fun LoginScreen(
         }
     }
 }
+
+@Preview(showBackground = true, device = "id:tv_720p")
+@Composable
+fun LoginScreenTvPreview() {
+    LaTorrentolaTheme {
+        LoginScreenContent(
+            authState = AuthState.Idle,
+            onSignInClick = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun LoginScreenPreview() {
+    LaTorrentolaTheme {
+        LoginScreenContent(
+            authState = AuthState.Idle,
+            onSignInClick = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun LoginScreenLoadingPreview() {
+    LaTorrentolaTheme {
+        LoginScreenContent(
+            authState = AuthState.Loading,
+            onSignInClick = {}
+        )
+    }
+}
+
