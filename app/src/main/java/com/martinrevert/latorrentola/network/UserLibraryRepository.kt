@@ -135,7 +135,7 @@ class UserLibraryRepository @Inject constructor(
     }
 
     suspend fun saveFilteredLanguages(languages: String) {
-        val uid = userId ?: return
+        val uid = userId ?: throw IllegalStateException("User not logged in")
         Log.d("FirestoreSync", "Saving filtered languages for $uid: $languages")
         try {
             firestore.collection("users")
@@ -148,6 +148,7 @@ class UserLibraryRepository @Inject constructor(
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e("FirestoreSync", "Error saving settings: ${e.message}")
+            throw e
         }
     }
 

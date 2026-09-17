@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.yield
@@ -101,7 +102,7 @@ fun HomeScreen(
         onGenreClick = onGenreClick,
         onQualityClick = { viewModel.setQuality(it) },
         onLoadMore = { viewModel.loadMovies() },
-        onRefresh = { viewModel.refresh() },
+        onRefresh = { showIndicator -> viewModel.refresh(showIndicator = showIndicator) },
         onSetLastClickedMovieId = { viewModel.setLastClickedMovieId(it) },
         onFocusRestored = { viewModel.clearLastClickedMovieId() }
     )
@@ -129,8 +130,8 @@ private fun HomeScreenContent(
     onGenreClick: (String) -> Unit,
     onQualityClick: (String) -> Unit,
     onLoadMore: () -> Unit,
-    onRefresh: () -> Unit,
-    onSetLastClickedMovieId: (Int) -> Unit,
+    onRefresh: (Boolean) -> Unit,
+    onSetLastClickedMovieId: (Int?) -> Unit,
     onFocusRestored: () -> Unit
 ) {
     var showGenreSheet by remember { mutableStateOf(false) }
@@ -245,7 +246,12 @@ private fun HomeScreenContent(
                 }
             } else {
                 // Handheld Layout: With pull-to-refresh
-                val pullRefreshState = rememberPullRefreshState(isRefreshing, onRefresh = onRefresh)
+                val scope = rememberCoroutineScope()
+                val pullRefreshState = rememberPullRefreshState(isRefreshing, onRefresh = {
+                    onSetLastClickedMovieId(null)
+                    onRefresh(true)
+                    scope.launch { gridState.scrollToItem(0) }
+                })
 
                 Box(
                     modifier = Modifier
@@ -854,8 +860,8 @@ fun HomeScreenTvPreview() {
             onGenreClick = {},
             onQualityClick = {},
             onLoadMore = {},
-            onRefresh = {},
-            onSetLastClickedMovieId = {},
+            onRefresh = { _ -> },
+            onSetLastClickedMovieId = { _ -> },
             onFocusRestored = {}
         )
     }
@@ -912,8 +918,8 @@ fun HomeScreenPreview() {
             onGenreClick = {},
             onQualityClick = {},
             onLoadMore = {},
-            onRefresh = {},
-            onSetLastClickedMovieId = {},
+            onRefresh = { _ -> },
+            onSetLastClickedMovieId = { _ -> },
             onFocusRestored = {}
         )
     }

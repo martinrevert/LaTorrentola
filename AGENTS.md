@@ -33,6 +33,7 @@ Project-specific patterns and gotchas (do not assume defaults)
     *   **Layout Differences**: TVs and wide screens use side-by-side layouts (e.g., in `MovieDetailScreen` and `SettingsScreen`) and larger grid column counts. 
     *   **Input Handling**: TVs require D-pad focus handling. Use `Modifier.focusHighlight()`, `focusRestorer()`, and avoid touch-only interactions like `PullToRefresh` on TV.
     *   **Previews**: Every screen MUST have multiple `@Preview` functions: `PreviewLightDark` for mobile (light/dark) and `*TvPreview` with `uiMode` variations for TV (light/dark).
+- Mandatory Language Filtering: Any screen or logic that retrieves and displays a list of movie cards (e.g., Home, Search, "New" releases, "Already seen", "Favorites") MUST apply the user's language filter (from `PreferenceManager.getFilteredLanguages()`) before showing the results. This ensures consistency across the entire app experience. Use `MovieFilter.filterMovies()` for this purpose. This is a critical requirement for all movie listing logic.
 - Git-based versionCode: `app/build.gradle` runs `git rev-list --count HEAD` to set `versionCode`/`versionName`. Ensure git is present in CI or on developer machines when producing builds.
 
 Common tasks & exact commands (Windows PowerShell)

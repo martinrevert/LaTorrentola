@@ -190,17 +190,17 @@ class HomeViewModel @Inject constructor(
 
     /**
      * Refresh the movie list: clear cached items and reload page 1.
-     * This method sets [_isRefreshing] while the network call is in progress
-     * so UI pull-to-refresh indicators can react.
+     * @param force whether to override the current fetching status.
+     * @param showIndicator whether to show the UI pull-to-refresh indicator.
      */
-    fun refresh(force: Boolean = false) {
+    fun refresh(force: Boolean = false, showIndicator: Boolean = false) {
         if (isFetching && !force) return
         
         movieFetchJob?.cancel()
         
         movieFetchJob = viewModelScope.launch {
             isFetching = true
-            _isRefreshing.value = true
+            _isRefreshing.value = showIndicator
             try {
                 // reset pagination and current list
                 currentPage = 1

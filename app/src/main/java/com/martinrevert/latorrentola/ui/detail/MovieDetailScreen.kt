@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.material.icons.filled.Pause
@@ -104,6 +105,11 @@ fun MovieDetailScreen(
         onFavoriteToggle = { movie -> viewModel.toggleFavorite(movie) },
         onTorrentClick = { movie, torrent ->
             viewModel.markAsDownloaded(movie, torrent.hash ?: "", torrent.quality ?: "")
+        },
+        onAddLanguageToFilter = { language ->
+            viewModel.addLanguageToFilter(language) { error ->
+                Toast.makeText(context, error.asString(context), Toast.LENGTH_LONG).show()
+            }
         }
     )
 }
@@ -118,7 +124,8 @@ private fun MovieDetailScreenContent(
     onBackClick: () -> Unit,
     onShareClick: (Movie) -> Unit,
     onFavoriteToggle: (Movie) -> Unit,
-    onTorrentClick: (Movie, Torrent) -> Unit
+    onTorrentClick: (Movie, Torrent) -> Unit,
+    onAddLanguageToFilter: (String) -> Unit
 ) {
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -176,7 +183,8 @@ private fun MovieDetailScreenContent(
                         downloadedHashes = downloadedHashes,
                         isWideScreen = isWideScreen,
                         isTv = isTv,
-                        onTorrentClick = { onTorrentClick(state.movie, it) }
+                        onTorrentClick = { onTorrentClick(state.movie, it) },
+                        onAddLanguageToFilter = onAddLanguageToFilter
                     )
                 }
                 is DetailUiState.Error -> {
@@ -194,7 +202,8 @@ fun MovieDetailContent(
     downloadedHashes: Set<String>,
     isWideScreen: Boolean,
     isTv: Boolean,
-    onTorrentClick: (Torrent) -> Unit
+    onTorrentClick: (Torrent) -> Unit,
+    onAddLanguageToFilter: (String) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -224,7 +233,7 @@ fun MovieDetailContent(
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    MovieMetadata(movie = movie)
+                    MovieMetadata(movie = movie, onAddLanguageToFilter = onAddLanguageToFilter)
                 }
             }
         } else {
@@ -244,7 +253,7 @@ fun MovieDetailContent(
             Spacer(modifier = Modifier.height(16.dp))
             
             Text(text = stringResource(R.string.details_title), style = MaterialTheme.typography.titleLarge)
-            MovieMetadata(movie = movie)
+            MovieMetadata(movie = movie, onAddLanguageToFilter = onAddLanguageToFilter)
         }
         
         Spacer(modifier = Modifier.height(24.dp))
@@ -272,7 +281,11 @@ fun MovieDetailContent(
 }
 
 @Composable
-fun MovieMetadata(movie: Movie, modifier: Modifier = Modifier) {
+fun MovieMetadata(
+    movie: Movie, 
+    modifier: Modifier = Modifier,
+    onAddLanguageToFilter: (String) -> Unit
+) {
     Column(modifier = modifier) {
         if (!movie.genres.isNullOrEmpty()) {
             val translatedGenres = movie.genres.map { GenreTranslation.getGenreText(it).asString() }
@@ -285,7 +298,25 @@ fun MovieMetadata(movie: Movie, modifier: Modifier = Modifier) {
             Spacer(modifier = Modifier.height(4.dp))
         }
         Text(text = stringResource(R.string.metadata_year, movie.year ?: "N/A"), style = MaterialTheme.typography.bodyLarge)
-        Text(text = stringResource(R.string.metadata_language, movie.language ?: "N/A"), style = MaterialTheme.typography.bodyLarge)
+        
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = stringResource(R.string.metadata_language, movie.language ?: "N/A"), style = MaterialTheme.typography.bodyLarge)
+            movie.language?.let { lang ->
+                Spacer(modifier = Modifier.width(12.dp))
+                Button(
+                    onClick = { onAddLanguageToFilter(lang) },
+                    modifier = Modifier.height(28.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = stringResource(R.string.exclude_button_label),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+        }
+
         Text(text = stringResource(R.string.metadata_rating, movie.rating ?: "N/A"), style = MaterialTheme.typography.bodyLarge)
         if (!movie.runtime.isNullOrEmpty()) {
             Text(text = stringResource(R.string.metadata_runtime, movie.runtime), style = MaterialTheme.typography.bodyLarge)
@@ -571,7 +602,8 @@ fun MovieDetailScreenTvPreview() {
             onBackClick = {},
             onShareClick = {},
             onFavoriteToggle = {},
-            onTorrentClick = { _, _ -> }
+            onTorrentClick = { _, _ -> },
+            onAddLanguageToFilter = {}
         )
     }
 }
@@ -608,7 +640,8 @@ fun MovieDetailScreenPreview() {
             onBackClick = {},
             onShareClick = {},
             onFavoriteToggle = {},
-            onTorrentClick = { _, _ -> }
+            onTorrentClick = { _, _ -> },
+            onAddLanguageToFilter = {}
         )
     }
 }
@@ -646,7 +679,8 @@ fun MovieDetailScreenTabletPreview() {
             onBackClick = {},
             onShareClick = {},
             onFavoriteToggle = {},
-            onTorrentClick = { _, _ -> }
+            onTorrentClick = { _, _ -> },
+            onAddLanguageToFilter = {}
         )
     }
 }

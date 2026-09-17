@@ -12,6 +12,7 @@ import com.martinrevert.latorrentola.utils.TranslationManager
 import com.martinrevert.latorrentola.utils.UiText
 import com.martinrevert.latorrentola.utils.VoiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -189,6 +190,37 @@ class DetailViewModel @Inject constructor(
                     movie = movie
                 )
             )
+        }
+    }
+
+    fun addLanguageToFilter(language: String, onError: (UiText) -> Unit) {
+        val currentFilters = preferenceManager.getFilteredLanguages()
+        val languageLower = language.lowercase()
+        val filterList = currentFilters.split(",")
+            .map { it.trim().lowercase() }
+            .filter { it.isNotEmpty() }
+            .toMutableList()
+        
+        if (!filterList.contains(languageLower)) {
+            filterList.add(languageLower)
+            val newFilters = filterList.joinToString(", ")
+            
+            viewModelScope.launch {
+                // Store original state for rollback
+                val originalFilters = currentFilters
+                
+                // Update local first
+                preferenceManager.setFilteredLanguages(newFilters)
+                
+                try {
+                    userLibraryRepository.saveFilteredLanguages(newFilters)
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    // Rollback
+                    preferenceManager.setFilteredLanguages(originalFilters)
+                    onError(UiText.StringResource(R.string.error_sync_firestore))
+                }
+            }
         }
     }
 

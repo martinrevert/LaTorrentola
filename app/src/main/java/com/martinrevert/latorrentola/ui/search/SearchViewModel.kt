@@ -69,11 +69,11 @@ class SearchViewModel @Inject constructor(
         preferenceManager.filteredLanguagesFlow
             .onEach { 
                 if (isShowingFavorites) {
-                    showFavorites()
+                    showFavorites(force = true)
                 } else if (isShowingDownloads) {
-                    showDownloadedMovies()
+                    showDownloadedMovies(force = true)
                 } else if (isShowingNew) {
-                    showNewMovies()
+                    showNewMovies(force = true)
                 } else if (lastQuery != null || lastGenre != null) {
                     currentPage = 1
                     allResults.clear()
