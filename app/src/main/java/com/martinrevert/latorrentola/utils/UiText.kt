@@ -43,15 +43,19 @@ object GenreTranslation {
             "family" -> R.string.genre_family
             "fantasy" -> R.string.genre_fantasy
             "film-noir" -> R.string.genre_film_noir
+            "game-show" -> R.string.genre_game_show
             "history" -> R.string.genre_history
             "horror" -> R.string.genre_horror
             "music" -> R.string.genre_music
             "musical" -> R.string.genre_musical
             "mystery" -> R.string.genre_mystery
+            "news" -> R.string.genre_news
+            "reality-tv" -> R.string.genre_reality_tv
             "romance" -> R.string.genre_romance
             "sci-fi" -> R.string.genre_sci_fi
             "short" -> R.string.genre_short
             "sport" -> R.string.genre_sport
+            "talk-show" -> R.string.genre_talk_show
             "thriller" -> R.string.genre_thriller
             "war" -> R.string.genre_war
             "western" -> R.string.genre_western

@@ -68,9 +68,9 @@ class HomeViewModel @Inject constructor(
 
     val allGenres = listOf(
         "Action", "Adventure", "Animation", "Biography", "Comedy", "Crime",
-        "Documentary", "Drama", "Family", "Fantasy", "Film-Noir", "History",
-        "Horror", "Music", "Musical", "Mystery", "Romance", "Sci-Fi",
-        "Short", "Sport", "Thriller", "War", "Western"
+        "Documentary", "Drama", "Family", "Fantasy", "Film-Noir", "Game-Show",
+        "History", "Horror", "Music", "Musical", "Mystery", "News", "Reality-TV",
+        "Romance", "Sci-Fi", "Short", "Sport", "Talk-Show", "Thriller", "War", "Western"
     )
 
     private val allMovies = mutableListOf<Movie>()
