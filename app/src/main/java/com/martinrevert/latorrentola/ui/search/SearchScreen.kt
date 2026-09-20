@@ -62,6 +62,7 @@ fun SearchScreen(
     val lastClickedMovieId by viewModel.lastClickedMovieId.collectAsState()
     val downloadedMovieIds by viewModel.downloadedMovieIds.collectAsState()
     val selectedFavoriteIds by viewModel.selectedFavoriteIds.collectAsState()
+    val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val qualityOptions = viewModel.qualityOptions
     var searchQuery by remember { mutableStateOf(initialQuery ?: "") }
     var isShowingFavorites by remember(initialGenre) { mutableStateOf(initialGenre == "milista") }
@@ -131,6 +132,7 @@ fun SearchScreen(
         isShowingGenre = isShowingGenre,
         initialGenre = initialGenre,
         isTv = isTv,
+        isLoadingMore = isLoadingMore,
         focusRequester = focusRequester,
         onSearchQueryChange = {
             searchQuery = it
@@ -187,6 +189,7 @@ private fun SearchScreenContent(
     isShowingGenre: Boolean,
     initialGenre: String?,
     isTv: Boolean,
+    isLoadingMore: Boolean = false,
     focusRequester: FocusRequester,
     onSearchQueryChange: (String) -> Unit,
     onVoiceSearchClick: () -> Unit,
@@ -306,6 +309,7 @@ private fun SearchScreenContent(
                                 state = gridState,
                                 downloadedMovieIds = downloadedMovieIds,
                                 selectedIds = selectedFavoriteIds,
+                                isLoadingMore = isLoadingMore,
                                 onMovieClick = onMovieClick,
                                 onLongClick = if (state.isFavorites) onLongClick else null,
                                 onLoadMore = { if (!state.isFavorites && !state.isDownloads && !state.isNew) onLoadMore() },

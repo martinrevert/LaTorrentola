@@ -41,6 +41,9 @@ class HomeViewModel @Inject constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    private val _isLoadingMore = MutableStateFlow(false)
+    val isLoadingMore: StateFlow<Boolean> = _isLoadingMore.asStateFlow()
+
     private val _selectedQuality = MutableStateFlow<String?>(null)
     val selectedQuality: StateFlow<String?> = _selectedQuality.asStateFlow()
 
@@ -144,6 +147,9 @@ class HomeViewModel @Inject constructor(
     fun loadMovies() {
         if (isFetching || !canLoadMore) return
         isFetching = true
+        if (currentPage > 1) {
+            _isLoadingMore.value = true
+        }
         
         movieFetchJob = viewModelScope.launch {
             try {
@@ -184,6 +190,7 @@ class HomeViewModel @Inject constructor(
                 }
             } finally {
                 isFetching = false
+                _isLoadingMore.value = false
             }
         }
     }

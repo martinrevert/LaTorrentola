@@ -30,6 +30,9 @@ class SearchViewModel @Inject constructor(
     private val _selectedQuality = MutableStateFlow<String?>(null)
     val selectedQuality: StateFlow<String?> = _selectedQuality.asStateFlow()
 
+    private val _isLoadingMore = MutableStateFlow(false)
+    val isLoadingMore: StateFlow<Boolean> = _isLoadingMore.asStateFlow()
+
     private val _lastClickedMovieId = MutableStateFlow<Int?>(null)
     val lastClickedMovieId: StateFlow<Int?> = _lastClickedMovieId.asStateFlow()
 
@@ -396,6 +399,9 @@ class SearchViewModel @Inject constructor(
 
         searchJob?.cancel()
         isFetching = true
+        if (currentPage > 1) {
+            _isLoadingMore.value = true
+        }
         searchJob = viewModelScope.launch {
             try {
                 if (currentPage == 1) _uiState.value = SearchUiState.Loading
@@ -460,6 +466,7 @@ class SearchViewModel @Inject constructor(
                 }
             } finally {
                 isFetching = false
+                _isLoadingMore.value = false
             }
         }
     }

@@ -52,6 +52,7 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.ui.components.MovieItemPlaceholder
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
@@ -73,6 +74,7 @@ fun HomeScreen(
     val topGenres by viewModel.topGenres.collectAsState()
     val lastVisitDate by viewModel.lastVisitDate.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val favoritesCount by viewModel.favoritesCount.collectAsState()
     val selectedQuality by viewModel.selectedQuality.collectAsState()
     val lastClickedMovieId by viewModel.lastClickedMovieId.collectAsState()
@@ -88,6 +90,7 @@ fun HomeScreen(
         allGenres = allGenres,
         lastVisitDate = lastVisitDate,
         isRefreshing = isRefreshing,
+        isLoadingMore = isLoadingMore,
         favoritesCount = favoritesCount,
         selectedQuality = selectedQuality,
         lastClickedMovieId = lastClickedMovieId,
@@ -116,6 +119,7 @@ private fun HomeScreenContent(
     allGenres: List<String>,
     lastVisitDate: Long?,
     isRefreshing: Boolean,
+    isLoadingMore: Boolean = false,
     favoritesCount: Int,
     selectedQuality: String?,
     lastClickedMovieId: Int?,
@@ -235,6 +239,7 @@ private fun HomeScreenContent(
                         gridState = gridState,
                         lastVisitDate = lastVisitDate,
                         downloadedMovieIds = downloadedMovieIds,
+                        isLoadingMore = isLoadingMore,
                         onMovieClick = {
                             onSetLastClickedMovieId(it.id)
                             onMovieClick(it)
@@ -264,6 +269,7 @@ private fun HomeScreenContent(
                         gridState = gridState,
                         lastVisitDate = lastVisitDate,
                         downloadedMovieIds = downloadedMovieIds,
+                        isLoadingMore = isLoadingMore,
                         onMovieClick = {
                             onSetLastClickedMovieId(it.id)
                             onMovieClick(it)
@@ -298,6 +304,7 @@ private fun HomeContent(
     gridState: LazyGridState,
     lastVisitDate: Long?,
     downloadedMovieIds: Set<Int>,
+    isLoadingMore: Boolean = false,
     onMovieClick: (Movie) -> Unit,
     onLoadMore: () -> Unit,
     lastClickedMovieId: Int? = null,
@@ -313,6 +320,7 @@ private fun HomeContent(
                 state = gridState,
                 lastVisitDate = lastVisitDate,
                 downloadedMovieIds = downloadedMovieIds,
+                isLoadingMore = isLoadingMore,
                 onMovieClick = onMovieClick,
                 onLoadMore = onLoadMore,
                 initialFocusId = lastClickedMovieId,
@@ -463,6 +471,7 @@ fun MovieList(
     lastVisitDate: Long? = null,
     downloadedMovieIds: Set<Int> = emptySet(),
     selectedIds: Set<Int> = emptySet(),
+    isLoadingMore: Boolean = false,
     onMovieClick: (Movie) -> Unit,
     onLoadMore: () -> Unit,
     onLongClick: ((Int) -> Unit)? = null,
@@ -503,6 +512,11 @@ fun MovieList(
                 shouldRequestFocus = movie.id == initialFocusId,
                 onFocusRestored = onFocusRestored
             )
+        }
+        if (isLoadingMore) {
+            items(6, key = { "placeholder_$it" }) {
+                MovieItemPlaceholder(isTv = isTv)
+            }
         }
         item(key = "load_more_indicator") {
             LaunchedEffect(Unit) {
