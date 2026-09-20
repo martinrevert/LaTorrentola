@@ -305,7 +305,9 @@ fun MovieMetadata(
                 Spacer(modifier = Modifier.width(12.dp))
                 Button(
                     onClick = { onAddLanguageToFilter(lang) },
-                    modifier = Modifier.height(28.dp),
+                    modifier = Modifier
+                        .height(28.dp)
+                        .focusHighlight(shape = MaterialTheme.shapes.small),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                     shape = MaterialTheme.shapes.small
                 ) {

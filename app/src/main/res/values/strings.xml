@@ -28,7 +28,7 @@
     <string name="metadata_year">Year: %1$s</string>
     <string name="metadata_language">Language: %1$s</string>
     <string name="add_to_filter_desc">Exclude this language</string>
-    <string name="exclude_button_label">Exclude</string>
+    <string name="exclude_button_label">Filter language</string>
     <string name="error_sync_firestore">Sync failed. Try again later.</string>
     <string name="metadata_rating">Rating: ⭐ %1$s</string>
     <string name="metadata_runtime">Runtime: %1$s min</string>
