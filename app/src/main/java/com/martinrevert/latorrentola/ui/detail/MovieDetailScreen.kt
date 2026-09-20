@@ -58,6 +58,7 @@ import com.martinrevert.latorrentola.utils.isTvDevice
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.tv.material3.IconButtonDefaults
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.UiText
 import java.net.URLEncoder
@@ -393,7 +394,12 @@ fun YoutubePlayer(
                 },
                 modifier = Modifier
                     .size(64.dp)
-                    .background(Color.Black.copy(alpha = 0.15f), CircleShape)
+                    .background(Color.Black.copy(alpha = 0.1f), CircleShape),
+                colors = IconButtonDefaults.colors(
+                    containerColor = Color.Transparent,
+                    focusedContainerColor = Color.Transparent,
+                    pressedContainerColor = Color.Transparent
+                )
             ) {
                 androidx.tv.material3.Icon(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
