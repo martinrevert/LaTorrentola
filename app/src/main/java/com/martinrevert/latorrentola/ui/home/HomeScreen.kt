@@ -48,8 +48,12 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Surface
+import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.components.MovieItemPlaceholder
@@ -555,6 +559,8 @@ fun MovieItem(
     val isTv = remember(context) { context.isTvDevice() }
     val focusRequester = remember { FocusRequester() }
 
+    var isImageLoading by remember { mutableStateOf(true) }
+
     LaunchedEffect(shouldRequestFocus) {
         if (shouldRequestFocus) {
             // Wait for composition and layout to settle
@@ -567,131 +573,22 @@ fun MovieItem(
         }
     }
 
-    if (isTv) {
-        androidx.tv.material3.Surface(
-            onClick = onToggleSelection ?: onClick,
-            onLongClick = onLongClick,
-            scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
-            shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(focusRequester)
-                .onFocusChanged { state ->
-                    if (state.isFocused && shouldRequestFocus) {
-                        onFocusRestored()
+    Box {
+        if (isTv) {
+            Surface(
+                onClick = onToggleSelection ?: onClick,
+                onLongClick = onLongClick,
+                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+                shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { state ->
+                        if (state.isFocused && shouldRequestFocus) {
+                            onFocusRestored()
+                        }
                     }
-                }
-        ) {
-            Column {
-                Box {
-                    AsyncImage(
-                        model = movie.mediumCoverImage,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(0.67f),
-                        contentScale = ContentScale.Crop
-                    )
-                    
-                    val movieUploadTime = (movie.dateUploadedUnix ?: 0L) * 1000
-                    val fifteenDaysInMs = 15L * 24 * 60 * 60 * 1000
-                    val isRecent = movieUploadTime > (System.currentTimeMillis() - fifteenDaysInMs)
-                    
-                    if (isRecent) {
-                        Icon(
-                            painter = painterResource(com.martinrevert.latorrentola.R.drawable.new_badge),
-                            contentDescription = stringResource(R.string.new_desc),
-                            tint = Color.Yellow,
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .padding(8.dp)
-                                .size(32.dp)
-                                .rotate(-45f)
-                        )
-                    }
-
-                    if (isDownloaded) {
-                        Icon(
-                            imageVector = Icons.Default.CloudDone,
-                            contentDescription = stringResource(R.string.downloaded_desc),
-                            tint = Color.Yellow,
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(8.dp)
-                                .size(24.dp)
-                                .background(
-                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                                    CircleShape
-                                )
-                                .padding(2.dp)
-                        )
-                    }
-                }
-                Column(
-                    modifier = Modifier
-                        .background(androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant)
-                        .padding(12.dp)
-                        .fillMaxWidth()
-                ) {
-                    androidx.tv.material3.Text(
-                        text = movie.title ?: "",
-                        style = androidx.tv.material3.MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    
-                    if (!movie.genres.isNullOrEmpty()) {
-                        val translatedGenres = movie.genres.map { GenreTranslation.getGenreText(it).asString() }
-                        Text(
-                            text = translatedGenres.joinToString(", "),
-                            style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
-                            color = androidx.tv.material3.MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(vertical = 2.dp)
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        androidx.tv.material3.Text(
-                            text = "${movie.year}",
-                            style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
-                            color = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        androidx.tv.material3.Text(
-                            text = "⭐ ${movie.rating}",
-                            style = androidx.tv.material3.MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = androidx.tv.material3.MaterialTheme.colorScheme.secondary
-                        )
-                    }
-                }
-            }
-        }
-    } else {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(focusRequester)
-                .onFocusChanged { state ->
-                    if (state.isFocused && shouldRequestFocus) {
-                        onFocusRestored()
-                    }
-                }
-                .focusHighlight(shape = MaterialTheme.shapes.medium)
-                .combinedClickable(
-                    onClick = onToggleSelection ?: onClick,
-                    onLongClick = onLongClick
-                ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            shape = MaterialTheme.shapes.medium
-        ) {
-            Box {
+            ) {
                 Column {
                     Box {
                         AsyncImage(
@@ -700,10 +597,12 @@ fun MovieItem(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(0.67f),
-                            contentScale = ContentScale.Crop
+                            contentScale = ContentScale.Crop,
+                            onState = { state ->
+                                isImageLoading = state is AsyncImagePainter.State.Loading
+                            }
                         )
                         
-                        // NEW BADGE logic: Show if uploaded in the last 15 days
                         val movieUploadTime = (movie.dateUploadedUnix ?: 0L) * 1000
                         val fifteenDaysInMs = 15L * 24 * 60 * 60 * 1000
                         val isRecent = movieUploadTime > (System.currentTimeMillis() - fifteenDaysInMs)
@@ -738,22 +637,26 @@ fun MovieItem(
                             )
                         }
                     }
-                    Column(modifier = Modifier.padding(8.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .background(androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(12.dp)
+                            .fillMaxWidth()
+                    ) {
                         Text(
                             text = movie.title ?: "",
-                            style = MaterialTheme.typography.labelLarge,
+                            style = androidx.tv.material3.MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         
-                        // RESTORED: Movie Genres
                         if (!movie.genres.isNullOrEmpty()) {
                             val translatedGenres = movie.genres.map { GenreTranslation.getGenreText(it).asString() }
                             Text(
                                 text = translatedGenres.joinToString(", "),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
+                                color = androidx.tv.material3.MaterialTheme.colorScheme.primary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(vertical = 2.dp)
@@ -767,65 +670,179 @@ fun MovieItem(
                         ) {
                             Text(
                                 text = "${movie.year}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
+                                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(
-                                    onClick = {
-                                        val imdbUrl = "https://www.imdb.com/title/${movie.imdbCode}"
-                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                            type = "text/plain"
-                                            putExtra(Intent.EXTRA_SUBJECT, movie.title)
-                                            val shareText = context.getString(
-                                                R.string.share_movie_text,
-                                                movie.title,
-                                                imdbUrl
-                                            )
-                                            putExtra(Intent.EXTRA_TEXT, shareText)
-                                        }
-                                        context.startActivity(Intent.createChooser(shareIntent, context.getString(
-                                            R.string.share_movie_chooser)))
-                                    },
-                                    modifier = Modifier.size(24.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Share, 
-                                        contentDescription = stringResource(R.string.share_desc),
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "⭐ ${movie.rating}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.secondary
-                                )
-                            }
+                            Text(
+                                text = "⭐ ${movie.rating}",
+                                style = androidx.tv.material3.MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = androidx.tv.material3.MaterialTheme.colorScheme.secondary
+                            )
                         }
                     }
                 }
-                
-                if (isSelected) {
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
-                    )
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = stringResource(R.string.selected_desc),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                            .size(32.dp)
-                            .background(Color.White, CircleShape)
-                    )
+            }
+        } else {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { state ->
+                        if (state.isFocused && shouldRequestFocus) {
+                            onFocusRestored()
+                        }
+                    }
+                    .focusHighlight(shape = MaterialTheme.shapes.medium)
+                    .combinedClickable(
+                        onClick = onToggleSelection ?: onClick,
+                        onLongClick = onLongClick
+                    ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Box {
+                    Column {
+                        Box {
+                            AsyncImage(
+                                model = movie.mediumCoverImage,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(0.67f),
+                                contentScale = ContentScale.Crop,
+                                onState = { state ->
+                                    isImageLoading = state is AsyncImagePainter.State.Loading
+                                }
+                            )
+                            
+                            // NEW BADGE logic: Show if uploaded in the last 15 days
+                            val movieUploadTime = (movie.dateUploadedUnix ?: 0L) * 1000
+                            val fifteenDaysInMs = 15L * 24 * 60 * 60 * 1000
+                            val isRecent = movieUploadTime > (System.currentTimeMillis() - fifteenDaysInMs)
+                            
+                            if (isRecent) {
+                                Icon(
+                                    painter = painterResource(R.drawable.new_badge),
+                                    contentDescription = stringResource(R.string.new_desc),
+                                    tint = Color.Yellow,
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(8.dp)
+                                        .size(32.dp)
+                                        .rotate(-45f)
+                                )
+                            }
+
+                            if (isDownloaded) {
+                                Icon(
+                                    imageVector = Icons.Default.CloudDone,
+                                    contentDescription = stringResource(R.string.downloaded_desc),
+                                    tint = Color.Yellow,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(8.dp)
+                                        .size(24.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                            CircleShape
+                                        )
+                                        .padding(2.dp)
+                                )
+                            }
+                        }
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text(
+                                text = movie.title ?: "",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            
+                            // RESTORED: Movie Genres
+                            if (!movie.genres.isNullOrEmpty()) {
+                                val translatedGenres = movie.genres.map { GenreTranslation.getGenreText(it).asString() }
+                                Text(
+                                    text = translatedGenres.joinToString(", "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(vertical = 2.dp)
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                Text(
+                                    text = "${movie.year}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(
+                                        onClick = {
+                                            val imdbUrl = "https://www.imdb.com/title/${movie.imdbCode}"
+                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_SUBJECT, movie.title)
+                                                val shareText = context.getString(
+                                                    R.string.share_movie_text,
+                                                    movie.title,
+                                                    imdbUrl
+                                                )
+                                                putExtra(Intent.EXTRA_TEXT, shareText)
+                                            }
+                                            context.startActivity(Intent.createChooser(shareIntent, context.getString(
+                                                R.string.share_movie_chooser)))
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Share, 
+                                            contentDescription = stringResource(R.string.share_desc),
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "⭐ ${movie.rating}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (isSelected) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                        )
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = stringResource(R.string.selected_desc),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp)
+                                .size(32.dp)
+                                .background(Color.White, CircleShape)
+                        )
+                    }
                 }
             }
+        }
+        if (isImageLoading) {
+            com.martinrevert.latorrentola.ui.components.MovieItemPlaceholder(isTv = isTv)
         }
     }
 }
