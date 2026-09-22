@@ -101,18 +101,18 @@ fun MovieItemPlaceholder(isTv: Boolean) {
                         .aspectRatio(0.67f)
                         .shimmer()
                 )
-                Column(modifier = Modifier.padding(8.dp)) {
+                Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
                     Box(modifier = Modifier.fillMaxWidth(0.8f).height(16.dp).clip(RoundedCornerShape(4.dp)).shimmer())
                     Spacer(modifier = Modifier.height(8.dp))
-                    Box(modifier = Modifier.fillMaxWidth(0.5f).height(12.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+                    Box(modifier = Modifier.fillMaxWidth(0.5f).height(14.dp).clip(RoundedCornerShape(4.dp)).shimmer())
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 24.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(modifier = Modifier.width(40.dp).height(12.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                        Box(modifier = Modifier.width(30.dp).height(12.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+                        Box(modifier = Modifier.width(48.dp).height(14.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+                        Box(modifier = Modifier.width(36.dp).height(14.dp).clip(RoundedCornerShape(4.dp)).shimmer())
                     }
                 }
             }

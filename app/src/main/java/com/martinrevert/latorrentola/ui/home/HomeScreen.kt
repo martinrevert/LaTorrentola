@@ -46,6 +46,8 @@ import androidx.compose.ui.unit.dp
 import android.content.pm.PackageManager
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.tv.material3.ClickableSurfaceDefaults
@@ -161,7 +163,10 @@ private fun HomeScreenContent(
                             tint = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color.White else Color.Black
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.app_name))
+                        Text(
+                            text = stringResource(R.string.app_name),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 },
                 actions = {
@@ -171,25 +176,28 @@ private fun HomeScreenContent(
                     ) {
                         Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search_desc))
                     }
-                    IconButton(
-                        onClick = onFavoritesClick,
-                        modifier = Modifier.focusHighlight(shape = CircleShape)
-                    ) {
-                        BadgedBox(
-                            badge = {
-                                if (favoritesCount > 0) {
-                                    Badge(
-                                        containerColor = Color(0xFFB3261E), // Use same vibrant red in both modes
-                                        contentColor = Color.White
-                                    ) {
-                                        Text(
-                                            text = favoritesCount.toString(),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color.White
-                                        )
-                                    }
+                    BadgedBox(
+                        badge = {
+                            if (favoritesCount > 0) {
+                                Badge(
+                                    containerColor = Color(0xFFB3261E), // Use same vibrant red in both modes
+                                    contentColor = Color.White
+                                ) {
+                                    Text(
+                                        text = if (favoritesCount > 99) "99+" else favoritesCount.toString(),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 4.dp)
+                                    )
                                 }
                             }
+                        },
+                        modifier = Modifier.padding(end = 4.dp, top = 4.dp)
+                    ) {
+                        IconButton(
+                            onClick = onFavoritesClick,
+                            modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
                             Icon(Icons.Default.Favorite, contentDescription = stringResource(R.string.favorites_desc))
                         }
@@ -356,11 +364,15 @@ fun QualityChips(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         lazyItems(options) { quality ->
+            val isSelected = selectedQuality == quality
             FilterChip(
-                selected = selectedQuality == quality,
+                selected = isSelected,
                 onClick = { onQualityClick(quality) },
                 label = { 
-                    Text(if (quality == "All") stringResource(R.string.quality_all) else quality)
+                    Text(
+                        text = if (quality == "All") stringResource(R.string.quality_all) else quality,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                    )
                 },
                 modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
             )
@@ -387,8 +399,20 @@ fun GenreChips(
             FilterChip(
                 selected = false,
                 onClick = onAllGenresClick,
-                label = { Text(stringResource(R.string.all_genres)) },
-                leadingIcon = { Icon(Icons.Default.FilterList, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                label = { 
+                    Text(
+                        text = stringResource(R.string.all_genres),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                },
+                leadingIcon = { 
+                    Icon(
+                        Icons.Default.FilterList, 
+                        contentDescription = null, 
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    ) 
+                },
                 modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
             )
         }
@@ -396,8 +420,20 @@ fun GenreChips(
             FilterChip(
                 selected = false,
                 onClick = { onGenreClick("nuevas") },
-                label = { Text(stringResource(R.string.new_movies)) },
-                leadingIcon = { Icon(Icons.Default.NewReleases, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                label = { 
+                    Text(
+                        text = stringResource(R.string.new_movies),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                },
+                leadingIcon = { 
+                    Icon(
+                        Icons.Default.NewReleases, 
+                        contentDescription = null, 
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    ) 
+                },
                 modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
             )
         }
@@ -405,15 +441,32 @@ fun GenreChips(
             FilterChip(
                 selected = false,
                 onClick = { onGenreClick("ya_vistas") },
-                label = { Text(stringResource(R.string.already_seen)) },
-                leadingIcon = { Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                label = { 
+                    Text(
+                        text = stringResource(R.string.already_seen),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                },
+                leadingIcon = { 
+                    Icon(
+                        Icons.Default.History, 
+                        contentDescription = null, 
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    ) 
+                },
                 modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
             )
         }
         lazyItems(genres) { genre ->
             SuggestionChip(
                 onClick = { onGenreClick(genre) },
-                label = { Text(GenreTranslation.getGenreText(genre).asString()) },
+                label = { 
+                    Text(
+                        text = GenreTranslation.getGenreText(genre).asString(),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                },
                 modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
             )
         }
@@ -446,6 +499,7 @@ fun GenreBottomSheet(
             Text(
                 text = stringResource(R.string.browse_by_genre),
                 style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
             
@@ -458,7 +512,12 @@ fun GenreBottomSheet(
                     InputChip(
                         selected = false,
                         onClick = { onGenreClick(genre) },
-                        label = { Text(GenreTranslation.getGenreText(genre).asString()) },
+                        label = { 
+                            Text(
+                                text = GenreTranslation.getGenreText(genre).asString(),
+                                color = MaterialTheme.colorScheme.onSurface
+                            ) 
+                        },
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
                 }
@@ -523,8 +582,10 @@ fun MovieList(
             }
         }
         item(key = "load_more_indicator") {
-            LaunchedEffect(Unit) {
-                onLoadMore()
+            Box(modifier = Modifier.size(48.dp)) {
+                LaunchedEffect(Unit) {
+                    onLoadMore()
+                }
             }
         }
     }
@@ -559,7 +620,8 @@ fun MovieItem(
     val isTv = remember(context) { context.isTvDevice() }
     val focusRequester = remember { FocusRequester() }
 
-    var isImageLoading by remember { mutableStateOf(true) }
+    val isPreview = LocalInspectionMode.current
+    var isImageLoading by remember { mutableStateOf(!isPreview) }
 
     LaunchedEffect(shouldRequestFocus) {
         if (shouldRequestFocus) {
@@ -643,7 +705,7 @@ fun MovieItem(
                             .padding(12.dp)
                             .fillMaxWidth()
                     ) {
-                        Text(
+                        androidx.tv.material3.Text(
                             text = movie.title ?: "",
                             style = androidx.tv.material3.MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
@@ -653,10 +715,10 @@ fun MovieItem(
                         
                         if (!movie.genres.isNullOrEmpty()) {
                             val translatedGenres = movie.genres.map { GenreTranslation.getGenreText(it).asString() }
-                            Text(
+                            androidx.tv.material3.Text(
                                 text = translatedGenres.joinToString(", "),
                                 style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
-                                color = androidx.tv.material3.MaterialTheme.colorScheme.primary,
+                                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(vertical = 2.dp)
@@ -671,13 +733,17 @@ fun MovieItem(
                             Text(
                                 text = "${movie.year}",
                                 style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
-                                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            Text(
+                            androidx.tv.material3.Text(
                                 text = "⭐ ${movie.rating}",
                                 style = androidx.tv.material3.MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = androidx.tv.material3.MaterialTheme.colorScheme.secondary
+                                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -694,6 +760,7 @@ fun MovieItem(
                         }
                     }
                     .focusHighlight(shape = MaterialTheme.shapes.medium)
+                    .semantics(mergeDescendants = true) { }
                     .combinedClickable(
                         onClick = onToggleSelection ?: onClick,
                         onLongClick = onLongClick
@@ -751,13 +818,15 @@ fun MovieItem(
                                 )
                             }
                         }
-                        Column(modifier = Modifier.padding(8.dp)) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
                             Text(
                                 text = movie.title ?: "",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth()
                             )
                             
                             // RESTORED: Movie Genres
@@ -766,24 +835,30 @@ fun MovieItem(
                                 Text(
                                     text = translatedGenres.joinToString(", "),
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(vertical = 2.dp)
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
                                 )
                             }
 
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                               ) {
                                 Text(
                                     text = "${movie.year}",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
                                 )
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.End
+                                ) {
                                     IconButton(
                                         onClick = {
                                             val imdbUrl = "https://www.imdb.com/title/${movie.imdbCode}"
@@ -800,12 +875,12 @@ fun MovieItem(
                                             context.startActivity(Intent.createChooser(shareIntent, context.getString(
                                                 R.string.share_movie_chooser)))
                                         },
-                                        modifier = Modifier.size(24.dp)
+                                        modifier = Modifier.size(48.dp)
                                     ) {
                                         Icon(
                                             Icons.Default.Share, 
-                                            contentDescription = stringResource(R.string.share_desc),
-                                            modifier = Modifier.size(16.dp),
+                                            contentDescription = "${stringResource(R.string.share_desc)} ${movie.title ?: ""}",
+                                            modifier = Modifier.size(24.dp),
                                             tint = MaterialTheme.colorScheme.primary
                                         )
                                     }
@@ -814,7 +889,9 @@ fun MovieItem(
                                         text = "⭐ ${movie.rating}",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.secondary
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
@@ -870,7 +947,7 @@ fun HomeScreenTvPreview() {
         )
     )
 
-    LaTorrentolaTheme {
+    LaTorrentolaTheme(dynamicColor = false) {
         HomeScreenContent(
             uiState = HomeUiState.Success(sampleMovies),
             topGenres = listOf("Action", "Adventure", "Animation"),
@@ -928,7 +1005,7 @@ fun HomeScreenPreview() {
         )
     )
 
-    LaTorrentolaTheme {
+    LaTorrentolaTheme(dynamicColor = false) {
         HomeScreenContent(
             uiState = HomeUiState.Success(sampleMovies),
             topGenres = listOf("Action", "Adventure", "Animation"),
