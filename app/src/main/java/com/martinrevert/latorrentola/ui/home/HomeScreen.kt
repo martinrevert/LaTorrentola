@@ -7,6 +7,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import android.content.Intent
 import android.content.res.Configuration
 import androidx.compose.foundation.background
@@ -574,9 +577,13 @@ fun GenreBottomSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 sortedGenres.forEach { genre ->
+                    val interactionSource = remember { MutableInteractionSource() }
+                    val isFocused by interactionSource.collectIsFocusedAsState()
+
                     InputChip(
                         selected = false,
                         onClick = { onGenreClick(genre) },
+                        interactionSource = interactionSource,
                         label = { 
                             Text(
                                 text = GenreTranslation.getGenreText(genre).asString(),
@@ -585,8 +592,11 @@ fun GenreBottomSheet(
                         },
                         modifier = Modifier
                             .padding(vertical = 4.dp)
-                            .focusable()
-                            .focusHighlight(shape = MaterialTheme.shapes.small)
+                            .border(
+                                width = if (isFocused) 3.dp else 0.dp,
+                                color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                shape = MaterialTheme.shapes.small
+                            )
                     )
                 }
             }
@@ -627,7 +637,9 @@ fun MovieList(
     LazyVerticalGrid(
         columns = columns,
         state = state,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .focusRestorer(),
         contentPadding = contentPadding,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -706,9 +718,13 @@ fun MovieItem(
 
     Box {
         if (isTv) {
+            val interactionSource = remember { MutableInteractionSource() }
+            val isFocused by interactionSource.collectIsFocusedAsState()
+
             Surface(
                 onClick = onToggleSelection ?: onClick,
                 onLongClick = onLongClick,
+                interactionSource = interactionSource,
                 scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
                 shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
                 modifier = Modifier
@@ -719,6 +735,11 @@ fun MovieItem(
                             onFocusRestored()
                         }
                     }
+                    .border(
+                        width = if (isFocused) 4.dp else 0.dp,
+                        color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                        shape = MaterialTheme.shapes.medium
+                    )
             ) {
                 Column {
                     Box {
