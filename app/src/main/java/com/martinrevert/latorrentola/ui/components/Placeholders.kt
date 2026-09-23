@@ -121,7 +121,9 @@ fun MovieItemPlaceholder(isTv: Boolean) {
 }
 
 @Composable
-fun MovieListPlaceholder() {
+fun MovieListPlaceholder(
+    contentPadding: PaddingValues = PaddingValues(16.dp)
+) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
     val configuration = LocalConfiguration.current
@@ -137,7 +139,7 @@ fun MovieListPlaceholder() {
     LazyVerticalGrid(
         columns = columns,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = contentPadding,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         userScrollEnabled = false

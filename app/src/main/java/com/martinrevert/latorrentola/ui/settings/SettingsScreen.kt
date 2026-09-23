@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.ui.settings
 
 import androidx.compose.foundation.clickable
 import android.content.res.Configuration
+import android.os.Build
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -21,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -33,6 +35,11 @@ import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.platform.LocalInspectionMode
+import dev.chrisbanes.haze.rememberHazeState
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.glass.hazeGlass
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.tv.material3.Button
 
@@ -89,11 +96,21 @@ private fun SettingsScreenContent(
     val configuration = LocalConfiguration.current
     val isWideScreen = configuration.screenWidthDp >= 600 || isTv
     val scrollState = rememberScrollState()
+    val hazeState = rememberHazeState()
+    val isInspection = LocalInspectionMode.current
+    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+    val topBarContainerColor = if (isPreAndroid12) {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+    } else {
+        Color.Transparent
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
+                modifier = Modifier.hazeGlass(input = HazeInput.Sources(hazeState)),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
                 title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
                     IconButton(
@@ -107,13 +124,26 @@ private fun SettingsScreenContent(
             )
         }
     ) { padding ->
+        val unusedPadding = padding
+        val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .hazeSource(state = hazeState)
+                .consumeWindowInsets(unusedPadding)
+        ) {
         if (isWideScreen) {
             Row(
                 modifier = Modifier
-                    .padding(padding)
-                    .consumeWindowInsets(padding)
                     .fillMaxSize()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                    .padding(
+                        top = 64.dp + statusBarHeight + 16.dp,
+                        bottom = 16.dp + navBarHeight,
+                        start = 24.dp,
+                        end = 24.dp
+                    ),
                 horizontalArrangement = Arrangement.spacedBy(48.dp)
             ) {
                 // Left Column: User, Theme, Actions
@@ -196,12 +226,15 @@ private fun SettingsScreenContent(
         } else {
             Column(
                 modifier = Modifier
-                    .padding(padding)
-                    .consumeWindowInsets(padding)
                     .fillMaxSize()
                     .verticalScroll(scrollState)
                     .imePadding()
-                    .padding(16.dp),
+                    .padding(
+                        top = 64.dp + statusBarHeight + 16.dp,
+                        bottom = 16.dp + navBarHeight,
+                        start = 16.dp,
+                        end = 16.dp
+                    ),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 if (userPhotoUrl != null || userName != null) {
@@ -275,6 +308,7 @@ private fun SettingsScreenContent(
             }
         }
     }
+}
 }
 
 @Composable

@@ -39,6 +39,7 @@ firebaseMessaging = "24.1.2"
 youtubePlayer = "13.0.0"
 compose_material = "1.12.1"
 jacoco = "0.8.15"
+haze = "2.0.0"
 
 [libraries]
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
@@ -87,6 +88,10 @@ youtube-player = { group = "com.pierfrancescosoffritti.androidyoutubeplayer", na
 androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.ref = "tv-material" }
 androidx-tv-foundation = { group = "androidx.tv", name = "tv-foundation", version.ref = "tv-foundation" }
 androidx-compose-material = { group = "androidx.compose.material", name = "material", version.ref = "compose_material" }
+haze = { group = "dev.chrisbanes.haze", name = "haze", version.ref = "haze" }
+haze-blur = { group = "dev.chrisbanes.haze", name = "haze-blur", version.ref = "haze" }
+haze-glass = { group = "dev.chrisbanes.haze", name = "haze-glass", version.ref = "haze" }
+haze-blur-materials = { group = "dev.chrisbanes.haze", name = "haze-blur-materials", version.ref = "haze" }
 
 # Testing
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }

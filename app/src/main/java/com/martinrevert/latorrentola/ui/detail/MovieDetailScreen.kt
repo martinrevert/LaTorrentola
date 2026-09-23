@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola.ui.detail
 import android.content.Intent
 import android.content.res.Configuration
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.net.toUri
 import android.view.ViewGroup
 import android.widget.Toast
@@ -38,6 +39,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalInspectionMode
+import dev.chrisbanes.haze.rememberHazeState
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.glass.hazeGlass
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import coil3.compose.AsyncImage
 import androidx.compose.ui.viewinterop.AndroidView
@@ -128,10 +134,21 @@ private fun MovieDetailScreenContent(
     onTorrentClick: (Movie, Torrent) -> Unit,
     onAddLanguageToFilter: (String) -> Unit
 ) {
+    val hazeState = rememberHazeState()
+    val isInspection = LocalInspectionMode.current
+    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+    val topBarContainerColor = if (isPreAndroid12) {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+    } else {
+        Color.Transparent
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
+                modifier = Modifier.hazeGlass(input = HazeInput.Sources(hazeState)),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
                 title = { Text((uiState as? DetailUiState.Success)?.movie?.title ?: stringResource(R.string.details_title)) },
                 navigationIcon = {
                     IconButton(
@@ -167,11 +184,12 @@ private fun MovieDetailScreenContent(
             )
         }
     ) { padding ->
+        val unusedPadding = padding
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .consumeWindowInsets(padding),
+                .hazeSource(state = hazeState)
+                .consumeWindowInsets(unusedPadding),
             contentAlignment = Alignment.TopCenter
         ) {
             when (val state = uiState) {
@@ -189,7 +207,9 @@ private fun MovieDetailScreenContent(
                     )
                 }
                 is DetailUiState.Error -> {
-                    Text(text = state.message.asString())
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(text = state.message.asString())
+                    }
                 }
             }
         }
@@ -206,11 +226,19 @@ fun MovieDetailContent(
     onTorrentClick: (Torrent) -> Unit,
     onAddLanguageToFilter: (String) -> Unit
 ) {
+    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(
+                top = 64.dp + statusBarHeight + 16.dp,
+                bottom = 16.dp + navBarHeight,
+                start = 16.dp,
+                end = 16.dp
+            )
     ) {
         if (isWideScreen && !movie.ytTrailerCode.isNullOrEmpty()) {
             // Wide Layout: Side-by-side Video and Summary

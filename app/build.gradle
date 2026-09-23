@@ -234,6 +234,12 @@ dependencies {
     // YouTube Player
     implementation libs.youtube.player
 
+    // Haze 2.0 Visual Effects
+    implementation libs.haze
+    implementation libs.haze.blur
+    implementation libs.haze.glass
+    implementation libs.haze.blur.materials
+
     // Testing
     testImplementation libs.junit
     testImplementation libs.mockk

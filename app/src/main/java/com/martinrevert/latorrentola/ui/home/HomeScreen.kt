@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -64,6 +65,11 @@ import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.rememberHazeState
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.glass.hazeGlass
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, ExperimentalTvMaterial3Api::class)
 @Composable
@@ -150,117 +156,139 @@ private fun HomeScreenContent(
     // 1. Properly save and restore scroll state across configuration changes (rotation)
     val gridState = rememberLazyGridState()
 
+    val hazeState = rememberHazeState()
+    val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    val isInspection = LocalInspectionMode.current
+    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+    val topBarContainerColor = if (isPreAndroid12) {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+    } else {
+        Color.Transparent
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_launcher_foreground),
-                            contentDescription = null,
-                            modifier = Modifier.size(32.dp),
-                            tint = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color.White else Color.Black
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = stringResource(R.string.app_name),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = onSearchClick,
-                        modifier = Modifier.focusHighlight(shape = CircleShape)
-                    ) {
-                        Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search_desc))
-                    }
-                    BadgedBox(
-                        badge = {
-                            if (favoritesCount > 0) {
-                                Badge(
-                                    containerColor = Color(0xFFB3261E), // Use same vibrant red in both modes
-                                    contentColor = Color.White
-                                ) {
-                                    Text(
-                                        text = if (favoritesCount > 99) "99+" else favoritesCount.toString(),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        modifier = Modifier.padding(horizontal = 4.dp)
-                                    )
-                                }
-                            }
-                        },
-                        modifier = Modifier.padding(end = 4.dp, top = 4.dp)
-                    ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .hazeGlass(input = HazeInput.Sources(hazeState))
+                    .background(topBarContainerColor)
+            ) {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_launcher_foreground),
+                                contentDescription = null,
+                                modifier = Modifier.size(32.dp),
+                                tint = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color.White else Color.Black
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = stringResource(R.string.app_name),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    },
+                    actions = {
                         IconButton(
-                            onClick = onFavoritesClick,
+                            onClick = onSearchClick,
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
-                            Icon(Icons.Default.Favorite, contentDescription = stringResource(R.string.favorites_desc))
+                            Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search_desc))
+                        }
+                        BadgedBox(
+                            badge = {
+                                if (favoritesCount > 0) {
+                                    Badge(
+                                        containerColor = Color(0xFFB3261E), // Use same vibrant red in both modes
+                                        contentColor = Color.White
+                                    ) {
+                                        Text(
+                                            text = if (favoritesCount > 99) "99+" else favoritesCount.toString(),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White,
+                                            maxLines = 1,
+                                            modifier = Modifier.padding(horizontal = 4.dp)
+                                        )
+                                    }
+                                }
+                            },
+                            modifier = Modifier.padding(end = 4.dp, top = 4.dp)
+                        ) {
+                            IconButton(
+                                onClick = onFavoritesClick,
+                                modifier = Modifier.focusHighlight(shape = CircleShape)
+                            ) {
+                                Icon(Icons.Default.Favorite, contentDescription = stringResource(R.string.favorites_desc))
+                            }
+                        }
+                        IconButton(
+                            onClick = onSettingsClick,
+                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                        ) {
+                            if (userPhotoUrl != null) {
+                                AsyncImage(
+                                    model = userPhotoUrl,
+                                    contentDescription = stringResource(R.string.user_profile_desc),
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_desc))
+                            }
                         }
                     }
-                    IconButton(
-                        onClick = onSettingsClick,
-                        modifier = Modifier.focusHighlight(shape = CircleShape)
-                    ) {
-                        if (userPhotoUrl != null) {
-                            AsyncImage(
-                                model = userPhotoUrl,
-                                contentDescription = stringResource(R.string.user_profile_desc),
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(CircleShape),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_desc))
-                        }
-                    }
-                }
-            )
+                )
+
+                GenreChips(
+                    genres = topGenres,
+                    onGenreClick = onGenreClick,
+                    onAllGenresClick = { showGenreSheet = true }
+                )
+
+                QualityChips(
+                    options = qualityOptions,
+                    selectedQuality = selectedQuality ?: "All",
+                    onQualityClick = onQualityClick
+                )
+            }
         }
     ) { padding ->
-        Column(
+        val customContentPadding = PaddingValues(
+            top = padding.calculateTopPadding(),
+            start = 16.dp,
+            end = 16.dp,
+            bottom = 16.dp + navBarHeight
+        )
+
+        Box(
             modifier = Modifier
-                .padding(padding)
-                .consumeWindowInsets(padding)
+                .fillMaxSize()
+                .hazeSource(state = hazeState)
         ) {
-            GenreChips(
-                genres = topGenres,
-                onGenreClick = onGenreClick,
-                onAllGenresClick = { showGenreSheet = true }
-            )
-
-            QualityChips(
-                options = qualityOptions,
-                selectedQuality = selectedQuality ?: "All",
-                onQualityClick = onQualityClick
-            )
-
             if (isTv) {
                 // TV Layout: No pull-to-refresh
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    HomeContent(
-                        uiState = uiState,
-                        gridState = gridState,
-                        lastVisitDate = lastVisitDate,
-                        downloadedMovieIds = downloadedMovieIds,
-                        isLoadingMore = isLoadingMore,
-                        onMovieClick = {
-                            onSetLastClickedMovieId(it.id)
-                            onMovieClick(it)
-                        },
-                        onLoadMore = onLoadMore,
-                        lastClickedMovieId = lastClickedMovieId,
-                        onFocusRestored = onFocusRestored
-                    )
-                }
+                HomeContent(
+                    uiState = uiState,
+                    gridState = gridState,
+                    lastVisitDate = lastVisitDate,
+                    downloadedMovieIds = downloadedMovieIds,
+                    isLoadingMore = isLoadingMore,
+                    onMovieClick = {
+                        onSetLastClickedMovieId(it.id)
+                        onMovieClick(it)
+                    },
+                    onLoadMore = onLoadMore,
+                    lastClickedMovieId = lastClickedMovieId,
+                    onFocusRestored = onFocusRestored,
+                    contentPadding = customContentPadding
+                )
             } else {
                 // Handheld Layout: With pull-to-refresh
                 val scope = rememberCoroutineScope()
@@ -273,8 +301,7 @@ private fun HomeScreenContent(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pullRefresh(pullRefreshState),
-                    contentAlignment = Alignment.Center
+                        .pullRefresh(pullRefreshState)
                 ) {
                     HomeContent(
                         uiState = uiState,
@@ -288,10 +315,17 @@ private fun HomeScreenContent(
                         },
                         onLoadMore = onLoadMore,
                         lastClickedMovieId = lastClickedMovieId,
-                        onFocusRestored = onFocusRestored
+                        onFocusRestored = onFocusRestored,
+                        contentPadding = customContentPadding
                     )
                     // Pull-to-refresh indicator (official Compose implementation)
-                    PullRefreshIndicator(isRefreshing, pullRefreshState, Modifier.align(Alignment.TopCenter))
+                    PullRefreshIndicator(
+                        refreshing = isRefreshing,
+                        state = pullRefreshState,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = padding.calculateTopPadding())
+                    )
                 }
             }
         }
@@ -305,7 +339,8 @@ private fun HomeScreenContent(
                 showGenreSheet = false
             },
             onDismiss = { showGenreSheet = false },
-            sheetState = sheetState
+            sheetState = sheetState,
+            hazeState = hazeState
         )
     }
 }
@@ -320,11 +355,12 @@ private fun HomeContent(
     onMovieClick: (Movie) -> Unit,
     onLoadMore: () -> Unit,
     lastClickedMovieId: Int? = null,
-    onFocusRestored: () -> Unit = {}
+    onFocusRestored: () -> Unit = {},
+    contentPadding: PaddingValues = PaddingValues(16.dp)
 ) {
     when (uiState) {
         is HomeUiState.Loading -> {
-            MovieListPlaceholder()
+            MovieListPlaceholder(contentPadding = contentPadding)
         }
         is HomeUiState.Success -> {
             MovieList(
@@ -336,7 +372,8 @@ private fun HomeContent(
                 onMovieClick = onMovieClick,
                 onLoadMore = onLoadMore,
                 initialFocusId = lastClickedMovieId,
-                onFocusRestored = onFocusRestored
+                onFocusRestored = onFocusRestored,
+                contentPadding = contentPadding
             )
         }
         is HomeUiState.Error -> {
@@ -479,16 +516,26 @@ fun GenreBottomSheet(
     genres: List<String>,
     onGenreClick: (String) -> Unit,
     onDismiss: () -> Unit,
-    sheetState: SheetState
+    sheetState: SheetState,
+    hazeState: HazeState
 ) {
     val context = LocalContext.current
     val sortedGenres = remember(genres) {
         genres.sortedBy { GenreTranslation.getGenreText(it).asString(context) }
     }
+    val isInspection = LocalInspectionMode.current
+    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+    val sheetContainerColor = if (isPreAndroid12) {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+    } else {
+        Color.Transparent
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = sheetState
+        sheetState = sheetState,
+        containerColor = sheetContainerColor,
+        modifier = Modifier.hazeGlass(input = HazeInput.Sources(hazeState))
     ) {
         Column(
             modifier = Modifier
@@ -540,7 +587,8 @@ fun MovieList(
     onLongClick: ((Int) -> Unit)? = null,
     onToggleSelection: ((Int) -> Unit)? = null,
     initialFocusId: Int? = null,
-    onFocusRestored: () -> Unit = {}
+    onFocusRestored: () -> Unit = {},
+    contentPadding: PaddingValues = PaddingValues(16.dp)
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
@@ -559,7 +607,7 @@ fun MovieList(
         columns = columns,
         state = state,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = contentPadding,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {

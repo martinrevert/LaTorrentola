@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola.ui.search
 import android.app.Activity
 import android.content.res.Configuration
 import android.content.Intent
+import android.os.Build
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -46,6 +48,11 @@ import com.martinrevert.latorrentola.utils.isTvDevice
 import com.martinrevert.latorrentola.utils.UiText
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.platform.LocalInspectionMode
+import dev.chrisbanes.haze.rememberHazeState
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.glass.hazeGlass
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -204,11 +211,21 @@ private fun SearchScreenContent(
 ) {
     val focusManager = LocalFocusManager.current
     val gridState = rememberLazyGridState()
+    val hazeState = rememberHazeState()
+    val isInspection = LocalInspectionMode.current
+    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+    val topBarContainerColor = if (isPreAndroid12) {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+    } else {
+        Color.Transparent
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
+                modifier = Modifier.hazeGlass(input = HazeInput.Sources(hazeState)),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
                 title = {
                     if (isShowingFavorites) {
                         if (selectedFavoriteIds.isNotEmpty()) {
@@ -273,58 +290,69 @@ private fun SearchScreenContent(
             )
         }
     ) { padding ->
-        Column(
+        Box(
             modifier = Modifier
-                .padding(padding)
-                .consumeWindowInsets(padding)
+                .fillMaxSize()
+                .hazeSource(state = hazeState)
         ) {
-            Spacer(modifier = Modifier.height(8.dp))
-            QualityChips(
-                options = qualityOptions,
-                selectedQuality = selectedQuality ?: "All",
-                onQualityClick = onQualityClick
-            )
-            HorizontalDivider(
-                modifier = Modifier.padding(top = 8.dp),
-                thickness = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-            )
-
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                when (val state = uiState) {
-                        is SearchUiState.Idle -> {
-                            Text(text = stringResource(R.string.start_searching))
-                        }
-                        is SearchUiState.Loading -> {
-                            MovieListPlaceholder()
-                        }
-                        is SearchUiState.Success -> {
-                            MovieList(
-                                movies = state.movies,
-                                state = gridState,
-                                downloadedMovieIds = downloadedMovieIds,
-                                selectedIds = selectedFavoriteIds,
-                                isLoadingMore = isLoadingMore,
-                                onMovieClick = onMovieClick,
-                                onLongClick = if (state.isFavorites) onLongClick else null,
-                                onLoadMore = { if (!state.isFavorites && !state.isDownloads && !state.isNew) onLoadMore() },
-                                initialFocusId = lastClickedMovieId,
-                                onFocusRestored = onFocusRestored
-                            )
-                        }
-                        is SearchUiState.Empty -> {
-                            Text(text = stringResource(R.string.no_results))
-                        }
-                        is SearchUiState.Error -> {
-                            Text(text = state.message.asString())
-                        }
+            when (val state = uiState) {
+                is SearchUiState.Idle -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(text = stringResource(R.string.start_searching))
                     }
                 }
+                is SearchUiState.Loading -> {
+                    MovieListPlaceholder(contentPadding = padding)
+                }
+                is SearchUiState.Success -> {
+                    MovieList(
+                        movies = state.movies,
+                        state = gridState,
+                        downloadedMovieIds = downloadedMovieIds,
+                        selectedIds = selectedFavoriteIds,
+                        isLoadingMore = isLoadingMore,
+                        onMovieClick = onMovieClick,
+                        onLongClick = if (state.isFavorites) onLongClick else null,
+                        onLoadMore = { if (!state.isFavorites && !state.isDownloads && !state.isNew) onLoadMore() },
+                        initialFocusId = lastClickedMovieId,
+                        onFocusRestored = onFocusRestored,
+                        contentPadding = PaddingValues(
+                            top = padding.calculateTopPadding() + 64.dp,
+                            bottom = padding.calculateBottomPadding() + 16.dp,
+                            start = 16.dp,
+                            end = 16.dp
+                        )
+                    )
+                }
+                is SearchUiState.Empty -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(text = stringResource(R.string.no_results))
+                    }
+                }
+                is SearchUiState.Error -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(text = state.message.asString())
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = padding.calculateTopPadding())
+            ) {
+                Spacer(modifier = Modifier.height(4.dp))
+                QualityChips(
+                    options = qualityOptions,
+                    selectedQuality = selectedQuality ?: "All",
+                    onQualityClick = onQualityClick
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(top = 4.dp),
+                    thickness = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+            }
         }
     }
 }
