@@ -6,6 +6,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import android.content.Intent
 import android.content.res.Configuration
 import androidx.compose.foundation.background
@@ -156,25 +157,106 @@ private fun HomeScreenContent(
     // 1. Properly save and restore scroll state across configuration changes (rotation)
     val gridState = rememberLazyGridState()
 
-    val hazeState = rememberHazeState()
+    val hazeState = if (!isTv) rememberHazeState() else null
+    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-
-    val isInspection = LocalInspectionMode.current
-    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
-    val topBarContainerColor = if (isPreAndroid12) {
-        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-    } else {
-        Color.Transparent
-    }
+    val customContentPadding = PaddingValues(
+        top = 64.dp + statusBarHeight + 48.dp + 40.dp,
+        start = 16.dp,
+        end = 16.dp,
+        bottom = 16.dp + navBarHeight
+    )
 
     Scaffold(
-        contentWindowInsets = WindowInsets.safeDrawing,
-        topBar = {
-            Column(
+        contentWindowInsets = WindowInsets.safeDrawing
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .consumeWindowInsets(padding)
+        ) {
+            // 1. Full screen scrollable content area with hazeSource
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .hazeGlass(input = HazeInput.Sources(hazeState))
-                    .background(topBarContainerColor)
+                    .fillMaxSize()
+                    .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
+            ) {
+                if (isTv) {
+                    // TV Layout: No pull-to-refresh
+                    HomeContent(
+                        uiState = uiState,
+                        gridState = gridState,
+                        lastVisitDate = lastVisitDate,
+                        downloadedMovieIds = downloadedMovieIds,
+                        isLoadingMore = isLoadingMore,
+                        onMovieClick = {
+                            onSetLastClickedMovieId(it.id)
+                            onMovieClick(it)
+                        },
+                        onLoadMore = onLoadMore,
+                        lastClickedMovieId = lastClickedMovieId,
+                        onFocusRestored = onFocusRestored,
+                        contentPadding = customContentPadding
+                    )
+                } else {
+                    // Handheld Layout: With pull-to-refresh
+                    val scope = rememberCoroutineScope()
+                    val pullRefreshState = rememberPullRefreshState(isRefreshing, onRefresh = {
+                        onSetLastClickedMovieId(null)
+                        onRefresh(true)
+                        scope.launch { gridState.scrollToItem(0) }
+                    })
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pullRefresh(pullRefreshState)
+                    ) {
+                        HomeContent(
+                            uiState = uiState,
+                            gridState = gridState,
+                            lastVisitDate = lastVisitDate,
+                            downloadedMovieIds = downloadedMovieIds,
+                            isLoadingMore = isLoadingMore,
+                            onMovieClick = {
+                                onSetLastClickedMovieId(it.id)
+                                onMovieClick(it)
+                            },
+                            onLoadMore = onLoadMore,
+                            lastClickedMovieId = lastClickedMovieId,
+                            onFocusRestored = onFocusRestored,
+                            contentPadding = customContentPadding
+                        )
+                        // Pull-to-refresh indicator (official Compose implementation)
+                        PullRefreshIndicator(
+                            refreshing = isRefreshing,
+                            state = pullRefreshState,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 64.dp + statusBarHeight + 48.dp + 40.dp)
+                        )
+                    }
+                }
+            }
+
+            // 2. Fixed top bar and chips layered on top with Haze glass blur effect on the entire header
+            val isInspection = LocalInspectionMode.current
+            val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+            val topBarContainerColor = if (isPreAndroid12) {
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+            } else {
+                Color.Transparent
+            }
+
+            val headerModifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .then(if (hazeState != null) Modifier.hazeGlass(input = HazeInput.Sources(hazeState)) else Modifier)
+                .background(topBarContainerColor)
+
+            Column(
+                modifier = headerModifier
             ) {
                 TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -257,76 +339,6 @@ private fun HomeScreenContent(
                     selectedQuality = selectedQuality ?: "All",
                     onQualityClick = onQualityClick
                 )
-            }
-        }
-    ) { padding ->
-        val customContentPadding = PaddingValues(
-            top = padding.calculateTopPadding(),
-            start = 16.dp,
-            end = 16.dp,
-            bottom = 16.dp + navBarHeight
-        )
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .hazeSource(state = hazeState)
-        ) {
-            if (isTv) {
-                // TV Layout: No pull-to-refresh
-                HomeContent(
-                    uiState = uiState,
-                    gridState = gridState,
-                    lastVisitDate = lastVisitDate,
-                    downloadedMovieIds = downloadedMovieIds,
-                    isLoadingMore = isLoadingMore,
-                    onMovieClick = {
-                        onSetLastClickedMovieId(it.id)
-                        onMovieClick(it)
-                    },
-                    onLoadMore = onLoadMore,
-                    lastClickedMovieId = lastClickedMovieId,
-                    onFocusRestored = onFocusRestored,
-                    contentPadding = customContentPadding
-                )
-            } else {
-                // Handheld Layout: With pull-to-refresh
-                val scope = rememberCoroutineScope()
-                val pullRefreshState = rememberPullRefreshState(isRefreshing, onRefresh = {
-                    onSetLastClickedMovieId(null)
-                    onRefresh(true)
-                    scope.launch { gridState.scrollToItem(0) }
-                })
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pullRefresh(pullRefreshState)
-                ) {
-                    HomeContent(
-                        uiState = uiState,
-                        gridState = gridState,
-                        lastVisitDate = lastVisitDate,
-                        downloadedMovieIds = downloadedMovieIds,
-                        isLoadingMore = isLoadingMore,
-                        onMovieClick = {
-                            onSetLastClickedMovieId(it.id)
-                            onMovieClick(it)
-                        },
-                        onLoadMore = onLoadMore,
-                        lastClickedMovieId = lastClickedMovieId,
-                        onFocusRestored = onFocusRestored,
-                        contentPadding = customContentPadding
-                    )
-                    // Pull-to-refresh indicator (official Compose implementation)
-                    PullRefreshIndicator(
-                        refreshing = isRefreshing,
-                        state = pullRefreshState,
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = padding.calculateTopPadding())
-                    )
-                }
             }
         }
     }
@@ -517,7 +529,7 @@ fun GenreBottomSheet(
     onGenreClick: (String) -> Unit,
     onDismiss: () -> Unit,
     sheetState: SheetState,
-    hazeState: HazeState
+    hazeState: HazeState?
 ) {
     val context = LocalContext.current
     val sortedGenres = remember(genres) {
@@ -531,11 +543,17 @@ fun GenreBottomSheet(
         Color.Transparent
     }
 
+    val sheetModifier = if (hazeState != null) {
+        Modifier.hazeGlass(input = HazeInput.Sources(hazeState))
+    } else {
+        Modifier
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = sheetContainerColor,
-        modifier = Modifier.hazeGlass(input = HazeInput.Sources(hazeState))
+        modifier = sheetModifier
     ) {
         Column(
             modifier = Modifier
@@ -565,7 +583,10 @@ fun GenreBottomSheet(
                                 color = MaterialTheme.colorScheme.onSurface
                             ) 
                         },
-                        modifier = Modifier.padding(vertical = 4.dp)
+                        modifier = Modifier
+                            .padding(vertical = 4.dp)
+                            .focusable()
+                            .focusHighlight(shape = MaterialTheme.shapes.small)
                     )
                 }
             }
