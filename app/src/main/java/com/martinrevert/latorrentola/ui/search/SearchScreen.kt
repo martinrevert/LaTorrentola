@@ -18,6 +18,10 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.EaseInOutCubic
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -222,13 +226,34 @@ private fun SearchScreenContent(
         Color.Transparent
     }
 
+    val isScrolled by remember {
+        derivedStateOf {
+            gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 10
+        }
+    }
+
+    val hazeAlpha by animateFloatAsState(
+        targetValue = if (isScrolled) 0.15f else 1f,
+        animationSpec = tween(
+            durationMillis = 600,
+            easing = EaseInOutCubic
+        ),
+        label = "hazeAlpha"
+    )
+
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
                 modifier = Modifier
                     .focusProperties { down = qualityChipsFocusRequester }
-                    .then(if (hazeState != null) Modifier.hazeGlass(input = HazeInput.Sources(hazeState)) else Modifier),
+                    .then(
+                        if (hazeState != null) {
+                            Modifier
+                                .graphicsLayer { alpha = hazeAlpha }
+                                .hazeGlass(input = HazeInput.Sources(hazeState))
+                        } else Modifier
+                    ),
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
                 title = {
                     if (isShowingFavorites) {
@@ -294,6 +319,13 @@ private fun SearchScreenContent(
             )
         }
     ) { padding ->
+        val searchContentPadding = PaddingValues(
+            top = padding.calculateTopPadding() + 64.dp,
+            bottom = padding.calculateBottomPadding() + 16.dp,
+            start = 16.dp,
+            end = 16.dp
+        )
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -306,7 +338,7 @@ private fun SearchScreenContent(
                     }
                 }
                 is SearchUiState.Loading -> {
-                    MovieListPlaceholder(contentPadding = padding)
+                    MovieListPlaceholder(contentPadding = searchContentPadding)
                 }
                 is SearchUiState.Success -> {
                     MovieList(
@@ -320,12 +352,7 @@ private fun SearchScreenContent(
                         onLoadMore = { if (!state.isFavorites && !state.isDownloads && !state.isNew) onLoadMore() },
                         initialFocusId = lastClickedMovieId,
                         onFocusRestored = onFocusRestored,
-                        contentPadding = PaddingValues(
-                            top = padding.calculateTopPadding() + 64.dp,
-                            bottom = padding.calculateBottomPadding() + 16.dp,
-                            start = 16.dp,
-                            end = 16.dp
-                        )
+                        contentPadding = searchContentPadding
                     )
                 }
                 is SearchUiState.Empty -> {
@@ -344,6 +371,13 @@ private fun SearchScreenContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = padding.calculateTopPadding())
+                    .then(
+                        if (hazeState != null) {
+                            Modifier
+                                .graphicsLayer { alpha = hazeAlpha }
+                                .hazeGlass(input = HazeInput.Sources(hazeState))
+                        } else Modifier
+                    )
             ) {
                 Spacer(modifier = Modifier.height(4.dp))
                 QualityChips(

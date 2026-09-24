@@ -364,3 +364,5 @@ keystore.properties
 /.android-studio/skills/camera/camerax/references/wear-os.md
 /.android-studio/skills/jetpack-compose/migration/migrate-xml-views-to-jetpack-compose/references/xml-layout-migration.md
 /.android-studio/skills/camera/camerax/references/xr.md
+/.kotlin/
+

@@ -29,6 +29,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.EaseInOutCubic
+import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -176,11 +180,30 @@ private fun HomeScreenContent(
 
     val hazeState = if (!isTv) rememberHazeState() else null
 
+    val isScrolled by remember {
+        derivedStateOf {
+            gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 10
+        }
+    }
+
+    val hazeAlpha by animateFloatAsState(
+        targetValue = if (isScrolled) 0.15f else 1f,
+        animationSpec = tween(
+            durationMillis = 600,
+            easing = EaseInOutCubic
+        ),
+        label = "hazeAlpha"
+    )
+
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
-                modifier = if (hazeState != null) Modifier.hazeGlass(input = HazeInput.Sources(hazeState)) else Modifier,
+                modifier = if (hazeState != null) {
+                    Modifier
+                        .graphicsLayer { alpha = hazeAlpha }
+                        .hazeGlass(input = HazeInput.Sources(hazeState))
+                } else Modifier,
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -327,7 +350,7 @@ private fun HomeScreenContent(
                         lastClickedMovieId = lastClickedMovieId,
                         onFocusRestored = onFocusRestored,
                         contentPadding = PaddingValues(
-                            top = padding.calculateTopPadding() + 96.dp,
+                            top = padding.calculateTopPadding() + 112.dp,
                             bottom = navBarHeight + 16.dp,
                             start = 16.dp,
                             end = 16.dp
@@ -338,6 +361,13 @@ private fun HomeScreenContent(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = padding.calculateTopPadding())
+                            .then(
+                                if (hazeState != null) {
+                                    Modifier
+                                        .graphicsLayer { alpha = hazeAlpha }
+                                        .hazeGlass(input = HazeInput.Sources(hazeState))
+                                } else Modifier
+                            )
                     ) {
                         GenreChips(
                             genres = topGenres,
@@ -357,7 +387,7 @@ private fun HomeScreenContent(
                         state = pullRefreshState,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .padding(top = padding.calculateTopPadding() + 96.dp)
+                            .padding(top = padding.calculateTopPadding() + 112.dp)
                     )
                 }
             }
