@@ -66,6 +66,11 @@ import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.components.MovieItemPlaceholder
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
+import com.martinrevert.latorrentola.ui.components.TvChip
+import com.martinrevert.latorrentola.ui.components.QualityChips
+import com.martinrevert.latorrentola.ui.components.GenreChips
+import com.martinrevert.latorrentola.ui.components.MovieItem
+import com.martinrevert.latorrentola.ui.components.MovieList
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.GenreTranslation
@@ -161,32 +166,113 @@ private fun HomeScreenContent(
     // 1. Properly save and restore scroll state across configuration changes (rotation)
     val gridState = rememberLazyGridState()
 
-    val genreChipsFocusRequester = remember { FocusRequester() }
-    val qualityChipsFocusRequester = remember { FocusRequester() }
-    val movieListFocusRequester = remember { FocusRequester() }
+    val isInspection = LocalInspectionMode.current
+    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+    val topBarContainerColor = if (isPreAndroid12) {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+    } else {
+        Color.Transparent
+    }
 
     val hazeState = if (!isTv) rememberHazeState() else null
-    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val customContentPadding = PaddingValues(
-        top = 64.dp + statusBarHeight + 48.dp + 40.dp,
-        start = 16.dp,
-        end = 16.dp,
-        bottom = 16.dp + navBarHeight
-    )
 
     Scaffold(
-        contentWindowInsets = WindowInsets.safeDrawing
+        contentWindowInsets = WindowInsets.safeDrawing,
+        topBar = {
+            TopAppBar(
+                modifier = if (hazeState != null) Modifier.hazeGlass(input = HazeInput.Sources(hazeState)) else Modifier,
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_launcher_foreground),
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp),
+                            tint = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color.White else Color.Black
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(R.string.app_name),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = onSearchClick,
+                        modifier = Modifier.focusHighlight(shape = CircleShape)
+                    ) {
+                        Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search_desc))
+                    }
+                    BadgedBox(
+                        badge = {
+                            if (favoritesCount > 0) {
+                                Badge(
+                                    containerColor = Color(0xFFB3261E), // Use same vibrant red in both modes
+                                    contentColor = Color.White
+                                ) {
+                                    Text(
+                                        text = if (favoritesCount > 99) "99+" else favoritesCount.toString(),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 4.dp)
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier.padding(end = 4.dp, top = 4.dp)
+                    ) {
+                        IconButton(
+                            onClick = onFavoritesClick,
+                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                        ) {
+                            Icon(Icons.Default.Favorite, contentDescription = stringResource(R.string.favorites_desc))
+                        }
+                    }
+                    IconButton(
+                        onClick = onSettingsClick,
+                        modifier = Modifier.focusHighlight(shape = CircleShape)
+                    ) {
+                        if (userPhotoUrl != null) {
+                            AsyncImage(
+                                model = userPhotoUrl,
+                                contentDescription = stringResource(R.string.user_profile_desc),
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_desc))
+                        }
+                    }
+                }
+            )
+        }
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(padding)
                 .consumeWindowInsets(padding)
         ) {
-            // 1. Full screen scrollable content area with hazeSource
+            GenreChips(
+                genres = topGenres,
+                onGenreClick = onGenreClick,
+                onAllGenresClick = { showGenreSheet = true }
+            )
+
+            QualityChips(
+                options = qualityOptions,
+                selectedQuality = selectedQuality ?: "All",
+                onQualityClick = onQualityClick
+            )
+
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
+                    .fillMaxWidth()
                     .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
             ) {
                 if (isTv) {
@@ -203,9 +289,7 @@ private fun HomeScreenContent(
                         },
                         onLoadMore = onLoadMore,
                         lastClickedMovieId = lastClickedMovieId,
-                        onFocusRestored = onFocusRestored,
-                        contentPadding = customContentPadding,
-                        modifier = Modifier.focusRequester(movieListFocusRequester)
+                        onFocusRestored = onFocusRestored
                     )
                 } else {
                     // Handheld Layout: With pull-to-refresh
@@ -233,134 +317,16 @@ private fun HomeScreenContent(
                             },
                             onLoadMore = onLoadMore,
                             lastClickedMovieId = lastClickedMovieId,
-                            onFocusRestored = onFocusRestored,
-                            contentPadding = customContentPadding,
-                            modifier = Modifier.focusRequester(movieListFocusRequester)
+                            onFocusRestored = onFocusRestored
                         )
                         // Pull-to-refresh indicator (official Compose implementation)
                         PullRefreshIndicator(
                             refreshing = isRefreshing,
                             state = pullRefreshState,
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = 64.dp + statusBarHeight + 48.dp + 40.dp)
+                            modifier = Modifier.align(Alignment.TopCenter)
                         )
                     }
                 }
-            }
-
-            // 2. Fixed top bar and chips layered on top with Haze glass blur effect on the entire header
-            val isInspection = LocalInspectionMode.current
-            val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
-            val topBarContainerColor = if (isPreAndroid12) {
-                MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-            } else {
-                Color.Transparent
-            }
-
-            val headerModifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .then(if (hazeState != null) Modifier.hazeGlass(input = HazeInput.Sources(hazeState)) else Modifier)
-                .background(topBarContainerColor)
-
-            Column(
-                modifier = headerModifier
-            ) {
-                TopAppBar(
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-                    windowInsets = WindowInsets.statusBars,
-                    title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_launcher_foreground),
-                                contentDescription = null,
-                                modifier = Modifier.size(32.dp),
-                                tint = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color.White else Color.Black
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = stringResource(R.string.app_name),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    },
-                    actions = {
-                        IconButton(
-                            onClick = onSearchClick,
-                            modifier = Modifier
-                                .focusHighlight(shape = CircleShape)
-                                .focusProperties { down = genreChipsFocusRequester }
-                        ) {
-                            Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search_desc))
-                        }
-                        BadgedBox(
-                            badge = {
-                                if (favoritesCount > 0) {
-                                    Badge(
-                                        containerColor = Color(0xFFB3261E), // Use same vibrant red in both modes
-                                        contentColor = Color.White
-                                    ) {
-                                        Text(
-                                            text = if (favoritesCount > 99) "99+" else favoritesCount.toString(),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color.White,
-                                            maxLines = 1,
-                                            modifier = Modifier.padding(horizontal = 4.dp)
-                                        )
-                                    }
-                                }
-                            },
-                            modifier = Modifier.padding(end = 4.dp, top = 4.dp)
-                        ) {
-                            IconButton(
-                                onClick = onFavoritesClick,
-                                modifier = Modifier
-                                    .focusHighlight(shape = CircleShape)
-                                    .focusProperties { down = genreChipsFocusRequester }
-                            ) {
-                                Icon(Icons.Default.Favorite, contentDescription = stringResource(R.string.favorites_desc))
-                            }
-                        }
-                        IconButton(
-                            onClick = onSettingsClick,
-                            modifier = Modifier
-                                .focusHighlight(shape = CircleShape)
-                                .focusProperties { down = genreChipsFocusRequester }
-                        ) {
-                            if (userPhotoUrl != null) {
-                                AsyncImage(
-                                    model = userPhotoUrl,
-                                    contentDescription = stringResource(R.string.user_profile_desc),
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(CircleShape),
-                                    contentScale = ContentScale.Crop
-                                )
-                            } else {
-                                Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_desc))
-                            }
-                        }
-                    }
-                )
-
-                GenreChips(
-                    genres = topGenres,
-                    onGenreClick = onGenreClick,
-                    onAllGenresClick = { showGenreSheet = true },
-                    modifier = Modifier
-                        .focusRequester(genreChipsFocusRequester)
-                        .focusProperties { down = qualityChipsFocusRequester }
-                )
-
-                QualityChips(
-                    options = qualityOptions,
-                    selectedQuality = selectedQuality ?: "All",
-                    onQualityClick = onQualityClick,
-                    modifier = Modifier
-                        .focusRequester(qualityChipsFocusRequester)
-                        .focusProperties { down = movieListFocusRequester }
-                )
             }
         }
     }
@@ -421,133 +387,6 @@ private fun HomeContent(
     }
 }
 
-@OptIn(ExperimentalComposeUiApi::class)
-@Composable
-fun QualityChips(
-    options: List<String>,
-    selectedQuality: String,
-    onQualityClick: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    LazyRow(
-        modifier = modifier
-            .fillMaxWidth()
-            .focusRestorer()
-            .padding(bottom = 8.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        lazyItems(options) { quality ->
-            val isSelected = selectedQuality == quality
-            FilterChip(
-                selected = isSelected,
-                onClick = { onQualityClick(quality) },
-                label = { 
-                    Text(
-                        text = if (quality == "All") stringResource(R.string.quality_all) else quality,
-                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                    )
-                },
-                modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
-            )
-        }
-    }
-}
-
-@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
-@Composable
-fun GenreChips(
-    genres: List<String>,
-    onGenreClick: (String) -> Unit,
-    onAllGenresClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    LazyRow(
-        modifier = modifier
-            .fillMaxWidth()
-            .focusRestorer()
-            .padding(vertical = 8.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        item {
-            FilterChip(
-                selected = false,
-                onClick = onAllGenresClick,
-                label = { 
-                    Text(
-                        text = stringResource(R.string.all_genres),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                },
-                leadingIcon = { 
-                    Icon(
-                        Icons.Default.FilterList, 
-                        contentDescription = null, 
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    ) 
-                },
-                modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
-            )
-        }
-        item {
-            FilterChip(
-                selected = false,
-                onClick = { onGenreClick("nuevas") },
-                label = { 
-                    Text(
-                        text = stringResource(R.string.new_movies),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                },
-                leadingIcon = { 
-                    Icon(
-                        Icons.Default.NewReleases, 
-                        contentDescription = null, 
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    ) 
-                },
-                modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
-            )
-        }
-        item {
-            FilterChip(
-                selected = false,
-                onClick = { onGenreClick("ya_vistas") },
-                label = { 
-                    Text(
-                        text = stringResource(R.string.already_seen),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                },
-                leadingIcon = { 
-                    Icon(
-                        Icons.Default.History, 
-                        contentDescription = null, 
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    ) 
-                },
-                modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
-            )
-        }
-        lazyItems(genres) { genre ->
-            SuggestionChip(
-                onClick = { onGenreClick(genre) },
-                label = { 
-                    Text(
-                        text = GenreTranslation.getGenreText(genre).asString(),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                },
-                modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
-            )
-        }
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun GenreBottomSheet(
@@ -600,440 +439,14 @@ fun GenreBottomSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 sortedGenres.forEach { genre ->
-                    val interactionSource = remember { MutableInteractionSource() }
-                    val isFocused by interactionSource.collectIsFocusedAsState()
-
-                    InputChip(
+                    TvChip(
                         selected = false,
                         onClick = { onGenreClick(genre) },
-                        interactionSource = interactionSource,
-                        label = { 
-                            Text(
-                                text = GenreTranslation.getGenreText(genre).asString(),
-                                color = MaterialTheme.colorScheme.onSurface
-                            ) 
-                        },
-                        modifier = Modifier
-                            .padding(vertical = 4.dp)
-                            .border(
-                                width = if (isFocused) 3.dp else 0.dp,
-                                color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                shape = MaterialTheme.shapes.small
-                            )
+                        label = { Text(GenreTranslation.getGenreText(genre).asString()) }
                     )
                 }
             }
             Spacer(modifier = Modifier.height(32.dp))
-        }
-    }
-}
-
-@Composable
-fun MovieList(
-    movies: List<Movie>,
-    state: LazyGridState,
-    modifier: Modifier = Modifier,
-    lastVisitDate: Long? = null,
-    downloadedMovieIds: Set<Int> = emptySet(),
-    selectedIds: Set<Int> = emptySet(),
-    isLoadingMore: Boolean = false,
-    onMovieClick: (Movie) -> Unit,
-    onLoadMore: () -> Unit,
-    onLongClick: ((Int) -> Unit)? = null,
-    onToggleSelection: ((Int) -> Unit)? = null,
-    initialFocusId: Int? = null,
-    onFocusRestored: () -> Unit = {},
-    contentPadding: PaddingValues = PaddingValues(16.dp)
-) {
-    val context = LocalContext.current
-    val isTv = remember(context) { context.isTvDevice() }
-
-    val configuration = LocalConfiguration.current
-    val screenWidth = configuration.screenWidthDp.dp
-    
-    val columns = when {
-        isTv -> GridCells.Fixed(6) // Enforce exactly 6 columns on TV devices
-        screenWidth < 600.dp -> GridCells.Fixed(2)
-        screenWidth < 900.dp -> GridCells.Adaptive(minSize = 160.dp)
-        else -> GridCells.Adaptive(minSize = 200.dp) 
-    }
-
-    LazyVerticalGrid(
-        columns = columns,
-        state = state,
-        modifier = modifier
-            .fillMaxSize()
-            .focusRestorer(),
-        contentPadding = contentPadding,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        items(movies, key = { it.id }) { movie ->
-            MovieItem(
-                movie = movie, 
-                lastVisitDate = lastVisitDate,
-                isDownloaded = downloadedMovieIds.contains(movie.id),
-                isSelected = selectedIds.contains(movie.id),
-                onClick = { onMovieClick(movie) },
-                onLongClick = onLongClick?.let { { it(movie.id) } },
-                onToggleSelection = onToggleSelection?.let { { it(movie.id) } },
-                shouldRequestFocus = movie.id == initialFocusId,
-                onFocusRestored = onFocusRestored
-            )
-        }
-        if (isLoadingMore) {
-            items(6, key = { "placeholder_$it" }) {
-                MovieItemPlaceholder(isTv = isTv)
-            }
-        }
-        item(key = "load_more_indicator") {
-            Box(modifier = Modifier.size(48.dp)) {
-                LaunchedEffect(Unit) {
-                    onLoadMore()
-                }
-            }
-        }
-    }
-
-    // Focus restoration scroll: only run when initialFocusId changes
-    LaunchedEffect(initialFocusId) {
-        if (initialFocusId != null) {
-            // Give time for list to be fully populated and measured
-            snapshotFlow { movies }.first { list -> list.any { it.id == initialFocusId } }
-            val index = movies.indexOfFirst { it.id == initialFocusId }
-            if (index != -1) {
-                state.scrollToItem(index)
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-fun MovieItem(
-    movie: Movie,
-    lastVisitDate: Long? = null,
-    isDownloaded: Boolean = false,
-    isSelected: Boolean = false,
-    onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null,
-    onToggleSelection: (() -> Unit)? = null,
-    shouldRequestFocus: Boolean = false,
-    onFocusRestored: () -> Unit = {}
-) {
-    val context = LocalContext.current
-    val isTv = remember(context) { context.isTvDevice() }
-    val focusRequester = remember { FocusRequester() }
-
-    val isPreview = LocalInspectionMode.current
-    var isImageLoading by remember { mutableStateOf(!isPreview) }
-
-    LaunchedEffect(shouldRequestFocus) {
-        if (shouldRequestFocus) {
-            // Wait for composition and layout to settle
-            delay(300)
-            try {
-                focusRequester.requestFocus()
-            } catch (e: Exception) {
-                // Focus request might fail if not attached
-            }
-        }
-    }
-
-    Box {
-        if (isTv) {
-            val interactionSource = remember { MutableInteractionSource() }
-            val isFocused by interactionSource.collectIsFocusedAsState()
-
-            Surface(
-                onClick = onToggleSelection ?: onClick,
-                onLongClick = onLongClick,
-                interactionSource = interactionSource,
-                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
-                shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(focusRequester)
-                    .onFocusChanged { state ->
-                        if (state.isFocused && shouldRequestFocus) {
-                            onFocusRestored()
-                        }
-                    }
-                    .border(
-                        width = if (isFocused) 4.dp else 0.dp,
-                        color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
-                        shape = MaterialTheme.shapes.medium
-                    )
-            ) {
-                Column {
-                    Box {
-                        AsyncImage(
-                            model = movie.mediumCoverImage,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(0.67f),
-                            contentScale = ContentScale.Crop,
-                            onState = { state ->
-                                isImageLoading = state is AsyncImagePainter.State.Loading
-                            }
-                        )
-                        
-                        val movieUploadTime = (movie.dateUploadedUnix ?: 0L) * 1000
-                        val fifteenDaysInMs = 15L * 24 * 60 * 60 * 1000
-                        val isRecent = movieUploadTime > (System.currentTimeMillis() - fifteenDaysInMs)
-                        
-                        if (isRecent) {
-                            Icon(
-                                painter = painterResource(com.martinrevert.latorrentola.R.drawable.new_badge),
-                                contentDescription = stringResource(R.string.new_desc),
-                                tint = Color.Yellow,
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .padding(8.dp)
-                                    .size(32.dp)
-                                    .rotate(-45f)
-                            )
-                        }
-
-                        if (isDownloaded) {
-                            Icon(
-                                imageVector = Icons.Default.CloudDone,
-                                contentDescription = stringResource(R.string.downloaded_desc),
-                                tint = Color.Yellow,
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .padding(8.dp)
-                                    .size(24.dp)
-                                    .background(
-                                        MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                                        CircleShape
-                                    )
-                                    .padding(2.dp)
-                            )
-                        }
-                    }
-                    Column(
-                        modifier = Modifier
-                            .background(androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(12.dp)
-                            .fillMaxWidth()
-                    ) {
-                        androidx.tv.material3.Text(
-                            text = movie.title ?: "",
-                            style = androidx.tv.material3.MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        
-                        if (!movie.genres.isNullOrEmpty()) {
-                            val translatedGenres = movie.genres.map { GenreTranslation.getGenreText(it).asString() }
-                            androidx.tv.material3.Text(
-                                text = translatedGenres.joinToString(", "),
-                                style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
-                                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(vertical = 2.dp)
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "${movie.year}",
-                                style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
-                                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            androidx.tv.material3.Text(
-                                text = "⭐ ${movie.rating}",
-                                style = androidx.tv.material3.MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                }
-            }
-        } else {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(focusRequester)
-                    .onFocusChanged { state ->
-                        if (state.isFocused && shouldRequestFocus) {
-                            onFocusRestored()
-                        }
-                    }
-                    .focusHighlight(shape = MaterialTheme.shapes.medium)
-                    .semantics(mergeDescendants = true) { }
-                    .combinedClickable(
-                        onClick = onToggleSelection ?: onClick,
-                        onLongClick = onLongClick
-                    ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                shape = MaterialTheme.shapes.medium
-            ) {
-                Box {
-                    Column {
-                        Box {
-                            AsyncImage(
-                                model = movie.mediumCoverImage,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(0.67f),
-                                contentScale = ContentScale.Crop,
-                                onState = { state ->
-                                    isImageLoading = state is AsyncImagePainter.State.Loading
-                                }
-                            )
-                            
-                            // NEW BADGE logic: Show if uploaded in the last 15 days
-                            val movieUploadTime = (movie.dateUploadedUnix ?: 0L) * 1000
-                            val fifteenDaysInMs = 15L * 24 * 60 * 60 * 1000
-                            val isRecent = movieUploadTime > (System.currentTimeMillis() - fifteenDaysInMs)
-                            
-                            if (isRecent) {
-                                Icon(
-                                    painter = painterResource(R.drawable.new_badge),
-                                    contentDescription = stringResource(R.string.new_desc),
-                                    tint = Color.Yellow,
-                                    modifier = Modifier
-                                        .align(Alignment.TopStart)
-                                        .padding(8.dp)
-                                        .size(32.dp)
-                                        .rotate(-45f)
-                                )
-                            }
-
-                            if (isDownloaded) {
-                                Icon(
-                                    imageVector = Icons.Default.CloudDone,
-                                    contentDescription = stringResource(R.string.downloaded_desc),
-                                    tint = Color.Yellow,
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(8.dp)
-                                        .size(24.dp)
-                                        .background(
-                                            MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                                            CircleShape
-                                        )
-                                        .padding(2.dp)
-                                )
-                            }
-                        }
-                        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-                            Text(
-                                text = movie.title ?: "",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            
-                            // RESTORED: Movie Genres
-                            if (!movie.genres.isNullOrEmpty()) {
-                                val translatedGenres = movie.genres.map { GenreTranslation.getGenreText(it).asString() }
-                                Text(
-                                    text = translatedGenres.joinToString(", "),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
-                                )
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                              ) {
-                                Text(
-                                    text = "${movie.year}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false)
-                                )
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.End
-                                ) {
-                                    IconButton(
-                                        onClick = {
-                                            val imdbUrl = "https://www.imdb.com/title/${movie.imdbCode}"
-                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                                type = "text/plain"
-                                                putExtra(Intent.EXTRA_SUBJECT, movie.title)
-                                                val shareText = context.getString(
-                                                    R.string.share_movie_text,
-                                                    movie.title,
-                                                    imdbUrl
-                                                )
-                                                putExtra(Intent.EXTRA_TEXT, shareText)
-                                            }
-                                            context.startActivity(Intent.createChooser(shareIntent, context.getString(
-                                                R.string.share_movie_chooser)))
-                                        },
-                                        modifier = Modifier.size(48.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Share, 
-                                            contentDescription = "${stringResource(R.string.share_desc)} ${movie.title ?: ""}",
-                                            modifier = Modifier.size(24.dp),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "⭐ ${movie.rating}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    
-                    if (isSelected) {
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
-                        )
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = stringResource(R.string.selected_desc),
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(8.dp)
-                                .size(32.dp)
-                                .background(Color.White, CircleShape)
-                        )
-                    }
-                }
-            }
-        }
-        if (isImageLoading) {
-            com.martinrevert.latorrentola.ui.components.MovieItemPlaceholder(isTv = isTv)
         }
     }
 }

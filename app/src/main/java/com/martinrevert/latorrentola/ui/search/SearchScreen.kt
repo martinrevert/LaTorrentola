@@ -39,9 +39,9 @@ import androidx.compose.ui.platform.LocalFocusManager
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
-import com.martinrevert.latorrentola.ui.home.MovieList
-import com.martinrevert.latorrentola.ui.home.MovieItem
-import com.martinrevert.latorrentola.ui.home.QualityChips
+import com.martinrevert.latorrentola.ui.components.MovieList
+import com.martinrevert.latorrentola.ui.components.MovieItem
+import com.martinrevert.latorrentola.ui.components.QualityChips
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.GenreTranslation
