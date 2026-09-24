@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -211,7 +212,8 @@ private fun SearchScreenContent(
 ) {
     val focusManager = LocalFocusManager.current
     val gridState = rememberLazyGridState()
-    val hazeState = rememberHazeState()
+    val qualityChipsFocusRequester = remember { FocusRequester() }
+    val hazeState = if (!isTv) rememberHazeState() else null
     val isInspection = LocalInspectionMode.current
     val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
     val topBarContainerColor = if (isPreAndroid12) {
@@ -224,7 +226,9 @@ private fun SearchScreenContent(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
-                modifier = Modifier.hazeGlass(input = HazeInput.Sources(hazeState)),
+                modifier = Modifier
+                    .focusProperties { down = qualityChipsFocusRequester }
+                    .then(if (hazeState != null) Modifier.hazeGlass(input = HazeInput.Sources(hazeState)) else Modifier),
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
                 title = {
                     if (isShowingFavorites) {
@@ -293,7 +297,7 @@ private fun SearchScreenContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .hazeSource(state = hazeState)
+                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
         ) {
             when (val state = uiState) {
                 is SearchUiState.Idle -> {
@@ -345,7 +349,8 @@ private fun SearchScreenContent(
                 QualityChips(
                     options = qualityOptions,
                     selectedQuality = selectedQuality ?: "All",
-                    onQualityClick = onQualityClick
+                    onQualityClick = onQualityClick,
+                    modifier = Modifier.focusRequester(qualityChipsFocusRequester)
                 )
                 HorizontalDivider(
                     modifier = Modifier.padding(top = 4.dp),

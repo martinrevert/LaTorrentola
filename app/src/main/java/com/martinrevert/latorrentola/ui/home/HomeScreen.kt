@@ -5,6 +5,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.border
@@ -160,6 +161,9 @@ private fun HomeScreenContent(
     // 1. Properly save and restore scroll state across configuration changes (rotation)
     val gridState = rememberLazyGridState()
 
+    val genreChipsFocusRequester = remember { FocusRequester() }
+    val qualityChipsFocusRequester = remember { FocusRequester() }
+
     val hazeState = if (!isTv) rememberHazeState() else null
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -263,6 +267,7 @@ private fun HomeScreenContent(
             ) {
                 TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                    modifier = Modifier.focusProperties { down = genreChipsFocusRequester },
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
@@ -334,13 +339,17 @@ private fun HomeScreenContent(
                 GenreChips(
                     genres = topGenres,
                     onGenreClick = onGenreClick,
-                    onAllGenresClick = { showGenreSheet = true }
+                    onAllGenresClick = { showGenreSheet = true },
+                    modifier = Modifier
+                        .focusRequester(genreChipsFocusRequester)
+                        .focusProperties { down = qualityChipsFocusRequester }
                 )
 
                 QualityChips(
                     options = qualityOptions,
                     selectedQuality = selectedQuality ?: "All",
-                    onQualityClick = onQualityClick
+                    onQualityClick = onQualityClick,
+                    modifier = Modifier.focusRequester(qualityChipsFocusRequester)
                 )
             }
         }
@@ -405,10 +414,11 @@ private fun HomeContent(
 fun QualityChips(
     options: List<String>,
     selectedQuality: String,
-    onQualityClick: (String) -> Unit
+    onQualityClick: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     LazyRow(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .focusRestorer()
             .padding(bottom = 8.dp),
@@ -437,10 +447,11 @@ fun QualityChips(
 fun GenreChips(
     genres: List<String>,
     onGenreClick: (String) -> Unit,
-    onAllGenresClick: () -> Unit
+    onAllGenresClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     LazyRow(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .focusRestorer()
             .padding(vertical = 8.dp),
