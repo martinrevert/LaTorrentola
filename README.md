@@ -1,263 +1,92 @@
 # La Torrentola 🎬
 
-La Torrentola is a modern, high-performance Android application built with the latest technologies in the Android ecosystem. It serves as a movie discovery tool and a companion for **[Transdrone](https://play.google.com/store/search?q=transdrone&c=apps)** or **[DS Get](https://play.google.com/store/search?q=ds%20get&c=apps)** (if you use a Synology NAS), focusing on seamless browsing, data visualization, and accessibility.
+**La Torrentola** is a modern Android application designed for exploring high-definition movie catalogs, discovering new releases, watching trailers, and managing a personal movie library with seamless cloud synchronization across all your devices using your Google account.
 
-## 🚀 Modern Android Stack
-
-This project has been fully refactored to use the most cutting-edge libraries and patterns:
-
--   **Language:** [Kotlin 2.4+](https://kotlinlang.org/) with the K2 compiler for faster builds and improved performance.
--   **Authentication & Sync:** [Firebase Auth](https://firebase.google.com/docs/auth) with **Google Sign-in** and [Cloud Firestore](https://firebase.google.com/docs/firestore) for cross-device library synchronization.
--   **UI:** [Jetpack Compose](https://developer.android.com/compose) with **Material 3**, providing a declarative and reactive user interface.
--   **Architecture:** [MVVM (Model-View-ViewModel)](https://developer.android.com/topic/architecture) with a clean separation of concerns.
--   **Dependency Injection:** [Hilt](https://developer.android.com/training/dependency-injection/hilt-android) for robust and scalable DI.
--   **Navigation:** [AndroidX Navigation 3](https://developer.android.com/jetpack/androidx/releases/navigation), the latest iteration for Compose-first navigation.
--   **Networking:** [Retrofit 3.0](https://square.github.io/retrofit/) with [OkHttp 5](https://square.github.io/okhttp/) and Coroutines support.
--   **Persistence:** [Room 2.8+](https://developer.android.com/training/data-storage/room) using [KSP (Kotlin Symbol Processing)](https://kotlinlang.org/docs/ksp-overview.html) for local caching.
--   **Async & Streams:** [Kotlin Coroutines](https://kotlinlang.org/docs/coroutines-overview.html) and [Flow](https://kotlinlang.org/docs/flow.html) for all asynchronous operations.
--   **Image Loading:** [Coil 3](https://coil-kt.github.io/coil/) for efficient, multi-platform ready image fetching.
--   **AI Integration:** [Google ML Kit Translate](https://developers.google.com/ml-kit/language/translation) for on-device movie summary translations.
--   **Build System:** [Android Gradle Plugin 9.3.1+](https://developer.android.com/studio/releases/gradle-plugin) and Version Catalogs (`libs.versions.toml`).
-
-## 🏗️ Architecture Overview
-
-The app follows a modern reactive architecture, moving away from legacy XML and Activities to a Single-Activity Compose model.
-
-```mermaid
-graph TD
-    subgraph UI_Layer [UI Layer - Jetpack Compose]
-        MA[MainActivity]
-        NV[AppNavigation - Nav3]
-        LS[LoginScreen]
-        HS[HomeScreen]
-        DS[DetailScreen]
-        SS[SearchScreen]
-        STS[SettingsScreen]
-    end
-
-    subgraph Presentation_Layer [Presentation Layer]
-        AVM[AuthViewModel]
-        HVM[HomeViewModel]
-        DVM[DetailViewModel]
-        SVM[SearchViewModel]
-        STVM[SettingsViewModel]
-    end
-
-    subgraph Domain_Data_Layer [Data Layer]
-        AREP[AuthRepository]
-        UREP[UserLibraryRepository - Firestore]
-        REP[YtsRepository]
-        RS[YtsService - Retrofit 3]
-        DB[AppDatabase - Room]
-        MLK[ML Kit Translator]
-        PM[PreferenceManager]
-    end
-
-    MA --> NV
-    NV --> LS & HS & DS & SS & STS
-    LS --> AVM
-    HS --> HVM
-    DS --> DVM
-    SS --> SVM
-    STS --> STVM
-    
-    AVM --> AREP
-    AREP -->|Firebase Auth| FAN[Firebase]
-    HVM & DVM & SVM & STVM --> UREP
-    HVM & DVM & SVM --> REP
-    STVM --> PM
-    REP --> RS
-    REP --> DB
-    REP --> MLK
-    REP --> UREP
-```
-
-## 🛠️ Key Features
-
-1.  **Google Authentication & Cloud Sync:** Secure login using Firebase. Syncs your downloaded movies and specific versions across all your devices using Cloud Firestore.
-2.  **Smart Favorites Management:** D-pad optimized multi-selection mode. Short-press to view details, long-press to enter selection mode for bulk deletion.
-3.  **Declarative & Adaptive UI:** Entirely built with Jetpack Compose for a smooth, fluid user experience. The UI adapts dynamically to different form factors:
-    *   **Phones:** Vertical stacked layouts and mobile-optimized grids.
-    *   **Tablets & Foldables:** Adaptive side-by-side layouts for details and settings to maximize horizontal space.
-    *   **Android TV:** Optimized Leanback-style experience with 16:9 banners, D-pad focus handling (`focusHighlight`), and TV-specific components.
-4.  **State Management:** ViewModels leverage `StateFlow` and `collectAsStateWithLifecycle` to ensure UI state is handled safely.
-5.  **Multi-Theme Support:** Comprehensive support for **Light and Dark modes** with focus on readability and accessibility across all device types.
-6.  **Offline Support:** Room database caches movies for offline viewing and "Favorites" management.
-7.  **On-Device AI:** Real-time translation of movie summaries from English to Spanish using Google ML Kit without cloud dependencies.
-8.  **Navigation 3:** Uses the latest navigation APIs for passing complex data safely between screens.
-9.  **Edge-to-Edge:** Full support for Android 15's edge-to-edge requirements using `WindowInsets`.
-10. **Movie Sharing:** Integrated sharing functionality in both Home cards and Movie Details app bar, allowing users to share movie info and IMDB links via the Android Share Sheet.
-11. **Multilingual Genres:** Automatic genre translation in Movie Details and Search filters using a centralized `GenreTranslation` utility.
-12. **Interactive Development:** All screens feature comprehensive **Compose Previews**, including side-by-side Light/Dark mode comparisons and dedicated TV layout previews.
-13. **Performance:** Optimized with R8/ProGuard and modern serialization (Kotlinx Serialization + GSON).
-
-## 🔄 Core Workflows
-
-### 1. Movie Discovery & Pagination
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant HS as HomeScreen
-    participant VM as HomeViewModel
-    participant R as YtsRepository
-    participant N as YtsService (Retrofit)
-
-    U->>HS: Open App
-    HS->>VM: Observe uiState (Flow)
-    VM->>R: getMovies(page)
-    R->>N: listMovies(page)
-    N-->>R: List<Movie>
-    R->>R: Map & Enrich Data
-    R-->>VM: Flow<List<Movie>>
-    VM-->>HS: Update State
-    HS-->>U: Display Grid
-    U->>HS: Scroll to Bottom
-    HS->>VM: loadMore()
-```
-
-### 2. Search & Filter
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant SS as SearchScreen
-    participant VM as SearchViewModel
-    participant R as YtsRepository
-    participant UR as UserLibraryRepository
-    participant FS as Cloud Firestore
-
-    U->>SS: Enter Query
-    SS->>VM: onSearch(query)
-    alt Remote Search
-        VM->>R: searchMovies(query)
-        R-->>VM: Results
-    else Cloud Favorites
-        VM->>R: getFavoriteMovies()
-        R->>UR: getFavoriteMovies()
-        UR->>FS: Query (Sync)
-        FS-->>UR: List<Movie>
-        UR-->>R: List<Movie>
-        R-->>VM: Results
-    end
-    VM-->>SS: Update UI State
-```
-
-### 3. Movie Details & Translation
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant DS as DetailScreen
-    participant VM as DetailViewModel
-    participant MLK as ML Kit Translator
-    participant TTS as Text-to-Speech
-
-    U->>DS: Tap Movie
-    DS->>VM: Initialize(Movie)
-    VM->>MLK: translate(Summary)
-    MLK-->>VM: Spanish Text
-    VM-->>DS: Show Details & Translation
-    U->>DS: Tap Speaker Icon
-    DS->>TTS: Speak(Spanish Text)
-```
-
-### 4. Authentication Workflow
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant LS as LoginScreen
-    participant VM as AuthViewModel
-    participant R as AuthRepository
-    participant CM as Credential Manager
-    participant F as Firebase Auth
-
-    U->>LS: Tap "Iniciar sesión con Google"
-    LS->>VM: signInWithGoogle()
-    VM->>R: signInWithGoogle()
-    R->>CM: getCredential()
-    CM-->>U: Show Google Account Picker
-    U->>CM: Select Account
-    CM-->>R: ID Token
-    R->>F: signInWithCredential(ID Token)
-    F-->>R: FirebaseUser
-    R-->>VM: Success
-    VM-->>LS: Update AuthState.Success
-    LS->>U: Navigate to Home
-```
-
-## 📦 Requirements & Setup
-
-To ensure the project compiles and runs correctly:
-
-1.  **Credentials & `local.properties`:** Create a `local.properties` file in the project root (if not present) and add your Firebase Web Client ID. This prevents sensitive IDs from being committed to the repository:
-    ```properties
-    FIREBASE_WEB_CLIENT_ID=your_web_client_id_here
-    ```
-    The build system will automatically generate a `BuildConfig.WEB_CLIENT_ID` field for use in the app.
-
-2.  **Constants:** Ensure `app/src/main/java/com/martinrevert/latorrentola/constants/Constants.kt` references the generated config:
-    ```kotlin
-    object Constants {
-        const val YTS_BASE_URL = "https://movies-api.accel.li/api/v2/"
-        val WEB_CLIENT_ID = BuildConfig.WEB_CLIENT_ID
-    }
-    ```
-
-3.  **Google Services:** Place your `google-services.json` in the `app/` directory. Ensure:
-    -   Your app's **SHA-1 fingerprint** is registered in the Firebase Console.
-    -   **Google Sign-in** is enabled as an Authentication provider.
-    -   **Cloud Firestore** is initialized with appropriate security rules.
-
-## 📈 Future Roadmap
-
-- [ ] Multi-module architecture for better build times.
-- [ ] Integration with more torrent providers.
-- [ ] Shared Element Transitions with Compose.
-- [ ] Predictive Back support.
-- [ ] Interactive Widgets for "New Releases".
-
-## 🧪 Testing
-
-The project includes a suite of modern Android unit tests focused on the data layer, business logic, and serialization.
-
-### Testing Stack
-- **JUnit 4:** Core testing framework.
-- **MockK / MockK Android:** A powerful mocking library for Kotlin (unit & instrumented).
-- **Hilt Testing:** For dependency injection in instrumented tests.
-- **Compose UI Test:** For verifying user interface behavior and rendering.
-- **Turbine:** A small library for testing Kotlin Coroutines `Flow`.
-- **Google Truth:** A library for performing assertions with better readability.
-- **Kotlinx Coroutines Test:** Utilities for testing asynchronous code.
-
-### Running Tests
-
-#### Unit Tests
-To run all unit tests from the command line:
-```powershell
-./gradlew testDebugUnitTest
-```
-
-#### Instrumented (UI) Tests
-To run Compose UI tests (requires a connected device or emulator):
-```powershell
-./gradlew connectedDebugAndroidTest
-```
-
-#### Code Coverage
-This project uses **JaCoCo** to track code coverage across ViewModels, Repositories, and Utilities.
-To generate a combined coverage report:
-```powershell
-./gradlew testDebugUnitTest jacocoTestReport
-```
-The HTML report will be available at `app/build/reports/jacoco/jacocoTestReport/html/index.html`.
-
-> [!NOTE]
-> The project is configured via `gradle.properties` to support modern JDKs (21+) by enabling dynamic agent loading and opening necessary internal packages for build tools and MockK/ByteBuddy. This avoids `sun.misc.Unsafe` warnings during both compilation and testing.
-
-### Coverage Areas
-- **Repositories:** Verifying the interaction between network services and local DAOs.
-- **ViewModels:** Testing state management, pagination, filtering, and side-effects (Voice, Translation).
-- **UI (Compose):** Verifying screen states (Loading, Success, Error) and user interactions.
-- **Room Converters:** Ensuring complex data types (Lists, Dates) are correctly converted to/from JSON/Long for persistence.
-- **Serialization:** Validating that models are correctly serialized for Navigation 3 payloads.
+Built for phones, tablets, foldables, and **Android TV / Chromecast**, the app features a *Frosted Glass* UI aesthetic (powered by Haze 2.0), native D-pad remote navigation, and direct integration with torrent managers on mobile or remote NAS home servers (such as Transdrone, Synology DS get, or local downloaders).
 
 ---
 
+## 🌟 Key Features
+
+### 📱 For Users
+* **Catalog & Quality Filters**: Browse movies sorted by video quality (**4K 2160p**, **1080p x265**, **1080p**, **720p**) and genres (Action, Sci-Fi, Comedy, Drama, New Releases, and Previously Watched).
+* **Google Cloud Library Sync**: Sign in with your Google account to back up and automatically synchronize your favorite movies and watch history across all your devices.
+* **Integrated Trailer Player**: Watch official YouTube HD trailers directly inside the app without ads or pop-ups.
+* **On-Device Spanish Translation**: Instant, automatic summary translation powered by local on-device AI—no additional mobile data or cloud costs.
+* **Language Exclusion Filter**: Automatically hide movies in languages you prefer not to watch.
+* **100% Android TV & Remote Ready**: Smooth navigation engineered for TV remotes with responsive card scaling, high-contrast focus indicators, and D-pad shortcuts.
+* **One-Tap Magnet Link Launching**: Tap any download quality option to generate a standard *magnet link* that opens in your preferred torrent client (phone or NAS).
+
+---
+
+## 💡 Quick User Guide
+
+1. **Explore the Catalog**: Scroll through the main home screen to discover popular movies and new releases. Use the top chips to filter by genre or resolution.
+2. **Search Titles or Cast**: Tap the search icon (or use voice search on mobile) to find any movie by name.
+3. **View Details & Trailers**: Tap a movie poster to view Spanish translated summaries, full cast lists, IMDb ratings, and play the trailer.
+4. **Sync Favorites**: Tap the heart icon to save movies to your favorites. They sync instantly across all your Google-connected devices.
+5. **Start Downloads**: Select your desired quality in the torrent list (e.g., 1080p x265) to send the download task directly to your torrent client or NAS.
+
+---
+
+## 💻 Technical Overview for Developers
+
+This app has been refactored to leverage the latest Jetpack Compose libraries and reactive Android architecture:
+
+* **Language**: [Kotlin 2.1+](https://kotlinlang.org/) with the K2 compiler.
+* **UI Framework**: [Jetpack Compose](https://developer.android.com/compose) with **Material 3** for mobile and **TV Material 3** for Android TV.
+* **Visual Effects**: [Haze 2.0](https://github.com/chrisbanes/haze) for frosted glass blur on app bars and headers, featuring scroll-driven `EaseInOutCubic` alpha interpolation.
+* **Dependency Injection**: [Hilt](https://developer.android.com/training/dependency-injection/hilt-android).
+* **Auth & Cloud Persistence**: [Firebase Auth](https://firebase.google.com/docs/auth) via **Google Credential Manager** and [Cloud Firestore](https://firebase.google.com/docs/firestore) for remote synchronization.
+* **Navigation**: [AndroidX Navigation 3](https://developer.android.com/jetpack/androidx/releases/navigation) Compose-first runtime.
+* **Networking**: [Retrofit 3.0](https://square.github.io/retrofit/) with OkHttp 5 and Coroutines Flow.
+* **On-Device AI Translation**: [Google ML Kit Translate](https://developers.google.com/ml-kit/language/translation) for local summary translation.
+
+> [!NOTE]
+> For a full breakdown of the software architecture, modular UI components, and sequence diagrams, refer to the **[Architecture Guide (ARCHITECTURE.md)](ARCHITECTURE.md)**.
+
+---
+
+## 🛠️ Setup & Build Instructions
+
+### Prerequisites
+
+1. **Credentials in `local.properties`**:
+   Add your Firebase Web Client ID to `local.properties` in the project root:
+   ```properties
+   FIREBASE_WEB_CLIENT_ID=your_web_client_id_here
+   ```
+
+2. **Google Services Config**:
+   Place your `google-services.json` inside the `app/` folder. Ensure your development SHA-1 fingerprint is registered in the Firebase Console.
+
+### Build Commands (PowerShell / Bash)
+
+* **Compile Debug APK**:
+  ```powershell
+  .\gradlew.bat assembleDebug
+  ```
+
+* **Install on Connected Device or Emulator**:
+  ```powershell
+  .\gradlew.bat installDebug
+  ```
+
+* **Run Unit Tests**:
+  ```powershell
+  .\gradlew.bat testDebugUnitTest
+  ```
+
+* **Generate JaCoCo Coverage Report**:
+  ```powershell
+  .\gradlew.bat testDebugUnitTest jacocoTestReport
+  ```
+
+---
+
+## 🧪 Testing & Coverage
+
+The project includes a comprehensive test suite using **MockK**, **Turbine**, **Google Truth**, **JaCoCo**, and Compose UI tests with **HiltTestRunner**.
+
+* **Repositories & ViewModels**: Verification of asynchronous flows (`StateFlow`), language filtering, pagination, and error handling.
+* **UI Components**: Parallel Compose Previews (`@PreviewLightDark` for mobile and `*TvPreview` for TV).
