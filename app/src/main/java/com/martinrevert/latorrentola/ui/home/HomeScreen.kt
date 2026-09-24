@@ -163,6 +163,7 @@ private fun HomeScreenContent(
 
     val genreChipsFocusRequester = remember { FocusRequester() }
     val qualityChipsFocusRequester = remember { FocusRequester() }
+    val movieListFocusRequester = remember { FocusRequester() }
 
     val hazeState = if (!isTv) rememberHazeState() else null
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -203,7 +204,8 @@ private fun HomeScreenContent(
                         onLoadMore = onLoadMore,
                         lastClickedMovieId = lastClickedMovieId,
                         onFocusRestored = onFocusRestored,
-                        contentPadding = customContentPadding
+                        contentPadding = customContentPadding,
+                        modifier = Modifier.focusRequester(movieListFocusRequester)
                     )
                 } else {
                     // Handheld Layout: With pull-to-refresh
@@ -232,7 +234,8 @@ private fun HomeScreenContent(
                             onLoadMore = onLoadMore,
                             lastClickedMovieId = lastClickedMovieId,
                             onFocusRestored = onFocusRestored,
-                            contentPadding = customContentPadding
+                            contentPadding = customContentPadding,
+                            modifier = Modifier.focusRequester(movieListFocusRequester)
                         )
                         // Pull-to-refresh indicator (official Compose implementation)
                         PullRefreshIndicator(
@@ -258,7 +261,6 @@ private fun HomeScreenContent(
             val headerModifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .statusBarsPadding()
                 .then(if (hazeState != null) Modifier.hazeGlass(input = HazeInput.Sources(hazeState)) else Modifier)
                 .background(topBarContainerColor)
 
@@ -267,7 +269,7 @@ private fun HomeScreenContent(
             ) {
                 TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-                    modifier = Modifier.focusProperties { down = genreChipsFocusRequester },
+                    windowInsets = WindowInsets.statusBars,
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
@@ -286,7 +288,9 @@ private fun HomeScreenContent(
                     actions = {
                         IconButton(
                             onClick = onSearchClick,
-                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                            modifier = Modifier
+                                .focusHighlight(shape = CircleShape)
+                                .focusProperties { down = genreChipsFocusRequester }
                         ) {
                             Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search_desc))
                         }
@@ -311,14 +315,18 @@ private fun HomeScreenContent(
                         ) {
                             IconButton(
                                 onClick = onFavoritesClick,
-                                modifier = Modifier.focusHighlight(shape = CircleShape)
+                                modifier = Modifier
+                                    .focusHighlight(shape = CircleShape)
+                                    .focusProperties { down = genreChipsFocusRequester }
                             ) {
                                 Icon(Icons.Default.Favorite, contentDescription = stringResource(R.string.favorites_desc))
                             }
                         }
                         IconButton(
                             onClick = onSettingsClick,
-                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                            modifier = Modifier
+                                .focusHighlight(shape = CircleShape)
+                                .focusProperties { down = genreChipsFocusRequester }
                         ) {
                             if (userPhotoUrl != null) {
                                 AsyncImage(
@@ -349,7 +357,9 @@ private fun HomeScreenContent(
                     options = qualityOptions,
                     selectedQuality = selectedQuality ?: "All",
                     onQualityClick = onQualityClick,
-                    modifier = Modifier.focusRequester(qualityChipsFocusRequester)
+                    modifier = Modifier
+                        .focusRequester(qualityChipsFocusRequester)
+                        .focusProperties { down = movieListFocusRequester }
                 )
             }
         }
@@ -380,7 +390,8 @@ private fun HomeContent(
     onLoadMore: () -> Unit,
     lastClickedMovieId: Int? = null,
     onFocusRestored: () -> Unit = {},
-    contentPadding: PaddingValues = PaddingValues(16.dp)
+    contentPadding: PaddingValues = PaddingValues(16.dp),
+    modifier: Modifier = Modifier
 ) {
     when (uiState) {
         is HomeUiState.Loading -> {
@@ -397,7 +408,8 @@ private fun HomeContent(
                 onLoadMore = onLoadMore,
                 initialFocusId = lastClickedMovieId,
                 onFocusRestored = onFocusRestored,
-                contentPadding = contentPadding
+                contentPadding = contentPadding,
+                modifier = modifier
             )
         }
         is HomeUiState.Error -> {
@@ -620,6 +632,7 @@ fun GenreBottomSheet(
 fun MovieList(
     movies: List<Movie>,
     state: LazyGridState,
+    modifier: Modifier = Modifier,
     lastVisitDate: Long? = null,
     downloadedMovieIds: Set<Int> = emptySet(),
     selectedIds: Set<Int> = emptySet(),
@@ -648,7 +661,7 @@ fun MovieList(
     LazyVerticalGrid(
         columns = columns,
         state = state,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .focusRestorer(),
         contentPadding = contentPadding,
