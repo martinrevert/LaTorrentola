@@ -251,59 +251,37 @@ private fun HomeScreenContent(
             )
         }
     ) { padding ->
-        Column(
+        val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .consumeWindowInsets(padding)
+                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
         ) {
-            GenreChips(
-                genres = topGenres,
-                onGenreClick = onGenreClick,
-                onAllGenresClick = { showGenreSheet = true }
-            )
-
-            QualityChips(
-                options = qualityOptions,
-                selectedQuality = selectedQuality ?: "All",
-                onQualityClick = onQualityClick
-            )
-
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
-            ) {
-                if (isTv) {
-                    // TV Layout: No pull-to-refresh
-                    HomeContent(
-                        uiState = uiState,
-                        gridState = gridState,
-                        lastVisitDate = lastVisitDate,
-                        downloadedMovieIds = downloadedMovieIds,
-                        isLoadingMore = isLoadingMore,
-                        onMovieClick = {
-                            onSetLastClickedMovieId(it.id)
-                            onMovieClick(it)
-                        },
-                        onLoadMore = onLoadMore,
-                        lastClickedMovieId = lastClickedMovieId,
-                        onFocusRestored = onFocusRestored
+            if (isTv) {
+                // TV Layout: Single vertical column for unbroken D-pad focus traversal
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .consumeWindowInsets(padding)
+                ) {
+                    GenreChips(
+                        genres = topGenres,
+                        onGenreClick = onGenreClick,
+                        onAllGenresClick = { showGenreSheet = true }
                     )
-                } else {
-                    // Handheld Layout: With pull-to-refresh
-                    val scope = rememberCoroutineScope()
-                    val pullRefreshState = rememberPullRefreshState(isRefreshing, onRefresh = {
-                        onSetLastClickedMovieId(null)
-                        onRefresh(true)
-                        scope.launch { gridState.scrollToItem(0) }
-                    })
+
+                    QualityChips(
+                        options = qualityOptions,
+                        selectedQuality = selectedQuality ?: "All",
+                        onQualityClick = onQualityClick
+                    )
 
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .pullRefresh(pullRefreshState)
+                            .weight(1f)
+                            .fillMaxWidth()
                     ) {
                         HomeContent(
                             uiState = uiState,
@@ -319,13 +297,68 @@ private fun HomeScreenContent(
                             lastClickedMovieId = lastClickedMovieId,
                             onFocusRestored = onFocusRestored
                         )
-                        // Pull-to-refresh indicator (official Compose implementation)
-                        PullRefreshIndicator(
-                            refreshing = isRefreshing,
-                            state = pullRefreshState,
-                            modifier = Modifier.align(Alignment.TopCenter)
+                    }
+                }
+            } else {
+                // Handheld Layout: Full-screen edge-to-edge with Haze top blur and translucent bottom bar
+                val scope = rememberCoroutineScope()
+                val pullRefreshState = rememberPullRefreshState(isRefreshing, onRefresh = {
+                    onSetLastClickedMovieId(null)
+                    onRefresh(true)
+                    scope.launch { gridState.scrollToItem(0) }
+                })
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pullRefresh(pullRefreshState)
+                ) {
+                    HomeContent(
+                        uiState = uiState,
+                        gridState = gridState,
+                        lastVisitDate = lastVisitDate,
+                        downloadedMovieIds = downloadedMovieIds,
+                        isLoadingMore = isLoadingMore,
+                        onMovieClick = {
+                            onSetLastClickedMovieId(it.id)
+                            onMovieClick(it)
+                        },
+                        onLoadMore = onLoadMore,
+                        lastClickedMovieId = lastClickedMovieId,
+                        onFocusRestored = onFocusRestored,
+                        contentPadding = PaddingValues(
+                            top = padding.calculateTopPadding() + 96.dp,
+                            bottom = navBarHeight + 16.dp,
+                            start = 16.dp,
+                            end = 16.dp
+                        )
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = padding.calculateTopPadding())
+                    ) {
+                        GenreChips(
+                            genres = topGenres,
+                            onGenreClick = onGenreClick,
+                            onAllGenresClick = { showGenreSheet = true }
+                        )
+
+                        QualityChips(
+                            options = qualityOptions,
+                            selectedQuality = selectedQuality ?: "All",
+                            onQualityClick = onQualityClick
                         )
                     }
+
+                    PullRefreshIndicator(
+                        refreshing = isRefreshing,
+                        state = pullRefreshState,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = padding.calculateTopPadding() + 96.dp)
+                    )
                 }
             }
         }
