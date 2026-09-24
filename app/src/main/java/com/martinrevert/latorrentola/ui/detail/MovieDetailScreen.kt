@@ -8,8 +8,12 @@ import androidx.core.net.toUri
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
+import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -61,10 +65,16 @@ import com.martinrevert.latorrentola.ui.components.MovieDetailPlaceholder
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.lifecycle.LifecycleOwner
+import androidx.tv.material3.Button
 import androidx.tv.material3.IconButtonDefaults
+import androidx.tv.material3.Surface
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.UiText
 import java.net.URLEncoder
@@ -143,17 +153,23 @@ private fun MovieDetailScreenContent(
         Color.Transparent
     }
 
+    val contentFocusRequester = remember { FocusRequester() }
+
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
-                modifier = Modifier.hazeGlass(input = HazeInput.Sources(hazeState)),
+                modifier = Modifier
+                    .focusProperties { down = contentFocusRequester }
+                    .hazeGlass(input = HazeInput.Sources(hazeState)),
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
                 title = { Text((uiState as? DetailUiState.Success)?.movie?.title ?: stringResource(R.string.details_title)) },
                 navigationIcon = {
                     IconButton(
                         onClick = onBackClick,
-                        modifier = Modifier.focusHighlight(shape = CircleShape)
+                        modifier = Modifier
+                            .focusHighlight(shape = CircleShape)
+                            .focusProperties { down = contentFocusRequester }
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back_desc))
                     }
@@ -163,7 +179,9 @@ private fun MovieDetailScreenContent(
                     if (state is DetailUiState.Success) {
                         IconButton(
                             onClick = { onShareClick(state.movie) },
-                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                            modifier = Modifier
+                                .focusHighlight(shape = CircleShape)
+                                .focusProperties { down = contentFocusRequester }
                         ) {
                             Icon(
                                 Icons.Default.Share,
@@ -172,7 +190,9 @@ private fun MovieDetailScreenContent(
                         }
                         IconButton(
                             onClick = { onFavoriteToggle(state.movie) },
-                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                            modifier = Modifier
+                                .focusHighlight(shape = CircleShape)
+                                .focusProperties { down = contentFocusRequester }
                         ) {
                             Icon(
                                 if (state.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -203,7 +223,8 @@ private fun MovieDetailScreenContent(
                         isWideScreen = isWideScreen,
                         isTv = isTv,
                         onTorrentClick = { onTorrentClick(state.movie, it) },
-                        onAddLanguageToFilter = onAddLanguageToFilter
+                        onAddLanguageToFilter = onAddLanguageToFilter,
+                        contentFocusRequester = contentFocusRequester
                     )
                 }
                 is DetailUiState.Error -> {
@@ -224,7 +245,8 @@ fun MovieDetailContent(
     isWideScreen: Boolean,
     isTv: Boolean,
     onTorrentClick: (Torrent) -> Unit,
-    onAddLanguageToFilter: (String) -> Unit
+    onAddLanguageToFilter: (String) -> Unit,
+    contentFocusRequester: FocusRequester? = null
 ) {
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -241,7 +263,6 @@ fun MovieDetailContent(
             )
     ) {
         if (isWideScreen && !movie.ytTrailerCode.isNullOrEmpty()) {
-            // Wide Layout: Side-by-side Video and Summary
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(24.dp)
@@ -249,7 +270,8 @@ fun MovieDetailContent(
                 Box(modifier = Modifier.weight(0.6f)) {
                     YoutubePlayer(
                         youtubeVideoId = movie.ytTrailerCode,
-                        lifecycleOwner = LocalLifecycleOwner.current
+                        lifecycleOwner = LocalLifecycleOwner.current,
+                        focusRequester = contentFocusRequester
                     )
                 }
                 Column(modifier = Modifier.weight(0.4f)) {
@@ -262,15 +284,19 @@ fun MovieDetailContent(
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    MovieMetadata(movie = movie, onAddLanguageToFilter = onAddLanguageToFilter)
+                    MovieMetadata(
+                        movie = movie,
+                        onAddLanguageToFilter = onAddLanguageToFilter,
+                        focusRequester = if (movie.ytTrailerCode.isNullOrEmpty()) contentFocusRequester else null
+                    )
                 }
             }
         } else {
-            // Phone/Tablet Layout: Stacked Video and Summary
             if (!movie.ytTrailerCode.isNullOrEmpty()) {
                 YoutubePlayer(
                     youtubeVideoId = movie.ytTrailerCode,
-                    lifecycleOwner = LocalLifecycleOwner.current
+                    lifecycleOwner = LocalLifecycleOwner.current,
+                    focusRequester = contentFocusRequester
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }
@@ -282,7 +308,11 @@ fun MovieDetailContent(
             Spacer(modifier = Modifier.height(16.dp))
             
             Text(text = stringResource(R.string.details_title), style = MaterialTheme.typography.titleLarge)
-            MovieMetadata(movie = movie, onAddLanguageToFilter = onAddLanguageToFilter)
+            MovieMetadata(
+                movie = movie,
+                onAddLanguageToFilter = onAddLanguageToFilter,
+                focusRequester = if (movie.ytTrailerCode.isNullOrEmpty()) contentFocusRequester else null
+            )
         }
         
         Spacer(modifier = Modifier.height(24.dp))
@@ -297,12 +327,14 @@ fun MovieDetailContent(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = if (isTv) Alignment.CenterHorizontally else Alignment.Start
         ) {
-            movie.torrents?.forEach { torrent ->
+            movie.torrents?.forEachIndexed { index, torrent ->
+                val isFirstItem = index == 0 && movie.ytTrailerCode.isNullOrEmpty()
                 TorrentItem(
                     movie = movie,
                     torrent = torrent,
                     isDownloaded = downloadedHashes.contains(torrent.hash),
-                    onTorrentClick = onTorrentClick
+                    onTorrentClick = onTorrentClick,
+                    focusRequester = if (isFirstItem) contentFocusRequester else null
                 )
             }
         }
@@ -313,7 +345,8 @@ fun MovieDetailContent(
 fun MovieMetadata(
     movie: Movie, 
     modifier: Modifier = Modifier,
-    onAddLanguageToFilter: (String) -> Unit
+    onAddLanguageToFilter: (String) -> Unit,
+    focusRequester: FocusRequester? = null
 ) {
     Column(modifier = modifier) {
         if (!movie.genres.isNullOrEmpty()) {
@@ -336,6 +369,7 @@ fun MovieMetadata(
                     onClick = { onAddLanguageToFilter(lang) },
                     modifier = Modifier
                         .height(28.dp)
+                        .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                         .focusHighlight(shape = MaterialTheme.shapes.small),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                     shape = MaterialTheme.shapes.small
@@ -361,7 +395,8 @@ fun MovieMetadata(
 @Composable
 fun YoutubePlayer(
     youtubeVideoId: String,
-    lifecycleOwner: androidx.lifecycle.LifecycleOwner
+    lifecycleOwner: LifecycleOwner,
+    focusRequester: FocusRequester? = null
 ) {
     var playerState by remember { mutableStateOf(PlayerConstants.PlayerState.UNKNOWN) }
     var youTubePlayerInstance by remember { mutableStateOf<YouTubePlayer?>(null) }
@@ -381,13 +416,12 @@ fun YoutubePlayer(
                     enableAutomaticInitialization = false
                     lifecycleOwner.lifecycle.addObserver(this)
                     
-                    // Disable D-pad focus on the player itself
                     isFocusable = false
                     isFocusableInTouchMode = false
                     descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
 
                     val options = IFramePlayerOptions.Builder(context)
-                        .controls(0) // Hide web controls
+                        .controls(0)
                         .build()
 
                     initialize(object : AbstractYouTubePlayerListener() {
@@ -407,10 +441,13 @@ fun YoutubePlayer(
             }
         )
 
-        // Native Overlay: Single Focusable Play/Pause Button
         val isPlaying = playerState == PlayerConstants.PlayerState.PLAYING
         val context = LocalContext.current
         val isTv = remember(context) { context.isTvDevice() }
+
+        val playButtonModifier = Modifier
+            .size(64.dp)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
 
         if (isTv) {
             androidx.tv.material3.IconButton(
@@ -420,8 +457,7 @@ fun YoutubePlayer(
                         if (isPlaying) player.pause() else player.play()
                     }
                 },
-                modifier = Modifier
-                    .size(64.dp)
+                modifier = playButtonModifier
                     .background(Color.Black.copy(alpha = 0.1f), CircleShape),
                 colors = IconButtonDefaults.colors(
                     containerColor = Color.Transparent,
@@ -444,8 +480,7 @@ fun YoutubePlayer(
                         if (isPlaying) player.pause() else player.play()
                     }
                 },
-                modifier = Modifier
-                    .size(64.dp)
+                modifier = playButtonModifier
                     .background(Color.Black.copy(alpha = 0.15f), CircleShape)
                     .focusHighlight(shape = CircleShape)
             ) {
@@ -476,41 +511,96 @@ fun CastSection(castList: List<Cast>) {
     }
 }
 
+@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun CastItem(cast: Cast) {
-    Column(
-        modifier = Modifier.width(80.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        AsyncImage(
-            model = cast.urlSmallImage,
-            contentDescription = cast.name,
-            placeholder = painterResource(R.drawable.ic_launcher_foreground),
-            error = painterResource(R.drawable.ic_launcher_foreground),
-            fallback = painterResource(R.drawable.ic_launcher_foreground),
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
+
+    if (isTv) {
+        val interactionSource = remember { MutableInteractionSource() }
+        val isFocused by interactionSource.collectIsFocusedAsState()
+
+        Surface(
+            onClick = { },
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+            shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = Color.Transparent,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+            interactionSource = interactionSource,
             modifier = Modifier
-                .size(70.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentScale = ContentScale.Crop
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = cast.name ?: "",
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center
-        )
-        Text(
-            text = cast.characterName ?: "",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center
-        )
+                .width(90.dp)
+                .padding(4.dp)
+                .border(
+                    width = if (isFocused) 2.dp else 0.dp,
+                    color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    shape = MaterialTheme.shapes.small
+                )
+        ) {
+            Column(
+                modifier = Modifier.padding(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                AsyncImage(
+                    model = cast.urlSmallImage,
+                    contentDescription = cast.name,
+                    placeholder = painterResource(R.drawable.ic_launcher_foreground),
+                    error = painterResource(R.drawable.ic_launcher_foreground),
+                    fallback = painterResource(R.drawable.ic_launcher_foreground),
+                    modifier = Modifier
+                        .size(60.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = cast.name ?: "",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    } else {
+        Column(
+            modifier = Modifier.width(80.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            AsyncImage(
+                model = cast.urlSmallImage,
+                contentDescription = cast.name,
+                placeholder = painterResource(R.drawable.ic_launcher_foreground),
+                error = painterResource(R.drawable.ic_launcher_foreground),
+                fallback = painterResource(R.drawable.ic_launcher_foreground),
+                modifier = Modifier
+                    .size(70.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentScale = ContentScale.Crop
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = cast.name ?: "",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = cast.characterName ?: "",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 
@@ -519,7 +609,8 @@ fun TorrentItem(
     movie: Movie,
     torrent: Torrent,
     isDownloaded: Boolean,
-    onTorrentClick: (Torrent) -> Unit
+    onTorrentClick: (Torrent) -> Unit,
+    focusRequester: FocusRequester? = null
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
@@ -551,12 +642,15 @@ fun TorrentItem(
         }
     }
 
+    val buttonModifier = Modifier
+        .then(if (isTv) Modifier.fillMaxWidth(0.5f) else Modifier.fillMaxWidth())
+        .padding(vertical = 4.dp)
+        .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+
     if (isTv) {
-        androidx.tv.material3.Button(
+        Button(
             onClick = onTorrentClickInternal,
-            modifier = Modifier
-                .fillMaxWidth(0.5f)
-                .padding(vertical = 4.dp)
+            modifier = buttonModifier
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -581,10 +675,7 @@ fun TorrentItem(
     } else {
         Button(
             onClick = onTorrentClickInternal,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp)
-                .focusHighlight(shape = MaterialTheme.shapes.extraLarge)
+            modifier = buttonModifier.focusHighlight(shape = MaterialTheme.shapes.extraLarge)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,

@@ -76,13 +76,9 @@ fun MovieItem(
 
     Box {
         if (isTv) {
-            val interactionSource = remember { MutableInteractionSource() }
-            val isFocused by interactionSource.collectIsFocusedAsState()
-
             Surface(
                 onClick = onToggleSelection ?: onClick,
                 onLongClick = onLongClick,
-                interactionSource = interactionSource,
                 scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
                 shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
                 modifier = Modifier
@@ -93,11 +89,6 @@ fun MovieItem(
                             onFocusRestored()
                         }
                     }
-                    .border(
-                        width = if (isFocused) 4.dp else 0.dp,
-                        color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
-                        shape = MaterialTheme.shapes.medium
-                    )
             ) {
                 Column {
                     Box {

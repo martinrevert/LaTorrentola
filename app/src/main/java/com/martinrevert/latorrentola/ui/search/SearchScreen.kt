@@ -319,78 +319,149 @@ private fun SearchScreenContent(
             )
         }
     ) { padding ->
-        val searchContentPadding = PaddingValues(
-            top = padding.calculateTopPadding() + 64.dp,
-            bottom = padding.calculateBottomPadding() + 16.dp,
-            start = 16.dp,
-            end = 16.dp
-        )
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
-        ) {
-            when (val state = uiState) {
-                is SearchUiState.Idle -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(text = stringResource(R.string.start_searching))
-                    }
-                }
-                is SearchUiState.Loading -> {
-                    MovieListPlaceholder(contentPadding = searchContentPadding)
-                }
-                is SearchUiState.Success -> {
-                    MovieList(
-                        movies = state.movies,
-                        state = gridState,
-                        downloadedMovieIds = downloadedMovieIds,
-                        selectedIds = selectedFavoriteIds,
-                        isLoadingMore = isLoadingMore,
-                        onMovieClick = onMovieClick,
-                        onLongClick = if (state.isFavorites) onLongClick else null,
-                        onLoadMore = { if (!state.isFavorites && !state.isDownloads && !state.isNew) onLoadMore() },
-                        initialFocusId = lastClickedMovieId,
-                        onFocusRestored = onFocusRestored,
-                        contentPadding = searchContentPadding
-                    )
-                }
-                is SearchUiState.Empty -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(text = stringResource(R.string.no_results))
-                    }
-                }
-                is SearchUiState.Error -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(text = state.message.asString())
-                    }
-                }
-            }
+        if (isTv) {
+            // TV Layout: Single vertical column for unbroken D-pad focus traversal
+            val movieListFocusRequester = remember { FocusRequester() }
 
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = padding.calculateTopPadding())
-                    .then(
-                        if (hazeState != null) {
-                            Modifier
-                                .graphicsLayer { alpha = hazeAlpha }
-                                .hazeGlass(input = HazeInput.Sources(hazeState))
-                        } else Modifier
-                    )
+                    .fillMaxSize()
+                    .padding(padding)
+                    .consumeWindowInsets(padding)
             ) {
                 Spacer(modifier = Modifier.height(4.dp))
                 QualityChips(
                     options = qualityOptions,
                     selectedQuality = selectedQuality ?: "All",
                     onQualityClick = onQualityClick,
-                    modifier = Modifier.focusRequester(qualityChipsFocusRequester)
+                    modifier = Modifier
+                        .focusRequester(qualityChipsFocusRequester)
+                        .focusProperties { down = movieListFocusRequester }
                 )
                 HorizontalDivider(
                     modifier = Modifier.padding(top = 4.dp),
                     thickness = 1.dp,
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                 )
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    when (val state = uiState) {
+                        is SearchUiState.Idle -> {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(text = stringResource(R.string.start_searching))
+                            }
+                        }
+                        is SearchUiState.Loading -> {
+                            MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                        }
+                        is SearchUiState.Success -> {
+                            MovieList(
+                                movies = state.movies,
+                                state = gridState,
+                                downloadedMovieIds = downloadedMovieIds,
+                                selectedIds = selectedFavoriteIds,
+                                isLoadingMore = isLoadingMore,
+                                onMovieClick = onMovieClick,
+                                onLongClick = if (state.isFavorites) onLongClick else null,
+                                onLoadMore = { if (!state.isFavorites && !state.isDownloads && !state.isNew) onLoadMore() },
+                                initialFocusId = lastClickedMovieId,
+                                onFocusRestored = onFocusRestored,
+                                contentPadding = PaddingValues(16.dp),
+                                modifier = Modifier.focusRequester(movieListFocusRequester)
+                            )
+                        }
+                        is SearchUiState.Empty -> {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(text = stringResource(R.string.no_results))
+                            }
+                        }
+                        is SearchUiState.Error -> {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(text = state.message.asString())
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // Handheld Layout: Edge-to-edge with Haze top blur and translucent bottom bar
+            val searchContentPadding = PaddingValues(
+                top = padding.calculateTopPadding() + 64.dp,
+                bottom = padding.calculateBottomPadding() + 16.dp,
+                start = 16.dp,
+                end = 16.dp
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
+            ) {
+                when (val state = uiState) {
+                    is SearchUiState.Idle -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(text = stringResource(R.string.start_searching))
+                        }
+                    }
+                    is SearchUiState.Loading -> {
+                        MovieListPlaceholder(contentPadding = searchContentPadding)
+                    }
+                    is SearchUiState.Success -> {
+                        MovieList(
+                            movies = state.movies,
+                            state = gridState,
+                            downloadedMovieIds = downloadedMovieIds,
+                            selectedIds = selectedFavoriteIds,
+                            isLoadingMore = isLoadingMore,
+                            onMovieClick = onMovieClick,
+                            onLongClick = if (state.isFavorites) onLongClick else null,
+                            onLoadMore = { if (!state.isFavorites && !state.isDownloads && !state.isNew) onLoadMore() },
+                            initialFocusId = lastClickedMovieId,
+                            onFocusRestored = onFocusRestored,
+                            contentPadding = searchContentPadding
+                        )
+                    }
+                    is SearchUiState.Empty -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(text = stringResource(R.string.no_results))
+                        }
+                    }
+                    is SearchUiState.Error -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(text = state.message.asString())
+                        }
+                    }
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = padding.calculateTopPadding())
+                        .then(
+                            if (hazeState != null) {
+                                Modifier
+                                    .graphicsLayer { alpha = hazeAlpha }
+                                    .hazeGlass(input = HazeInput.Sources(hazeState))
+                            } else Modifier
+                        )
+                ) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    QualityChips(
+                        options = qualityOptions,
+                        selectedQuality = selectedQuality ?: "All",
+                        onQualityClick = onQualityClick,
+                        modifier = Modifier.focusRequester(qualityChipsFocusRequester)
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(top = 4.dp),
+                        thickness = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                }
             }
         }
     }
