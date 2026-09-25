@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola.di
 import com.martinrevert.latorrentola.BuildConfig
 import com.martinrevert.latorrentola.constants.Constants
 import com.martinrevert.latorrentola.network.FcmService
+import com.martinrevert.latorrentola.network.TmdbService
 import com.martinrevert.latorrentola.network.YtsService
 import dagger.Module
 import dagger.Provides
@@ -62,6 +63,17 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    @TmdbRetrofit
+    fun provideTmdbRetrofit(okHttpClient: OkHttpClient): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl("https://api.themoviedb.org/3/")
+            .addConverterFactory(GsonConverterFactory.create())
+            .client(okHttpClient)
+            .build()
+    }
+
+    @Provides
+    @Singleton
     fun provideYtsService(@YtsRetrofit retrofit: Retrofit): YtsService {
         return retrofit.create(YtsService::class.java)
     }
@@ -70,6 +82,12 @@ object NetworkModule {
     @Singleton
     fun provideFcmService(@FcmRetrofit retrofit: Retrofit): FcmService {
         return retrofit.create(FcmService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideTmdbService(@TmdbRetrofit retrofit: Retrofit): TmdbService {
+        return retrofit.create(TmdbService::class.java)
     }
 }
 
@@ -80,3 +98,7 @@ annotation class YtsRetrofit
 @javax.inject.Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class FcmRetrofit
+
+@javax.inject.Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class TmdbRetrofit

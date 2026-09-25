@@ -58,9 +58,11 @@ import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.Abs
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.options.IFramePlayerOptions
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.Torrent
 import com.martinrevert.latorrentola.model.YTS.Cast
+import com.martinrevert.latorrentola.ui.components.ActorDetailBottomSheet
 import com.martinrevert.latorrentola.ui.components.MovieDetailPlaceholder
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.GenreTranslation
@@ -87,6 +89,11 @@ fun MovieDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val downloadedHashes by viewModel.downloadedHashes.collectAsState()
+    val selectedActorDetail by viewModel.selectedActorDetail.collectAsState()
+    val isActorLoading by viewModel.isActorLoading.collectAsState()
+    var showActorSheet by remember { mutableStateOf(false) }
+    val actorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isTv = remember(context) { context.isTvDevice() }
@@ -103,6 +110,10 @@ fun MovieDetailScreen(
         downloadedHashes = downloadedHashes,
         isWideScreen = isWideScreen,
         isTv = isTv,
+        selectedActorDetail = selectedActorDetail,
+        isActorLoading = isActorLoading,
+        showActorSheet = showActorSheet,
+        actorSheetState = actorSheetState,
         onBackClick = onBackClick,
         onShareClick = { movie ->
             val imdbUrl = "https://www.imdb.com/title/${movie.imdbCode}"
@@ -127,6 +138,19 @@ fun MovieDetailScreen(
             viewModel.addLanguageToFilter(language) { error ->
                 Toast.makeText(context, error.asString(context), Toast.LENGTH_LONG).show()
             }
+        },
+        onCastClick = { actorName ->
+            showActorSheet = true
+            viewModel.fetchActorDetails(actorName)
+        },
+        onDismissActorSheet = {
+            showActorSheet = false
+            viewModel.clearSelectedActor()
+        },
+        onActorMovieClick = { movieQuery ->
+            showActorSheet = false
+            viewModel.clearSelectedActor()
+            viewModel.setMovieByQuery(movieQuery)
         }
     )
 }
@@ -138,11 +162,18 @@ private fun MovieDetailScreenContent(
     downloadedHashes: Set<String>,
     isWideScreen: Boolean,
     isTv: Boolean,
+    selectedActorDetail: Result<TmdbActorDetail>?,
+    isActorLoading: Boolean,
+    showActorSheet: Boolean,
+    actorSheetState: SheetState,
     onBackClick: () -> Unit,
     onShareClick: (Movie) -> Unit,
     onFavoriteToggle: (Movie) -> Unit,
     onTorrentClick: (Movie, Torrent) -> Unit,
-    onAddLanguageToFilter: (String) -> Unit
+    onAddLanguageToFilter: (String) -> Unit,
+    onCastClick: (String) -> Unit,
+    onDismissActorSheet: () -> Unit,
+    onActorMovieClick: (String) -> Unit
 ) {
     val hazeState = rememberHazeState()
     val isInspection = LocalInspectionMode.current
@@ -232,6 +263,7 @@ private fun MovieDetailScreenContent(
                         isTv = isTv,
                         onTorrentClick = { onTorrentClick(state.movie, it) },
                         onAddLanguageToFilter = onAddLanguageToFilter,
+                        onCastClick = onCastClick,
                         contentFocusRequester = contentFocusRequester,
                         contentPadding = detailContentPadding
                     )
@@ -244,6 +276,17 @@ private fun MovieDetailScreenContent(
             }
         }
     }
+
+    if (showActorSheet) {
+        ActorDetailBottomSheet(
+            actorDetailState = selectedActorDetail,
+            isLoading = isActorLoading,
+            onDismiss = onDismissActorSheet,
+            sheetState = actorSheetState,
+            hazeState = hazeState,
+            onMovieClick = onActorMovieClick
+        )
+    }
 }
 
 
@@ -255,6 +298,7 @@ fun MovieDetailContent(
     isTv: Boolean,
     onTorrentClick: (Torrent) -> Unit,
     onAddLanguageToFilter: (String) -> Unit,
+    onCastClick: (String) -> Unit,
     contentFocusRequester: FocusRequester? = null,
     contentPadding: PaddingValues = PaddingValues(16.dp)
 ) {
@@ -320,7 +364,7 @@ fun MovieDetailContent(
         Spacer(modifier = Modifier.height(24.dp))
 
         if (!movie.cast.isNullOrEmpty()) {
-            CastSection(castList = movie.cast)
+            CastSection(castList = movie.cast, onCastClick = onCastClick)
             Spacer(modifier = Modifier.height(16.dp))
         }
         
@@ -499,7 +543,7 @@ fun YoutubePlayer(
 
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
-fun CastSection(castList: List<Cast>) {
+fun CastSection(castList: List<Cast>, onCastClick: (String) -> Unit) {
     Text(text = stringResource(R.string.cast_header), style = MaterialTheme.typography.titleLarge)
     Spacer(modifier = Modifier.height(8.dp))
     LazyRow(
@@ -508,14 +552,14 @@ fun CastSection(castList: List<Cast>) {
         contentPadding = PaddingValues(vertical = 8.dp)
     ) {
         items(castList) { cast ->
-            CastItem(cast = cast)
+            CastItem(cast = cast, onCastClick = onCastClick)
         }
     }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun CastItem(cast: Cast) {
+fun CastItem(cast: Cast, onCastClick: (String) -> Unit) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
 
@@ -524,7 +568,7 @@ fun CastItem(cast: Cast) {
         val isFocused by interactionSource.collectIsFocusedAsState()
 
         Surface(
-            onClick = { },
+            onClick = { cast.name?.let { onCastClick(it) } },
             scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
             shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small),
             colors = ClickableSurfaceDefaults.colors(
@@ -570,7 +614,10 @@ fun CastItem(cast: Cast) {
         }
     } else {
         Column(
-            modifier = Modifier.width(80.dp),
+            modifier = Modifier
+                .width(80.dp)
+                .clip(MaterialTheme.shapes.small)
+                .clickable { cast.name?.let { onCastClick(it) } },
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             AsyncImage(
@@ -698,6 +745,7 @@ fun TorrentItem(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
@@ -728,15 +776,23 @@ fun MovieDetailScreenTvPreview() {
             downloadedHashes = setOf("HASH1"),
             isWideScreen = true,
             isTv = true,
+            selectedActorDetail = null,
+            isActorLoading = false,
+            showActorSheet = false,
+            actorSheetState = rememberModalBottomSheetState(),
             onBackClick = {},
             onShareClick = {},
             onFavoriteToggle = {},
             onTorrentClick = { _, _ -> },
-            onAddLanguageToFilter = {}
+            onAddLanguageToFilter = {},
+            onCastClick = {},
+            onDismissActorSheet = {},
+            onActorMovieClick = {}
         )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @PreviewLightDark
 @Composable
 fun MovieDetailScreenPreview() {
@@ -766,15 +822,23 @@ fun MovieDetailScreenPreview() {
             downloadedHashes = setOf("HASH1"),
             isWideScreen = false,
             isTv = false,
+            selectedActorDetail = null,
+            isActorLoading = false,
+            showActorSheet = false,
+            actorSheetState = rememberModalBottomSheetState(),
             onBackClick = {},
             onShareClick = {},
             onFavoriteToggle = {},
             onTorrentClick = { _, _ -> },
-            onAddLanguageToFilter = {}
+            onAddLanguageToFilter = {},
+            onCastClick = {},
+            onDismissActorSheet = {},
+            onActorMovieClick = {}
         )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Preview(name = "Tablet Light", showBackground = true, device = "spec:width=1280dp,height=800dp,dpi=240", uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Preview(name = "Tablet Dark", showBackground = true, device = "spec:width=1280dp,height=800dp,dpi=240", uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
@@ -805,11 +869,18 @@ fun MovieDetailScreenTabletPreview() {
             downloadedHashes = setOf("HASH1"),
             isWideScreen = true,
             isTv = false,
+            selectedActorDetail = null,
+            isActorLoading = false,
+            showActorSheet = false,
+            actorSheetState = rememberModalBottomSheetState(),
             onBackClick = {},
             onShareClick = {},
             onFavoriteToggle = {},
             onTorrentClick = { _, _ -> },
-            onAddLanguageToFilter = {}
+            onAddLanguageToFilter = {},
+            onCastClick = {},
+            onDismissActorSheet = {},
+            onActorMovieClick = {}
         )
     }
 }

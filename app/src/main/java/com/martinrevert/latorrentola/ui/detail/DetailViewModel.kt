@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.user.DownloadedMovie
+import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
+import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.utils.PreferenceManager
@@ -25,6 +27,7 @@ import kotlin.time.Duration.Companion.seconds
 class DetailViewModel @Inject constructor(
     private val ytsRepository: YtsRepository,
     private val userLibraryRepository: UserLibraryRepository,
+    private val tmdbRepository: TmdbRepository,
     private val voiceManager: VoiceManager,
     private val translationManager: TranslationManager,
     private val preferenceManager: PreferenceManager
@@ -32,6 +35,27 @@ class DetailViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow<DetailUiState>(DetailUiState.Loading)
     val uiState: StateFlow<DetailUiState> = _uiState.asStateFlow()
+
+    private val _selectedActorDetail = MutableStateFlow<Result<TmdbActorDetail>?>(null)
+    val selectedActorDetail: StateFlow<Result<TmdbActorDetail>?> = _selectedActorDetail.asStateFlow()
+
+    private val _isActorLoading = MutableStateFlow(false)
+    val isActorLoading: StateFlow<Boolean> = _isActorLoading.asStateFlow()
+
+    fun fetchActorDetails(actorName: String) {
+        viewModelScope.launch {
+            _isActorLoading.value = true
+            _selectedActorDetail.value = null
+            val result = tmdbRepository.getActorDetails(actorName)
+            _selectedActorDetail.value = result
+            _isActorLoading.value = false
+        }
+    }
+
+    fun clearSelectedActor() {
+        _selectedActorDetail.value = null
+        _isActorLoading.value = false
+    }
 
     val downloadedHashes: StateFlow<Set<String>> = userLibraryRepository.getDownloadedMovies()
         .map { it.map { download -> download.hash }.toSet() }
