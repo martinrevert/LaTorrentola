@@ -151,7 +151,9 @@ fun MovieListPlaceholder(
 }
 
 @Composable
-fun MovieDetailPlaceholder() {
+fun MovieDetailPlaceholder(
+    contentPadding: PaddingValues = PaddingValues(16.dp)
+) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
     val configuration = LocalConfiguration.current
@@ -161,7 +163,7 @@ fun MovieDetailPlaceholder() {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(contentPadding)
     ) {
         if (isWideScreen) {
             Row(

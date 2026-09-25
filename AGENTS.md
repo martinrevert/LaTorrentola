@@ -51,7 +51,7 @@ Project-specific patterns and gotchas (do not assume defaults)
     *   **Deterministic Focus Links (`focusProperties`)**: Action icons on the right side of `TopAppBar` MUST specify `focusProperties { down = nextFocusRequester }` pointing directly to chips or list below, preventing focus search dead zones.
     *   **YouTube Player Focus Isolation**: WebViews (`YouTubePlayerView`) steal and trap D-pad focus. Always configure `YouTubePlayerView` with `isFocusable = false`, `isFocusableInTouchMode = false`, and `descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS`, overlaying a native `androidx.tv.material3.IconButton` for play/pause control.
 - Placeholder Alignment Rule:
-    *   `MovieListPlaceholder` (loading skeleton state) MUST use the EXACT same `contentPadding` values as `MovieList` (loaded state) on every screen (`HomeScreen`, `SearchScreen`, `Favorites`, etc.) to prevent vertical jumps or misalignments when content finishes loading.
+    *   `MovieListPlaceholder` and `MovieDetailPlaceholder` (loading skeleton states) MUST use the EXACT same `contentPadding` values as `MovieList` and `MovieDetailContent` (loaded states) on every screen (`HomeScreen`, `SearchScreen`, `MovieDetailScreen`, etc.) to prevent vertical jumps or misalignments when content finishes loading.
 - Modular Component Architecture:
     *   Shared UI components MUST be placed in `ui/components/`:
         - `ui/components/TvChip.kt` (TV-optimized chips)

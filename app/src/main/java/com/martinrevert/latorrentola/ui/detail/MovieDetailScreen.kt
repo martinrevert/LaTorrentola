@@ -204,17 +204,25 @@ private fun MovieDetailScreenContent(
             )
         }
     ) { padding ->
-        val unusedPadding = padding
+        val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val detailContentPadding = PaddingValues(
+            top = 64.dp + statusBarHeight + 16.dp,
+            bottom = 16.dp + navBarHeight,
+            start = 16.dp,
+            end = 16.dp
+        )
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .hazeSource(state = hazeState)
-                .consumeWindowInsets(unusedPadding),
+                .consumeWindowInsets(padding),
             contentAlignment = Alignment.TopCenter
         ) {
             when (val state = uiState) {
                 is DetailUiState.Loading -> {
-                    MovieDetailPlaceholder()
+                    MovieDetailPlaceholder(contentPadding = detailContentPadding)
                 }
                 is DetailUiState.Success -> {
                     MovieDetailContent(
@@ -224,7 +232,8 @@ private fun MovieDetailScreenContent(
                         isTv = isTv,
                         onTorrentClick = { onTorrentClick(state.movie, it) },
                         onAddLanguageToFilter = onAddLanguageToFilter,
-                        contentFocusRequester = contentFocusRequester
+                        contentFocusRequester = contentFocusRequester,
+                        contentPadding = detailContentPadding
                     )
                 }
                 is DetailUiState.Error -> {
@@ -246,21 +255,14 @@ fun MovieDetailContent(
     isTv: Boolean,
     onTorrentClick: (Torrent) -> Unit,
     onAddLanguageToFilter: (String) -> Unit,
-    contentFocusRequester: FocusRequester? = null
+    contentFocusRequester: FocusRequester? = null,
+    contentPadding: PaddingValues = PaddingValues(16.dp)
 ) {
-    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(
-                top = 64.dp + statusBarHeight + 16.dp,
-                bottom = 16.dp + navBarHeight,
-                start = 16.dp,
-                end = 16.dp
-            )
+            .padding(contentPadding)
     ) {
         if (isWideScreen && !movie.ytTrailerCode.isNullOrEmpty()) {
             Row(
