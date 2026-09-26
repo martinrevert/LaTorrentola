@@ -4,11 +4,13 @@ import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.model.YTS.Data
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.MovieDetails
+import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TranslationManager
+import com.martinrevert.latorrentola.utils.UiText
 import com.martinrevert.latorrentola.utils.VoiceManager
 import io.mockk.*
 import kotlinx.coroutines.flow.flowOf
@@ -25,6 +27,7 @@ class DetailViewModelTest {
 
     private val repository: YtsRepository = mockk(relaxed = true)
     private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
+    private val tmdbRepository: TmdbRepository = mockk(relaxed = true)
     private val voiceManager: VoiceManager = mockk(relaxed = true)
     private val translationManager: TranslationManager = mockk(relaxed = true)
     private val preferenceManager: PreferenceManager = mockk(relaxed = true)
@@ -32,12 +35,19 @@ class DetailViewModelTest {
 
     @Before
     fun setUp() {
-        clearMocks(repository, userLibraryRepository, voiceManager, translationManager, preferenceManager)
+        clearMocks(repository, userLibraryRepository, tmdbRepository, voiceManager, translationManager, preferenceManager)
         every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
         every { preferenceManager.getVoiceSystem() } returns true
         every { preferenceManager.getVoiceTranslation() } returns false
         every { preferenceManager.getVoiceSummary() } returns true
-        viewModel = DetailViewModel(repository, userLibraryRepository, voiceManager, translationManager, preferenceManager)
+        viewModel = DetailViewModel(
+            repository,
+            userLibraryRepository,
+            tmdbRepository,
+            voiceManager,
+            translationManager,
+            preferenceManager
+        )
     }
 
     @Test
@@ -91,6 +101,7 @@ class DetailViewModelTest {
         coEvery { repository.getMovieFullDetails(1) } returns MovieDetails(data = Data(movie = movie))
 
         viewModel.setMovie(movie)
+        testScheduler.advanceUntilIdle()
 
         verify { voiceManager.speak("Title", Locale.US) }
         verify { voiceManager.speak("Summary", Locale.US) }
@@ -112,6 +123,7 @@ class DetailViewModelTest {
         coEvery { repository.getMovieFullDetails(1) } returns MovieDetails(data = Data(movie = movie))
 
         viewModel.setMovie(movie)
+        testScheduler.advanceUntilIdle()
 
         verify { voiceManager.speak("Resumen Traducido", Locale.forLanguageTag("es-ES")) }
     }
@@ -182,7 +194,8 @@ class DetailViewModelTest {
 
         val state = viewModel.uiState.value
         assertThat(state).isInstanceOf(DetailUiState.Error::class.java)
-        assertThat((state as DetailUiState.Error).message).isEqualTo("Network Error")
+        assertThat((state as DetailUiState.Error).message)
+            .isEqualTo(UiText.DynamicString("Network Error"))
     }
 
     @Test

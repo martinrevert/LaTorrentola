@@ -130,3 +130,14 @@ data class TmdbCastCredit(
     val fullPosterUrl: String?
         get() = if (!posterPath.isNullOrEmpty()) "https://image.tmdb.org/t/p/w342$posterPath" else null
 }
+
+@Serializable
+data class TmdbMovieExternalIds(
+    @SerializedName("id")
+    @SerialName("id")
+    val id: Int,
+
+    @SerializedName("imdb_id")
+    @SerialName("imdb_id")
+    val imdbId: String? = null
+)

@@ -48,7 +48,7 @@ fun ActorDetailBottomSheet(
     onDismiss: () -> Unit,
     sheetState: SheetState,
     hazeState: HazeState? = null,
-    onMovieClick: ((String) -> Unit)? = null
+    onMovieClick: ((tmdbMovieId: Int, title: String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
@@ -155,7 +155,7 @@ fun ActorDetailBottomSheet(
 private fun TvActorContent(
     actor: TmdbActorDetail,
     onDismiss: () -> Unit,
-    onMovieClick: ((String) -> Unit)? = null
+    onMovieClick: ((tmdbMovieId: Int, title: String) -> Unit)? = null
 ) {
     Row(
         modifier = Modifier.fillMaxSize(),
@@ -257,13 +257,13 @@ private fun TvActorContent(
 @Composable
 private fun TvFilmographyItem(
     credit: TmdbCastCredit,
-    onMovieClick: ((String) -> Unit)? = null
+    onMovieClick: ((tmdbMovieId: Int, title: String) -> Unit)? = null
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
     Surface(
-        onClick = { onMovieClick?.invoke(credit.displayTitle) },
+        onClick = { onMovieClick?.invoke(credit.id, credit.displayTitle) },
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
         shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
         interactionSource = interactionSource,
@@ -310,7 +310,7 @@ private fun TvFilmographyItem(
 @Composable
 private fun WideActorContent(
     actor: TmdbActorDetail,
-    onMovieClick: ((String) -> Unit)? = null
+    onMovieClick: ((tmdbMovieId: Int, title: String) -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
@@ -393,7 +393,7 @@ private fun WideActorContent(
 @Composable
 private fun MobileActorContent(
     actor: TmdbActorDetail,
-    onMovieClick: ((String) -> Unit)? = null
+    onMovieClick: ((tmdbMovieId: Int, title: String) -> Unit)? = null
 ) {
     Column(
         modifier = Modifier
@@ -483,10 +483,10 @@ private fun MobileActorContent(
 @Composable
 private fun FilmographyItem(
     credit: TmdbCastCredit,
-    onMovieClick: ((String) -> Unit)? = null
+    onMovieClick: ((tmdbMovieId: Int, title: String) -> Unit)? = null
 ) {
     Card(
-        onClick = { onMovieClick?.invoke(credit.displayTitle) },
+        onClick = { onMovieClick?.invoke(credit.id, credit.displayTitle) },
         modifier = Modifier.width(100.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,

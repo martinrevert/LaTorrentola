@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -95,6 +96,7 @@ fun MovieDetailScreen(
     val actorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val context = LocalContext.current
+    val resources = LocalResources.current
     val configuration = LocalConfiguration.current
     val isTv = remember(context) { context.isTvDevice() }
     val isWideScreen = configuration.screenWidthDp >= 600 || isTv
@@ -120,14 +122,14 @@ fun MovieDetailScreen(
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_SUBJECT, movie.title)
-                val shareText = context.getString(
+                val shareText = resources.getString(
                     R.string.share_movie_text,
                     movie.title,
                     imdbUrl
                 )
                 putExtra(Intent.EXTRA_TEXT, shareText)
             }
-            context.startActivity(Intent.createChooser(shareIntent, context.getString(
+            context.startActivity(Intent.createChooser(shareIntent, resources.getString(
                 R.string.share_movie_chooser)))
         },
         onFavoriteToggle = { movie -> viewModel.toggleFavorite(movie) },
@@ -136,7 +138,7 @@ fun MovieDetailScreen(
         },
         onAddLanguageToFilter = { language ->
             viewModel.addLanguageToFilter(language) { error ->
-                Toast.makeText(context, error.asString(context), Toast.LENGTH_LONG).show()
+                Toast.makeText(context, error.asString(resources), Toast.LENGTH_LONG).show()
             }
         },
         onCastClick = { actorName ->
@@ -147,10 +149,10 @@ fun MovieDetailScreen(
             showActorSheet = false
             viewModel.clearSelectedActor()
         },
-        onActorMovieClick = { movieQuery ->
+        onActorMovieClick = { tmdbMovieId, fallbackTitle ->
             showActorSheet = false
             viewModel.clearSelectedActor()
-            viewModel.setMovieByQuery(movieQuery)
+            viewModel.fetchAndOpenMovieByTmdbId(tmdbMovieId, fallbackTitle)
         }
     )
 }
@@ -173,7 +175,7 @@ private fun MovieDetailScreenContent(
     onAddLanguageToFilter: (String) -> Unit,
     onCastClick: (String) -> Unit,
     onDismissActorSheet: () -> Unit,
-    onActorMovieClick: (String) -> Unit
+    onActorMovieClick: (tmdbMovieId: Int, fallbackTitle: String) -> Unit
 ) {
     val hazeState = rememberHazeState()
     val isInspection = LocalInspectionMode.current
@@ -662,6 +664,7 @@ fun TorrentItem(
     focusRequester: FocusRequester? = null
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val isTv = remember(context) { context.isTvDevice() }
 
     val onTorrentClickInternal = {
@@ -683,10 +686,10 @@ fun TorrentItem(
                 try {
                     context.startActivity(intent)
                 } catch (e: Exception) {
-                    Toast.makeText(context, context.getString(R.string.toast_no_torrent_client), Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, resources.getString(R.string.toast_no_torrent_client), Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
-                Toast.makeText(context, context.getString(R.string.toast_magnet_error), Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, resources.getString(R.string.toast_magnet_error), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -787,7 +790,7 @@ fun MovieDetailScreenTvPreview() {
             onAddLanguageToFilter = {},
             onCastClick = {},
             onDismissActorSheet = {},
-            onActorMovieClick = {}
+            onActorMovieClick = { _, _ -> }
         )
     }
 }
@@ -833,7 +836,7 @@ fun MovieDetailScreenPreview() {
             onAddLanguageToFilter = {},
             onCastClick = {},
             onDismissActorSheet = {},
-            onActorMovieClick = {}
+            onActorMovieClick = { _, _ -> }
         )
     }
 }
@@ -880,9 +883,8 @@ fun MovieDetailScreenTabletPreview() {
             onAddLanguageToFilter = {},
             onCastClick = {},
             onDismissActorSheet = {},
-            onActorMovieClick = {}
+            onActorMovieClick = { _, _ -> }
         )
     }
 }
-
 

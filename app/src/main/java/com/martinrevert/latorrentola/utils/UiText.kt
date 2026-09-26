@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.utils
 
 import android.content.Context
+import android.content.res.Resources
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
@@ -22,9 +23,13 @@ sealed class UiText {
     }
 
     fun asString(context: Context): String {
+        return asString(context.resources)
+    }
+
+    fun asString(resources: Resources): String {
         return when (this) {
             is DynamicString -> value
-            is StringResource -> context.getString(resId, *args)
+            is StringResource -> resources.getString(resId, *args)
         }
     }
 }

@@ -7,6 +7,8 @@ import com.martinrevert.latorrentola.model.YTS.MovieDetails
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
+import com.martinrevert.latorrentola.model.YTS.Torrent
+import com.martinrevert.latorrentola.utils.UiText
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -118,7 +120,8 @@ class SearchViewModelTest {
         viewModel.search("error")
 
         assertThat(viewModel.uiState.value).isInstanceOf(SearchUiState.Error::class.java)
-        assertThat((viewModel.uiState.value as SearchUiState.Error).message).isEqualTo("Search Error")
+        assertThat((viewModel.uiState.value as SearchUiState.Error).message)
+            .isEqualTo(UiText.DynamicString("Search Error"))
     }
 
     @Test
@@ -141,10 +144,14 @@ class SearchViewModelTest {
 
     @Test
     fun `setQuality should reload results with new quality`() = runTest {
-        coEvery { repository.searchMovies("query", 1, null) } returns MovieDetails(data = Data(movies = listOf(Movie(id = 1))))
+        coEvery { repository.searchMovies("query", 1, null) } returns MovieDetails(
+            data = Data(movies = listOf(Movie(id = 1)))
+        )
         viewModel.search("query")
         
-        coEvery { repository.searchMovies("query", 1, "720p") } returns MovieDetails(data = Data(movies = listOf(Movie(id = 2))))
+        coEvery { repository.searchMovies("query", 1, "720p") } returns MovieDetails(
+            data = Data(movies = listOf(Movie(id = 2, torrents = listOf(Torrent(quality = "720p")))))
+        )
         viewModel.setQuality("720p")
 
         assertThat(viewModel.selectedQuality.value).isEqualTo("720p")

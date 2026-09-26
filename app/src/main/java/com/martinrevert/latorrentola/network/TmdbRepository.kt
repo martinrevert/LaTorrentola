@@ -39,4 +39,15 @@ class TmdbRepository @Inject constructor(
             Result.failure(e)
         }
     }
+
+    suspend fun getMovieImdbId(tmdbMovieId: Int): String? {
+        return try {
+            if (apiKey.isEmpty()) return null
+            val response = tmdbService.getMovieExternalIds(movieId = tmdbMovieId, apiKey = apiKey)
+            val imdbId = response.imdbId
+            if (imdbId.isNullOrEmpty()) null else imdbId
+        } catch (e: Exception) {
+            null
+        }
+    }
 }

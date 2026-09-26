@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -84,6 +85,7 @@ fun SearchScreen(
         mutableStateOf(initialGenre != null && initialGenre != "milista" && initialGenre != "ya_vistas" && initialGenre != "nuevas") 
     }
     val context = LocalContext.current
+    val resources = LocalResources.current
     val isTv = remember(context) { context.isTvDevice() }
     val focusRequester = remember { FocusRequester() }
 
@@ -160,7 +162,7 @@ fun SearchScreen(
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.voice_search_prompt))
+                putExtra(RecognizerIntent.EXTRA_PROMPT, resources.getString(R.string.voice_search_prompt))
             }
             try {
                 speechLauncher.launch(intent)
@@ -575,4 +577,3 @@ fun SearchScreenPreview() {
         )
     }
 }
-

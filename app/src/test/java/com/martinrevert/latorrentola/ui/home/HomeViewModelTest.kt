@@ -9,6 +9,7 @@ import com.martinrevert.latorrentola.network.AuthRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
+import com.martinrevert.latorrentola.utils.UiText
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -118,7 +119,8 @@ class HomeViewModelTest {
         // Since init calls loadMovies, it might already be in error state
         
         assertThat(viewModel.uiState.value).isInstanceOf(HomeUiState.Error::class.java)
-        assertThat((viewModel.uiState.value as HomeUiState.Error).message).isEqualTo("Network Error")
+        assertThat((viewModel.uiState.value as HomeUiState.Error).message)
+            .isEqualTo(UiText.DynamicString("Network Error"))
     }
 
     @Test

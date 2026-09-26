@@ -146,6 +146,15 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    fun fetchAndOpenMovieByTmdbId(tmdbMovieId: Int, fallbackTitle: String) {
+        viewModelScope.launch {
+            _uiState.value = DetailUiState.Loading
+            val imdbId = tmdbRepository.getMovieImdbId(tmdbMovieId)
+            val searchQuery = imdbId ?: fallbackTitle
+            setMovieByQuery(searchQuery)
+        }
+    }
+
     private suspend fun handleVoice(movie: Movie) {
         if (!preferenceManager.getVoiceSystem()) return
 

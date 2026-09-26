@@ -8,6 +8,7 @@ import com.martinrevert.latorrentola.network.AuthRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.utils.UiText
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -70,7 +71,8 @@ class AuthViewModelTest {
             val finalState = if (nextState is AuthState.Loading) awaitItem() else nextState
             
             assertThat(finalState).isInstanceOf(AuthState.Error::class.java)
-            assertThat((finalState as AuthState.Error).message).isEqualTo(errorMessage)
+            assertThat((finalState as AuthState.Error).message)
+                .isEqualTo(UiText.DynamicString(errorMessage))
         }
     }
 

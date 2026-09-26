@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
@@ -57,6 +58,7 @@ fun MovieItem(
     onFocusRestored: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val isTv = remember(context) { context.isTvDevice() }
     val focusRequester = remember { FocusRequester() }
 
@@ -302,14 +304,14 @@ fun MovieItem(
                                             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                                 type = "text/plain"
                                                 putExtra(Intent.EXTRA_SUBJECT, movie.title)
-                                                val shareText = context.getString(
+                                                val shareText = resources.getString(
                                                     R.string.share_movie_text,
                                                     movie.title,
                                                     imdbUrl
                                                 )
                                                 putExtra(Intent.EXTRA_TEXT, shareText)
                                             }
-                                            context.startActivity(Intent.createChooser(shareIntent, context.getString(
+                                            context.startActivity(Intent.createChooser(shareIntent, resources.getString(
                                                 R.string.share_movie_chooser)))
                                         },
                                         modifier = Modifier.size(48.dp)

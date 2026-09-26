@@ -2,7 +2,6 @@ package com.martinrevert.latorrentola.ui.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
@@ -451,14 +450,7 @@ class SearchViewModel @Inject constructor(
                 }
 
                 if (allResults.isEmpty() && !canLoadMore) {
-                    val error = if (query != null) {
-                        UiText.StringResource(R.string.movie_not_found_query, query)
-                    } else if (genre != null) {
-                        UiText.StringResource(R.string.movie_not_found_query, genre)
-                    } else {
-                        UiText.StringResource(R.string.no_results)
-                    }
-                    _uiState.value = SearchUiState.Error(error)
+                    _uiState.value = SearchUiState.Empty
                 }
             } catch (e: Exception) {
                 if (e !is CancellationException && allResults.isEmpty()) {
