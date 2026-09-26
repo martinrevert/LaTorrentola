@@ -46,6 +46,7 @@ import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.tv.material3.Button
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
+/** Collects settings state and presents the adaptive settings screen. */
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
@@ -79,6 +80,7 @@ fun SettingsScreen(
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
+/** Renders account, appearance, filtering, and accessibility settings. */
 @Composable
 private fun SettingsScreenContent(
     uiState: SettingsUiState,
@@ -327,6 +329,7 @@ private fun SettingsScreenContent(
 }
 }
 
+/** Displays the sign-out action using the appropriate device styling. */
 @Composable
 private fun LogoutButton(isTv: Boolean, onClick: () -> Unit) {
     if (isTv) {
@@ -360,6 +363,7 @@ private fun LogoutButton(isTv: Boolean, onClick: () -> Unit) {
     }
 }
 
+/** Displays the installed application version. */
 @Composable
 private fun AppVersionInfo() {
     Column(
@@ -381,6 +385,7 @@ private fun AppVersionInfo() {
 
 
 
+/** Presents the signed-in user's profile and account information. */
 @Composable
 fun UserSection(
     photoUrl: String?,
@@ -438,6 +443,7 @@ fun UserSection(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+/** Allows selection between system, light, and dark appearance modes. */
 @Composable
 fun ThemeSelector(
     selectedTheme: Int,
@@ -471,6 +477,7 @@ fun ThemeSelector(
     }
 }
 
+/** Presents the bounded minimum-rating preference as an adjustable control. */
 @Composable
 private fun MinimumRatingSetting(
     value: Int,
@@ -523,6 +530,7 @@ private fun MinimumRatingSetting(
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
+/** Renders a labeled settings toggle with device-appropriate focus behavior. */
 @Composable
 fun SettingsToggle(
     title: String,
@@ -571,6 +579,7 @@ fun SettingsToggle(
 
 @Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
+/** TV preview of the settings screen. */
 @Composable
 fun SettingsScreenTvPreview() {
     LaTorrentolaTheme {
@@ -600,6 +609,7 @@ fun SettingsScreenTvPreview() {
 }
 
 @PreviewLightDark
+/** Light and dark previews of the settings screen. */
 @Composable
 fun SettingsScreenPreview() {
     LaTorrentolaTheme {

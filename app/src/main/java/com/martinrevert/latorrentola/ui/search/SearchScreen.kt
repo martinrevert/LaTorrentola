@@ -62,6 +62,7 @@ import dev.chrisbanes.haze.glass.hazeGlass
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
+/** Connects search fields, collection modes, and result actions to the search view model. */
 @Composable
 fun SearchScreen(
     viewModel: SearchViewModel,
@@ -188,6 +189,7 @@ fun SearchScreen(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+/** Renders the adaptive search interface and its current result collection. */
 @Composable
 private fun SearchScreenContent(
     uiState: SearchUiState,
@@ -470,6 +472,7 @@ private fun SearchScreenContent(
 }
 
 
+/** Provides an accessible search field with optional voice input. */
 @Composable
 private fun SearchTextField(
     searchQuery: String,
@@ -503,6 +506,7 @@ private fun SearchTextField(
 
 @Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
+/** TV preview of the movie search screen. */
 @Composable
 fun SearchScreenTvPreview() {
     val sampleMovies = listOf(
@@ -541,6 +545,7 @@ fun SearchScreenTvPreview() {
 }
 
 @PreviewLightDark
+/** Light and dark previews of the movie search screen. */
 @Composable
 fun SearchScreenPreview() {
     val sampleMovies = listOf(

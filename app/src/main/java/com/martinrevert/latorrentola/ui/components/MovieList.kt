@@ -16,6 +16,7 @@ import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.utils.isTvDevice
 import kotlinx.coroutines.flow.first
 
+/** Displays a responsive, focus-restorable grid of movie cards with pagination placeholders. */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun MovieList(

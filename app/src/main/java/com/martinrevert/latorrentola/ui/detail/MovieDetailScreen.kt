@@ -83,6 +83,7 @@ import com.martinrevert.latorrentola.utils.UiText
 import java.net.URLEncoder
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
+/** Connects movie detail state and user actions to the detail presentation. */
 @Composable
 fun MovieDetailScreen(
     viewModel: DetailViewModel,
@@ -158,6 +159,7 @@ fun MovieDetailScreen(
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
+/** Hosts the responsive detail screen, including app-bar and actor-sheet state. */
 @Composable
 private fun MovieDetailScreenContent(
     uiState: DetailUiState,
@@ -292,6 +294,7 @@ private fun MovieDetailScreenContent(
 }
 
 
+/** Renders a movie's trailer, summary, metadata, cast, and available torrents. */
 @Composable
 fun MovieDetailContent(
     movie: Movie,
@@ -389,6 +392,7 @@ fun MovieDetailContent(
     }
 }
 
+/** Displays localized movie metadata and an action to exclude its language. */
 @Composable
 fun MovieMetadata(
     movie: Movie, 
@@ -440,6 +444,7 @@ fun MovieMetadata(
     }
 }
 
+/** Embeds a YouTube trailer with native play/pause controls and lifecycle handling. */
 @Composable
 fun YoutubePlayer(
     youtubeVideoId: String,
@@ -544,6 +549,7 @@ fun YoutubePlayer(
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
+/** Displays the cast as a horizontally scrolling list. */
 @Composable
 fun CastSection(castList: List<Cast>, onCastClick: (String) -> Unit) {
     Text(text = stringResource(R.string.cast_header), style = MaterialTheme.typography.titleLarge)
@@ -560,6 +566,7 @@ fun CastSection(castList: List<Cast>, onCastClick: (String) -> Unit) {
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
+/** Displays an interactive cast member portrait and name. */
 @Composable
 fun CastItem(cast: Cast, onCastClick: (String) -> Unit) {
     val context = LocalContext.current
@@ -655,6 +662,7 @@ fun CastItem(cast: Cast, onCastClick: (String) -> Unit) {
     }
 }
 
+/** Displays torrent quality and opens a compatible handler for the magnet link. */
 @Composable
 fun TorrentItem(
     movie: Movie,
@@ -751,6 +759,7 @@ fun TorrentItem(
 @OptIn(ExperimentalMaterial3Api::class)
 @Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
+/** TV preview of the movie detail screen. */
 @Composable
 fun MovieDetailScreenTvPreview() {
     val sampleMovie = Movie(
@@ -797,6 +806,7 @@ fun MovieDetailScreenTvPreview() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @PreviewLightDark
+/** Light and dark previews of the movie detail screen. */
 @Composable
 fun MovieDetailScreenPreview() {
     val sampleMovie = Movie(
@@ -844,6 +854,7 @@ fun MovieDetailScreenPreview() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Preview(name = "Tablet Light", showBackground = true, device = "spec:width=1280dp,height=800dp,dpi=240", uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Preview(name = "Tablet Dark", showBackground = true, device = "spec:width=1280dp,height=800dp,dpi=240", uiMode = Configuration.UI_MODE_NIGHT_YES)
+/** Tablet preview of the movie detail screen. */
 @Composable
 fun MovieDetailScreenTabletPreview() {
     val sampleMovie = Movie(
@@ -887,4 +898,3 @@ fun MovieDetailScreenTabletPreview() {
         )
     }
 }
-

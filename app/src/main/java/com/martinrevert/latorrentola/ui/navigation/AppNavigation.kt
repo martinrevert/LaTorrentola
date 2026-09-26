@@ -21,19 +21,37 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import com.martinrevert.latorrentola.model.YTS.Movie
 
+/** Serializable destinations supported by the app's navigation back stack. */
 @Serializable
 sealed interface Route : NavKey {
+    /** Login destination. */
     @Serializable object Login : Route
+    /** Home movie-feed destination. */
     @Serializable object Home : Route
+    /**
+     * Movie detail destination, initialized from one of the supported external payloads.
+     *
+     * @property movieJson Serialized YTS movie payload, when supplied.
+     * @property movieId YTS movie identifier, when supplied.
+     * @property query Search term such as an IMDb title identifier.
+     */
     @Serializable data class Detail(
         val movieJson: String? = null, 
         val movieId: Int? = null,
         val query: String? = null
     ) : Route
+    /** User settings destination. */
     @Serializable object Settings : Route
+    /**
+     * Search destination with optional genre or text query.
+     *
+     * @property genre Genre or collection key used to initialize the result list.
+     * @property query Initial search text.
+     */
     @Serializable data class Search(val genre: String? = null, val query: String? = null) : Route
 }
 
+/** Creates the authenticated navigation graph and consumes pending deep-link data. */
 @Composable
 fun AppNavigation(
     initialMovieJson: String? = null, 

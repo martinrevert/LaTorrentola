@@ -87,6 +87,7 @@ import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.glass.hazeGlass
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, ExperimentalTvMaterial3Api::class)
+/** Connects home feed state and user actions to the adaptive home layout. */
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
@@ -139,6 +140,7 @@ fun HomeScreen(
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, ExperimentalTvMaterial3Api::class)
+/** Renders home feed content, filter controls, and loading/empty states. */
 @Composable
 private fun HomeScreenContent(
     uiState: HomeUiState,
@@ -409,6 +411,7 @@ private fun HomeScreenContent(
     }
 }
 
+/** Hosts the home content and coordinates refresh and genre-sheet presentation. */
 @Composable
 private fun HomeContent(
     uiState: HomeUiState,
@@ -453,6 +456,7 @@ private fun HomeContent(
 
 @Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
+/** TV preview of the home movie feed. */
 @Composable
 fun HomeScreenTvPreview() {
     val sampleMovies = listOf(
@@ -503,6 +507,7 @@ fun HomeScreenTvPreview() {
 }
 
 @PreviewLightDark
+/** Light and dark previews of the home movie feed. */
 @Composable
 fun HomeScreenPreview() {
     val sampleMovies = listOf(
@@ -559,4 +564,3 @@ fun HomeScreenPreview() {
         )
     }
 }
-

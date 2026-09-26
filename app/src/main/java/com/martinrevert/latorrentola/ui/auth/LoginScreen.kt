@@ -26,6 +26,7 @@ import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.UiText
 
+/** Connects login UI events and authentication outcomes to the auth view model. */
 @Composable
 fun LoginScreen(
     viewModel: AuthViewModel,
@@ -48,6 +49,7 @@ fun LoginScreen(
     )
 }
 
+/** Renders login branding and the appropriate loading or Google sign-in control. */
 @Composable
 private fun LoginScreenContent(
     authState: AuthState,
@@ -121,6 +123,7 @@ private fun LoginScreenContent(
 
 @Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
+/** Preview of the login screen on an Android TV device. */
 @Composable
 fun LoginScreenTvPreview() {
     LaTorrentolaTheme {
@@ -132,6 +135,7 @@ fun LoginScreenTvPreview() {
 }
 
 @PreviewLightDark
+/** Light and dark previews of the idle login screen. */
 @Composable
 fun LoginScreenPreview() {
     LaTorrentolaTheme {
@@ -143,6 +147,7 @@ fun LoginScreenPreview() {
 }
 
 @PreviewLightDark
+/** Light and dark previews of the login loading state. */
 @Composable
 fun LoginScreenLoadingPreview() {
     LaTorrentolaTheme {
@@ -152,4 +157,3 @@ fun LoginScreenLoadingPreview() {
         )
     }
 }
-

@@ -5,12 +5,19 @@ import com.martinrevert.latorrentola.utils.PreferenceManager
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Synchronizes the device's FCM token with the app backend.
+ *
+ * @property fcmService HTTP client for backend subscription operations.
+ * @property preferenceManager stores token synchronization state.
+ */
 @Singleton
 class FcmRepository @Inject constructor(
     private val fcmService: FcmService,
     private val preferenceManager: PreferenceManager
 ) {
 
+    /** Registers [token] with the backend and records successful synchronization. */
     suspend fun subscribe(token: String): Boolean {
         return try {
             val response = fcmService.subscribe(token)
@@ -28,6 +35,7 @@ class FcmRepository @Inject constructor(
         }
     }
 
+    /** Removes [token] from the backend and clears its synchronized preference on success. */
     suspend fun unsubscribe(token: String): Boolean {
         return try {
             val response = fcmService.unsubscribe(token)
@@ -45,6 +53,7 @@ class FcmRepository @Inject constructor(
         }
     }
 
+    /** Applies the requested backend subscription state for [token]. */
     suspend fun syncToken(token: String, shouldSubscribe: Boolean): Boolean {
         return if (shouldSubscribe) {
             subscribe(token)
@@ -54,6 +63,7 @@ class FcmRepository @Inject constructor(
     }
 
     companion object {
+        /** Log tag used for token synchronization diagnostics. */
         private const val TAG = "FcmRepository"
     }
 }

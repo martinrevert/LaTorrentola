@@ -30,6 +30,7 @@ import androidx.core.view.WindowCompat
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 
+/** Semantic Material 3 colors used by the app in dark mode. */
 internal val DarkColorScheme = darkColorScheme(
     primary = Color(0xFFD0BCFF),
     onPrimary = Color(0xFF381E72),
@@ -61,6 +62,7 @@ internal val DarkColorScheme = darkColorScheme(
     scrim = Color(0xFF000000)
 )
 
+/** Semantic Material 3 colors used by the app in light mode. */
 internal val LightColorScheme = lightColorScheme(
     primary = Color(0xFF6750A4),
     onPrimary = Color(0xFFFFFFFF),
@@ -92,6 +94,7 @@ internal val LightColorScheme = lightColorScheme(
     scrim = Color(0xFF000000)
 )
 
+/** Provides the appropriate handheld or TV theme and app color scheme. */
 @Composable
 fun LaTorrentolaTheme(
     themeMode: Int = PreferenceManager.THEME_SYSTEM,

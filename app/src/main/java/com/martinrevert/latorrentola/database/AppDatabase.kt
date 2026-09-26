@@ -10,17 +10,22 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.martinrevert.latorrentola.model.date.DateLastVisit
 import com.martinrevert.latorrentola.model.stats.GenreStats
 
+/** Room database for local visit dates and genre statistics. */
 @Database(entities = [DateLastVisit::class, GenreStats::class], version = 6, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
+    /** Provides database access to last-visit records. */
     abstract fun dateDao(): DateDao
+    /** Provides database access to genre visit statistics. */
     abstract fun genreDao(): GenreDao
 
     companion object {
+        /** Lazily initialized process-wide database instance. */
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        /** Returns the singleton database, creating it on first access. */
         fun getAppDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -35,36 +40,47 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Drops the legacy movies table while upgrading schema version 5 to 6. */
         private val MIGRATION_5_6 = object : Migration(5, 6) {
+            /** Applies this schema change to [db]. */
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("DROP TABLE IF EXISTS `movies`")
             }
         }
 
+        /** Adds the visit-date table when upgrading schema version 1 to 2. */
         private val MIGRATION_1_2 = object : Migration(1, 2) {
+            /** Applies this schema change to [db]. */
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE `date` (`id` INTEGER,`date` LONG, PRIMARY KEY(`id`))")
             }
         }
 
+        /** Adds cast data to the legacy movies table. */
         private val MIGRATION_2_3 = object : Migration(2, 3) {
+            /** Applies this schema change to [db]. */
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `movies` ADD COLUMN `cast` TEXT")
             }
         }
 
+        /** Creates the genre statistics table during schema version 3 to 4. */
         private val MIGRATION_3_4 = object : Migration(3, 4) {
+            /** Applies this schema change to [db]. */
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS `genre_stats` (`genre` TEXT NOT NULL, `count` INTEGER NOT NULL, PRIMARY KEY(`genre`))")
             }
         }
 
+        /** Adds upload timestamps to the legacy movies table. */
         private val MIGRATION_4_5 = object : Migration(4, 5) {
+            /** Applies this schema change to [db]. */
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `movies` ADD COLUMN `date_uploaded_unix` INTEGER")
             }
         }
 
+        /** Clears the process singleton, primarily for controlled database lifecycle resets. */
         fun destroyInstance() {
             INSTANCE = null
         }

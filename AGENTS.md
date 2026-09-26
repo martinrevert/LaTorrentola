@@ -25,9 +25,11 @@ Checklist for this agent run:
 Mandatory Agent Workflow & Standards
 1. **Regression Prevention via Git Inspection**:
    Before making changes, agents MUST run `git diff` or compare against recent working commits (e.g. `"C:\Program Files\Git\cmd\git.exe" --no-pager diff HEAD~1`) to verify previous working layout structures and prevent regressions in D-pad navigation, edge-to-edge padding, or Haze 2.0 glass effects.
-2. **Mandatory Skill Usage for Standards**:
+2. **Keep Kotlin KDoc Current**:
+   Every new or modified Kotlin class, function, property, composable, and model field MUST have accurate, up-to-date KDoc. When changing a declaration's behavior, parameters, return value, state, or model-field meaning, update its existing KDoc in the same change. Document data-class constructor fields with `@property` tags on the class KDoc where appropriate. Use standard Kotlin KDoc syntax; describe the actual contract and avoid redundant boilerplate.
+3. **Mandatory Skill Usage for Standards**:
    Agents MUST load and follow workspace skills (`leanback-to-compose-tv-migration`, `firebase-basics`, `firebase-auth-basics`, `edge-to-edge`, `styles`, `adaptive`) before modifying TV layouts, authentication flows, or edge-to-edge styling to ensure official Android and Firebase standards are strictly maintained.
-3. **Official Documentation & Reference Links for Agents**:
+4. **Official Documentation & Reference Links for Agents**:
    - **Android Developer Guidance**: [developer.android.com](https://developer.android.com/doc)
    - **Android TV & Compose for TV Guide**: [developer.android.com/tv/compose](https://developer.android.com/tv/compose)
    - **Firebase Android SDK Setup & Best Practices**: [firebase.google.com/docs/android/setup](https://firebase.google.com/docs/android/setup)

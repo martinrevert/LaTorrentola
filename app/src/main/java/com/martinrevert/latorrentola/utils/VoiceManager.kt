@@ -8,19 +8,29 @@ import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Manages text-to-speech playback and queues a request until engine initialization completes.
+ *
+ * @property context Application context used to create the speech engine.
+ */
 @Singleton
 class VoiceManager @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) : TextToSpeech.OnInitListener {
 
+    /** Platform speech engine instance, when created. */
     private var tts: TextToSpeech? = null
+    /** Whether the speech engine reported successful initialization. */
     private var isInitialized = false
+    /** Most recent speech request received before initialization. */
     private var pendingText: String? = null
 
+    /** Creates the platform speech engine and registers this manager as its listener. */
     init {
         tts = TextToSpeech(context, this)
     }
 
+    /** Marks the engine ready and speaks any queued text using the baseline locale. */
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             isInitialized = true
@@ -78,10 +88,12 @@ class VoiceManager @Inject constructor(
         }
     }
 
+    /** Stops any currently speaking utterance. */
     fun stop() {
         tts?.stop()
     }
 
+    /** Shuts down the speech engine and releases its resources. */
     fun shutdown() {
         tts?.shutdown()
     }

@@ -6,8 +6,9 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 
 /**
- * Modern utility to detect if the app is running on a TV device.
- * Replaces deprecated PackageManager.FEATURE_TELEVISION.
+ * Returns whether this context is running on a television-style device.
+ *
+ * Uses the modern UI mode service with Leanback feature checks as a fallback.
  */
 fun Context.isTvDevice(): Boolean {
     val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager

@@ -16,6 +16,13 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * Performs movie searches and exposes favorites, downloads, and new-release collections.
+ *
+ * @property ytsRepository searches movies and manages favorites.
+ * @property userLibraryRepository observes downloads and favorites.
+ * @property preferenceManager supplies filtering preferences.
+ */
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val ytsRepository: YtsRepository,
@@ -23,21 +30,32 @@ class SearchViewModel @Inject constructor(
     private val preferenceManager: PreferenceManager
 ) : ViewModel() {
 
+    /** Mutable backing state for current search results. */
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
+    /** Current search or collection state. */
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
+    /** Mutable backing state for the selected torrent quality. */
     private val _selectedQuality = MutableStateFlow<String?>(null)
+    /** Selected torrent quality, or `null` for all qualities. */
     val selectedQuality: StateFlow<String?> = _selectedQuality.asStateFlow()
 
+    /** Mutable backing state for pagination progress. */
     private val _isLoadingMore = MutableStateFlow(false)
+    /** Whether another page is loading. */
     val isLoadingMore: StateFlow<Boolean> = _isLoadingMore.asStateFlow()
 
+    /** Mutable backing state for movie-card focus restoration. */
     private val _lastClickedMovieId = MutableStateFlow<Int?>(null)
+    /** Movie identifier to refocus when returning to results. */
     val lastClickedMovieId: StateFlow<Int?> = _lastClickedMovieId.asStateFlow()
 
+    /** Mutable backing state for multi-selected favorite movie IDs. */
     private val _selectedFavoriteIds = MutableStateFlow<Set<Int>>(emptySet())
+    /** IDs selected for bulk favorite removal. */
     val selectedFavoriteIds: StateFlow<Set<Int>> = _selectedFavoriteIds.asStateFlow()
 
+    /** IDs of movies recorded in the user's download library. */
     val downloadedMovieIds: StateFlow<Set<Int>> = userLibraryRepository.getDownloadedMovies()
         .map { it.map { download -> download.movieId }.toSet() }
         .catch { emit(emptySet()) }
@@ -47,26 +65,42 @@ class SearchViewModel @Inject constructor(
             initialValue = emptySet()
         )
 
+    /** Quality labels available to search results. */
     val qualityOptions = listOf("All", "2160p", "1080p.x265", "1080p", "720p", "3D")
 
+    /** Accumulated results backing pagination and bulk selection. */
     private val allResults = mutableListOf<Movie>()
+    /** Next page to request for a catalog search. */
     private var currentPage = 1
+    /** Current text search term, if any. */
     private var lastQuery: String? = null
+    /** Current genre search term, if any. */
     private var lastGenre: String? = null
+    /** Whether the favorites collection is currently displayed. */
     private var isShowingFavorites = false
+    /** Whether the downloads collection is currently displayed. */
     private var isShowingDownloads = false
+    /** Whether the recent releases collection is currently displayed. */
     private var isShowingNew = false
+    /** Whether a catalog page request is active. */
     private var isFetching = false
+    /** Whether additional catalog pages may contain results. */
     private var canLoadMore = true
+    /** Active favorites observation job. */
     private var favoritesJob: Job? = null
+    /** Active downloads observation job. */
     private var downloadsJob: Job? = null
+    /** Active recent-movies loading job. */
     private var newMoviesJob: Job? = null
+    /** Active catalog search job. */
     private var searchJob: Job? = null
 
+    /** Observes local filter preferences to refresh the active result collection. */
     init {
         observeMovieFilters()
     }
 
+    /** Re-runs the currently displayed search or collection when filters change. */
     private fun observeMovieFilters() {
         combine(
             preferenceManager.filteredLanguagesFlow,
@@ -88,6 +122,7 @@ class SearchViewModel @Inject constructor(
             .launchIn(viewModelScope)
     }
 
+    /** Applies [quality] and reloads the current results when it changes. */
     fun setQuality(quality: String?) {
         val q = if (quality == "All") null else quality
         if (_selectedQuality.value == q) return
@@ -105,6 +140,7 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    /** Starts a text search, resetting the results when [query] is empty. */
     fun search(query: String) {
         if (query.isEmpty()) {
             resetSearch()
@@ -125,6 +161,7 @@ class SearchViewModel @Inject constructor(
         resetAndLoad()
     }
 
+    /** Clears the active search and returns the result state to idle. */
     fun resetSearch() {
         isShowingFavorites = false
         isShowingDownloads = false
@@ -141,6 +178,7 @@ class SearchViewModel @Inject constructor(
         _uiState.value = SearchUiState.Idle
     }
 
+    /** Searches by [genre], or opens a special downloads/recent collection. */
     fun searchByGenre(genre: String) {
         if (genre == "ya_vistas") {
             showDownloadedMovies()
@@ -165,6 +203,7 @@ class SearchViewModel @Inject constructor(
         resetAndLoad()
     }
 
+    /** Observes and filters the signed-in user's favorites. */
     fun showFavorites(force: Boolean = false) {
         if (!force && isShowingFavorites && (favoritesJob?.isActive == true || _uiState.value is SearchUiState.Success)) return
 
@@ -202,6 +241,7 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    /** Observes downloads and fetches missing movie metadata as needed. */
     fun showDownloadedMovies(force: Boolean = false) {
         if (!force && isShowingDownloads && (downloadsJob?.isActive == true || _uiState.value is SearchUiState.Success)) return
 
@@ -227,6 +267,7 @@ class SearchViewModel @Inject constructor(
                     dl.movie?.let { moviesMap[dl.movieId] = it }
                 }
 
+                /** Rebuilds the displayed download results from available movie metadata. */
                 fun updateState() {
                     val sortedMovies = downloads.mapNotNull { moviesMap[it.movieId] }.distinctBy { it.id }
                     val filtered = MovieFilter.filterMovies(
@@ -277,6 +318,7 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    /** Loads recent movie IDs and fetches their summaries in batches. */
     fun showNewMovies(force: Boolean = false) {
         if (!force && isShowingNew && (newMoviesJob?.isActive == true || _uiState.value is SearchUiState.Success)) return
 
@@ -296,6 +338,7 @@ class SearchViewModel @Inject constructor(
                 val excludedLangs = preferenceManager.getFilteredLanguages()
                 val moviesMap = mutableMapOf<Int, Movie>()
 
+                /** Rebuilds the displayed recent-release results from fetched summaries. */
                 fun updateState() {
                     val sortedMovies = recentIds.mapNotNull { moviesMap[it] }.distinctBy { it.id }
                     val filtered = MovieFilter.filterMovies(
@@ -346,20 +389,24 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    /** Stores the movie ID used to restore result-card focus. */
     fun setLastClickedMovieId(id: Int?) {
         _lastClickedMovieId.value = id
     }
 
+    /** Clears the pending result-card focus-restoration ID. */
     fun clearLastClickedMovieId() {
         _lastClickedMovieId.value = null
     }
 
+    /** Removes [movie] from the favorites collection. */
     fun removeFavorite(movie: Movie) {
         viewModelScope.launch {
             ytsRepository.removeFavorite(movie)
         }
     }
 
+    /** Adds [movieId] to or removes it from the multi-selection. */
     fun toggleFavoriteSelection(movieId: Int) {
         val current = _selectedFavoriteIds.value
         _selectedFavoriteIds.value = if (current.contains(movieId)) {
@@ -369,10 +416,12 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    /** Clears all selected favorite IDs. */
     fun clearSelection() {
         _selectedFavoriteIds.value = emptySet()
     }
 
+    /** Removes every selected movie from favorites and clears the selection. */
     fun deleteSelectedFavorites() {
         val idsToDelete = _selectedFavoriteIds.value
         if (idsToDelete.isEmpty()) return
@@ -387,6 +436,7 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    /** Resets catalog pagination and starts loading from the first page. */
     private fun resetAndLoad() {
         allResults.clear()
         currentPage = 1
@@ -394,6 +444,7 @@ class SearchViewModel @Inject constructor(
         loadMore(force = true)
     }
 
+    /** Loads catalog pages until new filtered results are found or no pages remain. */
     fun loadMore(force: Boolean = false) {
         if ((isFetching && !force) || !canLoadMore || isShowingFavorites) return
         
@@ -475,10 +526,23 @@ class SearchViewModel @Inject constructor(
     }
 }
 
+/** States emitted while searching or displaying movie collections. */
 sealed interface SearchUiState {
+    /** No search or collection is currently active. */
     object Idle : SearchUiState
+    /** Results are being loaded. */
     object Loading : SearchUiState
+    /** The active search or collection has no matching results. */
     object Empty : SearchUiState
+    /**
+     * Successfully loaded movies and the collection context for displaying them.
+     *
+     * @property movies Matching movie entries.
+     * @property isFavorites Whether the results are saved favorites.
+     * @property isDownloads Whether the results are downloaded movies.
+     * @property isNew Whether the results are recent releases.
+     * @property genre Genre associated with a catalog search, if applicable.
+     */
     data class Success(
         val movies: List<Movie>, 
         val isFavorites: Boolean = false,
@@ -486,5 +550,10 @@ sealed interface SearchUiState {
         val isNew: Boolean = false,
         val genre: String? = null
     ) : SearchUiState
+    /**
+     * Search or collection loading failed.
+     *
+     * @property message User-facing failure description.
+     */
     data class Error(val message: UiText) : SearchUiState
 }

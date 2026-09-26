@@ -7,13 +7,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.martinrevert.latorrentola.R
 
+/** Represents text that can be rendered from a literal or localized resource. */
 sealed class UiText {
+    /**
+     * Literal text that does not depend on Android localization resources.
+     *
+     * @property value Literal string content.
+     */
     data class DynamicString(val value: String) : UiText()
+    /**
+     * Localized string resource with formatting arguments.
+     *
+     * @property resId Android string resource identifier.
+     * @property args Arguments passed to the resource formatter.
+     */
     class StringResource(
         @StringRes val resId: Int,
         vararg val args: Any
     ) : UiText()
 
+    /** Resolves this value using the current Compose string-resource configuration. */
     @Composable
     fun asString(): String {
         return when (this) {
@@ -22,10 +35,12 @@ sealed class UiText {
         }
     }
 
+    /** Resolves this value using the given Android context. */
     fun asString(context: Context): String {
         return asString(context.resources)
     }
 
+    /** Resolves this value using the given Android resources. */
     fun asString(resources: Resources): String {
         return when (this) {
             is DynamicString -> value
@@ -34,7 +49,9 @@ sealed class UiText {
     }
 }
 
+/** Maps API genre labels to their localized application strings. */
 object GenreTranslation {
+    /** Returns localized text for a known genre or the original label otherwise. */
     fun getGenreText(genre: String): UiText {
         val resId = when (genre.lowercase()) {
             "action" -> R.string.genre_action

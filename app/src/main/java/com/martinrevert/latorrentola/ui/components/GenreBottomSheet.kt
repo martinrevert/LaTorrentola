@@ -14,9 +14,7 @@ import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.glass.hazeGlass
 
-/**
- * Reusable Bottom Sheet for browsing and filtering movies by genre.
- */
+/** Presents a localized, alphabetized genre picker in a modal bottom sheet. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun GenreBottomSheet(

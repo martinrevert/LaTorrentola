@@ -10,6 +10,14 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * Maintains settings UI state and synchronizes account settings with Firebase.
+ *
+ * @property preferenceManager reads and persists local settings.
+ * @property firebaseMessagingInitializer applies push subscription changes.
+ * @property userLibraryRepository observes and updates cloud-saved preferences.
+ * @property authRepository exposes signed-in account changes.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
@@ -19,12 +27,17 @@ class SettingsViewModel @Inject constructor(
     private val authRepository: com.martinrevert.latorrentola.network.AuthRepository
 ) : ViewModel() {
 
+    /** Mutable backing state for settings displayed by the screen. */
     private val _uiState = MutableStateFlow(SettingsUiState())
+    /** Current settings values observed by the UI. */
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
     
+    /** Debounced remote language-filter save job. */
     private var syncJob: kotlinx.coroutines.Job? = null
+    /** Debounced remote minimum-rating save job. */
     private var ratingSyncJob: kotlinx.coroutines.Job? = null
 
+    /** Loads local preferences, starts remote synchronization, and observes preference changes. */
     init {
         val localFiltered = preferenceManager.getFilteredLanguages()
         _uiState.value = SettingsUiState(
@@ -41,6 +54,7 @@ class SettingsViewModel @Inject constructor(
         observeSettingsChanges()
     }
 
+    /** Mirrors changes from reactive preferences into [uiState]. */
     private fun observeSettingsChanges() {
         viewModelScope.launch {
             preferenceManager.filteredLanguagesFlow.collect { languages ->
@@ -58,6 +72,7 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Observes authenticated account settings and applies remote changes locally. */
     private fun syncSettings() {
         viewModelScope.launch {
             authRepository.authStateFlow
@@ -82,37 +97,44 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Updates and persists general voice guidance preference. */
     fun toggleVoiceSystem(enabled: Boolean) {
         preferenceManager.setVoiceSystem(enabled)
         _uiState.value = _uiState.value.copy(voiceSystem = enabled)
     }
 
+    /** Updates and persists spoken movie-summary preference. */
     fun toggleVoiceSummary(enabled: Boolean) {
         preferenceManager.setVoiceSummary(enabled)
         _uiState.value = _uiState.value.copy(voiceSummary = enabled)
     }
 
+    /** Updates and persists spoken translation preference. */
     fun toggleVoiceTranslation(enabled: Boolean) {
         preferenceManager.setVoiceTranslation(enabled)
         _uiState.value = _uiState.value.copy(voiceTranslation = enabled)
     }
 
+    /** Updates and persists haptic feedback preference. */
     fun toggleVibrator(enabled: Boolean) {
         preferenceManager.setVibrator(enabled)
         _uiState.value = _uiState.value.copy(vibrator = enabled)
     }
 
+    /** Updates push preference and synchronizes the FCM topic subscription. */
     fun togglePushEnabled(enabled: Boolean) {
         preferenceManager.setPushEnabled(enabled)
         _uiState.value = _uiState.value.copy(pushEnabled = enabled)
         firebaseMessagingInitializer.syncTopicSubscription(enabled)
     }
 
+    /** Updates and persists the selected theme mode. */
     fun setTheme(theme: Int) {
         preferenceManager.setTheme(theme)
         _uiState.value = _uiState.value.copy(theme = theme)
     }
 
+    /** Updates the language filter locally and debounces saving it to Firestore. */
     fun setFilteredLanguages(languages: String) {
         preferenceManager.setFilteredLanguages(languages)
         _uiState.value = _uiState.value.copy(filteredLanguages = languages)
@@ -124,6 +146,7 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Clamps, updates, and debounces saving the minimum rating to Firestore. */
     fun setMinimumRating(rating: Int) {
         val boundedRating = rating.coerceIn(
             PreferenceManager.MINIMUM_RATING_MIN,
@@ -141,6 +164,18 @@ class SettingsViewModel @Inject constructor(
 
 }
 
+/**
+ * User-configurable preferences currently presented by the settings screen.
+ *
+ * @property voiceSystem Whether general voice guidance is enabled.
+ * @property voiceSummary Whether movie summaries are spoken.
+ * @property voiceTranslation Whether summaries are translated before speech.
+ * @property vibrator Whether haptic feedback is enabled.
+ * @property pushEnabled Whether push notifications are enabled.
+ * @property theme Selected theme mode.
+ * @property filteredLanguages Comma-separated language codes excluded from movie lists.
+ * @property minimumRating Minimum movie rating used for filtering.
+ */
 data class SettingsUiState(
     val voiceSystem: Boolean = true,
     val voiceSummary: Boolean = true,

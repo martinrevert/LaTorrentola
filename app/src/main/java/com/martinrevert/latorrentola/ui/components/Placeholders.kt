@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.martinrevert.latorrentola.utils.isTvDevice
 
+/** Applies an animated theme-aware shimmer gradient to a modifier's content. */
 fun Modifier.shimmer(): Modifier = composed {
     val transition = rememberInfiniteTransition(label = "shimmer")
     val translateAnim by transition.animateFloat(
@@ -55,6 +56,7 @@ fun Modifier.shimmer(): Modifier = composed {
     background(brush)
 }
 
+/** Displays a card-shaped loading placeholder for the current device class. */
 @Composable
 fun MovieItemPlaceholder(isTv: Boolean) {
     if (isTv) {
@@ -120,6 +122,7 @@ fun MovieItemPlaceholder(isTv: Boolean) {
     }
 }
 
+/** Displays a grid of movie-card placeholders while list content is loading. */
 @Composable
 fun MovieListPlaceholder(
     contentPadding: PaddingValues = PaddingValues(16.dp)
@@ -150,6 +153,7 @@ fun MovieListPlaceholder(
     }
 }
 
+/** Displays a loading skeleton matching the adaptive movie-detail layout. */
 @Composable
 fun MovieDetailPlaceholder(
     contentPadding: PaddingValues = PaddingValues(16.dp)

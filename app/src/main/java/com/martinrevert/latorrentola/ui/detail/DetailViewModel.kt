@@ -23,6 +23,16 @@ import java.util.Locale
 import javax.inject.Inject
 import kotlin.time.Duration.Companion.seconds
 
+/**
+ * Loads movie and actor details and coordinates favorites, downloads, and spoken summaries.
+ *
+ * @property ytsRepository retrieves YTS movie details and records genre visits.
+ * @property userLibraryRepository observes downloads and stores new download records.
+ * @property tmdbRepository retrieves actor information and movie IMDb IDs.
+ * @property voiceManager speaks movie titles and summaries.
+ * @property translationManager translates summaries before speech when requested.
+ * @property preferenceManager supplies voice and language-filter settings.
+ */
 @HiltViewModel
 class DetailViewModel @Inject constructor(
     private val ytsRepository: YtsRepository,
@@ -33,15 +43,22 @@ class DetailViewModel @Inject constructor(
     private val preferenceManager: PreferenceManager
 ) : ViewModel() {
 
+    /** Mutable backing state for movie detail content. */
     private val _uiState = MutableStateFlow<DetailUiState>(DetailUiState.Loading)
+    /** Current movie detail state. */
     val uiState: StateFlow<DetailUiState> = _uiState.asStateFlow()
 
+    /** Mutable backing state for the selected TMDB actor lookup. */
     private val _selectedActorDetail = MutableStateFlow<Result<TmdbActorDetail>?>(null)
+    /** Result for the selected actor, or `null` when no actor is selected. */
     val selectedActorDetail: StateFlow<Result<TmdbActorDetail>?> = _selectedActorDetail.asStateFlow()
 
+    /** Mutable backing state for actor lookup progress. */
     private val _isActorLoading = MutableStateFlow(false)
+    /** Whether actor details are currently being fetched. */
     val isActorLoading: StateFlow<Boolean> = _isActorLoading.asStateFlow()
 
+    /** Looks up [actorName] and publishes the resulting actor detail or failure. */
     fun fetchActorDetails(actorName: String) {
         viewModelScope.launch {
             _isActorLoading.value = true
@@ -52,11 +69,13 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    /** Clears the selected actor result and ends actor loading. */
     fun clearSelectedActor() {
         _selectedActorDetail.value = null
         _isActorLoading.value = false
     }
 
+    /** Torrent hashes already recorded as downloaded by the user. */
     val downloadedHashes: StateFlow<Set<String>> = userLibraryRepository.getDownloadedMovies()
         .map { it.map { download -> download.hash }.toSet() }
         .catch { emit(emptySet()) }
@@ -66,8 +85,10 @@ class DetailViewModel @Inject constructor(
             initialValue = emptySet()
         )
 
+    /** Current speech/summary job, canceled when another movie is selected. */
     private var voiceJob: Job? = null
 
+    /** Shows [movie] immediately, then refreshes its details and records genre visits. */
     fun setMovie(movie: Movie) {
         viewModelScope.launch {
             // Optimization: Show passed movie immediately to avoid blank loading screen
@@ -103,6 +124,7 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    /** Loads a movie by its YTS identifier and publishes loading, success, or error state. */
     fun setMovieById(movieId: Int) {
         viewModelScope.launch {
             _uiState.value = DetailUiState.Loading
@@ -129,6 +151,7 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    /** Searches for [query] and opens the first matching movie. */
     fun setMovieByQuery(query: String) {
         viewModelScope.launch {
             _uiState.value = DetailUiState.Loading
@@ -146,6 +169,7 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    /** Resolves a TMDB movie to an IMDb ID when possible and searches YTS using that ID. */
     fun fetchAndOpenMovieByTmdbId(tmdbMovieId: Int, fallbackTitle: String) {
         viewModelScope.launch {
             _uiState.value = DetailUiState.Loading
@@ -155,6 +179,7 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    /** Speaks the movie title and optionally a translated or original summary. */
     private suspend fun handleVoice(movie: Movie) {
         if (!preferenceManager.getVoiceSystem()) return
 
@@ -194,6 +219,7 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    /** Adds [movie] to favorites or removes it if already saved. */
     fun toggleFavorite(movie: Movie) {
         viewModelScope.launch {
             if (ytsRepository.isFavorite(movie.id)) {
@@ -206,11 +232,13 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    /** Cancels pending speech and stops the speech engine. */
     fun stopVoice() {
         voiceJob?.cancel()
         voiceManager.stop()
     }
 
+    /** Saves [movie] as downloaded using the selected torrent hash and quality. */
     fun markAsDownloaded(movie: Movie, torrentHash: String, quality: String) {
         viewModelScope.launch {
             userLibraryRepository.markAsDownloaded(
@@ -226,6 +254,7 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    /** Adds [language] to the excluded-language preference and syncs it to Firestore. */
     fun addLanguageToFilter(language: String, onError: (UiText) -> Unit) {
         val currentFilters = preferenceManager.getFilteredLanguages()
         val languageLower = language.lowercase()
@@ -257,14 +286,28 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    /** Cancels ongoing speech when this view model is cleared. */
     override fun onCleared() {
         voiceJob?.cancel()
         voiceManager.stop()
     }
 }
 
+/** Possible loading, success, and failure states for movie details. */
 sealed interface DetailUiState {
+    /** Movie details are being loaded. */
     object Loading : DetailUiState
+    /**
+     * Movie details are available.
+     *
+     * @property movie Loaded movie metadata.
+     * @property isFavorite Whether the movie is in the user's favorites.
+     */
     data class Success(val movie: Movie, val isFavorite: Boolean) : DetailUiState
+    /**
+     * Movie detail lookup failed.
+     *
+     * @property message User-facing failure description.
+     */
     data class Error(val message: UiText) : DetailUiState
 }

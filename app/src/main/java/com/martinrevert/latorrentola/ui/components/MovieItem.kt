@@ -44,6 +44,14 @@ import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
 import kotlinx.coroutines.delay
 
+/**
+ * Displays a movie card with adaptive TV/handheld interaction and download/selection indicators.
+ *
+ * @param movie Movie metadata rendered by the card.
+ * @param onClick Invoked to open the movie when no selection handler overrides the click.
+ * @param onLongClick Optional long-press action.
+ * @param onToggleSelection Optional click action used in selection mode.
+ */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun MovieItem(

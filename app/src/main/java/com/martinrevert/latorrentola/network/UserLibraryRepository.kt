@@ -17,13 +17,21 @@ import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Stores user favorites, downloads, and settings in their Firestore account.
+ *
+ * @property firestore Firestore client used for cloud library operations.
+ * @property auth Firebase authentication client used to scope data by user.
+ */
 @Singleton
 class UserLibraryRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val auth: FirebaseAuth
 ) {
+    /** Authenticated Firebase UID used to scope cloud library documents. */
     private val userId: String? get() = auth.currentUser?.uid
 
+    /** Observes the signed-in user's downloads in reverse chronological order. */
     fun getDownloadedMovies(): Flow<List<DownloadedMovie>> = callbackFlow {
         val uid = userId
         if (uid == null) {
@@ -51,6 +59,7 @@ class UserLibraryRepository @Inject constructor(
         awaitClose { subscription.remove() }
     }
 
+    /** Saves or replaces a download record, keyed by its torrent hash. */
     suspend fun markAsDownloaded(download: DownloadedMovie) {
         val uid = userId ?: return
         try {
@@ -65,6 +74,7 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
+    /** Observes the signed-in user's favorite movie records. */
     fun getFavoriteMovies(): Flow<List<Movie>> = callbackFlow {
         val uid = userId
         if (uid == null) {
@@ -92,6 +102,7 @@ class UserLibraryRepository @Inject constructor(
         awaitClose { subscription.remove() }
     }
 
+    /** Saves or replaces [movie] in the signed-in user's favorites. */
     suspend fun addFavorite(movie: Movie) {
         val uid = userId ?: return
         try {
@@ -106,6 +117,7 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
+    /** Removes [movie] from the signed-in user's favorites. */
     suspend fun removeFavorite(movie: Movie) {
         val uid = userId ?: return
         try {
@@ -120,6 +132,7 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
+    /** Checks whether the signed-in user's library contains [movieId]. */
     suspend fun isFavorite(movieId: Int): Boolean {
         val uid = userId ?: return false
         return try {
@@ -135,6 +148,7 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
+    /** Saves the user's serialized language filter setting to Firestore. */
     suspend fun saveFilteredLanguages(languages: String) {
         val uid = userId ?: throw IllegalStateException("User not logged in")
         Log.d("FirestoreSync", "Saving filtered languages for $uid: $languages")
@@ -153,6 +167,7 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
+    /** Saves a bounded minimum rating preference to Firestore. */
     suspend fun saveMinimumRating(rating: Int) {
         val uid = userId ?: throw IllegalStateException("User not logged in")
         val boundedRating = rating.coerceIn(
@@ -173,6 +188,7 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
+    /** Fetches the user's remotely stored language filter, if available. */
     suspend fun getRemoteFilteredLanguages(): String? {
         val uid = userId ?: return null
         Log.d("FirestoreSync", "Fetching remote settings for $uid")
@@ -192,6 +208,7 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
+    /** Observes remote language-filter changes for the specified user. */
     fun observeRemoteFilteredLanguages(uid: String): Flow<String?> = callbackFlow {
         Log.d("FirestoreSync", "Observing remote settings for $uid")
         val subscription = firestore.collection("users")
@@ -214,6 +231,7 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
+    /** Observes the user's remote minimum rating, applying configured bounds. */
     fun observeRemoteMinimumRating(uid: String): Flow<Int> = callbackFlow {
         val subscription = firestore.collection("users")
             .document(uid)

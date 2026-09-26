@@ -4,8 +4,10 @@ import com.martinrevert.latorrentola.model.YTS.MovieDetails
 import retrofit2.http.GET
 import retrofit2.http.Query
 
+/** Retrofit endpoints for YTS movie lists, searches, and detail lookups. */
 interface YtsService {
 
+    /** Lists movies filtered by rating and optional quality. */
     @GET("list_movies.json")
     suspend fun getMovieDetails(
         @Query("limit") limit: Int,
@@ -18,6 +20,7 @@ interface YtsService {
         @Query("quality") quality: String? = null
     ): MovieDetails
 
+    /** Searches the movie catalog by text query. */
     @GET("list_movies.json")
     suspend fun getMovieSearch(
         @Query("limit") limit: Int,
@@ -29,6 +32,7 @@ interface YtsService {
         @Query("quality") quality: String? = null
     ): MovieDetails
 
+    /** Searches the movie catalog by genre name. */
     @GET("list_movies.json")
     suspend fun getGenreSearch(
         @Query("limit") limit: Int,
@@ -40,6 +44,7 @@ interface YtsService {
         @Query("quality") quality: String? = null
     ): MovieDetails
 
+    /** Searches the movie catalog for the requested torrent quality. */
     @GET("list_movies.json")
     suspend fun getTridiSearch(
         @Query("limit") limit: Int,
@@ -50,6 +55,7 @@ interface YtsService {
         @Query("order_by") orderBy: String = "desc"
     ): MovieDetails
 
+    /** Fetches full details for a single YTS movie. */
     @GET("movie_details.json")
     suspend fun getMovieFullDetails(
         @Query("movie_id") movieId: Int,

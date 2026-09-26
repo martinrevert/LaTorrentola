@@ -14,6 +14,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * Coordinates authentication state and post-login preference synchronization.
+ *
+ * @property authRepository performs authentication operations.
+ * @property userLibraryRepository loads cloud-saved account settings.
+ * @property preferenceManager persists the synchronized local preferences.
+ */
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val authRepository: AuthRepository,
@@ -21,11 +28,15 @@ class AuthViewModel @Inject constructor(
     private val preferenceManager: com.martinrevert.latorrentola.utils.PreferenceManager
 ) : ViewModel() {
 
+    /** Mutable backing state for authentication progress and outcomes. */
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
+    /** Observable authentication progress and outcome. */
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
+    /** Currently authenticated Firebase account, if signed in. */
     val currentUser: FirebaseUser? get() = authRepository.currentUser
 
+    /** Signs in with Google, syncs the user's language filter, and publishes the outcome. */
     fun signInWithGoogle(context: Context) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
@@ -45,6 +56,7 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    /** Signs out and resets the view-model authentication state. */
     fun signOut() {
         viewModelScope.launch {
             authRepository.signOut()
@@ -53,9 +65,18 @@ class AuthViewModel @Inject constructor(
     }
 }
 
+/** Authentication operation states exposed to the login UI. */
 sealed interface AuthState {
+    /** No authentication operation is currently active. */
     object Idle : AuthState
+    /** An authentication operation is in progress. */
     object Loading : AuthState
+    /** Authentication completed successfully. */
     object Success : AuthState
+    /**
+     * Authentication failed with a displayable message.
+     *
+     * @property message User-facing error content.
+     */
     data class Error(val message: UiText) : AuthState
 }

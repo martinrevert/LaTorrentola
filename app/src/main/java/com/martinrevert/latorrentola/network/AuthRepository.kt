@@ -20,23 +20,40 @@ import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Handles Firebase authentication and Google Credential Manager sign-in.
+ *
+ * @property firebaseAuth Firebase authentication client.
+ * @property context Application context used to create Credential Manager.
+ */
 @Singleton
 class AuthRepository @Inject constructor(
     private val firebaseAuth: FirebaseAuth,
     @ApplicationContext private val context: Context
 ) {
+    /** Credential Manager configured for the application context. */
     private val credentialManager = CredentialManager.create(context)
+    /** Mutable backing stream updated whenever Firebase authentication changes. */
     private val _currentUserFlow = MutableStateFlow(firebaseAuth.currentUser)
+    /** Observable Firebase user state. */
     val authStateFlow: StateFlow<FirebaseUser?> = _currentUserFlow.asStateFlow()
 
+    /** Keeps [authStateFlow] synchronized with Firebase Auth state changes. */
     init {
         firebaseAuth.addAuthStateListener { auth ->
             _currentUserFlow.value = auth.currentUser
         }
     }
 
+    /** Currently signed-in Firebase user, or `null` when signed out. */
     val currentUser get() = firebaseAuth.currentUser
 
+    /**
+     * Starts Google sign-in and exchanges the returned ID token for Firebase credentials.
+     *
+     * @param activityContext Activity context required to present the credential UI.
+     * @return Success when Firebase accepts the credential, otherwise the originating failure.
+     */
     suspend fun signInWithGoogle(activityContext: Context): Result<Unit> {
         return try {
             val googleIdOption = GetGoogleIdOption.Builder()
@@ -69,6 +86,7 @@ class AuthRepository @Inject constructor(
         }
     }
 
+    /** Signs out of Firebase and clears the Credential Manager credential state. */
     suspend fun signOut() {
         firebaseAuth.signOut()
         credentialManager.clearCredentialState(ClearCredentialStateRequest())

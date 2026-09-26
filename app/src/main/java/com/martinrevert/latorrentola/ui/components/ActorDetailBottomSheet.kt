@@ -40,6 +40,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.glass.hazeGlass
 
+/** Displays actor biography and filmography in an adaptive modal sheet. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun ActorDetailBottomSheet(
@@ -151,6 +152,7 @@ fun ActorDetailBottomSheet(
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
+/** Renders actor details using the TV-oriented content layout. */
 @Composable
 private fun TvActorContent(
     actor: TmdbActorDetail,
@@ -254,6 +256,7 @@ private fun TvActorContent(
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
+/** Renders one filmography entry with TV focus treatment. */
 @Composable
 private fun TvFilmographyItem(
     credit: TmdbCastCredit,
@@ -307,6 +310,7 @@ private fun TvFilmographyItem(
     }
 }
 
+/** Renders actor details in a wide-screen two-column layout. */
 @Composable
 private fun WideActorContent(
     actor: TmdbActorDetail,
@@ -390,6 +394,7 @@ private fun WideActorContent(
     }
 }
 
+/** Renders actor details in the compact handheld layout. */
 @Composable
 private fun MobileActorContent(
     actor: TmdbActorDetail,
@@ -480,6 +485,7 @@ private fun MobileActorContent(
     }
 }
 
+/** Renders one poster and title in the handheld filmography list. */
 @Composable
 private fun FilmographyItem(
     credit: TmdbCastCredit,

@@ -4,6 +4,13 @@ import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.gson.annotations.SerializedName
 import kotlinx.serialization.Serializable
 
+/**
+ * Envelope returned by YTS movie detail and list endpoints.
+ *
+ * @property status API response status.
+ * @property statusMessage Human-readable API status message.
+ * @property data Response payload, when present.
+ */
 @IgnoreExtraProperties
 @Serializable
 data class MovieDetails(
@@ -15,6 +22,16 @@ data class MovieDetails(
     val data: Data? = null
 )
 
+/**
+ * Movie data and pagination metadata in a YTS response.
+ *
+ * @property movieCount Number of matching movies reported by the API.
+ * @property limit Maximum number of results requested per page.
+ * @property pageNumber Current result page.
+ * @property movies Movie results for list requests.
+ * @property movie Single movie result for detail requests.
+ * @property meta Server and API execution metadata.
+ */
 @IgnoreExtraProperties
 @Serializable
 data class Data(
@@ -32,6 +49,14 @@ data class Data(
     val meta: Meta? = null
 )
 
+/**
+ * Cast member summary associated with a YTS movie.
+ *
+ * @property name Cast member name.
+ * @property characterName Character portrayed in the movie.
+ * @property urlSmallImage Small profile image URL.
+ * @property imdbCode IMDb person identifier.
+ */
 @IgnoreExtraProperties
 @Serializable
 data class Cast(
@@ -45,6 +70,14 @@ data class Cast(
     val imdbCode: String? = null
 )
 
+/**
+ * Server execution metadata returned by YTS.
+ *
+ * @property serverTime Server timestamp.
+ * @property serverTimezone Server timezone identifier.
+ * @property apiVersion YTS API version number.
+ * @property executionTime Time spent executing the request.
+ */
 @IgnoreExtraProperties
 @Serializable
 data class Meta(

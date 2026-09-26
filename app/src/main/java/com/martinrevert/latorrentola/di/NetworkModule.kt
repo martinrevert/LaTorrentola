@@ -15,10 +15,12 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import javax.inject.Singleton
 
+/** Configures shared HTTP clients and Retrofit services for each backend. */
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
+    /** Provides an HTTP logging interceptor with bodies logged only in debug builds. */
     @Provides
     @Singleton
     fun provideLoggingInterceptor(): HttpLoggingInterceptor {
@@ -31,6 +33,7 @@ object NetworkModule {
         }
     }
 
+    /** Provides the shared OkHttp client used by all Retrofit instances. */
     @Provides
     @Singleton
     fun provideOkHttpClient(loggingInterceptor: HttpLoggingInterceptor): OkHttpClient {
@@ -39,6 +42,7 @@ object NetworkModule {
             .build()
     }
 
+    /** Creates a Retrofit instance for the YTS API. */
     @Provides
     @Singleton
     @YtsRetrofit
@@ -50,6 +54,7 @@ object NetworkModule {
             .build()
     }
 
+    /** Creates a Retrofit instance for the FCM backend. */
     @Provides
     @Singleton
     @FcmRetrofit
@@ -61,6 +66,7 @@ object NetworkModule {
             .build()
     }
 
+    /** Creates a Retrofit instance for TMDB. */
     @Provides
     @Singleton
     @TmdbRetrofit
@@ -72,18 +78,21 @@ object NetworkModule {
             .build()
     }
 
+    /** Creates the YTS Retrofit service. */
     @Provides
     @Singleton
     fun provideYtsService(@YtsRetrofit retrofit: Retrofit): YtsService {
         return retrofit.create(YtsService::class.java)
     }
 
+    /** Creates the FCM Retrofit service. */
     @Provides
     @Singleton
     fun provideFcmService(@FcmRetrofit retrofit: Retrofit): FcmService {
         return retrofit.create(FcmService::class.java)
     }
 
+    /** Creates the TMDB Retrofit service. */
     @Provides
     @Singleton
     fun provideTmdbService(@TmdbRetrofit retrofit: Retrofit): TmdbService {
@@ -91,14 +100,17 @@ object NetworkModule {
     }
 }
 
+/** Hilt qualifier for the YTS Retrofit client. */
 @javax.inject.Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class YtsRetrofit
 
+/** Hilt qualifier for the FCM Retrofit client. */
 @javax.inject.Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class FcmRetrofit
 
+/** Hilt qualifier for the TMDB Retrofit client. */
 @javax.inject.Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class TmdbRetrofit

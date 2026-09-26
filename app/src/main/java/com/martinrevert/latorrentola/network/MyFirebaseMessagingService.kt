@@ -24,18 +24,23 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** Receives FCM messages, displays notifications, and synchronizes refreshed tokens. */
 @AndroidEntryPoint
 class MyFirebaseMessagingService : FirebaseMessagingService() {
 
+    /** Reads the user's notification preference when handling incoming messages. */
     @Inject
     lateinit var preferenceManager: PreferenceManager
 
+    /** Synchronizes device subscription tokens with the app backend. */
     @Inject
     lateinit var fcmRepository: FcmRepository
 
+    /** Re-evaluates topic membership when Firebase rotates the device token. */
     @Inject
     lateinit var firebaseMessagingInitializer: FirebaseMessagingInitializer
 
+    /** Displays supported incoming notifications when their body and user preference allow it. */
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         val title = remoteMessage.notification?.title
             ?: remoteMessage.data["title"]
@@ -60,6 +65,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         }
     }
 
+    /** Persists a refreshed FCM token and starts topic/backend synchronization. */
     override fun onNewToken(token: String) {
         preferenceManager.setFcmToken(token)
         preferenceManager.setFcmTokenSynced(false)
@@ -68,6 +74,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         Log.d(TAG, "FCM token refreshed and sync triggered")
     }
 
+    /** Builds and posts a notification that opens [MainActivity] with optional movie data. */
     private fun sendNotification(title: String, body: String, movieJson: String?, movieId: String?) {
         val intent = Intent(this, MainActivity::class.java).apply {
             movieJson?.let { putExtra(FirebaseMessagingConfig.EXTRA_MOVIE_JSON, it) }
@@ -109,9 +116,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     companion object {
+        /** Log tag used for message-service diagnostics. */
         private const val TAG = "MyFcmService"
     }
 
+    /** Returns whether preferences and Android notification permissions permit delivery. */
     private fun canDeliverNotifications(): Boolean {
         if (!preferenceManager.isPushEnabled()) return false
         if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) return false

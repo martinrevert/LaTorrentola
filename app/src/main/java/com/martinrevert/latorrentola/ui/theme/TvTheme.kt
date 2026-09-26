@@ -42,6 +42,7 @@ fun androidx.compose.material3.ColorScheme.toTvColorScheme(): ColorScheme {
     )
 }
 
+/** Provides the TV Material theme and a matching mobile Material 3 theme to descendants. */
 @Composable
 fun TvLaTorrentolaTheme(
     darkTheme: Boolean,

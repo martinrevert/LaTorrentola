@@ -18,6 +18,13 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Creates the notification channel and coordinates FCM topic/backend subscriptions.
+ *
+ * @property context Application context for notification services and permissions.
+ * @property preferenceManager stores notification and retry preferences.
+ * @property fcmRepository synchronizes tokens with the app backend.
+ */
 @Singleton
 class FirebaseMessagingInitializer @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -25,23 +32,28 @@ class FirebaseMessagingInitializer @Inject constructor(
     private val fcmRepository: FcmRepository
 ) {
 
+    /** Background scope used for backend token synchronization. */
     private val scope = CoroutineScope(Dispatchers.IO)
 
+    /** Creates required notification resources and synchronizes the initial topic state. */
     fun initialize() {
         ensureNotificationChannel()
         syncTopicSubscription(shouldSubscribeToNotifications())
     }
 
+    /** Subscribes to broadcast notifications when push notifications are enabled. */
     fun subscribeToDefaultTopic() {
         if (preferenceManager.isPushEnabled()) {
             syncTopicSubscription(true)
         }
     }
 
+    /** Removes the device from the broadcast notification topic. */
     fun unsubscribeFromDefaultTopic() {
         syncTopicSubscription(false)
     }
 
+    /** Creates the general notification channel on Android O and newer if it is absent. */
     private fun ensureNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
@@ -64,6 +76,11 @@ class FirebaseMessagingInitializer @Inject constructor(
         notificationManager.createNotificationChannel(channel)
     }
 
+    /**
+     * Applies the requested FCM topic state and mirrors it to the backend.
+     *
+     * @param shouldSubscribe `true` to join the topic, `false` to leave it.
+     */
     fun syncTopicSubscription(shouldSubscribe: Boolean) {
         if (shouldSubscribe) {
             FirebaseMessaging.getInstance().subscribeToTopic(FirebaseMessagingConfig.TOPIC_ALL)
@@ -94,6 +111,7 @@ class FirebaseMessagingInitializer @Inject constructor(
             }
     }
 
+    /** Synchronizes the current FCM token with the backend after topic processing. */
     private fun syncWithBackend(shouldSubscribe: Boolean) {
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
             if (!task.isSuccessful) {
@@ -134,6 +152,7 @@ class FirebaseMessagingInitializer @Inject constructor(
         }
     }
 
+    /** Checks app preference and platform permission state before allowing notifications. */
     private fun shouldSubscribeToNotifications(): Boolean {
         if (!preferenceManager.isPushEnabled()) return false
         
@@ -149,9 +168,7 @@ class FirebaseMessagingInitializer @Inject constructor(
     }
 
     companion object {
+        /** Log tag used for FCM initialization diagnostics. */
         private const val TAG = "FirebaseMessagingInit"
     }
 }
-
-
-

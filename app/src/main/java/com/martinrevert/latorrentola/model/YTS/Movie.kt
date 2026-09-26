@@ -4,6 +4,36 @@ import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.gson.annotations.SerializedName
 import kotlinx.serialization.Serializable
 
+/**
+ * A YTS movie record used by API responses, persistence, and navigation.
+ *
+ * @property id YTS movie identifier.
+ * @property url Canonical movie page URL.
+ * @property imdbCode IMDb title identifier, when available.
+ * @property title Localized or original movie title from the API.
+ * @property titleEnglish English movie title, when provided.
+ * @property titleLong Extended title, commonly including release year and quality.
+ * @property slug URL-friendly movie title.
+ * @property year Release year.
+ * @property rating Aggregate rating supplied by YTS.
+ * @property runtime Movie duration as supplied by the API.
+ * @property genres Movie genre names.
+ * @property summary Short movie synopsis.
+ * @property descriptionFull Full movie description.
+ * @property synopsis Alternative synopsis text.
+ * @property ytTrailerCode YouTube trailer video identifier.
+ * @property language Original or primary language code.
+ * @property mpaRating Motion Picture Association age rating.
+ * @property backgroundImage Background artwork URL.
+ * @property backgroundImageOriginal Original-resolution background artwork URL.
+ * @property smallCoverImage Small poster URL.
+ * @property mediumCoverImage Medium poster URL.
+ * @property largeCoverImage Large poster URL.
+ * @property state Availability state reported by YTS.
+ * @property torrents Available torrent encodings and tracker metadata.
+ * @property cast Cast members supplied with the movie record.
+ * @property dateUploadedUnix Upload time as Unix seconds.
+ */
 @IgnoreExtraProperties
 @Serializable
 data class Movie(

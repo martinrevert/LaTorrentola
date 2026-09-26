@@ -125,6 +125,7 @@ fun TvChip(
     leadingIcon = leadingIcon
 )
 
+/** Displays horizontally scrolling movie-quality filters. */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun QualityChips(
@@ -156,6 +157,7 @@ fun QualityChips(
     }
 }
 
+/** Displays horizontally scrolling genre and movie-collection filters. */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun GenreChips(

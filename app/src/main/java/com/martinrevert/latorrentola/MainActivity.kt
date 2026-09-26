@@ -25,19 +25,31 @@ import com.martinrevert.latorrentola.utils.PreferenceManager
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
+/**
+ * Hosts the app UI and converts launch intents into navigation requests.
+ *
+ * The activity sanitizes external intents before accepting movie or IMDb
+ * identifiers and initializes notification permission handling.
+ */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    /** Initializes FCM topic subscription after the notification permission flow. */
     @Inject
     lateinit var firebaseMessagingInitializer: FirebaseMessagingInitializer
 
+    /** Supplies the persisted theme selection to the Compose content. */
     @Inject
     lateinit var preferenceManager: PreferenceManager
 
+    /** Full movie payload awaiting consumption by [AppNavigation]. */
     private var movieJsonToOpen by mutableStateOf<String?>(null)
+    /** Movie identifier awaiting consumption by [AppNavigation]. */
     private var movieIdToOpen by mutableStateOf<Int?>(null)
+    /** Search text, such as an IMDb title identifier, awaiting navigation. */
     private var searchQueryToOpen by mutableStateOf<String?>(null)
 
+    /** Requests notification permission and updates the default FCM topic subscription. */
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
@@ -50,6 +62,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Sets up edge-to-edge rendering, launch data, permission handling, and app navigation. */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
@@ -78,11 +91,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Processes a new activity intent without recreating the current UI. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)
     }
 
+    /**
+     * Validates an incoming intent and stores supported movie or IMDb data for navigation.
+     *
+     * Unsupported or unsafe intent fields are discarded; an intent that cannot be
+     * sanitized is ignored.
+     */
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
 
@@ -145,6 +165,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Requests Android 13+ notification permission when needed, otherwise subscribes to FCM. */
     private fun askNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
