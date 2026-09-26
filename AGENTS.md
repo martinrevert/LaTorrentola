@@ -7,6 +7,21 @@ Checklist for this agent run:
 - [x] Point to concrete files to inspect for changes
 - [x] Implement unit and UI tests for core components
 
+🛑 CRITICAL MANDATORY UI & ACCESSIBILITY RULES FOR ALL FUTURE AI AGENTS:
+- ❌ **NEVER HARDCODE COLORS OR TEXT STYLES**:
+  * NEVER write static colors like `Color.Black`, `Color.White`, or hex codes in UI composables.
+  * ALWAYS consume `MaterialTheme.colorScheme.onSurface`, `onSurfaceVariant`, `primary`, etc., from `ui/theme/Theme.kt`.
+- ❌ **NEVER ALLOW DARK TEXT ON DARK SURFACES**:
+  * In Dark Mode (both static and Android 12+ dynamic color schemes), `onSurface` and `onSurfaceVariant` MUST be bright light-grey/white (`#F4EFF4`, `#E6E1E5`).
+  * All chips (`AdaptiveChip`) MUST use `CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface)` so text is ALWAYS WCAG AAA high-contrast in dark mode.
+- ❌ **NEVER USE SEMI-TRANSPARENT BACKGROUNDS ON TEXT MODALS / BOTTOM SHEETS**:
+  * All `ModalBottomSheet` and `Dialog` containers containing text MUST use solid, opaque surface container colors (`MaterialTheme.colorScheme.surfaceContainerHigh`).
+  * Text from underlying screens MUST NEVER bleed through or collide with modal text.
+- ❌ **NEVER BREAK TV D-PAD FOCUS NAVIGATION**:
+  * On Android TV (`isTv == true`), ALWAYS keep `TopAppBar`, chips (`AdaptiveChip`), and `MovieList` in a single vertical `Column` layout tree.
+  * NEVER put chips in a floating overlay `Column` separate from `MovieList` on TV!
+  * TV movie cards use 1.1x zoom scale (`focusedScale = 1.1f`); NEVER draw an extra `.border()` focus line on movie cards on TV.
+
 Mandatory Agent Workflow & Standards
 1. **Regression Prevention via Git Inspection**:
    Before making changes, agents MUST run `git diff` or compare against recent working commits (e.g. `"C:\Program Files\Git\cmd\git.exe" --no-pager diff HEAD~1`) to verify previous working layout structures and prevent regressions in D-pad navigation, edge-to-edge padding, or Haze 2.0 glass effects.
@@ -38,7 +53,11 @@ Project-specific patterns and gotchas (do not assume defaults)
 - Multi-Selection Pattern: The `SearchScreen` (favorites view) implements a selection mode for D-pad compatibility. Short-press navigates to details, long-press enters selection mode. Once in selection mode, short-press toggles selection.
 - Credential Safety: Never hardcode API keys or Web Client IDs. Use `local.properties` with a corresponding `buildConfigField` in `app/build.gradle`. Reference them via `BuildConfig`.
 - DI scope: Hilt is used for singletons (see `di/NetworkModule.kt`). When adding bindings, follow the `@Module @InstallIn(SingletonComponent::class)` pattern.
-- Theme and Readability: Always respect the app's themes. Ensure all UI changes are compatible with both light and dark modes without losing human readability. Avoid hardcoding colors like `Color.Black` or `Color.White` unless they are specifically meant to be static; instead, use `MaterialTheme.colorScheme` tokens. Be careful with imports to avoid shadowing standard Material3 components with TV-specific ones that might have different default behaviors.
+- Dual Theme Architecture & Theme Token Rules (`ui/theme/` MANDATORY):
+    *   **Handheld vs TV Themes**: The app uses `LaTorrentolaTheme` (`ui/theme/Theme.kt`) for mobile/tablets/foldables (`androidx.compose.material3.MaterialTheme`) and automatically delegates to `TvLaTorrentolaTheme` (`ui/theme/TvTheme.kt`) on TV devices (`androidx.tv.material3.MaterialTheme`). `TvLaTorrentolaTheme` provides both TV and Mobile MaterialTheme providers so M3 and TV components inherit identical theme palettes.
+    *   **No Hardcoded Styles or Colors**: NEVER hardcode static colors (`Color.Black`, `Color.White`, `Color(0xFF...)`) or manual text color overrides inside composables. ALL UI components MUST consume semantic tokens from `MaterialTheme.colorScheme` (`primary`, `onSurface`, `onSurfaceVariant`, `surfaceContainerHigh`) and typography from `MaterialTheme.typography`.
+    *   **Theme Refinement**: If any contrast issue arises in light or dark mode, refine the central color scheme palette in `ui/theme/Color.kt` and `DarkColorScheme` / `LightColorScheme` in `ui/theme/Theme.kt` instead of overriding colors in individual screen components.
+    *   **Solid Opacity on Modals (No Text Bleed-Through)**: Bottom sheets (`ModalBottomSheet`), dialogs (`Dialog`), and modal surfaces containing text MUST use solid, opaque surface container colors (`MaterialTheme.colorScheme.surfaceContainerHigh` or `surface`) with 100% solid opacity. NEVER use semi-transparent background colors (`alpha < 0.95f`) on bottom sheets or dialogs that contain body text. Text from underlying screens MUST NEVER bleed through or collide with modal text.
 - Translucent Status Bar & Top Header (Haze 2.0) Rules:
     *   **Header Glass Scope**: Apply `Modifier.hazeGlass(input = HazeInput.Sources(hazeState))` to the ENTIRE top header container (`TopAppBar` + chips like `GenreChips` / `QualityChips`), NOT just `TopAppBar` alone, so the translucent glass blur effect covers the top app bar and filter chips cohesively.
     *   **Full-Screen `hazeSource`**: The scrollable content (`MovieList`) MUST fill `fillMaxSize()` with `hazeSource(state = hazeState)` and receive `contentPadding` (top = status bar + `TopAppBar` + chips + 16.dp accessible gap, bottom = navBarHeight + 16.dp) so movie cards scroll behind the top header and bottom system bar.
@@ -54,11 +73,12 @@ Project-specific patterns and gotchas (do not assume defaults)
     *   `MovieListPlaceholder` and `MovieDetailPlaceholder` (loading skeleton states) MUST use the EXACT same `contentPadding` values as `MovieList` and `MovieDetailContent` (loaded states) on every screen (`HomeScreen`, `SearchScreen`, `MovieDetailScreen`, etc.) to prevent vertical jumps or misalignments when content finishes loading.
 - Modular Component Architecture:
     *   Shared UI components MUST be placed in `ui/components/`:
-        - `ui/components/TvChip.kt` (TV-optimized chips)
-        - `ui/components/Chips.kt` (`GenreChips`, `QualityChips`)
+        - `ui/components/Chips.kt` (`AdaptiveChip`, `GenreChips`, `QualityChips`)
+        - `ui/components/GenreBottomSheet.kt` (`GenreBottomSheet` modal)
+        - `ui/components/ActorDetailBottomSheet.kt` (`ActorDetailBottomSheet` modal)
         - `ui/components/MovieItem.kt` (`MovieItem` card)
         - `ui/components/MovieList.kt` (`MovieList` grid)
-        - `ui/components/Placeholders.kt` (`MovieListPlaceholder`, `MovieItemPlaceholder`)
+        - `ui/components/Placeholders.kt` (`MovieListPlaceholder`, `MovieItemPlaceholder`, `MovieDetailPlaceholder`)
     *   Screen composables (`HomeScreen.kt`, `SearchScreen.kt`, `MovieDetailScreen.kt`) should only orchestrate state and import shared components from `com.martinrevert.latorrentola.ui.components.*`.
 - Adaptive UI & Multi-Device Support: The app is designed for phones, tablets, foldables, and Android TV. 
     *   **Device Detection**: Use `Context.isTvDevice()` (from `DeviceUtils.kt`) for TV-specific logic. 

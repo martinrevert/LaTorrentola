@@ -73,6 +73,7 @@ import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.TvChip
 import com.martinrevert.latorrentola.ui.components.QualityChips
 import com.martinrevert.latorrentola.ui.components.GenreChips
+import com.martinrevert.latorrentola.ui.components.GenreBottomSheet
 import com.martinrevert.latorrentola.ui.components.MovieItem
 import com.martinrevert.latorrentola.ui.components.MovieList
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
@@ -446,70 +447,6 @@ private fun HomeContent(
                 text = uiState.message.asString(),
                 color = MaterialTheme.colorScheme.error
             )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
-@Composable
-fun GenreBottomSheet(
-    genres: List<String>,
-    onGenreClick: (String) -> Unit,
-    onDismiss: () -> Unit,
-    sheetState: SheetState,
-    hazeState: HazeState?
-) {
-    val context = LocalContext.current
-    val sortedGenres = remember(genres) {
-        genres.sortedBy { GenreTranslation.getGenreText(it).asString(context) }
-    }
-    val isInspection = LocalInspectionMode.current
-    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
-    val sheetContainerColor = if (isPreAndroid12) {
-        MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
-    } else {
-        Color.Transparent
-    }
-
-    val sheetModifier = if (hazeState != null) {
-        Modifier.hazeGlass(input = HazeInput.Sources(hazeState))
-    } else {
-        Modifier
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = sheetContainerColor,
-        modifier = sheetModifier
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .navigationBarsPadding()
-        ) {
-            Text(
-                text = stringResource(R.string.browse_by_genre),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
-            
-            // Grid of genres
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                sortedGenres.forEach { genre ->
-                    TvChip(
-                        selected = false,
-                        onClick = { onGenreClick(genre) },
-                        label = { Text(GenreTranslation.getGenreText(genre).asString()) }
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }

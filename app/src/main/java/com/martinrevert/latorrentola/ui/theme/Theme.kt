@@ -49,11 +49,11 @@ internal val DarkColorScheme = darkColorScheme(
     onErrorContainer = Color(0xFFF9DEDC),
     outline = Color(0xFF938F99),
     background = Color(0xFF1C1B1F),
-    onBackground = Color(0xFFE6E1E5),
+    onBackground = Color(0xFFF4EFF4),
     surface = Color(0xFF1C1B1F),
-    onSurface = Color(0xFFE6E1E5),
-    surfaceVariant = Color(0xFF49454F),
-    onSurfaceVariant = Color(0xFFCAC4D0),
+    onSurface = Color(0xFFF4EFF4),
+    surfaceVariant = Color(0xFF36343B),
+    onSurfaceVariant = Color(0xFFE6E1E5),
     inverseSurface = Color(0xFFE6E1E5),
     inverseOnSurface = Color(0xFF313033),
     inversePrimary = Color(0xFF6750A4),
@@ -116,7 +116,17 @@ fun LaTorrentolaTheme(
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            if (darkTheme) {
+                dynamicDarkColorScheme(context).copy(
+                    onSurface = Color(0xFFF4EFF4),
+                    onSurfaceVariant = Color(0xFFE6E1E5),
+                    onBackground = Color(0xFFF4EFF4),
+                    surfaceVariant = Color(0xFF36343B),
+                    surfaceContainerHigh = Color(0xFF2B292F)
+                )
+            } else {
+                dynamicLightColorScheme(context)
+            }
         }
 
         darkTheme -> DarkColorScheme

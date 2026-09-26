@@ -22,8 +22,9 @@ graph TD
         subgraph Modular_Components [Reusable Components - ui/components]
             ML[MovieList]
             MI[MovieItem]
-            TC[TvChip]
-            CH[GenreChips / QualityChips]
+            AC[AdaptiveChip / Chips]
+            GB[GenreBottomSheet]
+            AB[ActorDetailBottomSheet]
             PL[Placeholders]
         end
     end

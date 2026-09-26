@@ -1,6 +1,5 @@
 package com.martinrevert.latorrentola.ui.components
 
-import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -22,7 +21,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -33,7 +31,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface
-import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
@@ -58,13 +55,7 @@ fun ActorDetailBottomSheet(
     val configuration = LocalConfiguration.current
     val isWideScreen = configuration.screenWidthDp >= 600 || isTv
 
-    val isInspection = LocalInspectionMode.current
-    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
-    val sheetContainerColor = if (isPreAndroid12) {
-        MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
-    } else {
-        MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
-    }
+    val sheetContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
 
     val sheetModifier = if (hazeState != null) {
         Modifier.hazeGlass(input = HazeInput.Sources(hazeState))
@@ -96,7 +87,8 @@ fun ActorDetailBottomSheet(
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     Text(
                                         text = stringResource(R.string.no_results),
-                                        style = MaterialTheme.typography.titleMedium
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
                             }
@@ -110,6 +102,7 @@ fun ActorDetailBottomSheet(
             onDismissRequest = onDismiss,
             sheetState = sheetState,
             containerColor = sheetContainerColor,
+            contentColor = MaterialTheme.colorScheme.onSurface,
             modifier = sheetModifier
         ) {
             Box(
@@ -145,7 +138,8 @@ fun ActorDetailBottomSheet(
                             ) {
                                 Text(
                                     text = stringResource(R.string.no_results),
-                                    style = MaterialTheme.typography.titleMedium
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         }
@@ -188,24 +182,25 @@ private fun TvActorContent(
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = actor.name ?: "",
-                style = androidx.tv.material3.MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center
             )
             if (!actor.birthday.isNullOrEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = actor.birthday,
-                    style = androidx.tv.material3.MaterialTheme.typography.bodyMedium,
-                    color = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             if (!actor.placeOfBirth.isNullOrEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = actor.placeOfBirth,
-                    style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
-                    color = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
                 )
             }
@@ -221,13 +216,15 @@ private fun TvActorContent(
             if (!actor.biography.isNullOrEmpty()) {
                 Text(
                     text = stringResource(R.string.summary_header),
-                    style = androidx.tv.material3.MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = actor.biography,
-                    style = androidx.tv.material3.MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 6,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -238,8 +235,9 @@ private fun TvActorContent(
             if (!credits.isNullOrEmpty()) {
                 Text(
                     text = stringResource(R.string.details_title),
-                    style = androidx.tv.material3.MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 LazyRow(
@@ -290,16 +288,17 @@ private fun TvFilmographyItem(
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = credit.displayTitle,
-                style = androidx.tv.material3.MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             if (!credit.character.isNullOrEmpty()) {
                 Text(
                     text = credit.character,
-                    style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
-                    color = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -337,6 +336,7 @@ private fun WideActorContent(
                 text = actor.name ?: "",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center
             )
             if (!actor.birthday.isNullOrEmpty()) {
@@ -357,12 +357,14 @@ private fun WideActorContent(
                 Text(
                     text = stringResource(R.string.summary_header),
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = actor.biography,
                     style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 6,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -374,7 +376,8 @@ private fun WideActorContent(
                 Text(
                     text = stringResource(R.string.details_title),
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -413,6 +416,7 @@ private fun MobileActorContent(
             text = actor.name ?: "",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center
         )
         if (!actor.birthday.isNullOrEmpty()) {
@@ -439,12 +443,14 @@ private fun MobileActorContent(
                 text = stringResource(R.string.summary_header),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = actor.biography,
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 6,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth()
@@ -458,6 +464,7 @@ private fun MobileActorContent(
                 text = stringResource(R.string.details_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -481,6 +488,10 @@ private fun FilmographyItem(
     Card(
         onClick = { onMovieClick?.invoke(credit.displayTitle) },
         modifier = Modifier.width(100.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         shape = MaterialTheme.shapes.medium
     ) {
@@ -499,6 +510,7 @@ private fun FilmographyItem(
                 text = credit.displayTitle,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
