@@ -41,7 +41,19 @@ class YtsRepositoryTest {
         val result = repository.getMovies(1)
 
         assertThat(result).isEqualTo(mockDetails)
-        coVerify { ytsService.getMovieDetails(any(), any(), 1, "true", "true", "year", "desc", null) }
+        coVerify { ytsService.getMovieDetails(any(), "6", 1, "true", "true", "year", "desc", null) }
+    }
+
+    @Test
+    fun `getMovies should pass configured minimum rating to service`() = runTest {
+        val mockDetails = MovieDetails(status = "ok")
+        coEvery {
+            ytsService.getMovieDetails(any(), "8", any(), any(), any(), any(), any(), any())
+        } returns mockDetails
+
+        repository.getMovies(page = 1, minimumRating = 8)
+
+        coVerify { ytsService.getMovieDetails(any(), "8", 1, "true", "true", "year", "desc", null) }
     }
 
     @Test

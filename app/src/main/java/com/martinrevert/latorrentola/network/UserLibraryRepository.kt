@@ -7,6 +7,7 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.user.DownloadedMovie
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -152,6 +153,26 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
+    suspend fun saveMinimumRating(rating: Int) {
+        val uid = userId ?: throw IllegalStateException("User not logged in")
+        val boundedRating = rating.coerceIn(
+            PreferenceManager.MINIMUM_RATING_MIN,
+            PreferenceManager.MINIMUM_RATING_MAX
+        )
+        try {
+            firestore.collection("users")
+                .document(uid)
+                .collection("settings")
+                .document("config")
+                .set(mapOf("minimumRating" to boundedRating), SetOptions.merge())
+                .await()
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Log.e("FirestoreSync", "Error saving minimum rating: ${e.message}")
+            throw e
+        }
+    }
+
     suspend fun getRemoteFilteredLanguages(): String? {
         val uid = userId ?: return null
         Log.d("FirestoreSync", "Fetching remote settings for $uid")
@@ -191,5 +212,28 @@ class UserLibraryRepository @Inject constructor(
             Log.d("FirestoreSync", "Stopping remote settings observation for $uid")
             subscription.remove() 
         }
+    }
+
+    fun observeRemoteMinimumRating(uid: String): Flow<Int> = callbackFlow {
+        val subscription = firestore.collection("users")
+            .document(uid)
+            .collection("settings")
+            .document("config")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e("FirestoreSync", "Error observing minimum rating: ${error.message}")
+                    return@addSnapshotListener
+                }
+                val rating = snapshot?.getLong("minimumRating")?.toInt()
+                    ?: PreferenceManager.DEFAULT_MINIMUM_RATING
+                trySend(
+                    rating.coerceIn(
+                        PreferenceManager.MINIMUM_RATING_MIN,
+                        PreferenceManager.MINIMUM_RATING_MAX
+                    )
+                )
+            }
+
+        awaitClose { subscription.remove() }
     }
 }

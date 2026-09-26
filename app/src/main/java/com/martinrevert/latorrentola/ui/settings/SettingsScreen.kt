@@ -9,6 +9,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -71,7 +73,8 @@ fun SettingsScreen(
         onToggleVibrator = { viewModel.toggleVibrator(it) },
         onTogglePushEnabled = { viewModel.togglePushEnabled(it) },
         onSetTheme = { viewModel.setTheme(it) },
-        onSetFilteredLanguages = { viewModel.setFilteredLanguages(it) }
+        onSetFilteredLanguages = { viewModel.setFilteredLanguages(it) },
+        onSetMinimumRating = { viewModel.setMinimumRating(it) }
     )
 }
 
@@ -91,7 +94,8 @@ private fun SettingsScreenContent(
     onToggleVibrator: (Boolean) -> Unit,
     onTogglePushEnabled: (Boolean) -> Unit,
     onSetTheme: (Int) -> Unit,
-    onSetFilteredLanguages: (String) -> Unit
+    onSetFilteredLanguages: (String) -> Unit,
+    onSetMinimumRating: (Int) -> Unit
 ) {
     val configuration = LocalConfiguration.current
     val isWideScreen = configuration.screenWidthDp >= 600 || isTv
@@ -208,6 +212,11 @@ private fun SettingsScreenContent(
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
+                    MinimumRatingSetting(
+                        value = uiState.minimumRating,
+                        onValueChange = onSetMinimumRating
+                    )
+
                     OutlinedTextField(
                         value = uiState.filteredLanguages,
                         onValueChange = onSetFilteredLanguages,
@@ -281,6 +290,13 @@ private fun SettingsScreenContent(
                 ThemeSelector(
                     selectedTheme = uiState.theme,
                     onThemeSelected = onSetTheme
+                )
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                MinimumRatingSetting(
+                    value = uiState.minimumRating,
+                    onValueChange = onSetMinimumRating
                 )
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -455,6 +471,57 @@ fun ThemeSelector(
     }
 }
 
+@Composable
+private fun MinimumRatingSetting(
+    value: Int,
+    onValueChange: (Int) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.minimum_imdb_rating),
+            style = MaterialTheme.typography.titleMedium
+        )
+        Text(
+            text = stringResource(R.string.minimum_imdb_rating_support),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = {
+                    onValueChange((value - 1).coerceAtLeast(PreferenceManager.MINIMUM_RATING_MIN))
+                },
+                enabled = value > PreferenceManager.MINIMUM_RATING_MIN
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Remove,
+                    contentDescription = stringResource(R.string.decrease_minimum_rating)
+                )
+            }
+            Text(
+                text = stringResource(R.string.minimum_imdb_rating_value, value),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+            IconButton(
+                onClick = {
+                    onValueChange((value + 1).coerceAtMost(PreferenceManager.MINIMUM_RATING_MAX))
+                },
+                enabled = value < PreferenceManager.MINIMUM_RATING_MAX
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(R.string.increase_minimum_rating)
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun SettingsToggle(
@@ -526,7 +593,8 @@ fun SettingsScreenTvPreview() {
             onToggleVibrator = {},
             onTogglePushEnabled = {},
             onSetTheme = {},
-            onSetFilteredLanguages = {}
+            onSetFilteredLanguages = {},
+            onSetMinimumRating = {}
         )
     }
 }
@@ -554,8 +622,8 @@ fun SettingsScreenPreview() {
             onToggleVibrator = {},
             onTogglePushEnabled = {},
             onSetTheme = {},
-            onSetFilteredLanguages = {}
+            onSetFilteredLanguages = {},
+            onSetMinimumRating = {}
         )
     }
 }
-

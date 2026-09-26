@@ -7,6 +7,7 @@ import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.MovieDetails
 import com.martinrevert.latorrentola.model.date.DateLastVisit
 import com.martinrevert.latorrentola.model.stats.GenreStats
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,8 +21,21 @@ class YtsRepository @Inject constructor(
     private val dateDao: DateDao
 ) {
 
-    suspend fun getMovies(page: Int, quality: String? = null): MovieDetails {
-        return ytsService.getMovieDetails(Constants.PAGE_SIZE, Constants.MIN_RATING, page, "true", "true", "year", "desc", quality)
+    suspend fun getMovies(
+        page: Int,
+        quality: String? = null,
+        minimumRating: Int = PreferenceManager.DEFAULT_MINIMUM_RATING
+    ): MovieDetails {
+        return ytsService.getMovieDetails(
+            Constants.PAGE_SIZE,
+            minimumRating.toString(),
+            page,
+            "true",
+            "true",
+            "year",
+            "desc",
+            quality
+        )
     }
 
     suspend fun searchMovies(query: String, page: Int, quality: String? = null): MovieDetails {

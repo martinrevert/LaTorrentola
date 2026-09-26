@@ -61,6 +61,11 @@
     <string name="filter_languages_label">Filter Languages</string>
     <string name="filter_languages_placeholder">cn, fr, hi&#8230;</string>
     <string name="filter_languages_support">Exclude movies in these languages (e.g. cn, fr, hi)</string>
+    <string name="minimum_imdb_rating">Minimum IMDb rating</string>
+    <string name="minimum_imdb_rating_support">Hide movies with a lower IMDb rating</string>
+    <string name="minimum_imdb_rating_value">%1$d / 10</string>
+    <string name="decrease_minimum_rating">Decrease minimum IMDb rating</string>
+    <string name="increase_minimum_rating">Increase minimum IMDb rating</string>
     <string name="logout_button">Log Out</string>
     <string name="app_version">Version: %1$s</string>
     <string name="app_build">Build: %1$d</string>

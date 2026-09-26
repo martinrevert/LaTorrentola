@@ -35,7 +35,21 @@ class SearchViewModelTest {
         every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
         every { preferenceManager.getFilteredLanguages() } returns ""
         every { preferenceManager.filteredLanguagesFlow } returns kotlinx.coroutines.flow.MutableStateFlow("")
+        every { preferenceManager.getMinimumRating() } returns 6
+        every { preferenceManager.minimumRatingFlow } returns MutableStateFlow(6)
         viewModel = SearchViewModel(repository, userLibraryRepository, preferenceManager)
+    }
+
+    @Test
+    fun `pure search should not apply minimum IMDb rating`() = runTest {
+        val unratedMovie = Movie(id = 1, title = "Search Result", rating = "2.0")
+        coEvery { repository.searchMovies("query", 1, null) } returns
+            MovieDetails(data = Data(movies = listOf(unratedMovie)))
+
+        viewModel.search("query")
+
+        assertThat((viewModel.uiState.value as SearchUiState.Success).movies)
+            .containsExactly(unratedMovie)
     }
 
     @Test
@@ -66,19 +80,23 @@ class SearchViewModelTest {
 
     @Test
     fun `searchByGenre should update state to Success`() = runTest {
-        val movies = listOf(Movie(id = 1, title = "Genre Movie"))
+        val movies = listOf(
+            Movie(id = 1, title = "Genre Movie", rating = "7"),
+            Movie(id = 2, title = "Low-rated genre movie", rating = "5")
+        )
         coEvery { repository.searchByGenre("Action", 1, null) } returns MovieDetails(data = Data(movies = movies))
 
         viewModel.searchByGenre("Action")
 
         val state = viewModel.uiState.value
         assertThat(state).isInstanceOf(SearchUiState.Success::class.java)
-        assertThat((state as SearchUiState.Success).movies[0].title).isEqualTo("Genre Movie")
+        val results = (state as SearchUiState.Success).movies
+        assertThat(results.map { it.title }).containsExactly("Genre Movie")
     }
 
     @Test
     fun `showFavorites should collect and display favorites`() = runTest {
-        val favorites = listOf(Movie(id = 1, title = "Favorite 1"))
+        val favorites = listOf(Movie(id = 1, title = "Favorite 1", rating = "7"))
         every { repository.getFavoriteMovies() } returns flowOf(favorites)
 
         viewModel.showFavorites()
@@ -219,7 +237,7 @@ class SearchViewModelTest {
 
     @Test
     fun `observeFilteredLanguages should reload when favorites showing`() = runTest {
-        val favorites = listOf(Movie(id = 1, title = "Fav"))
+        val favorites = listOf(Movie(id = 1, title = "Fav", rating = "7"))
         every { repository.getFavoriteMovies() } returns flowOf(favorites)
         viewModel.showFavorites()
         

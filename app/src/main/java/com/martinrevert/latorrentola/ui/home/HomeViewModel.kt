@@ -85,7 +85,7 @@ class HomeViewModel @Inject constructor(
     init {
         initVisitDate()
         observeTopGenres()
-        observeFilteredLanguages()
+        observeMovieFilters()
         syncRemoteSettings()
     }
 
@@ -94,19 +94,29 @@ class HomeViewModel @Inject constructor(
             authRepository.authStateFlow
                 .filterNotNull()
                 .flatMapLatest { user ->
-                    userLibraryRepository.observeRemoteFilteredLanguages(user.uid)
+                    combine(
+                        userLibraryRepository.observeRemoteFilteredLanguages(user.uid),
+                        userLibraryRepository.observeRemoteMinimumRating(user.uid)
+                    ) { languages, rating -> languages to rating }
                 }
-                .collect { remoteFiltered ->
-                    if (remoteFiltered != null && remoteFiltered != preferenceManager.getFilteredLanguages()) {
-                        preferenceManager.setFilteredLanguages(remoteFiltered)
-                        // Local flow observer will trigger refresh()
+                .collect { (remoteLanguages, remoteRating) ->
+                    if (remoteLanguages != null &&
+                        remoteLanguages != preferenceManager.getFilteredLanguages()
+                    ) {
+                        preferenceManager.setFilteredLanguages(remoteLanguages)
+                    }
+                    if (remoteRating != preferenceManager.getMinimumRating()) {
+                        preferenceManager.setMinimumRating(remoteRating)
                     }
                 }
         }
     }
 
-    private fun observeFilteredLanguages() {
-        preferenceManager.filteredLanguagesFlow
+    private fun observeMovieFilters() {
+        combine(
+            preferenceManager.filteredLanguagesFlow,
+            preferenceManager.minimumRatingFlow
+        ) { _, _ -> Unit }
             .onEach { refresh(force = true) }
             .launchIn(viewModelScope)
     }
@@ -157,12 +167,20 @@ class HomeViewModel @Inject constructor(
                 
                 var foundNewMovies = false
                 while (canLoadMore && !foundNewMovies) {
-                    val result = ytsRepository.getMovies(currentPage, _selectedQuality.value)
+                    val result = ytsRepository.getMovies(
+                        currentPage,
+                        _selectedQuality.value,
+                        preferenceManager.getMinimumRating()
+                    )
                     val moviesFromApi = result.data?.movies
                     
                     // Filter movies based on user settings
                     val excludedLangs = preferenceManager.getFilteredLanguages()
-                    val filteredMovies = MovieFilter.filterMovies(moviesFromApi, excludedLangs)
+                    val filteredMovies = MovieFilter.filterMovies(
+                        moviesFromApi,
+                        excludedLangs,
+                        minimumRating = preferenceManager.getMinimumRating()
+                    )
                         .distinctBy { it.id }
                     
                     if (filteredMovies.isNotEmpty()) {
@@ -217,7 +235,11 @@ class HomeViewModel @Inject constructor(
 
                 var foundNewMovies = false
                 while (canLoadMore && !foundNewMovies) {
-                    val result = ytsRepository.getMovies(currentPage, _selectedQuality.value)
+                    val result = ytsRepository.getMovies(
+                        currentPage,
+                        _selectedQuality.value,
+                        preferenceManager.getMinimumRating()
+                    )
                     val moviesFromApi = result.data?.movies
 
                     if (moviesFromApi.isNullOrEmpty()) {
@@ -227,7 +249,11 @@ class HomeViewModel @Inject constructor(
 
                     // Filter movies based on user settings
                     val excludedLangs = preferenceManager.getFilteredLanguages()
-                    val filteredMovies = MovieFilter.filterMovies(moviesFromApi, excludedLangs)
+                    val filteredMovies = MovieFilter.filterMovies(
+                        moviesFromApi,
+                        excludedLangs,
+                        minimumRating = preferenceManager.getMinimumRating()
+                    )
                         .distinctBy { it.id }
 
                     if (filteredMovies.isNotEmpty()) {

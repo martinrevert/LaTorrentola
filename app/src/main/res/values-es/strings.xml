@@ -61,6 +61,11 @@
     <string name="filter_languages_label">Filtrar Idiomas</string>
     <string name="filter_languages_placeholder">cn, fr, hi&#8230;</string>
     <string name="filter_languages_support">Excluir películas en estos idiomas (ej: cn, fr, hi)</string>
+    <string name="minimum_imdb_rating">Puntuación mínima de IMDb</string>
+    <string name="minimum_imdb_rating_support">Ocultar películas con una puntuación IMDb inferior</string>
+    <string name="minimum_imdb_rating_value">%1$d / 10</string>
+    <string name="decrease_minimum_rating">Bajar la puntuación mínima de IMDb</string>
+    <string name="increase_minimum_rating">Subir la puntuación mínima de IMDb</string>
     <string name="logout_button">Cerrar Sesión</string>
     <string name="app_version">Versión: %1$s</string>
     <string name="app_build">Build: %1$d</string>

@@ -35,7 +35,9 @@ class SettingsViewModelTest {
         every { preferenceManager.getVibrator() } returns true
         every { preferenceManager.isPushEnabled() } returns true
         every { preferenceManager.getTheme() } returns PreferenceManager.THEME_DARK
+        every { preferenceManager.getMinimumRating() } returns PreferenceManager.DEFAULT_MINIMUM_RATING
         every { preferenceManager.filteredLanguagesFlow } returns MutableStateFlow("es")
+        every { preferenceManager.minimumRatingFlow } returns MutableStateFlow(PreferenceManager.DEFAULT_MINIMUM_RATING)
         every { authRepository.authStateFlow } returns MutableStateFlow(null)
         
         viewModel = SettingsViewModel(preferenceManager, firebaseMessagingInitializer, userLibraryRepository, authRepository)
@@ -47,6 +49,7 @@ class SettingsViewModelTest {
         assertThat(state.filteredLanguages).isEqualTo("es")
         assertThat(state.voiceSystem).isTrue()
         assertThat(state.theme).isEqualTo(PreferenceManager.THEME_DARK)
+        assertThat(state.minimumRating).isEqualTo(PreferenceManager.DEFAULT_MINIMUM_RATING)
     }
 
     @Test
@@ -81,5 +84,16 @@ class SettingsViewModelTest {
         verify { preferenceManager.setPushEnabled(false) }
         assertThat(viewModel.uiState.value.pushEnabled).isFalse()
         verify { firebaseMessagingInitializer.syncTopicSubscription(false) }
+    }
+
+    @Test
+    fun `setMinimumRating should update preference and persist to Firestore after debounce`() = runTest {
+        viewModel.setMinimumRating(8)
+
+        verify { preferenceManager.setMinimumRating(8) }
+        assertThat(viewModel.uiState.value.minimumRating).isEqualTo(8)
+
+        testScheduler.advanceTimeBy(1100)
+        coVerify { userLibraryRepository.saveMinimumRating(8) }
     }
 }

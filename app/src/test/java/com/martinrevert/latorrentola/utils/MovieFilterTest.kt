@@ -44,4 +44,27 @@ class MovieFilterTest {
         val result = MovieFilter.filterMovies(movies, ",,")
         assertThat(result).isEqualTo(movies)
     }
+
+    @Test
+    fun `filterMovies should exclude movies below minimum rating`() {
+        val movies = listOf(
+            Movie(id = 1, rating = "5.9"),
+            Movie(id = 2, rating = "6"),
+            Movie(id = 3, rating = "8.2"),
+            Movie(id = 4, rating = null)
+        )
+
+        val result = MovieFilter.filterMovies(movies, "", minimumRating = 6)
+
+        assertThat(result.map { it.id }).containsExactly(2, 3).inOrder()
+    }
+
+    @Test
+    fun `minimum rating zero should retain movies without a rating`() {
+        val movies = listOf(Movie(id = 1, rating = null))
+
+        val result = MovieFilter.filterMovies(movies, "", minimumRating = 0)
+
+        assertThat(result).isEqualTo(movies)
+    }
 }

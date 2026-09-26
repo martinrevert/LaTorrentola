@@ -23,6 +23,7 @@ class SettingsViewModel @Inject constructor(
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
     
     private var syncJob: kotlinx.coroutines.Job? = null
+    private var ratingSyncJob: kotlinx.coroutines.Job? = null
 
     init {
         val localFiltered = preferenceManager.getFilteredLanguages()
@@ -33,7 +34,8 @@ class SettingsViewModel @Inject constructor(
             vibrator = preferenceManager.getVibrator(),
             pushEnabled = preferenceManager.isPushEnabled(),
             theme = preferenceManager.getTheme(),
-            filteredLanguages = localFiltered
+            filteredLanguages = localFiltered,
+            minimumRating = preferenceManager.getMinimumRating()
         )
         syncSettings()
         observeSettingsChanges()
@@ -47,6 +49,13 @@ class SettingsViewModel @Inject constructor(
                 }
             }
         }
+        viewModelScope.launch {
+            preferenceManager.minimumRatingFlow.collect { rating ->
+                if (_uiState.value.minimumRating != rating) {
+                    _uiState.value = _uiState.value.copy(minimumRating = rating)
+                }
+            }
+        }
     }
 
     private fun syncSettings() {
@@ -54,12 +63,20 @@ class SettingsViewModel @Inject constructor(
             authRepository.authStateFlow
                 .filterNotNull()
                 .flatMapLatest { user ->
-                    userLibraryRepository.observeRemoteFilteredLanguages(user.uid)
+                    combine(
+                        userLibraryRepository.observeRemoteFilteredLanguages(user.uid),
+                        userLibraryRepository.observeRemoteMinimumRating(user.uid)
+                    ) { languages, rating -> languages to rating }
                 }
-                .collect { remoteFiltered ->
-                    if (remoteFiltered != null && remoteFiltered != preferenceManager.getFilteredLanguages()) {
-                        preferenceManager.setFilteredLanguages(remoteFiltered)
-                        _uiState.value = _uiState.value.copy(filteredLanguages = remoteFiltered)
+                .collect { (remoteLanguages, remoteRating) ->
+                    if (remoteLanguages != null &&
+                        remoteLanguages != preferenceManager.getFilteredLanguages()
+                    ) {
+                        preferenceManager.setFilteredLanguages(remoteLanguages)
+                        _uiState.value = _uiState.value.copy(filteredLanguages = remoteLanguages)
+                    }
+                    if (remoteRating != preferenceManager.getMinimumRating()) {
+                        preferenceManager.setMinimumRating(remoteRating)
                     }
                 }
         }
@@ -106,6 +123,22 @@ class SettingsViewModel @Inject constructor(
             userLibraryRepository.saveFilteredLanguages(languages)
         }
     }
+
+    fun setMinimumRating(rating: Int) {
+        val boundedRating = rating.coerceIn(
+            PreferenceManager.MINIMUM_RATING_MIN,
+            PreferenceManager.MINIMUM_RATING_MAX
+        )
+        preferenceManager.setMinimumRating(boundedRating)
+        _uiState.value = _uiState.value.copy(minimumRating = boundedRating)
+
+        ratingSyncJob?.cancel()
+        ratingSyncJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(1000)
+            userLibraryRepository.saveMinimumRating(boundedRating)
+        }
+    }
+
 }
 
 data class SettingsUiState(
@@ -115,5 +148,6 @@ data class SettingsUiState(
     val vibrator: Boolean = false,
     val pushEnabled: Boolean = true,
     val theme: Int = PreferenceManager.THEME_SYSTEM,
-    val filteredLanguages: String = ""
+    val filteredLanguages: String = "",
+    val minimumRating: Int = PreferenceManager.DEFAULT_MINIMUM_RATING
 )

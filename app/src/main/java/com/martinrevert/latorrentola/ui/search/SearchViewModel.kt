@@ -64,12 +64,15 @@ class SearchViewModel @Inject constructor(
     private var searchJob: Job? = null
 
     init {
-        observeFilteredLanguages()
+        observeMovieFilters()
     }
 
-    private fun observeFilteredLanguages() {
-        preferenceManager.filteredLanguagesFlow
-            .onEach { 
+    private fun observeMovieFilters() {
+        combine(
+            preferenceManager.filteredLanguagesFlow,
+            preferenceManager.minimumRatingFlow
+        ) { _, _ -> Unit }
+            .onEach {
                 if (isShowingFavorites) {
                     showFavorites(force = true)
                 } else if (isShowingDownloads) {
@@ -184,7 +187,8 @@ class SearchViewModel @Inject constructor(
                     val filteredFavorites = MovieFilter.filterMovies(
                         favorites,
                         excludedLangs,
-                        _selectedQuality.value
+                        _selectedQuality.value,
+                        preferenceManager.getMinimumRating()
                     ).distinctBy { it.id }
                     
                     allResults.addAll(filteredFavorites)
@@ -228,7 +232,8 @@ class SearchViewModel @Inject constructor(
                     val filtered = MovieFilter.filterMovies(
                         sortedMovies,
                         excludedLangs,
-                        _selectedQuality.value
+                        _selectedQuality.value,
+                        preferenceManager.getMinimumRating()
                     ).distinctBy { it.id }
                     allResults.clear()
                     allResults.addAll(filtered)
@@ -296,7 +301,8 @@ class SearchViewModel @Inject constructor(
                     val filtered = MovieFilter.filterMovies(
                         sortedMovies,
                         excludedLangs,
-                        _selectedQuality.value
+                        _selectedQuality.value,
+                        preferenceManager.getMinimumRating()
                     ).distinctBy { it.id }
                     allResults.clear()
                     allResults.addAll(filtered)
@@ -431,7 +437,12 @@ class SearchViewModel @Inject constructor(
                         val filteredMovies = MovieFilter.filterMovies(
                             distinctFromApi,
                             excludedLangs,
-                            _selectedQuality.value
+                            _selectedQuality.value,
+                            minimumRating = if (query == null) {
+                                preferenceManager.getMinimumRating()
+                            } else {
+                                null
+                            }
                         )
                         
                         // Filter duplicates against existing results

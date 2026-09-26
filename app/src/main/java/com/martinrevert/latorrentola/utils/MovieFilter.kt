@@ -6,7 +6,8 @@ object MovieFilter {
     fun filterMovies(
         movies: List<Movie>?,
         excludedLanguages: String,
-        selectedQuality: String? = null
+        selectedQuality: String? = null,
+        minimumRating: Int? = null
     ): List<Movie> {
         if (movies == null) return emptyList()
         
@@ -30,8 +31,11 @@ object MovieFilter {
                     }
                 } ?: false
             }
+
+            val ratingMatch = minimumRating == null || minimumRating == 0 ||
+                (movie.rating?.toDoubleOrNull()?.let { it >= minimumRating.toDouble() } ?: false)
             
-            langMatch && qualityMatch
+            langMatch && qualityMatch && ratingMatch
         }
     }
 }

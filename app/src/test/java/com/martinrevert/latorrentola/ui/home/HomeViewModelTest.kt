@@ -40,19 +40,21 @@ class HomeViewModelTest {
         every { repository.getTopGenres(any()) } returns flowOf(emptyList())
         every { preferenceManager.getFilteredLanguages() } returns ""
         every { preferenceManager.filteredLanguagesFlow } returns MutableStateFlow("")
+        every { preferenceManager.getMinimumRating() } returns 6
+        every { preferenceManager.minimumRatingFlow } returns MutableStateFlow(6)
         every { authRepository.authStateFlow } returns MutableStateFlow(null)
         coEvery { repository.getLastVisitDate() } returns null
         // Default to empty list for any page to avoid infinite loops in ViewModel
-        coEvery { repository.getMovies(any(), any()) } returns MovieDetails(data = Data(movies = emptyList()))
+        coEvery { repository.getMovies(any(), any(), any()) } returns MovieDetails(data = Data(movies = emptyList()))
     }
 
     @Test
     fun `initial state should be Loading then Success if repository returns movies`() = runTest {
         val movies = listOf(
-            Movie(id = 1, title = "English Movie", language = "en"),
-            Movie(id = 2, title = "Spanish Movie", language = "es")
+            Movie(id = 1, title = "English Movie", language = "en", rating = "7"),
+            Movie(id = 2, title = "Spanish Movie", language = "es", rating = "7")
         )
-        coEvery { repository.getMovies(1, null) } returns MovieDetails(data = Data(movies = movies))
+        coEvery { repository.getMovies(1, null, 6) } returns MovieDetails(data = Data(movies = movies))
 
         viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
 
@@ -73,14 +75,14 @@ class HomeViewModelTest {
     @Test
     fun `loadMovies should filter movies based on preferences`() = runTest {
         val movies = listOf(
-            Movie(id = 1, title = "EN", language = "en"),
-            Movie(id = 2, title = "ES", language = "es")
+            Movie(id = 1, title = "EN", language = "en", rating = "7"),
+            Movie(id = 2, title = "ES", language = "es", rating = "7")
         )
         every { preferenceManager.getFilteredLanguages() } returns "es"
         
         // Return movies for page 1, then empty for page 2+ to avoid infinite loop in ViewModel
-        coEvery { repository.getMovies(1, any()) } returns MovieDetails(data = Data(movies = movies))
-        coEvery { repository.getMovies(more(1), any()) } returns MovieDetails(data = Data(movies = emptyList()))
+        coEvery { repository.getMovies(1, any(), any()) } returns MovieDetails(data = Data(movies = movies))
+        coEvery { repository.getMovies(more(1), any(), any()) } returns MovieDetails(data = Data(movies = emptyList()))
 
         viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
         // init already calls loadMovies()
@@ -94,14 +96,14 @@ class HomeViewModelTest {
 
     @Test
     fun `refresh should clear existing movies and reload`() = runTest {
-        val initialMovies = listOf(Movie(id = 1, title = "EN 1", language = "en"))
-        coEvery { repository.getMovies(1, null) } returns MovieDetails(data = Data(movies = initialMovies))
+        val initialMovies = listOf(Movie(id = 1, title = "EN 1", language = "en", rating = "7"))
+        coEvery { repository.getMovies(1, null, 6) } returns MovieDetails(data = Data(movies = initialMovies))
         
         viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
         assertThat(viewModel.uiState.value).isInstanceOf(HomeUiState.Success::class.java)
 
-        val newMovies = listOf(Movie(id = 2, title = "EN 2", language = "en"))
-        coEvery { repository.getMovies(1, null) } returns MovieDetails(data = Data(movies = newMovies))
+        val newMovies = listOf(Movie(id = 2, title = "EN 2", language = "en", rating = "7"))
+        coEvery { repository.getMovies(1, null, 6) } returns MovieDetails(data = Data(movies = newMovies))
 
         viewModel.refresh()
 
@@ -113,7 +115,7 @@ class HomeViewModelTest {
 
     @Test
     fun `error from repository should update uiState to Error`() = runTest {
-        coEvery { repository.getMovies(any(), any()) } throws Exception("Network Error")
+        coEvery { repository.getMovies(any(), any(), any()) } throws Exception("Network Error")
 
         viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
         // Since init calls loadMovies, it might already be in error state
@@ -125,10 +127,10 @@ class HomeViewModelTest {
 
     @Test
     fun `setQuality should update state and refresh`() = runTest {
-        coEvery { repository.getMovies(1, null) } returns MovieDetails(data = Data(movies = listOf(Movie(id = 1))))
+        coEvery { repository.getMovies(1, null, any()) } returns MovieDetails(data = Data(movies = listOf(Movie(id = 1, rating = "7"))))
         viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
         
-        coEvery { repository.getMovies(1, "720p") } returns MovieDetails(data = Data(movies = listOf(Movie(id = 2))))
+        coEvery { repository.getMovies(1, "720p", any()) } returns MovieDetails(data = Data(movies = listOf(Movie(id = 2, rating = "7"))))
         viewModel.setQuality("720p")
 
         assertThat(viewModel.selectedQuality.value).isEqualTo("720p")

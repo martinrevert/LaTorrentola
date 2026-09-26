@@ -23,6 +23,9 @@ class PreferenceManager @Inject constructor(
     private val _filteredLanguagesFlow = MutableStateFlow(getFilteredLanguages())
     val filteredLanguagesFlow: StateFlow<String> = _filteredLanguagesFlow.asStateFlow()
 
+    private val _minimumRatingFlow = MutableStateFlow(getMinimumRating())
+    val minimumRatingFlow: StateFlow<Int> = _minimumRatingFlow.asStateFlow()
+
     fun setVoiceSystem(enabled: Boolean) {
         sharedPreferences.edit { putBoolean(KEY_VOICE_SYSTEM, enabled) }
     }
@@ -97,6 +100,14 @@ class PreferenceManager @Inject constructor(
 
     fun getFilteredLanguages(): String = sharedPreferences.getString(KEY_FILTERED_LANGUAGES, "") ?: ""
 
+    fun setMinimumRating(rating: Int) {
+        val boundedRating = rating.coerceIn(MINIMUM_RATING_MIN, MINIMUM_RATING_MAX)
+        sharedPreferences.edit { putInt(KEY_MINIMUM_RATING, boundedRating) }
+        _minimumRatingFlow.value = boundedRating
+    }
+
+    fun getMinimumRating(): Int = sharedPreferences.getInt(KEY_MINIMUM_RATING, DEFAULT_MINIMUM_RATING)
+
     companion object {
         private const val KEY_VOICE_SYSTEM = "voice_system"
         private const val KEY_VOICE_SUMMARY = "voice_summary"
@@ -109,9 +120,13 @@ class PreferenceManager @Inject constructor(
         private const val KEY_THEME = "theme"
         private const val KEY_FCM_RETRY_COUNT = "fcm_retry_count"
         private const val KEY_FILTERED_LANGUAGES = "filtered_languages"
+        private const val KEY_MINIMUM_RATING = "minimum_rating"
 
         const val THEME_SYSTEM = 0
         const val THEME_LIGHT = 1
         const val THEME_DARK = 2
+        const val DEFAULT_MINIMUM_RATING = 6
+        const val MINIMUM_RATING_MIN = 0
+        const val MINIMUM_RATING_MAX = 10
     }
 }
