@@ -44,6 +44,7 @@ import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.glass.hazeGlass
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.tv.material3.Button
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
 /** Collects settings state and presents the adaptive settings screen. */
@@ -97,7 +98,7 @@ private fun SettingsScreenContent(
     onTogglePushEnabled: (Boolean) -> Unit,
     onSetTheme: (Int) -> Unit,
     onSetFilteredLanguages: (String) -> Unit,
-    onSetMinimumRating: (Int) -> Unit
+    onSetMinimumRating: (Float) -> Unit
 ) {
     val configuration = LocalConfiguration.current
     val isWideScreen = configuration.screenWidthDp >= 600 || isTv
@@ -480,8 +481,8 @@ fun ThemeSelector(
 /** Presents the bounded minimum-rating preference as an adjustable control. */
 @Composable
 private fun MinimumRatingSetting(
-    value: Int,
-    onValueChange: (Int) -> Unit
+    value: Float,
+    onValueChange: (Float) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -500,7 +501,8 @@ private fun MinimumRatingSetting(
         ) {
             IconButton(
                 onClick = {
-                    onValueChange((value - 1).coerceAtLeast(PreferenceManager.MINIMUM_RATING_MIN))
+                    val next = (Math.round((value - 0.1f) * 10.0f) / 10.0f).coerceAtLeast(PreferenceManager.MINIMUM_RATING_MIN)
+                    onValueChange(next)
                 },
                 enabled = value > PreferenceManager.MINIMUM_RATING_MIN
             ) {
@@ -509,14 +511,16 @@ private fun MinimumRatingSetting(
                     contentDescription = stringResource(R.string.decrease_minimum_rating)
                 )
             }
+            val formattedValue = String.format(Locale.US, "%.1f", value)
             Text(
-                text = stringResource(R.string.minimum_imdb_rating_value, value),
+                text = stringResource(R.string.minimum_imdb_rating_value, formattedValue),
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
             IconButton(
                 onClick = {
-                    onValueChange((value + 1).coerceAtMost(PreferenceManager.MINIMUM_RATING_MAX))
+                    val next = (Math.round((value + 0.1f) * 10.0f) / 10.0f).coerceAtMost(PreferenceManager.MINIMUM_RATING_MAX)
+                    onValueChange(next)
                 },
                 enabled = value < PreferenceManager.MINIMUM_RATING_MAX
             ) {

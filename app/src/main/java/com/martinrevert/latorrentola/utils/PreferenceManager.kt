@@ -32,7 +32,7 @@ class PreferenceManager @Inject constructor(
     /** Mutable backing stream for the minimum movie rating. */
     private val _minimumRatingFlow = MutableStateFlow(getMinimumRating())
     /** Observable minimum movie rating. */
-    val minimumRatingFlow: StateFlow<Int> = _minimumRatingFlow.asStateFlow()
+    val minimumRatingFlow: StateFlow<Float> = _minimumRatingFlow.asStateFlow()
 
     /** Persists whether voice guidance is enabled. */
     fun setVoiceSystem(enabled: Boolean) {
@@ -132,14 +132,23 @@ class PreferenceManager @Inject constructor(
     fun getFilteredLanguages(): String = sharedPreferences.getString(KEY_FILTERED_LANGUAGES, "") ?: ""
 
     /** Persists a minimum rating clamped to the supported range and publishes it. */
-    fun setMinimumRating(rating: Int) {
-        val boundedRating = rating.coerceIn(MINIMUM_RATING_MIN, MINIMUM_RATING_MAX)
-        sharedPreferences.edit { putInt(KEY_MINIMUM_RATING, boundedRating) }
-        _minimumRatingFlow.value = boundedRating
+    fun setMinimumRating(rating: Float) {
+        val roundedRating = (Math.round(rating * 10.0f) / 10.0f).coerceIn(MINIMUM_RATING_MIN, MINIMUM_RATING_MAX)
+        sharedPreferences.edit { putFloat(KEY_MINIMUM_RATING, roundedRating) }
+        _minimumRatingFlow.value = roundedRating
     }
 
     /** Returns the stored minimum rating, defaulting to [DEFAULT_MINIMUM_RATING]. */
-    fun getMinimumRating(): Int = sharedPreferences.getInt(KEY_MINIMUM_RATING, DEFAULT_MINIMUM_RATING)
+    fun getMinimumRating(): Float {
+        return try {
+            sharedPreferences.getFloat(KEY_MINIMUM_RATING, DEFAULT_MINIMUM_RATING)
+        } catch (_: ClassCastException) {
+            val legacyInt = sharedPreferences.getInt(KEY_MINIMUM_RATING, DEFAULT_MINIMUM_RATING.toInt())
+            val migratedRating = legacyInt.toFloat().coerceIn(MINIMUM_RATING_MIN, MINIMUM_RATING_MAX)
+            sharedPreferences.edit { putFloat(KEY_MINIMUM_RATING, migratedRating) }
+            migratedRating
+        }
+    }
 
     companion object {
         /** Preference key controlling general voice guidance. */
@@ -174,10 +183,12 @@ class PreferenceManager @Inject constructor(
         /** Always use the dark theme. */
         const val THEME_DARK = 2
         /** Default minimum movie rating. */
-        const val DEFAULT_MINIMUM_RATING = 6
+        const val DEFAULT_MINIMUM_RATING = 6.0f
         /** Lowest supported minimum movie rating. */
-        const val MINIMUM_RATING_MIN = 0
+        const val MINIMUM_RATING_MIN = 0.0f
         /** Highest supported minimum movie rating. */
-        const val MINIMUM_RATING_MAX = 10
+        const val MINIMUM_RATING_MAX = 10.0f
+        /** Step increment for adjusting minimum rating. */
+        const val MINIMUM_RATING_STEP = 0.1f
     }
 }

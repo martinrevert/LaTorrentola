@@ -9,6 +9,7 @@ import com.martinrevert.latorrentola.model.date.DateLastVisit
 import com.martinrevert.latorrentola.model.stats.GenreStats
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import kotlinx.coroutines.flow.Flow
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -34,11 +35,16 @@ class YtsRepository @Inject constructor(
     suspend fun getMovies(
         page: Int,
         quality: String? = null,
-        minimumRating: Int = PreferenceManager.DEFAULT_MINIMUM_RATING
+        minimumRating: Float = PreferenceManager.DEFAULT_MINIMUM_RATING
     ): MovieDetails {
+        val ratingString = if (minimumRating % 1f == 0f) {
+            minimumRating.toInt().toString()
+        } else {
+            String.format(Locale.US, "%.1f", minimumRating)
+        }
         return ytsService.getMovieDetails(
             Constants.PAGE_SIZE,
-            minimumRating.toString(),
+            ratingString,
             page,
             "true",
             "true",

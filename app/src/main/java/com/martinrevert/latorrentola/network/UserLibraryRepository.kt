@@ -168,9 +168,9 @@ class UserLibraryRepository @Inject constructor(
     }
 
     /** Saves a bounded minimum rating preference to Firestore. */
-    suspend fun saveMinimumRating(rating: Int) {
+    suspend fun saveMinimumRating(rating: Float) {
         val uid = userId ?: throw IllegalStateException("User not logged in")
-        val boundedRating = rating.coerceIn(
+        val boundedRating = (Math.round(rating * 10.0f) / 10.0f).coerceIn(
             PreferenceManager.MINIMUM_RATING_MIN,
             PreferenceManager.MINIMUM_RATING_MAX
         )
@@ -232,7 +232,7 @@ class UserLibraryRepository @Inject constructor(
     }
 
     /** Observes the user's remote minimum rating, applying configured bounds. */
-    fun observeRemoteMinimumRating(uid: String): Flow<Int> = callbackFlow {
+    fun observeRemoteMinimumRating(uid: String): Flow<Float> = callbackFlow {
         val subscription = firestore.collection("users")
             .document(uid)
             .collection("settings")
@@ -242,14 +242,14 @@ class UserLibraryRepository @Inject constructor(
                     Log.e("FirestoreSync", "Error observing minimum rating: ${error.message}")
                     return@addSnapshotListener
                 }
-                val rating = snapshot?.getLong("minimumRating")?.toInt()
+                val rawRating = snapshot?.getDouble("minimumRating")?.toFloat()
+                    ?: snapshot?.getLong("minimumRating")?.toFloat()
                     ?: PreferenceManager.DEFAULT_MINIMUM_RATING
-                trySend(
-                    rating.coerceIn(
-                        PreferenceManager.MINIMUM_RATING_MIN,
-                        PreferenceManager.MINIMUM_RATING_MAX
-                    )
+                val boundedRating = (Math.round(rawRating * 10.0f) / 10.0f).coerceIn(
+                    PreferenceManager.MINIMUM_RATING_MIN,
+                    PreferenceManager.MINIMUM_RATING_MAX
                 )
+                trySend(boundedRating)
             }
 
         awaitClose { subscription.remove() }

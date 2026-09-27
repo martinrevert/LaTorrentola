@@ -147,8 +147,8 @@ class SettingsViewModel @Inject constructor(
     }
 
     /** Clamps, updates, and debounces saving the minimum rating to Firestore. */
-    fun setMinimumRating(rating: Int) {
-        val boundedRating = rating.coerceIn(
+    fun setMinimumRating(rating: Float) {
+        val boundedRating = (Math.round(rating * 10.0f) / 10.0f).coerceIn(
             PreferenceManager.MINIMUM_RATING_MIN,
             PreferenceManager.MINIMUM_RATING_MAX
         )
@@ -184,5 +184,5 @@ data class SettingsUiState(
     val pushEnabled: Boolean = true,
     val theme: Int = PreferenceManager.THEME_SYSTEM,
     val filteredLanguages: String = "",
-    val minimumRating: Int = PreferenceManager.DEFAULT_MINIMUM_RATING
+    val minimumRating: Float = PreferenceManager.DEFAULT_MINIMUM_RATING
 )
