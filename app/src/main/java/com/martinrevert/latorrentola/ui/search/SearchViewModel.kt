@@ -226,8 +226,7 @@ class SearchViewModel @Inject constructor(
                     val filteredFavorites = MovieFilter.filterMovies(
                         favorites,
                         excludedLangs,
-                        _selectedQuality.value,
-                        preferenceManager.getMinimumRating()
+                        _selectedQuality.value
                     ).distinctBy { it.id }
                     
                     allResults.addAll(filteredFavorites)
@@ -273,8 +272,7 @@ class SearchViewModel @Inject constructor(
                     val filtered = MovieFilter.filterMovies(
                         sortedMovies,
                         excludedLangs,
-                        _selectedQuality.value,
-                        preferenceManager.getMinimumRating()
+                        _selectedQuality.value
                     ).distinctBy { it.id }
                     allResults.clear()
                     allResults.addAll(filtered)

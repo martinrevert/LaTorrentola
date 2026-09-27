@@ -1,6 +1,5 @@
 package com.martinrevert.latorrentola.ui.detail
 
-import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
@@ -75,6 +74,7 @@ import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.lifecycle.LifecycleOwner
+import java.net.URLEncoder
 import androidx.tv.material3.Button as TvButton
 import androidx.tv.material3.IconButtonDefaults
 import androidx.tv.material3.Surface
@@ -700,33 +700,32 @@ fun TorrentItem(
     focusRequester: FocusRequester? = null
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val isTv = remember(context) { context.isTvDevice() }
-    val chooserTitle = stringResource(R.string.torrent_client_chooser_title)
 
     val onTorrentClickInternal = {
         onTorrentClick(torrent)
-        val hash = torrent.hash?.takeIf { it.isNotBlank() }
-        if (hash == null) {
-            Toast.makeText(context, R.string.toast_magnet_error, Toast.LENGTH_SHORT).show()
-        } else {
-            val magnetUri = Uri.Builder()
-                .scheme("magnet")
-                .appendQueryParameter("xt", "urn:btih:$hash")
-                .appendQueryParameter("dn", movie.title ?: "Movie")
-                .appendQueryParameter("tr", "udp://open.demonii.com:1337/announce")
-                .appendQueryParameter("tr", "udp://tracker.openbittorrent.com:80")
-                .build()
-                .toString()
+        val hash = torrent.hash
+        if (hash != null) {
+            try {
+                val encodedTitle = URLEncoder.encode(movie.title ?: "Movie", "UTF-8")
+                val magnetUri = "magnet:?xt=urn:btih:$hash" +
+                        "&dn=$encodedTitle" +
+                        "&tr=udp://open.demonii.com:1337/announce" +
+                        "&tr=udp://tracker.openbittorrent.com:80"
 
-            val intent = Intent(Intent.ACTION_VIEW, magnetUri.toUri())
-            if (!IntentAppsFinder.hasAppsForMagnet(context, magnetUri)) {
-                Toast.makeText(context, R.string.toast_no_torrent_client, Toast.LENGTH_LONG).show()
-            } else {
-                try {
-                    context.startActivity(Intent.createChooser(intent, chooserTitle))
-                } catch (e: ActivityNotFoundException) {
-                    Toast.makeText(context, R.string.toast_no_torrent_client, Toast.LENGTH_LONG).show()
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    data = magnetUri.toUri()
+                    addCategory(Intent.CATEGORY_BROWSABLE)
                 }
+
+                try {
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    Toast.makeText(context, resources.getString(R.string.toast_no_torrent_client), Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, resources.getString(R.string.toast_magnet_error), Toast.LENGTH_SHORT).show()
             }
         }
     }
