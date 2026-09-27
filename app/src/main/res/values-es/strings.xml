@@ -36,6 +36,7 @@
     <string name="cast_header">Reparto</string>
     <string name="toast_no_torrent_client">No hay cliente de torrent instalado</string>
     <string name="toast_magnet_error">Error al crear el enlace magnet</string>
+    <string name="torrent_client_chooser_title">Abrir con</string>
     <string name="all_genres">Todos los géneros</string>
     <string name="already_seen">Ya vistas</string>
     <string name="new_movies">Nuevas</string>

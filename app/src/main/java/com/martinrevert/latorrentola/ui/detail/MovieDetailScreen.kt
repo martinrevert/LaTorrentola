@@ -1,8 +1,9 @@
 package com.martinrevert.latorrentola.ui.detail
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.res.Configuration
-import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import androidx.core.net.toUri
 import android.view.ViewGroup
@@ -74,12 +75,12 @@ import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.lifecycle.LifecycleOwner
-import androidx.tv.material3.Button
+import androidx.tv.material3.Button as TvButton
 import androidx.tv.material3.IconButtonDefaults
 import androidx.tv.material3.Surface
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.UiText
-import java.net.URLEncoder
+import com.martinrevert.latorrentola.utils.IntentAppsFinder
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
 /** Connects movie detail state and user actions to the detail presentation. */
@@ -306,6 +307,8 @@ fun MovieDetailContent(
     contentFocusRequester: FocusRequester? = null,
     contentPadding: PaddingValues = PaddingValues(16.dp)
 ) {
+    val firstTorrentFocusRequester = remember { FocusRequester() }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -368,7 +371,13 @@ fun MovieDetailContent(
         Spacer(modifier = Modifier.height(24.dp))
 
         if (!movie.cast.isNullOrEmpty()) {
-            CastSection(castList = movie.cast, onCastClick = onCastClick)
+            CastSection(
+                castList = movie.cast,
+                onCastClick = onCastClick,
+                nextFocusRequester = firstTorrentFocusRequester.takeIf {
+                    isTv && !movie.torrents.isNullOrEmpty()
+                }
+            )
             Spacer(modifier = Modifier.height(16.dp))
         }
         
@@ -384,7 +393,12 @@ fun MovieDetailContent(
                     torrent = torrent,
                     isDownloaded = downloadedHashes.contains(torrent.hash),
                     onTorrentClick = onTorrentClick,
-                    focusRequester = if (isFirstItem) contentFocusRequester else null
+                    focusRequester = when {
+                        isTv && index == 0 && !movie.cast.isNullOrEmpty() ->
+                            firstTorrentFocusRequester
+                        isFirstItem -> contentFocusRequester
+                        else -> null
+                    }
                 )
             }
         }
@@ -550,11 +564,26 @@ fun YoutubePlayer(
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 /** Displays the cast as a horizontally scrolling list. */
 @Composable
-fun CastSection(castList: List<Cast>, onCastClick: (String) -> Unit) {
+fun CastSection(
+    castList: List<Cast>,
+    onCastClick: (String) -> Unit,
+    nextFocusRequester: FocusRequester? = null
+) {
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
+
     Text(text = stringResource(R.string.cast_header), style = MaterialTheme.typography.titleLarge)
     Spacer(modifier = Modifier.height(8.dp))
     LazyRow(
-        modifier = Modifier.focusRestorer(),
+        modifier = Modifier
+            .focusRestorer()
+            .then(
+                if (isTv && nextFocusRequester != null) {
+                    Modifier.focusProperties { down = nextFocusRequester }
+                } else {
+                    Modifier
+                }
+            ),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(vertical = 8.dp)
     ) {
@@ -671,32 +700,33 @@ fun TorrentItem(
     focusRequester: FocusRequester? = null
 ) {
     val context = LocalContext.current
-    val resources = LocalResources.current
     val isTv = remember(context) { context.isTvDevice() }
+    val chooserTitle = stringResource(R.string.torrent_client_chooser_title)
 
     val onTorrentClickInternal = {
         onTorrentClick(torrent)
-        val hash = torrent.hash
-        if (hash != null) {
-            try {
-                val encodedTitle = URLEncoder.encode(movie.title ?: "Movie", "UTF-8")
-                val magnetUri = "magnet:?xt=urn:btih:$hash" +
-                        "&dn=$encodedTitle" +
-                        "&tr=udp://open.demonii.com:1337/announce" +
-                        "&tr=udp://tracker.openbittorrent.com:80"
-                
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    data = magnetUri.toUri()
-                    addCategory(Intent.CATEGORY_BROWSABLE)
-                }
-                
+        val hash = torrent.hash?.takeIf { it.isNotBlank() }
+        if (hash == null) {
+            Toast.makeText(context, R.string.toast_magnet_error, Toast.LENGTH_SHORT).show()
+        } else {
+            val magnetUri = Uri.Builder()
+                .scheme("magnet")
+                .appendQueryParameter("xt", "urn:btih:$hash")
+                .appendQueryParameter("dn", movie.title ?: "Movie")
+                .appendQueryParameter("tr", "udp://open.demonii.com:1337/announce")
+                .appendQueryParameter("tr", "udp://tracker.openbittorrent.com:80")
+                .build()
+                .toString()
+
+            val intent = Intent(Intent.ACTION_VIEW, magnetUri.toUri())
+            if (!IntentAppsFinder.hasAppsForMagnet(context, magnetUri)) {
+                Toast.makeText(context, R.string.toast_no_torrent_client, Toast.LENGTH_LONG).show()
+            } else {
                 try {
-                    context.startActivity(intent)
-                } catch (e: Exception) {
-                    Toast.makeText(context, resources.getString(R.string.toast_no_torrent_client), Toast.LENGTH_LONG).show()
+                    context.startActivity(Intent.createChooser(intent, chooserTitle))
+                } catch (e: ActivityNotFoundException) {
+                    Toast.makeText(context, R.string.toast_no_torrent_client, Toast.LENGTH_LONG).show()
                 }
-            } catch (e: Exception) {
-                Toast.makeText(context, resources.getString(R.string.toast_magnet_error), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -707,26 +737,32 @@ fun TorrentItem(
         .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
 
     if (isTv) {
-        Button(
+        TvButton(
             onClick = onTorrentClickInternal,
-            modifier = buttonModifier
+            modifier = buttonModifier,
+            colors = androidx.tv.material3.ButtonDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            )
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 androidx.tv.material3.Text(
                     text = "${torrent.quality} - ${torrent.size} (${torrent.type})",
-                    textAlign = TextAlign.Center
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = if (isDownloaded) 28.dp else 0.dp),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 if (isDownloaded) {
-                    Spacer(modifier = Modifier.width(8.dp))
                     androidx.tv.material3.Icon(
                         imageVector = Icons.Default.CloudDone,
                         contentDescription = stringResource(R.string.downloaded_desc),
-                        tint = Color.Yellow,
-                        modifier = Modifier.size(20.dp)
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .size(20.dp)
                     )
                 }
             }
@@ -734,20 +770,33 @@ fun TorrentItem(
     } else {
         Button(
             onClick = onTorrentClickInternal,
-            modifier = buttonModifier.focusHighlight(shape = MaterialTheme.shapes.extraLarge)
+            modifier = buttonModifier.focusHighlight(shape = MaterialTheme.shapes.extraLarge),
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            )
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
             ) {
-                Text(text = "${torrent.quality} - ${torrent.size} (${torrent.type})")
+                Text(
+                    text = "${torrent.quality} - ${torrent.size} (${torrent.type})",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = if (isDownloaded) 28.dp else 0.dp),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 if (isDownloaded) {
-                    Spacer(modifier = Modifier.width(8.dp))
                     Icon(
                         imageVector = Icons.Default.CloudDone,
                         contentDescription = stringResource(R.string.downloaded_desc),
-                        tint = Color.Yellow,
-                        modifier = Modifier.size(20.dp)
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .size(20.dp)
                     )
                 }
             }
