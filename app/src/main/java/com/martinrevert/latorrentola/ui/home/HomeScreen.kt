@@ -35,8 +35,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
@@ -137,7 +139,9 @@ fun HomeScreen(
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, ExperimentalTvMaterial3Api::class)
-/** Renders home feed content, filter controls, and loading/empty states. */
+/**
+ * Renders home feed content and controls, sizing handheld list padding to the measured header.
+ */
 @Composable
 private fun HomeScreenContent(
     uiState: HomeUiState,
@@ -171,6 +175,8 @@ private fun HomeScreenContent(
     var showTvGenreSheet by remember { mutableStateOf(false) }
     var isTvMode by rememberSaveable { mutableStateOf(false) }
     val homeModeFocusRequester = remember { FocusRequester() }
+    var homeControlsHeightPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val tvGenreSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -186,7 +192,11 @@ private fun HomeScreenContent(
     val lastClickedSeriesId = tvHomeViewModel?.lastClickedSeriesId?.collectAsState()?.value
     LaunchedEffect(isTvMode, selectedTvFeed) {
         if (isTvMode) tvHomeViewModel?.activate()
-        (if (isTvMode) tvGridState else gridState).scrollToItem(0)
+        if (isTvMode) {
+            if (lastClickedSeriesId == null) tvGridState.scrollToItem(0)
+        } else if (lastClickedMovieId == null) {
+            gridState.scrollToItem(0)
+        }
     }
 
     val isInspection = LocalInspectionMode.current
@@ -345,7 +355,12 @@ private fun HomeScreenContent(
                         (if (isTvMode) tvGridState else gridState).scrollToItem(0)
                     }
                 })
-                val topContentOffset = padding.calculateTopPadding() + if (isTvMode) 208.dp else 160.dp
+                val measuredControlsOffset = if (homeControlsHeightPx > 0) {
+                    with(density) { homeControlsHeightPx.toDp() } + 16.dp
+                } else {
+                    if (isTvMode) 208.dp else 160.dp
+                }
+                val topContentOffset = padding.calculateTopPadding() + measuredControlsOffset
 
                 Box(
                     modifier = Modifier
@@ -402,6 +417,7 @@ private fun HomeScreenContent(
                                         .hazeGlass(input = HazeInput.Sources(hazeState))
                                 } else Modifier
                             )
+                            .onSizeChanged { homeControlsHeightPx = it.height }
                     ) {
                         HomeMediaModeChips(
                             isTvMode = isTvMode,

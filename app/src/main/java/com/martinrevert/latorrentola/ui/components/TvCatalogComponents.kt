@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
@@ -60,7 +61,15 @@ import com.martinrevert.latorrentola.utils.isTvDevice
 import kotlinx.coroutines.flow.first
 import java.util.Locale
 
-/** Shows the Movies and TV mode controls using the app's adaptive chip behavior. */
+/**
+ * Shows the Movies and TV mode controls with deterministic horizontal TV focus traversal.
+ *
+ * @param isTvMode Whether the TV catalog is currently selected.
+ * @param onMoviesClick Selects the movie catalog.
+ * @param onTvClick Selects the TV catalog.
+ * @param firstFocusRequester Optional focus target for the Movies control.
+ * @param modifier Modifier applied to the control row.
+ */
 @Composable
 fun HomeMediaModeChips(
     isTvMode: Boolean,
@@ -69,6 +78,10 @@ fun HomeMediaModeChips(
     firstFocusRequester: FocusRequester? = null,
     modifier: Modifier = Modifier
 ) {
+    val tvFocusRequester = remember { FocusRequester() }
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -80,13 +93,30 @@ fun HomeMediaModeChips(
             onClick = onMoviesClick,
             label = { Text(stringResource(R.string.home_mode_movies)) },
             leadingIcon = { androidx.compose.material3.Icon(Icons.Default.Movie, contentDescription = null) },
-            modifier = firstFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
+            modifier = Modifier
+                .then(firstFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+                .then(
+                    if (isTv) {
+                        Modifier.focusProperties { right = tvFocusRequester }
+                    } else {
+                        Modifier
+                    }
+                )
         )
         AdaptiveChip(
             selected = isTvMode,
             onClick = onTvClick,
             label = { Text(stringResource(R.string.home_mode_tv)) },
-            leadingIcon = { androidx.compose.material3.Icon(Icons.Default.Tv, contentDescription = null) }
+            leadingIcon = { androidx.compose.material3.Icon(Icons.Default.Tv, contentDescription = null) },
+            modifier = Modifier
+                .then(if (isTv) Modifier.focusRequester(tvFocusRequester) else Modifier)
+                .then(
+                    if (isTv && firstFocusRequester != null) {
+                        Modifier.focusProperties { left = firstFocusRequester }
+                    } else {
+                        Modifier
+                    }
+                )
         )
     }
 }
