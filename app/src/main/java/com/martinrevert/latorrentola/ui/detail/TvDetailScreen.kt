@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.ui.detail
 
-import androidx.compose.foundation.focusable
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,9 +15,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
@@ -26,19 +28,27 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -47,7 +57,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.IconButton as TvIconButton
+import androidx.tv.material3.Surface as TvSurface
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
@@ -55,6 +67,7 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeason
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.ui.components.AdaptiveChip
+import com.martinrevert.latorrentola.ui.components.ActorDetailBottomSheet
 import com.martinrevert.latorrentola.ui.components.MovieDetailPlaceholder
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.isTvDevice
@@ -80,9 +93,24 @@ fun TvDetailScreen(
     val selectedSeason by viewModel.selectedSeason.collectAsState()
     val seasonState by viewModel.seasonState.collectAsState()
     val downloadedEpisodes by viewModel.downloadedEpisodes.collectAsState()
+    val selectedActorDetail by viewModel.selectedActorDetail.collectAsState()
+    val isActorLoading by viewModel.isActorLoading.collectAsState()
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
     val detailContentFocusRequester = remember { FocusRequester() }
+    val firstCastFocusRequester = remember { FocusRequester() }
+    var showActorSheet by remember { mutableStateOf(false) }
+    val actorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val firstContentFocusRequester = when (val state = uiState) {
+        is TvDetailUiState.Success -> if (
+            state.series.aggregateCredits?.cast.isNullOrEmpty()
+        ) {
+            detailContentFocusRequester
+        } else {
+            firstCastFocusRequester
+        }
+        else -> null
+    }
 
     LaunchedEffect(seriesId) { viewModel.load(seriesId) }
 
@@ -94,7 +122,22 @@ fun TvDetailScreen(
                     if (isTv) {
                         TvIconButton(
                             onClick = onBackClick,
-                            modifier = Modifier.focusProperties { down = detailContentFocusRequester }
+                            modifier = if (firstContentFocusRequester != null) {
+                                Modifier
+                                    .focusProperties { down = firstContentFocusRequester }
+                                    .onPreviewKeyEvent { event ->
+                                        if (
+                                            isTv &&
+                                            event.type == KeyEventType.KeyDown &&
+                                            event.key == Key.DirectionDown
+                                        ) {
+                                            firstContentFocusRequester.requestFocus()
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                            } else Modifier
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
@@ -103,8 +146,7 @@ fun TvDetailScreen(
                         }
                     } else {
                         IconButton(
-                            onClick = onBackClick,
-                            modifier = Modifier.focusProperties { down = detailContentFocusRequester }
+                            onClick = onBackClick
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
@@ -142,9 +184,26 @@ fun TvDetailScreen(
                 onSeasonSelected = viewModel::selectSeason,
                 onEpisodeClick = { episode -> onEpisodeClick(state.series.name.orEmpty(), episode) },
                 contentFocusRequester = detailContentFocusRequester,
+                firstCastFocusRequester = firstCastFocusRequester,
+                onCastClick = { personId ->
+                    showActorSheet = true
+                    viewModel.fetchActorDetails(personId)
+                },
                 topPadding = padding.calculateTopPadding()
             )
         }
+    }
+
+    if (showActorSheet) {
+        ActorDetailBottomSheet(
+            actorDetailState = selectedActorDetail,
+            isLoading = isActorLoading,
+            onDismiss = {
+                showActorSheet = false
+                viewModel.clearSelectedActor()
+            },
+            sheetState = actorSheetState
+        )
     }
 }
 
@@ -158,6 +217,8 @@ fun TvDetailScreen(
  * @param onSeasonSelected Loads episodes for a selected season.
  * @param onEpisodeClick Navigates to episode detail view when tapped.
  * @param contentFocusRequester First focusable control in the detail content.
+ * @param firstCastFocusRequester First cast member focus target, when cast is available.
+ * @param onCastClick Opens the shared actor detail sheet for the selected TMDB person.
  * @param topPadding Space reserved for the app bar and system insets.
  */
 @Composable
@@ -169,6 +230,8 @@ private fun TvDetailContent(
     onSeasonSelected: (TmdbTvSeason) -> Unit,
     onEpisodeClick: (TmdbTvEpisode) -> Unit,
     contentFocusRequester: FocusRequester,
+    firstCastFocusRequester: FocusRequester,
+    onCastClick: (Int) -> Unit,
     topPadding: Dp
 ) {
     val context = LocalContext.current
@@ -181,144 +244,151 @@ private fun TvDetailContent(
         downloadedEpisodes.filter { it.seriesId == series.id }
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            top = topPadding + 16.dp,
-            start = 16.dp,
-            end = 16.dp,
-            bottom = 24.dp
-        ),
+    val firstEpisodeFocusRequester = remember { FocusRequester() }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .focusGroup()
+            .verticalScroll(rememberScrollState())
+            .padding(
+                top = topPadding + 16.dp,
+                start = 16.dp,
+                end = 16.dp,
+                bottom = 24.dp
+            ),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        item {
-            if (isWide) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(24.dp)
-                ) {
-                    TvSeriesHero(series, Modifier.weight(0.6f))
-                    TvSeriesInformation(series, Modifier.weight(0.4f))
-                }
-            } else {
-                Column {
-                    TvSeriesHero(series, Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(16.dp))
-                    TvSeriesInformation(series, Modifier.fillMaxWidth())
-                }
+        if (isWide) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                TvSeriesHero(series, Modifier.weight(0.6f))
+                TvSeriesInformation(series, Modifier.weight(0.4f))
+            }
+        } else {
+            Column {
+                TvSeriesHero(series, Modifier.fillMaxWidth())
+                Spacer(Modifier.height(16.dp))
+                TvSeriesInformation(series, Modifier.fillMaxWidth())
             }
         }
         if (cast.isNotEmpty()) {
-            item {
-                Text(
-                    stringResource(R.string.tv_cast),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                LazyRow(
-                    contentPadding = PaddingValues(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(cast, key = { it.id }) { actor ->
-                        Column(
-                            modifier = Modifier.width(112.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            AsyncImage(
-                                model = actor.fullProfileUrl,
-                                contentDescription = actor.name,
-                                modifier = Modifier
-                                    .size(88.dp)
-                                    .aspectRatio(1f),
-                                contentScale = ContentScale.Crop
+            Text(
+                stringResource(R.string.tv_cast),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            LazyRow(
+                modifier = Modifier.focusGroup(),
+                contentPadding = PaddingValues(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(cast, key = { it.id }) { actor ->
+                    TvCastMember(
+                        name = actor.name.orEmpty(),
+                        character = actor.roles.firstOrNull()?.character.orEmpty(),
+                        profileUrl = actor.fullProfileUrl,
+                        onClick = { onCastClick(actor.id) },
+                        modifier = Modifier
+                            .then(
+                                if (actor == cast.firstOrNull()) {
+                                    Modifier.focusRequester(firstCastFocusRequester)
+                                } else Modifier
                             )
-                            Text(
-                                actor.name.orEmpty(),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 2
-                            )
-                            Text(
-                                actor.roles.firstOrNull()?.character.orEmpty(),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2
-                            )
-                        }
-                    }
+                            .focusProperties { down = contentFocusRequester }
+                    )
                 }
             }
         }
         if (series.seasons.isNotEmpty()) {
-            item {
-                Text(
-                    stringResource(R.string.tv_seasons),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(series.seasons, key = { it.id }) { season ->
-                        val baseName = season.name ?: stringResource(
-                            R.string.tv_season_number,
-                            season.seasonNumber
-                        )
-
-                        // Calculate season completion / partial status
-                        val distinctDownloadedEpisodesInSeason = seriesDownloads
-                            .filter { it.seasonNumber == season.seasonNumber }
-                            .distinctBy { it.episodeNumber }
-                        val downloadedCount = distinctDownloadedEpisodesInSeason.size
-                        val totalCount = season.episodeCount ?: 0
-
-                        val statusLabel = when {
-                            downloadedCount > 0 && totalCount > 0 && downloadedCount >= totalCount ->
-                                "$baseName · " + stringResource(R.string.tv_season_completed)
-                            downloadedCount > 0 ->
-                                "$baseName · " + stringResource(R.string.tv_season_partial, downloadedCount, totalCount)
-                            else -> baseName
-                        }
-
-                        AdaptiveChip(
-                            selected = selectedSeasonNumber == season.seasonNumber,
-                            onClick = { onSeasonSelected(season) },
-                            label = { Text(statusLabel) },
-                            modifier = if (season == series.seasons.first()) {
-                                Modifier.focusRequester(contentFocusRequester)
-                            } else Modifier
-                        )
-                    }
-                }
-            }
-        }
-        item {
             Text(
-                stringResource(R.string.tv_episodes),
+                stringResource(R.string.tv_seasons),
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface
             )
+            Row(
+                modifier = Modifier
+                    .focusGroup()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                series.seasons.forEach { season ->
+                    val baseName = season.name ?: stringResource(
+                        R.string.tv_season_number,
+                        season.seasonNumber
+                    )
+                    val downloadedCount = seriesDownloads
+                        .filter { it.seasonNumber == season.seasonNumber }
+                        .distinctBy { it.episodeNumber }
+                        .size
+                    val totalCount = season.episodeCount ?: 0
+                    val statusLabel = when {
+                        downloadedCount > 0 && totalCount > 0 && downloadedCount >= totalCount ->
+                            "$baseName · " + stringResource(R.string.tv_season_completed)
+                        downloadedCount > 0 ->
+                            "$baseName · " + stringResource(R.string.tv_season_partial, downloadedCount, totalCount)
+                        else -> baseName
+                    }
+
+                    AdaptiveChip(
+                        selected = selectedSeasonNumber == season.seasonNumber,
+                        onClick = { onSeasonSelected(season) },
+                        label = { Text(statusLabel) },
+                        modifier = if (
+                            season.seasonNumber == selectedSeasonNumber ||
+                            (selectedSeasonNumber == null && season == series.seasons.first())
+                        ) {
+                            Modifier
+                                .focusRequester(contentFocusRequester)
+                                .focusProperties {
+                                    if (
+                                        seasonState is TvSeasonUiState.Success &&
+                                        seasonState.season.episodes.isNotEmpty()
+                                    ) {
+                                        down = firstEpisodeFocusRequester
+                                    }
+                                }
+                        } else Modifier
+                    )
+                }
+            }
         }
+        Text(
+            stringResource(R.string.tv_episodes),
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
         when (val episodes = seasonState) {
-            TvSeasonUiState.Loading -> item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) { CircularProgressIndicator() }
-            }
-            is TvSeasonUiState.Error -> item {
-                Text(episodes.message, color = MaterialTheme.colorScheme.error)
-            }
+            TvSeasonUiState.Loading -> Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) { CircularProgressIndicator() }
+            is TvSeasonUiState.Error -> Text(episodes.message, color = MaterialTheme.colorScheme.error)
             is TvSeasonUiState.Success -> {
                 if (episodes.season.episodes.isEmpty()) {
-                    item {
-                        Text(
-                            stringResource(R.string.tv_no_episodes),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        stringResource(R.string.tv_no_episodes),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 } else {
-                    items(episodes.season.episodes, key = TmdbTvEpisode::id) { episode ->
+                    val episodeFocusRequesters = remember(episodes.season.episodes.map { it.id }) {
+                        episodes.season.episodes.indices.map { index ->
+                            if (index == 0) {
+                                if (series.seasons.isEmpty()) {
+                                    contentFocusRequester
+                                } else {
+                                    firstEpisodeFocusRequester
+                                }
+                            } else {
+                                FocusRequester()
+                            }
+                        }
+                    }
+                    episodes.season.episodes.forEachIndexed { index, episode ->
                         val isDownloaded = seriesDownloads.any {
                             it.seasonNumber == selectedSeasonNumber && it.episodeNumber == episode.episodeNumber
                         }
@@ -326,15 +396,89 @@ private fun TvDetailContent(
                             episode = episode,
                             isDownloaded = isDownloaded,
                             onClick = { onEpisodeClick(episode) },
-                            modifier = if (series.seasons.isEmpty() &&
-                                episode == episodes.season.episodes.firstOrNull()
-                            ) {
-                                Modifier.focusRequester(contentFocusRequester)
-                            } else Modifier
+                            modifier = Modifier
+                                .focusRequester(episodeFocusRequesters[index])
+                                .focusProperties {
+                                    if (series.seasons.isNotEmpty()) {
+                                        up = contentFocusRequester
+                                    }
+                                    if (index < episodeFocusRequesters.lastIndex) {
+                                        down = episodeFocusRequesters[index + 1]
+                                    }
+                                }
                         )
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Displays a cast member as a TV-native focus target or a themed phone card.
+ *
+ * @param name Cast member name.
+ * @param character Character played by the cast member.
+ * @param profileUrl TMDB profile image URL.
+ * @param onClick Opens the cast member details.
+ * @param modifier Focus and layout modifiers for this cast member.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun TvCastMember(
+    name: String,
+    character: String,
+    profileUrl: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
+    val content: @Composable () -> Unit = {
+        Column(
+            modifier = Modifier
+                .width(112.dp)
+                .padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            AsyncImage(
+                model = profileUrl,
+                contentDescription = name,
+                modifier = Modifier
+                    .size(88.dp)
+                    .aspectRatio(1f),
+                contentScale = ContentScale.Crop
+            )
+            Text(
+                name,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2
+            )
+            Text(
+                character,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2
+            )
+        }
+    }
+
+    if (isTv) {
+        TvSurface(
+            onClick = onClick,
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+            shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
+            modifier = modifier
+        ) {
+            content()
+        }
+    } else {
+        Card(
+            onClick = onClick,
+            modifier = modifier.focusHighlight(shape = MaterialTheme.shapes.medium)
+        ) {
+            content()
         }
     }
 }
@@ -411,13 +555,14 @@ private fun TvSeriesInformation(series: TmdbTvSummary, modifier: Modifier) {
 }
 
 /**
- * Displays one episode using available still art, metadata, and optional downloaded badge.
+ * Displays an episode with available still art, metadata, and an optional download badge.
  *
  * @param episode Episode details from the selected season.
  * @param isDownloaded Whether the episode has been downloaded at least once.
  * @param onClick Triggered when user taps the episode card.
  * @param modifier Layout and focus modifiers for the episode card.
  */
+@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun TvEpisodeCard(
     episode: TmdbTvEpisode,
@@ -425,12 +570,9 @@ private fun TvEpisodeCard(
     onClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    Card(
-        onClick = onClick,
-        modifier = modifier
-            .focusable()
-            .focusHighlight(shape = MaterialTheme.shapes.medium)
-    ) {
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
+    val cardContent: @Composable () -> Unit = {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -500,6 +642,24 @@ private fun TvEpisodeCard(
                     )
                 }
             }
+        }
+    }
+
+    if (isTv) {
+        androidx.tv.material3.Surface(
+            onClick = onClick,
+            scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+            shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
+            modifier = modifier.fillMaxWidth()
+        ) {
+            cardContent()
+        }
+    } else {
+        Card(
+            onClick = onClick,
+            modifier = modifier.focusHighlight(shape = MaterialTheme.shapes.medium)
+        ) {
+            cardContent()
         }
     }
 }

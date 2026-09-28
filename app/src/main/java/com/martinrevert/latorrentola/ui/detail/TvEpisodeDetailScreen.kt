@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,8 +18,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
@@ -50,7 +51,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.IconButton as TvIconButton
+import androidx.tv.material3.Surface as TvSurface
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
@@ -105,7 +108,9 @@ fun TvEpisodeDetailScreen(
                     if (isTv) {
                         TvIconButton(
                             onClick = onBackClick,
-                            modifier = Modifier.focusProperties { down = contentFocusRequester }
+                            modifier = if (uiState is TvEpisodeDetailUiState.Success) {
+                                Modifier.focusProperties { down = contentFocusRequester }
+                            } else Modifier
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
@@ -115,7 +120,9 @@ fun TvEpisodeDetailScreen(
                     } else {
                         IconButton(
                             onClick = onBackClick,
-                            modifier = Modifier.focusProperties { down = contentFocusRequester }
+                            modifier = if (uiState is TvEpisodeDetailUiState.Success) {
+                                Modifier.focusProperties { down = contentFocusRequester }
+                            } else Modifier
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
@@ -172,52 +179,57 @@ private fun EpisodeDetailContent(
     contentFocusRequester: FocusRequester,
     onTorrentClick: (EztvTorrent) -> Unit
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            top = topPadding + 16.dp,
-            start = 16.dp,
-            end = 16.dp,
-            bottom = 24.dp
-        ),
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .focusGroup()
+            .verticalScroll(rememberScrollState())
+            .padding(
+                top = topPadding + 16.dp,
+                start = 16.dp,
+                end = 16.dp,
+                bottom = 24.dp
+            ),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Episode Header & Metadata
-        item {
-            EpisodeHeader(
-                seriesName = seriesName,
-                episode = episode,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
+        EpisodeHeader(
+            seriesName = seriesName,
+            episode = episode,
+            modifier = Modifier.fillMaxWidth()
+        )
 
-        // Section Title: Torrents
-        item {
-            Text(
-                text = stringResource(R.string.tv_available_torrents),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
+        Text(
+            text = stringResource(R.string.tv_available_torrents),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(top = 8.dp)
+        )
 
-        // Torrents List or Empty Message
         if (torrents.isEmpty()) {
-            item {
-                Text(
-                    text = stringResource(R.string.tv_no_torrents_found),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-            }
+            Text(
+                text = stringResource(R.string.tv_no_torrents_found),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .padding(vertical = 8.dp)
+                    .then(
+                        if (isTv) {
+                            Modifier
+                                .focusRequester(contentFocusRequester)
+                                .focusable()
+                        } else Modifier
+                    )
+            )
         } else {
-            items(torrents, key = { it.id }) { torrent ->
+            torrents.forEachIndexed { index, torrent ->
                 TorrentReleaseCard(
                     torrent = torrent,
                     onClick = { onTorrentClick(torrent) },
-                    modifier = if (torrent == torrents.first()) {
+                    modifier = if (index == 0) {
                         Modifier.focusRequester(contentFocusRequester)
                     } else Modifier
                 )
@@ -289,23 +301,17 @@ private fun EpisodeHeader(
     }
 }
 
-/** Card displaying a single EZTV torrent release version with quality, size, seeds, and download action. */
+/** Displays a torrent release with native TV focus behavior and the shared phone focus indicator. */
+@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun TorrentReleaseCard(
     torrent: EztvTorrent,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
-        onClick = onClick,
-        modifier = modifier
-            .fillMaxWidth()
-            .focusable()
-            .focusHighlight(shape = MaterialTheme.shapes.medium),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        )
-    ) {
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
+    val cardContent: @Composable () -> Unit = {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -350,6 +356,29 @@ private fun TorrentReleaseCard(
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(28.dp)
             )
+        }
+    }
+
+    if (isTv) {
+        TvSurface(
+            onClick = onClick,
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+            shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
+            modifier = modifier.fillMaxWidth()
+        ) {
+            cardContent()
+        }
+    } else {
+        Card(
+            onClick = onClick,
+            modifier = modifier
+                .fillMaxWidth()
+                .focusHighlight(shape = MaterialTheme.shapes.medium),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            )
+        ) {
+            cardContent()
         }
     }
 }

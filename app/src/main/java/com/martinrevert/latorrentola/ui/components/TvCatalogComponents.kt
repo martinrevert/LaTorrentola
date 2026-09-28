@@ -58,6 +58,7 @@ import com.martinrevert.latorrentola.network.TmdbTvFeed
 import com.martinrevert.latorrentola.ui.home.TvGenreSort
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.isTvDevice
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import java.util.Locale
 
@@ -358,7 +359,10 @@ fun TvSeriesCard(
     val genreText = genres.joinToString(", ")
 
     LaunchedEffect(shouldRequestFocus) {
-        if (shouldRequestFocus) focusRequester.requestFocus()
+        if (shouldRequestFocus) {
+            delay(300)
+            focusRequester.requestFocus()
+        }
     }
 
     val cardContent: @Composable () -> Unit = {

@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.ui.detail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeason
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
@@ -54,6 +55,16 @@ class TvDetailViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
+    /** Mutable backing state for the selected cast member's TMDB detail result. */
+    private val _selectedActorDetail = MutableStateFlow<Result<TmdbActorDetail>?>(null)
+    /** Selected cast member details displayed in the shared actor sheet. */
+    val selectedActorDetail: StateFlow<Result<TmdbActorDetail>?> = _selectedActorDetail.asStateFlow()
+
+    /** Mutable backing state for cast member detail loading. */
+    private val _isActorLoading = MutableStateFlow(false)
+    /** Whether TMDB actor details are currently loading. */
+    val isActorLoading: StateFlow<Boolean> = _isActorLoading.asStateFlow()
+
     /** Series ID whose details have been requested. */
     private var requestedSeriesId: Int? = null
     /** Active season request, canceled when a different season is selected. */
@@ -99,6 +110,22 @@ class TvDetailViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /** Loads TMDB actor details for the selected cast member. */
+    fun fetchActorDetails(personId: Int) {
+        viewModelScope.launch {
+            _isActorLoading.value = true
+            _selectedActorDetail.value = null
+            _selectedActorDetail.value = tmdbRepository.getActorDetails(personId)
+            _isActorLoading.value = false
+        }
+    }
+
+    /** Clears the selected cast member and any completed loading state. */
+    fun clearSelectedActor() {
+        _selectedActorDetail.value = null
+        _isActorLoading.value = false
     }
 }
 

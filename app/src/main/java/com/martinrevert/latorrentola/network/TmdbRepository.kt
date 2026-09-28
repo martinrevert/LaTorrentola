@@ -48,14 +48,32 @@ class TmdbRepository @Inject constructor(
             val personId = searchResponse.results?.firstOrNull()?.id
                 ?: return Result.failure(NoSuchElementException("Actor not found"))
 
-            val personDetail = tmdbService.getPersonDetail(
-                personId = personId,
-                apiKey = apiKey,
-                appendToResponse = "combined_credits",
-                language = "es-ES"
-            )
+            getActorDetails(personId)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
-            Result.success(personDetail)
+    /**
+     * Loads actor details and combined credits using the person's TMDB identifier.
+     *
+     * @param personId TMDB person identifier from the TV cast record.
+     * @return Actor detail on success, or the network/configuration failure.
+     */
+    suspend fun getActorDetails(personId: Int): Result<TmdbActorDetail> {
+        return try {
+            if (apiKey.isEmpty()) {
+                return Result.failure(IllegalStateException("TMDB API key not configured"))
+            }
+
+            Result.success(
+                tmdbService.getPersonDetail(
+                    personId = personId,
+                    apiKey = apiKey,
+                    appendToResponse = "combined_credits",
+                    language = "es-ES"
+                )
+            )
         } catch (e: Exception) {
             Result.failure(e)
         }
