@@ -1,7 +1,6 @@
 package com.martinrevert.latorrentola.ui.home
 
 import android.content.res.Configuration
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -11,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.EaseInOutCubic
@@ -29,30 +29,34 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
-import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
-import com.martinrevert.latorrentola.ui.components.MovieItemPlaceholder
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
-import com.martinrevert.latorrentola.ui.components.TvChip
 import com.martinrevert.latorrentola.ui.components.QualityChips
 import com.martinrevert.latorrentola.ui.components.GenreChips
 import com.martinrevert.latorrentola.ui.components.GenreBottomSheet
-import com.martinrevert.latorrentola.ui.components.MovieItem
 import com.martinrevert.latorrentola.ui.components.MovieList
+import com.martinrevert.latorrentola.ui.components.HomeMediaModeChips
+import com.martinrevert.latorrentola.ui.components.TvFeedChips
+import com.martinrevert.latorrentola.ui.components.TvGenreBottomSheet
+import com.martinrevert.latorrentola.ui.components.TvGenreChips
+import com.martinrevert.latorrentola.ui.components.TvSeriesGrid
+import com.martinrevert.latorrentola.network.TmdbTvFeed
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
-import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.rememberHazeState
@@ -61,12 +65,28 @@ import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.glass.hazeGlass
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, ExperimentalTvMaterial3Api::class)
-/** Connects home feed state and user actions to the adaptive home layout. */
+/**
+ * Connects movie and TV home state to the adaptive home layout.
+ *
+ * @param viewModel Existing movie-feed state and actions.
+ * @param tvHomeViewModel TMDB TV feeds, genres, and focus state.
+ * @param userPhotoUrl Signed-in user's avatar URL.
+ * @param onMovieClick Opens a movie detail destination.
+ * @param onTvSeriesClick Opens a TV series detail destination.
+ * @param onTvGenreClick Opens results for a selected TMDB TV genre.
+ * @param onSettingsClick Opens settings.
+ * @param onSearchClick Opens movie search.
+ * @param onFavoritesClick Opens the user's movie favorites.
+ * @param onGenreClick Opens the selected movie genre.
+ */
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
+    tvHomeViewModel: TvHomeViewModel,
     userPhotoUrl: String?,
     onMovieClick: (Movie) -> Unit,
+    onTvSeriesClick: (TmdbTvSummary) -> Unit,
+    onTvGenreClick: (TmdbTvGenre) -> Unit,
     onSettingsClick: () -> Unit,
     onSearchClick: () -> Unit,
     onFavoritesClick: () -> Unit,
@@ -109,7 +129,10 @@ fun HomeScreen(
         onLoadMore = { viewModel.loadMovies() },
         onRefresh = { showIndicator -> viewModel.refresh(showIndicator = showIndicator) },
         onSetLastClickedMovieId = { viewModel.setLastClickedMovieId(it) },
-        onFocusRestored = { viewModel.clearLastClickedMovieId() }
+        onFocusRestored = { viewModel.clearLastClickedMovieId() },
+        tvHomeViewModel = tvHomeViewModel,
+        onTvSeriesClick = onTvSeriesClick,
+        onTvGenreClick = onTvGenreClick
     )
 }
 
@@ -139,13 +162,32 @@ private fun HomeScreenContent(
     onLoadMore: () -> Unit,
     onRefresh: (Boolean) -> Unit,
     onSetLastClickedMovieId: (Int?) -> Unit,
-    onFocusRestored: () -> Unit
+    onFocusRestored: () -> Unit,
+    tvHomeViewModel: TvHomeViewModel? = null,
+    onTvSeriesClick: (TmdbTvSummary) -> Unit = {},
+    onTvGenreClick: (TmdbTvGenre) -> Unit = {}
 ) {
     var showGenreSheet by remember { mutableStateOf(false) }
+    var showTvGenreSheet by remember { mutableStateOf(false) }
+    var isTvMode by rememberSaveable { mutableStateOf(false) }
+    val homeModeFocusRequester = remember { FocusRequester() }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val tvGenreSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     // 1. Properly save and restore scroll state across configuration changes (rotation)
     val gridState = rememberLazyGridState()
+    val tvGridState = rememberLazyGridState()
+    val tvUiState = tvHomeViewModel?.uiState?.collectAsState()?.value ?: TvHomeUiState.Loading
+    val tvGenres = tvHomeViewModel?.tvGenres?.collectAsState()?.value.orEmpty()
+    val tvGenreError = tvHomeViewModel?.genreError?.collectAsState()?.value
+    val selectedTvFeed = tvHomeViewModel?.selectedFeed?.collectAsState()?.value ?: TmdbTvFeed.ON_THE_AIR
+    val tvIsRefreshing = tvHomeViewModel?.isRefreshing?.collectAsState()?.value ?: false
+    val tvIsLoadingMore = tvHomeViewModel?.isLoadingMore?.collectAsState()?.value ?: false
+    val lastClickedSeriesId = tvHomeViewModel?.lastClickedSeriesId?.collectAsState()?.value
+    LaunchedEffect(isTvMode, selectedTvFeed) {
+        if (isTvMode) tvHomeViewModel?.activate()
+        (if (isTvMode) tvGridState else gridState).scrollToItem(0)
+    }
 
     val isInspection = LocalInspectionMode.current
     val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
@@ -159,7 +201,8 @@ private fun HomeScreenContent(
 
     val isScrolled by remember {
         derivedStateOf {
-            gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 10
+            val activeGrid = if (isTvMode) tvGridState else gridState
+            activeGrid.firstVisibleItemIndex > 0 || activeGrid.firstVisibleItemScrollOffset > 10
         }
     }
 
@@ -175,80 +218,22 @@ private fun HomeScreenContent(
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
-            TopAppBar(
-                modifier = if (hazeState != null) {
-                    Modifier
-                        .graphicsLayer { alpha = hazeAlpha }
-                        .hazeGlass(input = HazeInput.Sources(hazeState))
-                } else Modifier,
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_launcher_foreground),
-                            contentDescription = null,
-                            modifier = Modifier.size(32.dp),
-                            tint = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color.White else Color.Black
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = stringResource(R.string.app_name),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = onSearchClick,
-                        modifier = Modifier.focusHighlight(shape = CircleShape)
-                    ) {
-                        Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search_desc))
-                    }
-                    BadgedBox(
-                        badge = {
-                            if (favoritesCount > 0) {
-                                Badge(
-                                    containerColor = Color(0xFFB3261E), // Use same vibrant red in both modes
-                                    contentColor = Color.White
-                                ) {
-                                    Text(
-                                        text = if (favoritesCount > 99) "99+" else favoritesCount.toString(),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        modifier = Modifier.padding(horizontal = 4.dp)
-                                    )
-                                }
-                            }
-                        },
-                        modifier = Modifier.padding(end = 4.dp, top = 4.dp)
-                    ) {
-                        IconButton(
-                            onClick = onFavoritesClick,
-                            modifier = Modifier.focusHighlight(shape = CircleShape)
-                        ) {
-                            Icon(Icons.Default.Favorite, contentDescription = stringResource(R.string.favorites_desc))
-                        }
-                    }
-                    IconButton(
-                        onClick = onSettingsClick,
-                        modifier = Modifier.focusHighlight(shape = CircleShape)
-                    ) {
-                        if (userPhotoUrl != null) {
-                            AsyncImage(
-                                model = userPhotoUrl,
-                                contentDescription = stringResource(R.string.user_profile_desc),
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(CircleShape),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_desc))
-                        }
-                    }
-                }
-            )
+            if (!isTv) {
+                HomeTopAppBar(
+                    userPhotoUrl = userPhotoUrl,
+                    favoritesCount = favoritesCount,
+                    onSearchClick = onSearchClick,
+                    onFavoritesClick = onFavoritesClick,
+                    onSettingsClick = onSettingsClick,
+                    focusDownRequester = homeModeFocusRequester,
+                    containerColor = topBarContainerColor,
+                    modifier = if (hazeState != null) {
+                        Modifier
+                            .graphicsLayer { alpha = hazeAlpha }
+                            .hazeGlass(input = HazeInput.Sources(hazeState))
+                    } else Modifier
+                )
+            }
         }
     ) { padding ->
         val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -266,23 +251,71 @@ private fun HomeScreenContent(
                         .padding(padding)
                         .consumeWindowInsets(padding)
                 ) {
-                    GenreChips(
-                        genres = topGenres,
-                        onGenreClick = onGenreClick,
-                        onAllGenresClick = { showGenreSheet = true }
+                    HomeTopAppBar(
+                        userPhotoUrl = userPhotoUrl,
+                        favoritesCount = favoritesCount,
+                        onSearchClick = onSearchClick,
+                        onFavoritesClick = onFavoritesClick,
+                        onSettingsClick = onSettingsClick,
+                        focusDownRequester = homeModeFocusRequester,
+                        containerColor = MaterialTheme.colorScheme.surface
                     )
-
-                    QualityChips(
-                        options = qualityOptions,
-                        selectedQuality = selectedQuality ?: "All",
-                        onQualityClick = onQualityClick
+                    HomeMediaModeChips(
+                        isTvMode = isTvMode,
+                        onMoviesClick = { isTvMode = false },
+                        onTvClick = { isTvMode = true },
+                        firstFocusRequester = homeModeFocusRequester
                     )
+                    if (isTvMode) {
+                        TvFeedChips(
+                            selectedFeed = selectedTvFeed,
+                            onFeedClick = { tvHomeViewModel?.selectFeed(it) }
+                        )
+                        tvGenreError?.let {
+                            Text(
+                                text = it.asString(),
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                        }
+                        TvGenreChips(
+                            genres = tvGenres,
+                            onGenreClick = {
+                                tvHomeViewModel?.recordGenreVisit(it.id)
+                                onTvGenreClick(it)
+                            },
+                            onAllGenresClick = { showTvGenreSheet = true }
+                        )
+                    } else {
+                        GenreChips(
+                            genres = topGenres,
+                            onGenreClick = onGenreClick,
+                            onAllGenresClick = { showGenreSheet = true }
+                        )
+                        QualityChips(
+                            options = qualityOptions,
+                            selectedQuality = selectedQuality ?: "All",
+                            onQualityClick = onQualityClick
+                        )
+                    }
 
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                    ) {
+                    if (isTvMode) {
+                        TvHomeContent(
+                            uiState = tvUiState,
+                            genres = tvGenres,
+                            gridState = tvGridState,
+                            isLoadingMore = tvIsLoadingMore,
+                            onSeriesClick = {
+                                tvHomeViewModel?.setLastClickedSeriesId(it.id)
+                                onTvSeriesClick(it)
+                            },
+                            onLoadMore = { tvHomeViewModel?.loadMore() },
+                            lastClickedSeriesId = lastClickedSeriesId,
+                            onFocusRestored = { tvHomeViewModel?.clearLastClickedSeriesId() },
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
                         HomeContent(
                             uiState = uiState,
                             gridState = gridState,
@@ -295,44 +328,68 @@ private fun HomeScreenContent(
                             },
                             onLoadMore = onLoadMore,
                             lastClickedMovieId = lastClickedMovieId,
-                            onFocusRestored = onFocusRestored
+                            onFocusRestored = onFocusRestored,
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
             } else {
                 // Handheld Layout: Full-screen edge-to-edge with Haze top blur and translucent bottom bar
                 val scope = rememberCoroutineScope()
-                val pullRefreshState = rememberPullRefreshState(isRefreshing, onRefresh = {
+                val pullRefreshState = rememberPullRefreshState(
+                    if (isTvMode) tvIsRefreshing else isRefreshing,
+                    onRefresh = {
                     onSetLastClickedMovieId(null)
-                    onRefresh(true)
-                    scope.launch { gridState.scrollToItem(0) }
+                    if (isTvMode) tvHomeViewModel?.refresh(showIndicator = true) else onRefresh(true)
+                    scope.launch {
+                        (if (isTvMode) tvGridState else gridState).scrollToItem(0)
+                    }
                 })
+                val topContentOffset = padding.calculateTopPadding() + if (isTvMode) 208.dp else 160.dp
 
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .pullRefresh(pullRefreshState)
                 ) {
-                    HomeContent(
-                        uiState = uiState,
-                        gridState = gridState,
-                        lastVisitDate = lastVisitDate,
-                        downloadedMovieIds = downloadedMovieIds,
-                        isLoadingMore = isLoadingMore,
-                        onMovieClick = {
-                            onSetLastClickedMovieId(it.id)
-                            onMovieClick(it)
-                        },
-                        onLoadMore = onLoadMore,
-                        lastClickedMovieId = lastClickedMovieId,
-                        onFocusRestored = onFocusRestored,
-                        contentPadding = PaddingValues(
-                            top = padding.calculateTopPadding() + 112.dp,
-                            bottom = navBarHeight + 16.dp,
-                            start = 16.dp,
-                            end = 16.dp
-                        )
+                    val contentPadding = PaddingValues(
+                        top = topContentOffset,
+                        bottom = navBarHeight + 16.dp,
+                        start = 16.dp,
+                        end = 16.dp
                     )
+                    if (isTvMode) {
+                        TvHomeContent(
+                            uiState = tvUiState,
+                            genres = tvGenres,
+                            gridState = tvGridState,
+                            isLoadingMore = tvIsLoadingMore,
+                            onSeriesClick = {
+                                tvHomeViewModel?.setLastClickedSeriesId(it.id)
+                                onTvSeriesClick(it)
+                            },
+                            onLoadMore = { tvHomeViewModel?.loadMore() },
+                            lastClickedSeriesId = lastClickedSeriesId,
+                            onFocusRestored = { tvHomeViewModel?.clearLastClickedSeriesId() },
+                            contentPadding = contentPadding
+                        )
+                    } else {
+                        HomeContent(
+                            uiState = uiState,
+                            gridState = gridState,
+                            lastVisitDate = lastVisitDate,
+                            downloadedMovieIds = downloadedMovieIds,
+                            isLoadingMore = isLoadingMore,
+                            onMovieClick = {
+                                onSetLastClickedMovieId(it.id)
+                                onMovieClick(it)
+                            },
+                            onLoadMore = onLoadMore,
+                            lastClickedMovieId = lastClickedMovieId,
+                            onFocusRestored = onFocusRestored,
+                            contentPadding = contentPadding
+                        )
+                    }
 
                     Column(
                         modifier = Modifier
@@ -346,31 +403,71 @@ private fun HomeScreenContent(
                                 } else Modifier
                             )
                     ) {
-                        GenreChips(
-                            genres = topGenres,
-                            onGenreClick = onGenreClick,
-                            onAllGenresClick = { showGenreSheet = true }
+                        HomeMediaModeChips(
+                            isTvMode = isTvMode,
+                            onMoviesClick = { isTvMode = false },
+                            onTvClick = { isTvMode = true },
+                            firstFocusRequester = homeModeFocusRequester
                         )
-
-                        QualityChips(
-                            options = qualityOptions,
-                            selectedQuality = selectedQuality ?: "All",
-                            onQualityClick = onQualityClick
-                        )
+                        if (isTvMode) {
+                            TvFeedChips(
+                                selectedFeed = selectedTvFeed,
+                                onFeedClick = { tvHomeViewModel?.selectFeed(it) }
+                            )
+                            tvGenreError?.let {
+                                Text(
+                                    text = it.asString(),
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                )
+                            }
+                            TvGenreChips(
+                                genres = tvGenres,
+                                onGenreClick = {
+                                    tvHomeViewModel?.recordGenreVisit(it.id)
+                                    onTvGenreClick(it)
+                                },
+                                onAllGenresClick = { showTvGenreSheet = true }
+                            )
+                        } else {
+                            GenreChips(
+                                genres = topGenres,
+                                onGenreClick = onGenreClick,
+                                onAllGenresClick = { showGenreSheet = true }
+                            )
+                            QualityChips(
+                                options = qualityOptions,
+                                selectedQuality = selectedQuality ?: "All",
+                                onQualityClick = onQualityClick
+                            )
+                        }
                     }
 
                     PullRefreshIndicator(
-                        refreshing = isRefreshing,
+                        refreshing = if (isTvMode) tvIsRefreshing else isRefreshing,
                         state = pullRefreshState,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .padding(top = padding.calculateTopPadding() + 112.dp)
+                            .padding(top = topContentOffset)
                     )
                 }
             }
         }
     }
 
+    if (showTvGenreSheet) {
+        TvGenreBottomSheet(
+            genres = tvGenres,
+            onGenreClick = {
+                tvHomeViewModel?.recordGenreVisit(it.id)
+                onTvGenreClick(it)
+                showTvGenreSheet = false
+            },
+            onDismiss = { showTvGenreSheet = false },
+            sheetState = tvGenreSheetState
+        )
+    }
     if (showGenreSheet) {
         GenreBottomSheet(
             genres = allGenres,
@@ -383,6 +480,155 @@ private fun HomeScreenContent(
             hazeState = hazeState
         )
     }
+
+}
+
+/** Displays the selected TMDB TV feed with matching loading, error, and poster states. */
+@Composable
+private fun TvHomeContent(
+    uiState: TvHomeUiState,
+    genres: List<TmdbTvGenre>,
+    gridState: LazyGridState,
+    isLoadingMore: Boolean,
+    onSeriesClick: (TmdbTvSummary) -> Unit,
+    onLoadMore: () -> Unit,
+    lastClickedSeriesId: Int?,
+    onFocusRestored: () -> Unit,
+    contentPadding: PaddingValues = PaddingValues(16.dp),
+    modifier: Modifier = Modifier
+) {
+    when (uiState) {
+        TvHomeUiState.Loading -> MovieListPlaceholder(
+            contentPadding = contentPadding,
+            modifier = modifier
+        )
+        is TvHomeUiState.Success -> TvSeriesGrid(
+            series = uiState.series,
+            genres = genres,
+            state = gridState,
+            isLoadingMore = isLoadingMore,
+            onSeriesClick = onSeriesClick,
+            onLoadMore = onLoadMore,
+            initialFocusId = lastClickedSeriesId,
+            onFocusRestored = onFocusRestored,
+            contentPadding = contentPadding,
+            modifier = modifier
+        )
+        is TvHomeUiState.Error -> androidx.compose.foundation.layout.Box(
+            modifier = Modifier
+                .then(modifier)
+                .fillMaxSize()
+                .padding(contentPadding),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = uiState.message.asString(),
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+    }
+}
+
+/**
+ * Renders the shared Home application bar with theme-aware actions and TV focus links.
+ *
+ * @param userPhotoUrl Signed-in user's avatar image URL.
+ * @param favoritesCount Number of favorite movies.
+ * @param onSearchClick Opens movie search.
+ * @param onFavoritesClick Opens movie favorites.
+ * @param onSettingsClick Opens settings.
+ * @param focusDownRequester First Home filter/mode focus target on TV.
+ * @param containerColor Semantic app-bar surface color.
+ * @param modifier Modifier for blur and layout.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HomeTopAppBar(
+    userPhotoUrl: String?,
+    favoritesCount: Int,
+    onSearchClick: () -> Unit,
+    onFavoritesClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+    focusDownRequester: FocusRequester,
+    containerColor: Color,
+    modifier: Modifier = Modifier
+) {
+    TopAppBar(
+        modifier = modifier,
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = containerColor),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_launcher_foreground),
+                    contentDescription = null,
+                    modifier = Modifier.size(32.dp),
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.app_name),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        },
+        actions = {
+            IconButton(
+                onClick = onSearchClick,
+                modifier = Modifier
+                    .focusHighlight(shape = CircleShape)
+                    .focusProperties { down = focusDownRequester }
+            ) {
+                Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search_desc))
+            }
+            BadgedBox(
+                badge = {
+                    if (favoritesCount > 0) {
+                        Badge(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        ) {
+                            Text(
+                                text = if (favoritesCount > 99) "99+" else favoritesCount.toString(),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                maxLines = 1,
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            )
+                        }
+                    }
+                },
+                modifier = Modifier.padding(end = 4.dp, top = 4.dp)
+            ) {
+                IconButton(
+                    onClick = onFavoritesClick,
+                    modifier = Modifier
+                        .focusHighlight(shape = CircleShape)
+                        .focusProperties { down = focusDownRequester }
+                ) {
+                    Icon(Icons.Default.Favorite, contentDescription = stringResource(R.string.favorites_desc))
+                }
+            }
+            IconButton(
+                onClick = onSettingsClick,
+                modifier = Modifier
+                    .focusHighlight(shape = CircleShape)
+                    .focusProperties { down = focusDownRequester }
+            ) {
+                if (userPhotoUrl != null) {
+                    AsyncImage(
+                        model = userPhotoUrl,
+                        contentDescription = stringResource(R.string.user_profile_desc),
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_desc))
+                }
+            }
+        }
+    )
 }
 
 /** Hosts the home content and coordinates refresh and genre-sheet presentation. */
@@ -402,7 +648,7 @@ private fun HomeContent(
 ) {
     when (uiState) {
         is HomeUiState.Loading -> {
-            MovieListPlaceholder(contentPadding = contentPadding)
+            MovieListPlaceholder(contentPadding = contentPadding, modifier = modifier)
         }
         is HomeUiState.Success -> {
             MovieList(
@@ -422,7 +668,8 @@ private fun HomeContent(
         is HomeUiState.Error -> {
             Text(
                 text = uiState.message.asString(),
-                color = MaterialTheme.colorScheme.error
+                color = MaterialTheme.colorScheme.error,
+                modifier = modifier.fillMaxSize()
             )
         }
     }

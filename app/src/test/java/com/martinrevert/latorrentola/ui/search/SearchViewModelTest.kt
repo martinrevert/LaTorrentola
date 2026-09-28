@@ -35,8 +35,8 @@ class SearchViewModelTest {
         every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
         every { preferenceManager.getFilteredLanguages() } returns ""
         every { preferenceManager.filteredLanguagesFlow } returns kotlinx.coroutines.flow.MutableStateFlow("")
-        every { preferenceManager.getMinimumRating() } returns 6
-        every { preferenceManager.minimumRatingFlow } returns MutableStateFlow(6)
+        every { preferenceManager.getMinimumRating() } returns 6f
+        every { preferenceManager.minimumRatingFlow } returns MutableStateFlow(6f)
         viewModel = SearchViewModel(repository, userLibraryRepository, preferenceManager)
     }
 

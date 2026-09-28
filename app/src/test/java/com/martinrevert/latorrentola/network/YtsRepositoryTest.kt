@@ -51,7 +51,7 @@ class YtsRepositoryTest {
             ytsService.getMovieDetails(any(), "8", any(), any(), any(), any(), any(), any())
         } returns mockDetails
 
-        repository.getMovies(page = 1, minimumRating = 8)
+        repository.getMovies(page = 1, minimumRating = 8f)
 
         coVerify { ytsService.getMovieDetails(any(), "8", 1, "true", "true", "year", "desc", null) }
     }

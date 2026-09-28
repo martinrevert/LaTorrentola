@@ -122,10 +122,16 @@ fun MovieItemPlaceholder(isTv: Boolean) {
     }
 }
 
-/** Displays a grid of movie-card placeholders while list content is loading. */
+/**
+ * Displays a grid of movie-card placeholders while list content is loading.
+ *
+ * @param contentPadding Padding matching the corresponding loaded grid.
+ * @param modifier Modifier applied to the placeholder grid.
+ */
 @Composable
 fun MovieListPlaceholder(
-    contentPadding: PaddingValues = PaddingValues(16.dp)
+    contentPadding: PaddingValues = PaddingValues(16.dp),
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
@@ -141,7 +147,7 @@ fun MovieListPlaceholder(
 
     LazyVerticalGrid(
         columns = columns,
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
         contentPadding = contentPadding,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),

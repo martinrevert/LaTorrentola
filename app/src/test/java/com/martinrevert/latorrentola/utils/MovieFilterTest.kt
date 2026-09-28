@@ -54,7 +54,7 @@ class MovieFilterTest {
             Movie(id = 4, rating = null)
         )
 
-        val result = MovieFilter.filterMovies(movies, "", minimumRating = 6)
+        val result = MovieFilter.filterMovies(movies, "", minimumRating = 6f)
 
         assertThat(result.map { it.id }).containsExactly(2, 3).inOrder()
     }
@@ -63,7 +63,7 @@ class MovieFilterTest {
     fun `minimum rating zero should retain movies without a rating`() {
         val movies = listOf(Movie(id = 1, rating = null))
 
-        val result = MovieFilter.filterMovies(movies, "", minimumRating = 0)
+        val result = MovieFilter.filterMovies(movies, "", minimumRating = 0f)
 
         assertThat(result).isEqualTo(movies)
     }

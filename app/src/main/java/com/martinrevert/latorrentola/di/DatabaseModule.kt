@@ -4,6 +4,7 @@ import android.content.Context
 import com.martinrevert.latorrentola.database.AppDatabase
 import com.martinrevert.latorrentola.database.DateDao
 import com.martinrevert.latorrentola.database.GenreDao
+import com.martinrevert.latorrentola.database.TvGenreDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -33,5 +34,11 @@ object DatabaseModule {
     @Provides
     fun provideGenreDao(appDatabase: AppDatabase): GenreDao {
         return appDatabase.genreDao()
+    }
+
+    /** Provides the TV genre statistics DAO from [appDatabase]. */
+    @Provides
+    fun provideTvGenreDao(appDatabase: AppDatabase): TvGenreDao {
+        return appDatabase.tvGenreDao()
     }
 }

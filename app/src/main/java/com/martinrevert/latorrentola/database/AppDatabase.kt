@@ -9,9 +9,14 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.martinrevert.latorrentola.model.date.DateLastVisit
 import com.martinrevert.latorrentola.model.stats.GenreStats
+import com.martinrevert.latorrentola.model.stats.TvGenreStats
 
-/** Room database for local visit dates and genre statistics. */
-@Database(entities = [DateLastVisit::class, GenreStats::class], version = 6, exportSchema = false)
+/** Room database for local visit dates and media genre statistics. */
+@Database(
+    entities = [DateLastVisit::class, GenreStats::class, TvGenreStats::class],
+    version = 7,
+    exportSchema = false
+)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
@@ -19,6 +24,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun dateDao(): DateDao
     /** Provides database access to genre visit statistics. */
     abstract fun genreDao(): GenreDao
+    /** Provides database access to TV genre visit statistics. */
+    abstract fun tvGenreDao(): TvGenreDao
 
     companion object {
         /** Lazily initialized process-wide database instance. */
@@ -33,7 +40,14 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "appdatabase"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_5_6,
+                        MIGRATION_6_7
+                    )
                     .build()
                 INSTANCE = instance
                 instance
@@ -45,6 +59,17 @@ abstract class AppDatabase : RoomDatabase() {
             /** Applies this schema change to [db]. */
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("DROP TABLE IF EXISTS `movies`")
+            }
+        }
+
+        /** Creates a separate table for TV genre usage without altering movie statistics. */
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            /** Applies this schema change to [db]. */
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `tv_genre_stats` " +
+                        "(`genreId` INTEGER NOT NULL, `count` INTEGER NOT NULL, PRIMARY KEY(`genreId`))"
+                )
             }
         }
 

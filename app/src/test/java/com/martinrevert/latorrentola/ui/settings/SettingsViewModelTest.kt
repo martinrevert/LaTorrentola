@@ -88,12 +88,12 @@ class SettingsViewModelTest {
 
     @Test
     fun `setMinimumRating should update preference and persist to Firestore after debounce`() = runTest {
-        viewModel.setMinimumRating(8)
+        viewModel.setMinimumRating(8f)
 
-        verify { preferenceManager.setMinimumRating(8) }
-        assertThat(viewModel.uiState.value.minimumRating).isEqualTo(8)
+        verify { preferenceManager.setMinimumRating(8f) }
+        assertThat(viewModel.uiState.value.minimumRating).isEqualTo(8f)
 
         testScheduler.advanceTimeBy(1100)
-        coVerify { userLibraryRepository.saveMinimumRating(8) }
+        coVerify { userLibraryRepository.saveMinimumRating(8f) }
     }
 }

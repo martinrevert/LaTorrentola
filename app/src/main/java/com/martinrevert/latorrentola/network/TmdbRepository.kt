@@ -1,7 +1,14 @@
 package com.martinrevert.latorrentola.network
 
 import com.martinrevert.latorrentola.BuildConfig
+import com.martinrevert.latorrentola.database.TvGenreDao
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvPage
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -9,10 +16,12 @@ import javax.inject.Singleton
  * Coordinates TMDB requests and converts lookup failures into nullable/result values.
  *
  * @property tmdbService HTTP client for TMDB endpoints.
+ * @property tvGenreDao local TV genre usage statistics.
  */
 @Singleton
 class TmdbRepository @Inject constructor(
-    private val tmdbService: TmdbService
+    private val tmdbService: TmdbService,
+    private val tvGenreDao: TvGenreDao
 ) {
     /** API key injected through the app build configuration. */
     private val apiKey: String
@@ -62,5 +71,104 @@ class TmdbRepository @Inject constructor(
         } catch (e: Exception) {
             null
         }
+    }
+
+    /**
+     * Loads one page from the requested TMDB TV Home feed.
+     *
+     * @param feed TMDB feed to request.
+     * @param page Requested page number.
+     * @return A page of TV series.
+     */
+    suspend fun getHomeTvFeed(feed: TmdbTvFeed, page: Int): TmdbTvPage {
+        requireConfiguredApiKey()
+        return when (feed) {
+            TmdbTvFeed.ON_THE_AIR -> tmdbService.getOnTheAirTv(apiKey = apiKey, page = page)
+            TmdbTvFeed.AIRING_TODAY -> tmdbService.getAiringTodayTv(apiKey = apiKey, page = page)
+            TmdbTvFeed.POPULAR -> tmdbService.getPopularTv(apiKey = apiKey, page = page)
+            TmdbTvFeed.TOP_RATED -> tmdbService.getTopRatedTv(apiKey = apiKey, page = page)
+        }
+    }
+
+    /** Loads the TMDB television genre catalog. */
+    suspend fun getTvGenres(): List<TmdbTvGenre> {
+        requireConfiguredApiKey()
+        return tmdbService.getTvGenres(apiKey = apiKey).genres
+    }
+
+    /** Observes TMDB TV genre IDs ordered by local usage count. */
+    fun observeTvGenreUsage(): Flow<Map<Int, Int>> =
+        tvGenreDao.observeByPopularity().map { stats -> stats.associate { it.genreId to it.count } }
+
+    /** Records one user visit to the TMDB TV genre [genreId]. */
+    suspend fun recordTvGenreVisit(genreId: Int) {
+        tvGenreDao.incrementOrInsert(genreId)
+    }
+
+    /**
+     * Loads one sorted page of series matching a TV genre.
+     *
+     * @param genreId TMDB TV genre identifier.
+     * @param sortBy TMDB discovery sort key.
+     * @param page Requested result page.
+     * @return The requested page of matching series.
+     */
+    suspend fun discoverTvByGenre(genreId: Int, sortBy: String, page: Int): TmdbTvPage {
+        requireConfiguredApiKey()
+        return tmdbService.discoverTvByGenre(
+            apiKey = apiKey,
+            genreId = genreId,
+            sortBy = sortBy,
+            page = page
+        )
+    }
+
+    /**
+     * Loads a series with its seasons and aggregate cast.
+     *
+     * @param seriesId TMDB TV series identifier.
+     * @return The series detail response.
+     */
+    suspend fun getTvDetails(seriesId: Int): TmdbTvSummary {
+        requireConfiguredApiKey()
+        return tmdbService.getTvDetails(seriesId = seriesId, apiKey = apiKey)
+    }
+
+    /**
+     * Loads episode listings for a series season.
+     *
+     * @param seriesId TMDB TV series identifier.
+     * @param seasonNumber Season number to retrieve.
+     * @return Season metadata and episodes.
+     */
+    suspend fun getTvSeasonDetails(seriesId: Int, seasonNumber: Int): TmdbTvSeasonDetails {
+        requireConfiguredApiKey()
+        return tmdbService.getTvSeasonDetails(
+            seriesId = seriesId,
+            seasonNumber = seasonNumber,
+            apiKey = apiKey
+        )
+    }
+
+    /**
+     * Returns a linked IMDb identifier for a TMDB TV series, or `null` when unavailable.
+     * Strips "tt" prefix if present for API compatibility.
+     *
+     * @param seriesId TMDB TV series identifier.
+     */
+    suspend fun getTvImdbId(seriesId: Int): String? {
+        return try {
+            if (apiKey.isEmpty()) return null
+            val response = tmdbService.getTvExternalIds(seriesId = seriesId, apiKey = apiKey)
+            val imdbId = response.imdbId
+            if (imdbId.isNullOrEmpty()) null else imdbId.removePrefix("tt")
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Fails clearly when the build does not provide a TMDB API key. */
+    private fun requireConfiguredApiKey() {
+        check(apiKey.isNotBlank()) { "TMDB API key not configured" }
     }
 }

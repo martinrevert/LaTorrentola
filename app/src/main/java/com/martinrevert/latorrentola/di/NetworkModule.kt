@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.di
 
 import com.martinrevert.latorrentola.BuildConfig
 import com.martinrevert.latorrentola.constants.Constants
+import com.martinrevert.latorrentola.network.EztvService
 import com.martinrevert.latorrentola.network.FcmService
 import com.martinrevert.latorrentola.network.TmdbService
 import com.martinrevert.latorrentola.network.YtsService
@@ -98,6 +99,25 @@ object NetworkModule {
     fun provideTmdbService(@TmdbRetrofit retrofit: Retrofit): TmdbService {
         return retrofit.create(TmdbService::class.java)
     }
+
+    /** Creates a Retrofit instance for EZTV. */
+    @Provides
+    @Singleton
+    @EztvRetrofit
+    fun provideEztvRetrofit(okHttpClient: OkHttpClient): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(Constants.EZTV_BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            .client(okHttpClient)
+            .build()
+    }
+
+    /** Creates the EZTV Retrofit service. */
+    @Provides
+    @Singleton
+    fun provideEztvService(@EztvRetrofit retrofit: Retrofit): EztvService {
+        return retrofit.create(EztvService::class.java)
+    }
 }
 
 /** Hilt qualifier for the YTS Retrofit client. */
@@ -114,3 +134,9 @@ annotation class FcmRetrofit
 @javax.inject.Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class TmdbRetrofit
+
+/** Hilt qualifier for the EZTV Retrofit client. */
+@javax.inject.Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class EztvRetrofit
+

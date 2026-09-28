@@ -40,8 +40,8 @@ class HomeViewModelTest {
         every { repository.getTopGenres(any()) } returns flowOf(emptyList())
         every { preferenceManager.getFilteredLanguages() } returns ""
         every { preferenceManager.filteredLanguagesFlow } returns MutableStateFlow("")
-        every { preferenceManager.getMinimumRating() } returns 6
-        every { preferenceManager.minimumRatingFlow } returns MutableStateFlow(6)
+        every { preferenceManager.getMinimumRating() } returns 6f
+        every { preferenceManager.minimumRatingFlow } returns MutableStateFlow(6f)
         every { authRepository.authStateFlow } returns MutableStateFlow(null)
         coEvery { repository.getLastVisitDate() } returns null
         // Default to empty list for any page to avoid infinite loops in ViewModel
@@ -54,7 +54,7 @@ class HomeViewModelTest {
             Movie(id = 1, title = "English Movie", language = "en", rating = "7"),
             Movie(id = 2, title = "Spanish Movie", language = "es", rating = "7")
         )
-        coEvery { repository.getMovies(1, null, 6) } returns MovieDetails(data = Data(movies = movies))
+        coEvery { repository.getMovies(1, null, 6f) } returns MovieDetails(data = Data(movies = movies))
 
         viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
 
@@ -97,13 +97,13 @@ class HomeViewModelTest {
     @Test
     fun `refresh should clear existing movies and reload`() = runTest {
         val initialMovies = listOf(Movie(id = 1, title = "EN 1", language = "en", rating = "7"))
-        coEvery { repository.getMovies(1, null, 6) } returns MovieDetails(data = Data(movies = initialMovies))
+        coEvery { repository.getMovies(1, null, 6f) } returns MovieDetails(data = Data(movies = initialMovies))
         
         viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
         assertThat(viewModel.uiState.value).isInstanceOf(HomeUiState.Success::class.java)
 
         val newMovies = listOf(Movie(id = 2, title = "EN 2", language = "en", rating = "7"))
-        coEvery { repository.getMovies(1, null, 6) } returns MovieDetails(data = Data(movies = newMovies))
+        coEvery { repository.getMovies(1, null, 6f) } returns MovieDetails(data = Data(movies = newMovies))
 
         viewModel.refresh()
 

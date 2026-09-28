@@ -10,6 +10,8 @@ object Constants {
     const val FCM_BASE_URL = "https://fcm.martinrevert.com.ar/"
     /** Base URL for The Movie Database API. */
     const val TMDB_BASE_URL = "https://api.themoviedb.org/3/"
+    /** Base URL for the EZTV television torrent API. */
+    const val EZTV_BASE_URL = "https://eztvx.to/api/"
     /** Default page size requested from paginated movie endpoints. */
     const val PAGE_SIZE = 50
     /** OAuth web client identifier supplied by the build configuration. */
