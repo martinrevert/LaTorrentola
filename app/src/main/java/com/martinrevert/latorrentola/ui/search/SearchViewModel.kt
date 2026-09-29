@@ -2,7 +2,11 @@ package com.martinrevert.latorrentola.ui.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.network.TmdbRepository
+import com.martinrevert.latorrentola.network.TmdbTvFeed
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.utils.MovieFilter
@@ -17,15 +21,17 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Performs movie searches and exposes favorites, downloads, and new-release collections.
+ * Performs movie and TV series searches and exposes favorites, downloads, and new-release collections.
  *
  * @property ytsRepository searches movies and manages favorites.
+ * @property tmdbRepository searches TV series and fetches metadata.
  * @property userLibraryRepository observes downloads and favorites.
  * @property preferenceManager supplies filtering preferences.
  */
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val ytsRepository: YtsRepository,
+    private val tmdbRepository: TmdbRepository,
     private val userLibraryRepository: UserLibraryRepository,
     private val preferenceManager: PreferenceManager
 ) : ViewModel() {
@@ -34,6 +40,21 @@ class SearchViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
     /** Current search or collection state. */
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
+
+    /** Mutable backing state for TV mode toggle. */
+    private val _isTvMode = MutableStateFlow(false)
+    /** Whether TV mode is currently selected. */
+    val isTvMode: StateFlow<Boolean> = _isTvMode.asStateFlow()
+
+    /** Mutable backing state for current TV search results. */
+    private val _tvUiState = MutableStateFlow<SearchTvUiState>(SearchTvUiState.Idle)
+    /** Current TV search or collection state. */
+    val tvUiState: StateFlow<SearchTvUiState> = _tvUiState.asStateFlow()
+
+    /** Mutable backing state for TV-card focus restoration. */
+    private val _lastClickedSeriesId = MutableStateFlow<Int?>(null)
+    /** TV series identifier to refocus when returning to results. */
+    val lastClickedSeriesId: StateFlow<Int?> = _lastClickedSeriesId.asStateFlow()
 
     /** Mutable backing state for the selected torrent quality. */
     private val _selectedQuality = MutableStateFlow<String?>(null)
@@ -63,6 +84,29 @@ class SearchViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptySet()
+        )
+
+    /** IDs of TV series containing downloaded episodes. */
+    val downloadedSeriesIds: StateFlow<Set<Int>> = userLibraryRepository.getDownloadedEpisodes()
+        .map { episodes -> episodes.map { it.seriesId }.toSet() }
+        .catch { emit(emptySet()) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptySet()
+        )
+
+    /** All TMDB TV genres, ordered by local usage. */
+    val tvGenres: StateFlow<List<TmdbTvGenre>> = tmdbRepository.observeTvGenreUsage()
+        .map { usage ->
+            val catalog = try { tmdbRepository.getTvGenres() } catch (_: Exception) { emptyList() }
+            catalog.sortedByDescending { usage[it.id] ?: 0 }
+        }
+        .catch { emit(emptyList()) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
         )
 
     /** Quality labels available to search results. */
@@ -140,10 +184,113 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    /** Switches between Movies and TV Series mode. */
+    fun setTvMode(isTv: Boolean) {
+        if (_isTvMode.value == isTv) return
+        _isTvMode.value = isTv
+        if (isTv) {
+            when {
+                isShowingDownloads -> showDownloadedTvSeries(force = true)
+                isShowingNew -> showNewTvSeries(force = true)
+                lastQuery != null -> searchTvSeries(lastQuery!!, force = true)
+                else -> _tvUiState.value = SearchTvUiState.Idle
+            }
+        } else {
+            when {
+                isShowingFavorites -> showFavorites(force = true)
+                isShowingDownloads -> showDownloadedMovies(force = true)
+                isShowingNew -> showNewMovies(force = true)
+                lastQuery != null -> search(lastQuery!!)
+                else -> _uiState.value = SearchUiState.Idle
+            }
+        }
+    }
+
+    /** Stores the TV series ID used to restore result-card focus. */
+    fun setLastClickedSeriesId(id: Int?) {
+        _lastClickedSeriesId.value = id
+    }
+
+    /** Clears the pending TV series focus-restoration ID. */
+    fun clearLastClickedSeriesId() {
+        _lastClickedSeriesId.value = null
+    }
+
+    /** Performs a TV series search on TMDB. */
+    fun searchTvSeries(query: String, force: Boolean = false) {
+        if (query.isEmpty()) {
+            _tvUiState.value = SearchTvUiState.Idle
+            return
+        }
+        if (!force && query == lastQuery && _tvUiState.value is SearchTvUiState.Success) return
+
+        lastQuery = query
+        viewModelScope.launch {
+            _tvUiState.value = SearchTvUiState.Loading
+            try {
+                val page = tmdbRepository.searchTvSeries(query)
+                if (page.results.isEmpty()) {
+                    _tvUiState.value = SearchTvUiState.Empty
+                } else {
+                    _tvUiState.value = SearchTvUiState.Success(page.results)
+                }
+            } catch (e: Exception) {
+                _tvUiState.value = SearchTvUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
+            }
+        }
+    }
+
+    /** Loads TV series that have downloaded episodes for the user. */
+    fun showDownloadedTvSeries(force: Boolean = false) {
+        viewModelScope.launch {
+            _tvUiState.value = SearchTvUiState.Loading
+            userLibraryRepository.getDownloadedEpisodes().collect { downloads ->
+                val uniqueSeriesIds = downloads.map { it.seriesId }.distinct()
+                if (uniqueSeriesIds.isEmpty()) {
+                    _tvUiState.value = SearchTvUiState.Empty
+                    return@collect
+                }
+                val seriesList = mutableListOf<TmdbTvSummary>()
+                uniqueSeriesIds.forEach { seriesId ->
+                    try {
+                        val series = tmdbRepository.getTvDetails(seriesId)
+                        seriesList.add(series)
+                    } catch (_: Exception) {}
+                }
+                if (seriesList.isEmpty()) {
+                    _tvUiState.value = SearchTvUiState.Empty
+                } else {
+                    _tvUiState.value = SearchTvUiState.Success(seriesList)
+                }
+            }
+        }
+    }
+
+    /** Loads trending/popular TV series on TMDB. */
+    fun showNewTvSeries(force: Boolean = false) {
+        viewModelScope.launch {
+            _tvUiState.value = SearchTvUiState.Loading
+            try {
+                val page = tmdbRepository.getHomeTvFeed(TmdbTvFeed.POPULAR, 1)
+                if (page.results.isEmpty()) {
+                    _tvUiState.value = SearchTvUiState.Empty
+                } else {
+                    _tvUiState.value = SearchTvUiState.Success(page.results)
+                }
+            } catch (e: Exception) {
+                _tvUiState.value = SearchTvUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
+            }
+        }
+    }
+
     /** Starts a text search, resetting the results when [query] is empty. */
     fun search(query: String) {
         if (query.isEmpty()) {
             resetSearch()
+            return
+        }
+        if (_isTvMode.value) {
+            searchTvSeries(query)
             return
         }
         if (query == lastQuery && !isShowingFavorites && !isShowingDownloads && !isShowingNew) return
@@ -175,7 +322,9 @@ class SearchViewModel @Inject constructor(
         currentPage = 1
         canLoadMore = true
         clearLastClickedMovieId()
+        clearLastClickedSeriesId()
         _uiState.value = SearchUiState.Idle
+        _tvUiState.value = SearchTvUiState.Idle
     }
 
     /** Searches by [genre], or opens a special downloads/recent collection. */
@@ -554,4 +703,26 @@ sealed interface SearchUiState {
      * @property message User-facing failure description.
      */
     data class Error(val message: UiText) : SearchUiState
+}
+
+/** States emitted while searching or displaying TV series collections. */
+sealed interface SearchTvUiState {
+    /** No search or collection is currently active. */
+    object Idle : SearchTvUiState
+    /** Results are being loaded. */
+    object Loading : SearchTvUiState
+    /** The active search or collection has no matching results. */
+    object Empty : SearchTvUiState
+    /**
+     * Successfully loaded TV series.
+     *
+     * @property series Matching TV series entries.
+     */
+    data class Success(val series: List<TmdbTvSummary>) : SearchTvUiState
+    /**
+     * Search or collection loading failed.
+     *
+     * @property message User-facing failure description.
+     */
+    data class Error(val message: UiText) : SearchTvUiState
 }

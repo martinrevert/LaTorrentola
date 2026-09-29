@@ -1,5 +1,6 @@
 package com.martinrevert.latorrentola.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,9 +11,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -286,6 +291,7 @@ fun TvSeriesGrid(
     isLoadingMore: Boolean,
     onSeriesClick: (TmdbTvSummary) -> Unit,
     onLoadMore: () -> Unit,
+    downloadedSeriesIds: Set<Int> = emptySet(),
     initialFocusId: Int? = null,
     onFocusRestored: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(16.dp),
@@ -316,6 +322,7 @@ fun TvSeriesGrid(
             TvSeriesCard(
                 series = item,
                 genres = item.genreIds.mapNotNull(genreNames::get),
+                hasDownloads = item.id in downloadedSeriesIds,
                 onClick = { onSeriesClick(item) },
                 shouldRequestFocus = item.id == initialFocusId,
                 onFocusRestored = onFocusRestored
@@ -348,6 +355,7 @@ fun TvSeriesGrid(
 fun TvSeriesCard(
     series: TmdbTvSummary,
     genres: List<String>,
+    hasDownloads: Boolean = false,
     onClick: () -> Unit,
     shouldRequestFocus: Boolean = false,
     onFocusRestored: () -> Unit = {}
@@ -367,16 +375,41 @@ fun TvSeriesCard(
 
     val cardContent: @Composable () -> Unit = {
         Column {
-            AsyncImage(
-                model = series.fullPosterUrl,
-                contentDescription = title,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(0.67f),
-                contentScale = ContentScale.Crop
-            )
+            Box {
+                AsyncImage(
+                    model = series.fullPosterUrl,
+                    contentDescription = title,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.67f),
+                    contentScale = ContentScale.Crop
+                )
+                if (hasDownloads) {
+                    Icon(
+                        imageVector = Icons.Default.CloudDone,
+                        contentDescription = stringResource(R.string.downloaded_desc),
+                        tint = Color.Yellow,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(8.dp)
+                            .size(24.dp)
+                            .background(
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                CircleShape
+                            )
+                            .padding(2.dp)
+                    )
+                }
+            }
             Column(
                 modifier = Modifier
+                    .then(
+                        if (isTv) {
+                            Modifier.background(androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant)
+                        } else {
+                            Modifier
+                        }
+                    )
                     .fillMaxWidth()
                     .padding(if (isTv) 12.dp else 8.dp)
             ) {
@@ -411,7 +444,7 @@ fun TvSeriesCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = series.voteAverage?.let { "★ ${"%.1f".format(Locale.US, it)}" }.orEmpty(),
+                        text = series.voteAverage?.let { "⭐ ${"%.1f".format(Locale.US, it)}" }.orEmpty(),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface

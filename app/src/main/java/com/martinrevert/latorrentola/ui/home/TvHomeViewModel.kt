@@ -7,6 +7,7 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.TmdbTvFeed
+import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -15,7 +16,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -25,15 +28,27 @@ import javax.inject.Inject
  * Loads TMDB TV feeds and orders TV genres using TV-only visit statistics.
  *
  * @property tmdbRepository TV catalog and genre usage access.
+ * @property userLibraryRepository TV episode download history access.
  */
 @HiltViewModel
 class TvHomeViewModel @Inject constructor(
-    private val tmdbRepository: TmdbRepository
+    private val tmdbRepository: TmdbRepository,
+    private val userLibraryRepository: UserLibraryRepository
 ) : ViewModel() {
     /** Mutable backing state for the selected TV feed. */
     private val _uiState = MutableStateFlow<TvHomeUiState>(TvHomeUiState.Loading)
     /** Current TV feed state. */
     val uiState: StateFlow<TvHomeUiState> = _uiState.asStateFlow()
+
+    /** IDs of TV series containing downloaded episodes. */
+    val downloadedSeriesIds: StateFlow<Set<Int>> = userLibraryRepository.getDownloadedEpisodes()
+        .map { episodes -> episodes.map { it.seriesId }.toSet() }
+        .catch { emit(emptySet()) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptySet()
+        )
 
     /** Mutable backing state for the selected feed endpoint. */
     private val _selectedFeed = MutableStateFlow(TmdbTvFeed.ON_THE_AIR)

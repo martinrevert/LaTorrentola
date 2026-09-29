@@ -190,6 +190,7 @@ private fun HomeScreenContent(
     val tvIsRefreshing = tvHomeViewModel?.isRefreshing?.collectAsState()?.value ?: false
     val tvIsLoadingMore = tvHomeViewModel?.isLoadingMore?.collectAsState()?.value ?: false
     val lastClickedSeriesId = tvHomeViewModel?.lastClickedSeriesId?.collectAsState()?.value
+    val downloadedSeriesIds = tvHomeViewModel?.downloadedSeriesIds?.collectAsState()?.value.orEmpty()
     LaunchedEffect(isTvMode, selectedTvFeed) {
         if (isTvMode) tvHomeViewModel?.activate()
         if (isTvMode) {
@@ -316,6 +317,7 @@ private fun HomeScreenContent(
                             genres = tvGenres,
                             gridState = tvGridState,
                             isLoadingMore = tvIsLoadingMore,
+                            downloadedSeriesIds = downloadedSeriesIds,
                             onSeriesClick = {
                                 tvHomeViewModel?.setLastClickedSeriesId(it.id)
                                 onTvSeriesClick(it)
@@ -379,6 +381,7 @@ private fun HomeScreenContent(
                             genres = tvGenres,
                             gridState = tvGridState,
                             isLoadingMore = tvIsLoadingMore,
+                            downloadedSeriesIds = downloadedSeriesIds,
                             onSeriesClick = {
                                 tvHomeViewModel?.setLastClickedSeriesId(it.id)
                                 onTvSeriesClick(it)
@@ -506,6 +509,7 @@ private fun TvHomeContent(
     genres: List<TmdbTvGenre>,
     gridState: LazyGridState,
     isLoadingMore: Boolean,
+    downloadedSeriesIds: Set<Int> = emptySet(),
     onSeriesClick: (TmdbTvSummary) -> Unit,
     onLoadMore: () -> Unit,
     lastClickedSeriesId: Int?,
@@ -523,6 +527,7 @@ private fun TvHomeContent(
             genres = genres,
             state = gridState,
             isLoadingMore = isLoadingMore,
+            downloadedSeriesIds = downloadedSeriesIds,
             onSeriesClick = onSeriesClick,
             onLoadMore = onLoadMore,
             initialFocusId = lastClickedSeriesId,

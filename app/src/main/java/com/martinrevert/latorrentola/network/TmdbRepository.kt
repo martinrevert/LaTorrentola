@@ -124,6 +124,22 @@ class TmdbRepository @Inject constructor(
     }
 
     /**
+     * Searches TMDB for TV series matching [query].
+     *
+     * @param query Search query text.
+     * @param page Page number to retrieve.
+     * @return Matching page of TV series summaries.
+     */
+    suspend fun searchTvSeries(query: String, page: Int = 1): TmdbTvPage {
+        requireConfiguredApiKey()
+        return tmdbService.searchTv(
+            apiKey = apiKey,
+            query = query,
+            page = page
+        )
+    }
+
+    /**
      * Loads one sorted page of series matching a TV genre.
      *
      * @param genreId TMDB TV genre identifier.

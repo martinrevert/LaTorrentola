@@ -22,6 +22,15 @@ interface TmdbService {
         @Query("language") language: String = "es-ES"
     ): TmdbSearchPersonResponse
 
+    /** Searches TMDB for TV series matching [query]. */
+    @GET("search/tv")
+    suspend fun searchTv(
+        @Query("api_key") apiKey: String,
+        @Query("query") query: String,
+        @Query("page") page: Int = 1,
+        @Query("language") language: String = "es-ES"
+    ): TmdbTvPage
+
     /** Retrieves a person's details and requested appended response data. */
     @GET("person/{person_id}")
     suspend fun getPersonDetail(

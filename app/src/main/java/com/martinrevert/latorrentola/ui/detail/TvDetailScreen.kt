@@ -1,5 +1,7 @@
 package com.martinrevert.latorrentola.ui.detail
 
+import android.content.Intent
+import android.os.Build
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -8,12 +10,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -22,17 +30,32 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalResources
+import dev.chrisbanes.haze.rememberHazeState
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.glass.hazeGlass
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
@@ -96,7 +119,17 @@ fun TvDetailScreen(
     val selectedActorDetail by viewModel.selectedActorDetail.collectAsState()
     val isActorLoading by viewModel.isActorLoading.collectAsState()
     val context = LocalContext.current
+    val resources = LocalResources.current
     val isTv = remember(context) { context.isTvDevice() }
+    val hazeState = if (!isTv) rememberHazeState() else null
+    val isInspection = LocalInspectionMode.current
+    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+    val topBarContainerColor = if (isPreAndroid12) {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+    } else {
+        Color.Transparent
+    }
+
     val detailContentFocusRequester = remember { FocusRequester() }
     val firstCastFocusRequester = remember { FocusRequester() }
     var showActorSheet by remember { mutableStateOf(false) }
@@ -115,8 +148,13 @@ fun TvDetailScreen(
     LaunchedEffect(seriesId) { viewModel.load(seriesId) }
 
     Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
+                modifier = if (hazeState != null) {
+                    Modifier.hazeGlass(input = HazeInput.Sources(hazeState))
+                } else Modifier,
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = if (!isTv) topBarContainerColor else MaterialTheme.colorScheme.surface),
                 title = { Text(stringResource(R.string.tv_details_title)) },
                 navigationIcon = {
                     if (isTv) {
@@ -154,43 +192,82 @@ fun TvDetailScreen(
                             )
                         }
                     }
+                },
+                actions = {
+                    val state = uiState
+                    if (state is TvDetailUiState.Success) {
+                        IconButton(
+                            onClick = {
+                                val shareUrl = "https://www.themoviedb.org/tv/${state.series.id}"
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, state.series.name)
+                                    val shareText = resources.getString(
+                                        R.string.share_movie_text,
+                                        state.series.name,
+                                        shareUrl
+                                    )
+                                    putExtra(Intent.EXTRA_TEXT, shareText)
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, resources.getString(R.string.share_movie_chooser)))
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.Share,
+                                contentDescription = stringResource(R.string.share_desc)
+                            )
+                        }
+                    }
                 }
             )
         }
     ) { padding ->
-        when (val state = uiState) {
-            TvDetailUiState.Loading -> MovieDetailPlaceholder(
-                contentPadding = PaddingValues(
-                    top = padding.calculateTopPadding() + 16.dp,
-                    start = 16.dp,
-                    end = 16.dp,
-                    bottom = 16.dp
+        val topContentPadding = if (!isTv) {
+            padding.calculateTopPadding() + 64.dp
+        } else {
+            padding.calculateTopPadding() + 16.dp
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
+                .consumeWindowInsets(padding)
+        ) {
+            when (val state = uiState) {
+                TvDetailUiState.Loading -> MovieDetailPlaceholder(
+                    contentPadding = PaddingValues(
+                        top = topContentPadding,
+                        start = 16.dp,
+                        end = 16.dp,
+                        bottom = 16.dp
+                    )
                 )
-            )
-            is TvDetailUiState.Error -> Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(state.message, color = MaterialTheme.colorScheme.error)
+                is TvDetailUiState.Error -> Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(state.message, color = MaterialTheme.colorScheme.error)
+                }
+                is TvDetailUiState.Success -> TvDetailContent(
+                    series = state.series,
+                    selectedSeasonNumber = selectedSeason?.seasonNumber,
+                    seasonState = seasonState,
+                    downloadedEpisodes = downloadedEpisodes,
+                    onSeasonSelected = viewModel::selectSeason,
+                    onEpisodeClick = { episode -> onEpisodeClick(state.series.name.orEmpty(), episode) },
+                    contentFocusRequester = detailContentFocusRequester,
+                    firstCastFocusRequester = firstCastFocusRequester,
+                    onCastClick = { personId ->
+                        showActorSheet = true
+                        viewModel.fetchActorDetails(personId)
+                    },
+                    topPadding = topContentPadding
+                )
             }
-            is TvDetailUiState.Success -> TvDetailContent(
-                series = state.series,
-                selectedSeasonNumber = selectedSeason?.seasonNumber,
-                seasonState = seasonState,
-                downloadedEpisodes = downloadedEpisodes,
-                onSeasonSelected = viewModel::selectSeason,
-                onEpisodeClick = { episode -> onEpisodeClick(state.series.name.orEmpty(), episode) },
-                contentFocusRequester = detailContentFocusRequester,
-                firstCastFocusRequester = firstCastFocusRequester,
-                onCastClick = { personId ->
-                    showActorSheet = true
-                    viewModel.fetchActorDetails(personId)
-                },
-                topPadding = padding.calculateTopPadding()
-            )
         }
     }
 

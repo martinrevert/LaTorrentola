@@ -207,6 +207,9 @@ fun AppNavigation(
                         val movieJson = Json.encodeToString(Movie.serializer(), movie)
                         backStack.add(Route.Detail(movieJson = movieJson))
                     },
+                    onTvSeriesClick = { series ->
+                        backStack.add(Route.TvDetail(series.id))
+                    },
                     onBackClick = { backStack.removeLastOrNull() }
                 )
             }

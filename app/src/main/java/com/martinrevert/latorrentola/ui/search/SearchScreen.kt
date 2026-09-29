@@ -39,11 +39,14 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.ui.components.HomeMediaModeChips
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.MovieList
 import com.martinrevert.latorrentola.ui.components.MovieItem
 import com.martinrevert.latorrentola.ui.components.QualityChips
+import com.martinrevert.latorrentola.ui.components.TvSeriesGrid
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.GenreTranslation
@@ -51,6 +54,7 @@ import com.martinrevert.latorrentola.utils.isTvDevice
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.platform.LocalInspectionMode
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
 import dev.chrisbanes.haze.rememberHazeState
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.HazeInput
@@ -65,9 +69,15 @@ fun SearchScreen(
     initialGenre: String? = null,
     initialQuery: String? = null,
     onMovieClick: (Movie) -> Unit,
+    onTvSeriesClick: (TmdbTvSummary) -> Unit = {},
     onBackClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val isTvMode by viewModel.isTvMode.collectAsState()
+    val tvUiState by viewModel.tvUiState.collectAsState()
+    val downloadedSeriesIds by viewModel.downloadedSeriesIds.collectAsState()
+    val tvGenres by viewModel.tvGenres.collectAsState()
+    val lastClickedSeriesId by viewModel.lastClickedSeriesId.collectAsState()
     val selectedQuality by viewModel.selectedQuality.collectAsState()
     val lastClickedMovieId by viewModel.lastClickedMovieId.collectAsState()
     val downloadedMovieIds by viewModel.downloadedMovieIds.collectAsState()
@@ -131,6 +141,11 @@ fun SearchScreen(
 
     SearchScreenContent(
         uiState = uiState,
+        isTvMode = isTvMode,
+        tvUiState = tvUiState,
+        downloadedSeriesIds = downloadedSeriesIds,
+        tvGenres = tvGenres,
+        lastClickedSeriesId = lastClickedSeriesId,
         selectedQuality = selectedQuality,
         lastClickedMovieId = lastClickedMovieId,
         downloadedMovieIds = downloadedMovieIds,
@@ -145,6 +160,7 @@ fun SearchScreen(
         isTv = isTv,
         isLoadingMore = isLoadingMore,
         focusRequester = focusRequester,
+        onTvModeToggle = { viewModel.setTvMode(it) },
         onSearchQueryChange = {
             searchQuery = it
             if (it.length > 2) {
@@ -175,12 +191,17 @@ fun SearchScreen(
                 onMovieClick(it)
             }
         },
+        onTvSeriesClick = {
+            viewModel.setLastClickedSeriesId(it.id)
+            onTvSeriesClick(it)
+        },
         onLongClick = { viewModel.toggleFavoriteSelection(it) },
         onLoadMore = { viewModel.loadMore() },
         onBackClick = onBackClick,
         onClearSelection = { viewModel.clearSelection() },
         onDeleteSelectedFavorites = { viewModel.deleteSelectedFavorites() },
-        onFocusRestored = { viewModel.clearLastClickedMovieId() }
+        onFocusRestored = { viewModel.clearLastClickedMovieId() },
+        onTvFocusRestored = { viewModel.clearLastClickedSeriesId() }
     )
 }
 
@@ -189,6 +210,11 @@ fun SearchScreen(
 @Composable
 private fun SearchScreenContent(
     uiState: SearchUiState,
+    isTvMode: Boolean = false,
+    tvUiState: SearchTvUiState = SearchTvUiState.Idle,
+    downloadedSeriesIds: Set<Int> = emptySet(),
+    tvGenres: List<TmdbTvGenre> = emptyList(),
+    lastClickedSeriesId: Int? = null,
     selectedQuality: String?,
     lastClickedMovieId: Int?,
     downloadedMovieIds: Set<Int>,
@@ -203,16 +229,19 @@ private fun SearchScreenContent(
     isTv: Boolean,
     isLoadingMore: Boolean = false,
     focusRequester: FocusRequester,
+    onTvModeToggle: (Boolean) -> Unit = {},
     onSearchQueryChange: (String) -> Unit,
     onVoiceSearchClick: () -> Unit,
     onQualityClick: (String) -> Unit,
     onMovieClick: (Movie) -> Unit,
+    onTvSeriesClick: (TmdbTvSummary) -> Unit = {},
     onLongClick: (Int) -> Unit,
     onLoadMore: () -> Unit,
     onBackClick: () -> Unit,
     onClearSelection: () -> Unit,
     onDeleteSelectedFavorites: () -> Unit,
-    onFocusRestored: () -> Unit
+    onFocusRestored: () -> Unit,
+    onTvFocusRestored: () -> Unit = {}
 ) {
     val focusManager = LocalFocusManager.current
     val gridState = rememberLazyGridState()
@@ -329,15 +358,21 @@ private fun SearchScreenContent(
                     .padding(padding)
                     .consumeWindowInsets(padding)
             ) {
-                Spacer(modifier = Modifier.height(4.dp))
-                QualityChips(
-                    options = qualityOptions,
-                    selectedQuality = selectedQuality ?: "All",
-                    onQualityClick = onQualityClick,
-                    modifier = Modifier
-                        .focusRequester(qualityChipsFocusRequester)
-                        .focusProperties { down = movieListFocusRequester }
+                HomeMediaModeChips(
+                    isTvMode = isTvMode,
+                    onMoviesClick = { onTvModeToggle(false) },
+                    onTvClick = { onTvModeToggle(true) }
                 )
+                if (!isTvMode) {
+                    QualityChips(
+                        options = qualityOptions,
+                        selectedQuality = selectedQuality ?: "All",
+                        onQualityClick = onQualityClick,
+                        modifier = Modifier
+                            .focusRequester(qualityChipsFocusRequester)
+                            .focusProperties { down = movieListFocusRequester }
+                    )
+                }
                 HorizontalDivider(
                     modifier = Modifier.padding(top = 4.dp),
                     thickness = 1.dp,
@@ -349,17 +384,39 @@ private fun SearchScreenContent(
                         .weight(1f)
                         .fillMaxWidth()
                 ) {
-                    when (val state = uiState) {
-                        is SearchUiState.Idle -> {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    if (isTvMode) {
+                        when (tvUiState) {
+                            is SearchTvUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(text = stringResource(R.string.start_searching))
                             }
+                            is SearchTvUiState.Loading -> MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                            is SearchTvUiState.Success -> TvSeriesGrid(
+                                series = tvUiState.series,
+                                genres = tvGenres,
+                                downloadedSeriesIds = downloadedSeriesIds,
+                                state = gridState,
+                                isLoadingMore = false,
+                                onSeriesClick = onTvSeriesClick,
+                                onLoadMore = {},
+                                initialFocusId = lastClickedSeriesId,
+                                onFocusRestored = onTvFocusRestored,
+                                contentPadding = PaddingValues(16.dp),
+                                modifier = Modifier.focusRequester(movieListFocusRequester)
+                            )
+                            is SearchTvUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(text = stringResource(R.string.no_results))
+                            }
+                            is SearchTvUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(text = tvUiState.message.asString())
+                            }
                         }
-                        is SearchUiState.Loading -> {
-                            MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
-                        }
-                        is SearchUiState.Success -> {
-                            MovieList(
+                    } else {
+                        when (val state = uiState) {
+                            is SearchUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(text = stringResource(R.string.start_searching))
+                            }
+                            is SearchUiState.Loading -> MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                            is SearchUiState.Success -> MovieList(
                                 movies = state.movies,
                                 state = gridState,
                                 downloadedMovieIds = downloadedMovieIds,
@@ -373,14 +430,10 @@ private fun SearchScreenContent(
                                 contentPadding = PaddingValues(16.dp),
                                 modifier = Modifier.focusRequester(movieListFocusRequester)
                             )
-                        }
-                        is SearchUiState.Empty -> {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            is SearchUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(text = stringResource(R.string.no_results))
                             }
-                        }
-                        is SearchUiState.Error -> {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            is SearchUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(text = state.message.asString())
                             }
                         }
@@ -390,7 +443,7 @@ private fun SearchScreenContent(
         } else {
             // Handheld Layout: Edge-to-edge with Haze top blur and translucent bottom bar
             val searchContentPadding = PaddingValues(
-                top = padding.calculateTopPadding() + 64.dp,
+                top = padding.calculateTopPadding() + 112.dp,
                 bottom = padding.calculateBottomPadding() + 16.dp,
                 start = 16.dp,
                 end = 16.dp
@@ -401,17 +454,38 @@ private fun SearchScreenContent(
                     .fillMaxSize()
                     .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
             ) {
-                when (val state = uiState) {
-                    is SearchUiState.Idle -> {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                if (isTvMode) {
+                    when (tvUiState) {
+                        is SearchTvUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(text = stringResource(R.string.start_searching))
                         }
+                        is SearchTvUiState.Loading -> MovieListPlaceholder(contentPadding = searchContentPadding)
+                        is SearchTvUiState.Success -> TvSeriesGrid(
+                            series = tvUiState.series,
+                            genres = tvGenres,
+                            downloadedSeriesIds = downloadedSeriesIds,
+                            state = gridState,
+                            isLoadingMore = false,
+                            onSeriesClick = onTvSeriesClick,
+                            onLoadMore = {},
+                            initialFocusId = lastClickedSeriesId,
+                            onFocusRestored = onTvFocusRestored,
+                            contentPadding = searchContentPadding
+                        )
+                        is SearchTvUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(text = stringResource(R.string.no_results))
+                        }
+                        is SearchTvUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(text = tvUiState.message.asString())
+                        }
                     }
-                    is SearchUiState.Loading -> {
-                        MovieListPlaceholder(contentPadding = searchContentPadding)
-                    }
-                    is SearchUiState.Success -> {
-                        MovieList(
+                } else {
+                    when (val state = uiState) {
+                        is SearchUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(text = stringResource(R.string.start_searching))
+                        }
+                        is SearchUiState.Loading -> MovieListPlaceholder(contentPadding = searchContentPadding)
+                        is SearchUiState.Success -> MovieList(
                             movies = state.movies,
                             state = gridState,
                             downloadedMovieIds = downloadedMovieIds,
@@ -424,14 +498,10 @@ private fun SearchScreenContent(
                             onFocusRestored = onFocusRestored,
                             contentPadding = searchContentPadding
                         )
-                    }
-                    is SearchUiState.Empty -> {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        is SearchUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(text = stringResource(R.string.no_results))
                         }
-                    }
-                    is SearchUiState.Error -> {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        is SearchUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(text = state.message.asString())
                         }
                     }
@@ -449,13 +519,19 @@ private fun SearchScreenContent(
                             } else Modifier
                         )
                 ) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    QualityChips(
-                        options = qualityOptions,
-                        selectedQuality = selectedQuality ?: "All",
-                        onQualityClick = onQualityClick,
-                        modifier = Modifier.focusRequester(qualityChipsFocusRequester)
+                    HomeMediaModeChips(
+                        isTvMode = isTvMode,
+                        onMoviesClick = { onTvModeToggle(false) },
+                        onTvClick = { onTvModeToggle(true) }
                     )
+                    if (!isTvMode) {
+                        QualityChips(
+                            options = qualityOptions,
+                            selectedQuality = selectedQuality ?: "All",
+                            onQualityClick = onQualityClick,
+                            modifier = Modifier.focusRequester(qualityChipsFocusRequester)
+                        )
+                    }
                     HorizontalDivider(
                         modifier = Modifier.padding(top = 4.dp),
                         thickness = 1.dp,
