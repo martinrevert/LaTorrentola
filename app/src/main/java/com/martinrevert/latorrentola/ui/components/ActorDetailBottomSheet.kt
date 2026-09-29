@@ -1,9 +1,6 @@
 package com.martinrevert.latorrentola.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -28,6 +25,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface
@@ -74,16 +72,19 @@ fun ActorDetailBottomSheet(
     }
 
     if (isTv) {
-        Dialog(onDismissRequest = onDismiss) {
+        Dialog(
+            onDismissRequest = onDismiss,
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
             Surface(
                 shape = MaterialTheme.shapes.extraLarge,
                 color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier
-                    .fillMaxWidth(0.94f)
-                    .fillMaxHeight(0.85f)
-                    .padding(16.dp)
+                    .fillMaxWidth(0.96f)
+                    .fillMaxHeight(0.92f)
+                    .padding(12.dp)
             ) {
-                Box(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+                Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
                     if (isLoading) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator()
@@ -97,7 +98,7 @@ fun ActorDetailBottomSheet(
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     Text(
                                         text = stringResource(R.string.no_results),
-                                        style = MaterialTheme.typography.titleMedium,
+                                        style = MaterialTheme.typography.titleLarge,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
@@ -179,12 +180,12 @@ private fun TvActorContent(
 ) {
     Row(
         modifier = Modifier.fillMaxSize(),
-        horizontalArrangement = Arrangement.spacedBy(24.dp)
+        horizontalArrangement = Arrangement.spacedBy(32.dp)
     ) {
         // Left Column: Photo & Personal Metadata
         Column(
             modifier = Modifier
-                .weight(0.35f)
+                .weight(0.32f)
                 .fillMaxHeight()
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -204,28 +205,28 @@ private fun TvActorContent(
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = actor.name ?: "",
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center
             )
-            ActorPersonalDetails(actor, centered = true)
+            ActorPersonalDetails(actor, centered = true, isTv = true)
         }
 
         // Right Column: Biography & Filmography
         Column(
             modifier = Modifier
-                .weight(0.65f)
+                .weight(0.68f)
                 .fillMaxHeight()
                 .verticalScroll(rememberScrollState())
         ) {
-            ActorBiography(actor)
+            ActorBiography(actor, isTv = true)
 
             val credits = actor.combinedCredits?.cast.orEmpty()
             if (credits.isNotEmpty()) {
                 Text(
                     text = stringResource(R.string.details_title),
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -248,9 +249,10 @@ private fun TvActorContent(
  *
  * @param actor Actor profile data.
  * @param centered Whether the details should be centered under the profile.
+ * @param isTv Whether to use the larger type scale for TV viewing distance.
  */
 @Composable
-private fun ActorPersonalDetails(actor: TmdbActorDetail, centered: Boolean) {
+private fun ActorPersonalDetails(actor: TmdbActorDetail, centered: Boolean, isTv: Boolean = false) {
     val horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -258,16 +260,16 @@ private fun ActorPersonalDetails(actor: TmdbActorDetail, centered: Boolean) {
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         actor.birthday?.takeIf(String::isNotBlank)?.let {
-            ActorDetailValue(stringResource(R.string.actor_birthday), it, centered)
+            ActorDetailValue(stringResource(R.string.actor_birthday), it, centered, isTv)
         }
         actor.deathday?.takeIf(String::isNotBlank)?.let {
-            ActorDetailValue(stringResource(R.string.actor_deathday), it, centered)
+            ActorDetailValue(stringResource(R.string.actor_deathday), it, centered, isTv)
         }
         actor.placeOfBirth?.takeIf(String::isNotBlank)?.let {
-            ActorDetailValue(stringResource(R.string.actor_place_of_birth), it, centered)
+            ActorDetailValue(stringResource(R.string.actor_place_of_birth), it, centered, isTv)
         }
         actor.knownForDepartment?.takeIf(String::isNotBlank)?.let {
-            ActorDetailValue(stringResource(R.string.actor_known_for), it, centered)
+            ActorDetailValue(stringResource(R.string.actor_known_for), it, centered, isTv)
         }
     }
 }
@@ -277,13 +279,18 @@ private fun ActorPersonalDetails(actor: TmdbActorDetail, centered: Boolean) {
  *
  * @param actor Actor details returned by TMDB.
  * @param modifier Layout modifier for this section.
+ * @param isTv Whether to use the larger type scale for TV viewing distance.
  */
 @Composable
-private fun ActorBiography(actor: TmdbActorDetail, modifier: Modifier = Modifier) {
+private fun ActorBiography(
+    actor: TmdbActorDetail,
+    modifier: Modifier = Modifier,
+    isTv: Boolean = false
+) {
     Column(modifier = modifier) {
         Text(
             text = stringResource(R.string.summary_header),
-            style = MaterialTheme.typography.titleMedium,
+            style = if (isTv) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
         )
@@ -291,7 +298,7 @@ private fun ActorBiography(actor: TmdbActorDetail, modifier: Modifier = Modifier
         Text(
             text = actor.biography?.takeIf(String::isNotBlank)
                 ?: stringResource(R.string.no_summary),
-            style = MaterialTheme.typography.bodyMedium,
+            style = if (isTv) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface
         )
     }
@@ -303,12 +310,18 @@ private fun ActorBiography(actor: TmdbActorDetail, modifier: Modifier = Modifier
  * @param label Localized detail name.
  * @param value API-provided detail value.
  * @param centered Whether the text should be centered.
+ * @param isTv Whether to use the larger type scale for TV viewing distance.
  */
 @Composable
-private fun ActorDetailValue(label: String, value: String, centered: Boolean) {
+private fun ActorDetailValue(
+    label: String,
+    value: String,
+    centered: Boolean,
+    isTv: Boolean
+) {
     Text(
         text = stringResource(R.string.actor_detail_value, label, value),
-        style = MaterialTheme.typography.bodySmall,
+        style = if (isTv) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = if (centered) TextAlign.Center else TextAlign.Start
     )
@@ -326,23 +339,20 @@ private fun TvFilmographyItem(
     credit: TmdbCastCredit,
     onCreditClick: ((TmdbCastCredit) -> Unit)? = null
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
+    val configuration = LocalConfiguration.current
+    val posterWidth = (configuration.screenWidthDp * 0.14f).dp.coerceIn(150.dp, 220.dp)
 
     Surface(
         onClick = { onCreditClick?.invoke(credit) },
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
         shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
-        interactionSource = interactionSource,
-        modifier = Modifier
-            .width(110.dp)
-            .border(
-                width = if (isFocused) 3.dp else 0.dp,
-                color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
-                shape = MaterialTheme.shapes.medium
-            )
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = Color.Transparent,
+            focusedContainerColor = Color.Transparent
+        ),
+        modifier = Modifier.width(posterWidth)
     ) {
-        Column(modifier = Modifier.padding(6.dp)) {
+        Column(modifier = Modifier.padding(8.dp)) {
             AsyncImage(
                 model = credit.fullPosterUrl,
                 contentDescription = credit.displayTitle,
@@ -358,17 +368,17 @@ private fun TvFilmographyItem(
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = credit.displayTitle,
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            FilmographyMetadata(credit)
+            FilmographyMetadata(credit, isTv = true)
             if (!credit.character.isNullOrEmpty()) {
                 Text(
                     text = credit.character,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -585,9 +595,10 @@ private fun FilmographyItem(
  * Displays the release year and media kind for one filmography credit.
  *
  * @param credit TMDB movie or TV credit.
+ * @param isTv Whether to use the larger type scale for TV viewing distance.
  */
 @Composable
-private fun FilmographyMetadata(credit: TmdbCastCredit) {
+private fun FilmographyMetadata(credit: TmdbCastCredit, isTv: Boolean = false) {
     val type = when (credit.mediaType) {
         "movie" -> stringResource(R.string.filmography_type_movie)
         "tv" -> stringResource(R.string.filmography_type_tv)
@@ -603,7 +614,7 @@ private fun FilmographyMetadata(credit: TmdbCastCredit) {
     if (metadata.isNotBlank()) {
         Text(
             text = metadata,
-            style = MaterialTheme.typography.bodySmall,
+            style = if (isTv) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
