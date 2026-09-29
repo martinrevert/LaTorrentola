@@ -51,7 +51,6 @@ import com.martinrevert.latorrentola.ui.components.QualityChips
 import com.martinrevert.latorrentola.ui.components.GenreChips
 import com.martinrevert.latorrentola.ui.components.GenreBottomSheet
 import com.martinrevert.latorrentola.ui.components.MovieList
-import com.martinrevert.latorrentola.ui.components.HomeMediaModeChips
 import com.martinrevert.latorrentola.ui.components.TvFeedChips
 import com.martinrevert.latorrentola.ui.components.TvGenreBottomSheet
 import com.martinrevert.latorrentola.ui.components.TvGenreChips
@@ -77,7 +76,7 @@ import dev.chrisbanes.haze.glass.hazeGlass
  * @param onTvSeriesClick Opens a TV series detail destination.
  * @param onTvGenreClick Opens results for a selected TMDB TV genre.
  * @param onSettingsClick Opens settings.
- * @param onSearchClick Opens movie search.
+ * @param onSearchClick Opens search in the selected catalog mode.
  * @param onFavoritesClick Opens the user's movie favorites.
  * @param onGenreClick Opens the selected movie genre.
  */
@@ -90,7 +89,7 @@ fun HomeScreen(
     onTvSeriesClick: (TmdbTvSummary) -> Unit,
     onTvGenreClick: (TmdbTvGenre) -> Unit,
     onSettingsClick: () -> Unit,
-    onSearchClick: () -> Unit,
+    onSearchClick: (isTvMode: Boolean) -> Unit,
     onFavoritesClick: () -> Unit,
     onGenreClick: (String) -> Unit
 ) {
@@ -159,7 +158,7 @@ private fun HomeScreenContent(
     isTv: Boolean,
     onMovieClick: (Movie) -> Unit,
     onSettingsClick: () -> Unit,
-    onSearchClick: () -> Unit,
+    onSearchClick: (isTvMode: Boolean) -> Unit,
     onFavoritesClick: () -> Unit,
     onGenreClick: (String) -> Unit,
     onQualityClick: (String) -> Unit,
@@ -174,7 +173,7 @@ private fun HomeScreenContent(
     var showGenreSheet by remember { mutableStateOf(false) }
     var showTvGenreSheet by remember { mutableStateOf(false) }
     var isTvMode by rememberSaveable { mutableStateOf(false) }
-    val homeModeFocusRequester = remember { FocusRequester() }
+    val homeControlsFocusRequester = remember { FocusRequester() }
     var homeControlsHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -191,13 +190,18 @@ private fun HomeScreenContent(
     val tvIsLoadingMore = tvHomeViewModel?.isLoadingMore?.collectAsState()?.value ?: false
     val lastClickedSeriesId = tvHomeViewModel?.lastClickedSeriesId?.collectAsState()?.value
     val downloadedSeriesIds = tvHomeViewModel?.downloadedSeriesIds?.collectAsState()?.value.orEmpty()
-    LaunchedEffect(isTvMode, selectedTvFeed) {
-        if (isTvMode) tvHomeViewModel?.activate()
-        if (isTvMode) {
-            if (lastClickedSeriesId == null) tvGridState.scrollToItem(0)
-        } else if (lastClickedMovieId == null) {
-            gridState.scrollToItem(0)
+    val scope = rememberCoroutineScope()
+    /** Switches catalogs and starts the selected catalog at its first poster. */
+    fun selectMediaMode(tvMode: Boolean) {
+        if (isTvMode == tvMode) return
+        isTvMode = tvMode
+        scope.launch {
+            (if (tvMode) tvGridState else gridState).scrollToItem(0)
         }
+    }
+
+    LaunchedEffect(isTvMode) {
+        if (isTvMode) tvHomeViewModel?.activate()
     }
 
     val isInspection = LocalInspectionMode.current
@@ -236,7 +240,10 @@ private fun HomeScreenContent(
                     onSearchClick = onSearchClick,
                     onFavoritesClick = onFavoritesClick,
                     onSettingsClick = onSettingsClick,
-                    focusDownRequester = homeModeFocusRequester,
+                    isTvMode = isTvMode,
+                    onMoviesClick = { selectMediaMode(false) },
+                    onTvClick = { selectMediaMode(true) },
+                    focusDownRequester = homeControlsFocusRequester,
                     containerColor = topBarContainerColor,
                     modifier = if (hazeState != null) {
                         Modifier
@@ -268,19 +275,20 @@ private fun HomeScreenContent(
                         onSearchClick = onSearchClick,
                         onFavoritesClick = onFavoritesClick,
                         onSettingsClick = onSettingsClick,
-                        focusDownRequester = homeModeFocusRequester,
-                        containerColor = MaterialTheme.colorScheme.surface
-                    )
-                    HomeMediaModeChips(
                         isTvMode = isTvMode,
-                        onMoviesClick = { isTvMode = false },
-                        onTvClick = { isTvMode = true },
-                        firstFocusRequester = homeModeFocusRequester
+                        onMoviesClick = { selectMediaMode(false) },
+                        onTvClick = { selectMediaMode(true) },
+                        focusDownRequester = homeControlsFocusRequester,
+                        containerColor = MaterialTheme.colorScheme.surface
                     )
                     if (isTvMode) {
                         TvFeedChips(
                             selectedFeed = selectedTvFeed,
-                            onFeedClick = { tvHomeViewModel?.selectFeed(it) }
+                            onFeedClick = {
+                                tvHomeViewModel?.selectFeed(it)
+                                scope.launch { tvGridState.scrollToItem(0) }
+                            },
+                            firstFocusRequester = homeControlsFocusRequester
                         )
                         tvGenreError?.let {
                             Text(
@@ -302,7 +310,8 @@ private fun HomeScreenContent(
                         GenreChips(
                             genres = topGenres,
                             onGenreClick = onGenreClick,
-                            onAllGenresClick = { showGenreSheet = true }
+                            onAllGenresClick = { showGenreSheet = true },
+                            firstFocusRequester = homeControlsFocusRequester
                         )
                         QualityChips(
                             options = qualityOptions,
@@ -347,7 +356,6 @@ private fun HomeScreenContent(
                 }
             } else {
                 // Handheld Layout: Full-screen edge-to-edge with Haze top blur and translucent bottom bar
-                val scope = rememberCoroutineScope()
                 val pullRefreshState = rememberPullRefreshState(
                     if (isTvMode) tvIsRefreshing else isRefreshing,
                     onRefresh = {
@@ -422,16 +430,14 @@ private fun HomeScreenContent(
                             )
                             .onSizeChanged { homeControlsHeightPx = it.height }
                     ) {
-                        HomeMediaModeChips(
-                            isTvMode = isTvMode,
-                            onMoviesClick = { isTvMode = false },
-                            onTvClick = { isTvMode = true },
-                            firstFocusRequester = homeModeFocusRequester
-                        )
                         if (isTvMode) {
                             TvFeedChips(
                                 selectedFeed = selectedTvFeed,
-                                onFeedClick = { tvHomeViewModel?.selectFeed(it) }
+                                onFeedClick = {
+                                    tvHomeViewModel?.selectFeed(it)
+                                    scope.launch { tvGridState.scrollToItem(0) }
+                                },
+                                firstFocusRequester = homeControlsFocusRequester
                             )
                             tvGenreError?.let {
                                 Text(
@@ -453,7 +459,8 @@ private fun HomeScreenContent(
                             GenreChips(
                                 genres = topGenres,
                                 onGenreClick = onGenreClick,
-                                onAllGenresClick = { showGenreSheet = true }
+                                onAllGenresClick = { showGenreSheet = true },
+                                firstFocusRequester = homeControlsFocusRequester
                             )
                             QualityChips(
                                 options = qualityOptions,
@@ -555,7 +562,10 @@ private fun TvHomeContent(
  *
  * @param userPhotoUrl Signed-in user's avatar image URL.
  * @param favoritesCount Number of favorite movies.
- * @param onSearchClick Opens movie search.
+ * @param isTvMode Whether the TV catalog is active.
+ * @param onMoviesClick Selects the YTS movie catalog.
+ * @param onTvClick Selects the TMDB TV catalog.
+ * @param onSearchClick Opens search in the selected catalog mode.
  * @param onFavoritesClick Opens movie favorites.
  * @param onSettingsClick Opens settings.
  * @param focusDownRequester First Home filter/mode focus target on TV.
@@ -567,7 +577,10 @@ private fun TvHomeContent(
 private fun HomeTopAppBar(
     userPhotoUrl: String?,
     favoritesCount: Int,
-    onSearchClick: () -> Unit,
+    isTvMode: Boolean,
+    onMoviesClick: () -> Unit,
+    onTvClick: () -> Unit,
+    onSearchClick: (isTvMode: Boolean) -> Unit,
     onFavoritesClick: () -> Unit,
     onSettingsClick: () -> Unit,
     focusDownRequester: FocusRequester,
@@ -594,7 +607,39 @@ private fun HomeTopAppBar(
         },
         actions = {
             IconButton(
-                onClick = onSearchClick,
+                onClick = onMoviesClick,
+                modifier = Modifier
+                    .focusHighlight(shape = CircleShape)
+                    .focusProperties { down = focusDownRequester }
+            ) {
+                Icon(
+                    Icons.Default.Movie,
+                    contentDescription = stringResource(R.string.home_mode_movies),
+                    tint = if (isTvMode) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    }
+                )
+            }
+            IconButton(
+                onClick = onTvClick,
+                modifier = Modifier
+                    .focusHighlight(shape = CircleShape)
+                    .focusProperties { down = focusDownRequester }
+            ) {
+                Icon(
+                    Icons.Default.Tv,
+                    contentDescription = stringResource(R.string.home_mode_tv),
+                    tint = if (isTvMode) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
+            IconButton(
+                onClick = { onSearchClick(isTvMode) },
                 modifier = Modifier
                     .focusHighlight(shape = CircleShape)
                     .focusProperties { down = focusDownRequester }

@@ -6,6 +6,7 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbTvPage
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.TmdbTvFeed
+import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -22,18 +23,20 @@ class TvCatalogViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val repository: TmdbRepository = mockk(relaxed = true)
+    private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
 
     /** Loads On The Air after TV mode activates and requests the selected optional feed. */
     @Test
     fun `tv home loads on the air by default and changes feed`() = runTest {
         every { repository.observeTvGenreUsage() } returns flowOf(emptyMap())
+        every { userLibraryRepository.getDownloadedEpisodes() } returns flowOf(emptyList())
         coEvery { repository.getTvGenres() } returns emptyList()
         coEvery { repository.getHomeTvFeed(any(), any()) } returns TmdbTvPage(
             totalPages = 1,
             results = listOf(TmdbTvSummary(id = 12, name = "Series"))
         )
 
-        val viewModel = TvHomeViewModel(repository)
+        val viewModel = TvHomeViewModel(repository, userLibraryRepository)
         viewModel.activate()
 
         assertThat(viewModel.selectedFeed.value).isEqualTo(TmdbTvFeed.ON_THE_AIR)
@@ -45,20 +48,56 @@ class TvCatalogViewModelTest {
         coVerify { repository.getHomeTvFeed(TmdbTvFeed.POPULAR, 1) }
     }
 
+    /** Appends the next API page once and keeps existing TV series without duplicates. */
+    @Test
+    fun `tv home pagination appends results and advances using API page numbers`() = runTest {
+        every { repository.observeTvGenreUsage() } returns flowOf(emptyMap())
+        every { userLibraryRepository.getDownloadedEpisodes() } returns flowOf(emptyList())
+        coEvery { repository.getTvGenres() } returns emptyList()
+        coEvery { repository.getHomeTvFeed(any(), any()) } returnsMany listOf(
+            TmdbTvPage(
+                page = 1,
+                totalPages = 2,
+                results = listOf(TmdbTvSummary(id = 12, name = "First"))
+            ),
+            TmdbTvPage(
+                page = 2,
+                totalPages = 2,
+                results = listOf(
+                    TmdbTvSummary(id = 12, name = "First"),
+                    TmdbTvSummary(id = 13, name = "Second")
+                )
+            )
+        )
+
+        val viewModel = TvHomeViewModel(repository, userLibraryRepository)
+        viewModel.activate()
+        viewModel.loadMore()
+
+        assertThat(
+            (viewModel.uiState.value as TvHomeUiState.Success).series.map { it.id }
+        ).containsExactly(12, 13).inOrder()
+        coVerify(exactly = 1) { repository.getHomeTvFeed(TmdbTvFeed.ON_THE_AIR, 1) }
+        coVerify(exactly = 1) { repository.getHomeTvFeed(TmdbTvFeed.ON_THE_AIR, 2) }
+    }
+
     /** Applies TMDB sorting and loads more pages for the selected TV genre. */
     @Test
     fun `tv genre results use the selected sort and page`() = runTest {
         coEvery { repository.getTvGenres() } returns listOf(TmdbTvGenre(id = 18, name = "Drama"))
         coEvery { repository.discoverTvByGenre(any(), any(), any()) } returnsMany listOf(
             TmdbTvPage(
+                page = 1,
                 totalPages = 2,
                 results = listOf(TmdbTvSummary(id = 1, name = "First"))
             ),
             TmdbTvPage(
+                page = 1,
                 totalPages = 2,
                 results = listOf(TmdbTvSummary(id = 2, name = "Second"))
             ),
             TmdbTvPage(
+                page = 2,
                 totalPages = 2,
                 results = listOf(TmdbTvSummary(id = 3, name = "Third"))
             )

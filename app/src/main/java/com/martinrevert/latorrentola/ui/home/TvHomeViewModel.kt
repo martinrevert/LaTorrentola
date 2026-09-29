@@ -104,6 +104,8 @@ class TvHomeViewModel @Inject constructor(
     private var feedJob: Job? = null
     /** Whether the TV catalogs have been requested during this ViewModel lifetime. */
     private var hasLoaded = false
+    /** Invalidates responses from canceled feed and refresh requests. */
+    private var requestGeneration = 0L
 
     /** Loads the TV feed and genre catalog when the user enters TV mode for the first time. */
     fun activate() {
@@ -124,7 +126,9 @@ class TvHomeViewModel @Inject constructor(
     /** Reloads the selected TV feed from its first page. */
     fun refresh(showIndicator: Boolean = false) {
         feedJob?.cancel()
-        isFetching = false
+        requestGeneration++
+        val generation = requestGeneration
+        isFetching = true
         currentPage = 1
         totalPages = 1
         allSeries.clear()
@@ -132,9 +136,11 @@ class TvHomeViewModel @Inject constructor(
         feedJob = viewModelScope.launch {
             _isRefreshing.value = showIndicator
             try {
-                loadNextPage()
+                loadNextPage(generation)
             } finally {
-                _isRefreshing.value = false
+                if (generation == requestGeneration) {
+                    _isRefreshing.value = false
+                }
             }
         }
     }
@@ -142,7 +148,8 @@ class TvHomeViewModel @Inject constructor(
     /** Loads another page when the currently selected TV feed has more results. */
     fun loadMore() {
         if (isFetching || currentPage > totalPages) return
-        feedJob = viewModelScope.launch { loadNextPage() }
+        isFetching = true
+        feedJob = viewModelScope.launch { loadNextPage(requestGeneration) }
     }
 
     /** Records a genre visit before opening its TV results. */
@@ -177,31 +184,34 @@ class TvHomeViewModel @Inject constructor(
     }
 
     /** Appends the next page for the currently selected TV feed. */
-    private suspend fun loadNextPage() {
-        if (isFetching || currentPage > totalPages) return
-        isFetching = true
-        if (currentPage > 1) _isLoadingMore.value = true
+    private suspend fun loadNextPage(generation: Long) {
+        if (generation != requestGeneration) return
+        val requestedPage = currentPage
+        if (requestedPage > 1) _isLoadingMore.value = true
         try {
-            val page = tmdbRepository.getHomeTvFeed(_selectedFeed.value, currentPage)
-            totalPages = page.totalPages.coerceAtLeast(currentPage)
+            val page = tmdbRepository.getHomeTvFeed(_selectedFeed.value, requestedPage)
+            if (generation != requestGeneration) return
+            totalPages = page.totalPages.coerceAtLeast(page.page)
             allSeries.addAll(page.results.filterNot { candidate ->
                 allSeries.any { it.id == candidate.id }
             })
-            currentPage++
+            currentPage = page.page + 1
             if (allSeries.isEmpty()) {
                 _uiState.value = TvHomeUiState.Error(UiText.StringResource(R.string.tv_no_results))
             } else {
                 _uiState.value = TvHomeUiState.Success(allSeries.toList())
             }
         } catch (e: Exception) {
-            if (e !is CancellationException && allSeries.isEmpty()) {
+            if (generation == requestGeneration && e !is CancellationException && allSeries.isEmpty()) {
                 _uiState.value = TvHomeUiState.Error(
                     UiText.DynamicString(e.localizedMessage ?: "Unable to load TV series")
                 )
             }
         } finally {
-            isFetching = false
-            _isLoadingMore.value = false
+            if (generation == requestGeneration) {
+                isFetching = false
+                _isLoadingMore.value = false
+            }
         }
     }
 }

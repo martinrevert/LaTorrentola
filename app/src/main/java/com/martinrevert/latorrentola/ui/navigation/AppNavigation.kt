@@ -55,8 +55,13 @@ sealed interface Route : NavKey {
      *
      * @property genre Genre or collection key used to initialize the result list.
      * @property query Initial search text.
+     * @property isTvMode Whether search opens in TV series mode.
      */
-    @Serializable data class Search(val genre: String? = null, val query: String? = null) : Route
+    @Serializable data class Search(
+        val genre: String? = null,
+        val query: String? = null,
+        val isTvMode: Boolean = false
+    ) : Route
     /**
      * TV genre discovery destination.
      *
@@ -157,7 +162,9 @@ fun AppNavigation(
                         backStack.add(Route.TvDetail(series.id))
                     },
                     onSettingsClick = { backStack.add(Route.Settings) },
-                    onSearchClick = { backStack.add(Route.Search()) },
+                    onSearchClick = { isTvMode ->
+                        backStack.add(Route.Search(isTvMode = isTvMode))
+                    },
                     onFavoritesClick = { backStack.add(Route.Search("milista")) },
                     onGenreClick = { genre ->
                         backStack.add(Route.Search(genre))
@@ -203,6 +210,7 @@ fun AppNavigation(
                     viewModel = viewModel,
                     initialGenre = searchKey.genre,
                     initialQuery = searchKey.query,
+                    initialTvMode = searchKey.isTvMode,
                     onMovieClick = { movie ->
                         val movieJson = Json.encodeToString(Movie.serializer(), movie)
                         backStack.add(Route.Detail(movieJson = movieJson))

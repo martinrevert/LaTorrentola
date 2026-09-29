@@ -62,12 +62,23 @@ import dev.chrisbanes.haze.glass.hazeGlass
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
-/** Connects search fields, collection modes, and result actions to the search view model. */
+/**
+ * Connects search fields, collection modes, and result actions to the search view model.
+ *
+ * @param viewModel Search state and catalog actions.
+ * @param initialGenre Optional movie collection or genre to display.
+ * @param initialQuery Optional initial text query.
+ * @param initialTvMode Whether search should initially use the TV series catalog.
+ * @param onMovieClick Opens a selected movie.
+ * @param onTvSeriesClick Opens a selected TV series.
+ * @param onBackClick Returns to the previous screen.
+ */
 @Composable
 fun SearchScreen(
     viewModel: SearchViewModel,
     initialGenre: String? = null,
     initialQuery: String? = null,
+    initialTvMode: Boolean = false,
     onMovieClick: (Movie) -> Unit,
     onTvSeriesClick: (TmdbTvSummary) -> Unit = {},
     onBackClick: () -> Unit
@@ -108,8 +119,9 @@ fun SearchScreen(
         }
     }
 
-    LaunchedEffect(initialGenre, initialQuery) {
+    LaunchedEffect(initialGenre, initialQuery, initialTvMode) {
         viewModel.clearSelection()
+        viewModel.setTvMode(initialTvMode && initialGenre == null)
         isShowingFavorites = initialGenre == "milista"
         isShowingDownloads = initialGenre == "ya_vistas"
         isShowingNew = initialGenre == "nuevas"

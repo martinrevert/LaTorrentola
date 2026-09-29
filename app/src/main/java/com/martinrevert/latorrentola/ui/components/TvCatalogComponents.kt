@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -127,11 +128,19 @@ fun HomeMediaModeChips(
     }
 }
 
-/** Shows TMDB TV feed selectors. */
+/**
+ * Shows TMDB TV feed selectors.
+ *
+ * @param selectedFeed Currently active feed.
+ * @param onFeedClick Selects a feed.
+ * @param firstFocusRequester Optional D-pad entry target for the app-bar actions.
+ * @param modifier Modifier applied to the row.
+ */
 @Composable
 fun TvFeedChips(
     selectedFeed: TmdbTvFeed,
     onFeedClick: (TmdbTvFeed) -> Unit,
+    firstFocusRequester: FocusRequester? = null,
     modifier: Modifier = Modifier
 ) {
     val feeds = listOf(
@@ -152,7 +161,10 @@ fun TvFeedChips(
             AdaptiveChip(
                 selected = selectedFeed == feed,
                 onClick = { onFeedClick(feed) },
-                label = { Text(stringResource(labelId)) }
+                label = { Text(stringResource(labelId)) },
+                modifier = if (feed == feeds.first().first) {
+                    firstFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
+                } else Modifier
             )
         }
     }
@@ -301,6 +313,7 @@ fun TvSeriesGrid(
     val isTv = remember(context) { context.isTvDevice() }
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val genreNames = remember(genres) { genres.associate { it.id to it.name } }
+    val currentSeries by rememberUpdatedState(series)
     val columns = when {
         isTv -> GridCells.Fixed(6)
         screenWidth < 600.dp -> GridCells.Fixed(2)
@@ -340,10 +353,12 @@ fun TvSeriesGrid(
         }
     }
 
-    LaunchedEffect(initialFocusId, series) {
+    LaunchedEffect(initialFocusId) {
         if (initialFocusId != null) {
-            snapshotFlow { series }.first { items -> items.any { it.id == initialFocusId } }
-            val index = series.indexOfFirst { it.id == initialFocusId }
+            val restoredSeries = snapshotFlow { currentSeries }.first { items ->
+                items.any { it.id == initialFocusId }
+            }
+            val index = restoredSeries.indexOfFirst { it.id == initialFocusId }
             if (index >= 0) state.scrollToItem(index)
         }
     }

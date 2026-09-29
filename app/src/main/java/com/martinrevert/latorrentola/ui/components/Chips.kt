@@ -16,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -157,13 +159,22 @@ fun QualityChips(
     }
 }
 
-/** Displays horizontally scrolling genre and movie-collection filters. */
+/**
+ * Displays horizontally scrolling genre and movie-collection filters.
+ *
+ * @param genres Available movie genres.
+ * @param onGenreClick Opens the selected genre or movie collection.
+ * @param onAllGenresClick Opens the complete genre selector.
+ * @param firstFocusRequester Optional D-pad entry focus target.
+ * @param modifier Modifier applied to the horizontal row.
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun GenreChips(
     genres: List<String>,
     onGenreClick: (String) -> Unit,
     onAllGenresClick: () -> Unit,
+    firstFocusRequester: FocusRequester? = null,
     modifier: Modifier = Modifier
 ) {
     LazyRow(
@@ -179,6 +190,7 @@ fun GenreChips(
                 selected = false,
                 onClick = onAllGenresClick,
                 label = { Text(stringResource(R.string.all_genres)) },
+                modifier = firstFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier,
                 leadingIcon = {
                     Icon(
                         Icons.Default.FilterList,

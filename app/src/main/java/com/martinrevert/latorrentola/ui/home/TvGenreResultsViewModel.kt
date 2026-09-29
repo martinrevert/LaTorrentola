@@ -86,6 +86,8 @@ class TvGenreResultsViewModel @Inject constructor(
     private val allSeries = mutableListOf<TmdbTvSummary>()
     /** Current request, canceled when genre or sort changes. */
     private var requestJob: Job? = null
+    /** Invalidates results from canceled requests. */
+    private var requestGeneration = 0L
 
     init {
         viewModelScope.launch {
@@ -122,49 +124,62 @@ class TvGenreResultsViewModel @Inject constructor(
     /** Requests another page of the selected genre and sort. */
     fun loadMore() {
         if (isFetching || currentPage > totalPages || genreId == null) return
-        requestJob = viewModelScope.launch { loadNextPage() }
+        isFetching = true
+        requestJob = viewModelScope.launch {
+            loadNextPage(genreId, requestGeneration)
+        }
     }
 
     /** Cancels the previous query and reloads page one with the current filters. */
     private fun refresh() {
         val selectedGenre = genreId ?: return
         requestJob?.cancel()
-        isFetching = false
+        requestGeneration++
+        val generation = requestGeneration
+        isFetching = true
         currentPage = 1
         totalPages = 1
         allSeries.clear()
         _uiState.value = TvGenreResultsUiState.Loading
-        requestJob = viewModelScope.launch { loadNextPage(selectedGenre) }
+        requestJob = viewModelScope.launch { loadNextPage(selectedGenre, generation) }
     }
 
-    /** Appends the next discovery page for [selectedGenre]. */
-    private suspend fun loadNextPage(selectedGenre: Int? = genreId) {
+    /**
+     * Appends the next discovery page for [selectedGenre] if [generation] is still current.
+     *
+     * @param selectedGenre TMDB genre ID whose results are being loaded.
+     * @param generation Request generation used to reject stale responses.
+     */
+    private suspend fun loadNextPage(selectedGenre: Int?, generation: Long) {
         val requestedGenreId = selectedGenre ?: return
-        if (isFetching || currentPage > totalPages) return
-        isFetching = true
-        if (currentPage > 1) _isLoadingMore.value = true
+        if (generation != requestGeneration) return
+        val requestedPage = currentPage
+        if (requestedPage > 1) _isLoadingMore.value = true
         try {
             val sortBy = "${_sort.value.apiField}.${if (_descending.value) "desc" else "asc"}"
-            val page = tmdbRepository.discoverTvByGenre(requestedGenreId, sortBy, currentPage)
-            totalPages = page.totalPages.coerceAtLeast(currentPage)
+            val page = tmdbRepository.discoverTvByGenre(requestedGenreId, sortBy, requestedPage)
+            if (generation != requestGeneration) return
+            totalPages = page.totalPages.coerceAtLeast(page.page)
             allSeries.addAll(page.results.filterNot { candidate ->
                 allSeries.any { it.id == candidate.id }
             })
-            currentPage++
+            currentPage = page.page + 1
             _uiState.value = if (allSeries.isEmpty()) {
                 TvGenreResultsUiState.Error(UiText.StringResource(R.string.tv_no_results))
             } else {
                 TvGenreResultsUiState.Success(allSeries.toList())
             }
         } catch (e: Exception) {
-            if (e !is CancellationException && allSeries.isEmpty()) {
+            if (generation == requestGeneration && e !is CancellationException && allSeries.isEmpty()) {
                 _uiState.value = TvGenreResultsUiState.Error(
                     UiText.DynamicString(e.localizedMessage ?: "Unable to load TV genre results")
                 )
             }
         } finally {
-            isFetching = false
-            _isLoadingMore.value = false
+            if (generation == requestGeneration) {
+                isFetching = false
+                _isLoadingMore.value = false
+            }
         }
     }
 }
