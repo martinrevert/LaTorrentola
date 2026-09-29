@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -20,22 +21,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.IconButton as TvIconButton
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.TvGenreSortChips
 import com.martinrevert.latorrentola.ui.components.TvSeriesGrid
-import com.martinrevert.latorrentola.utils.isTvDevice
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.runtime.remember
+import com.martinrevert.latorrentola.ui.theme.focusHighlight
 
 /**
  * Presents paginated TMDB series results for one selected TV genre.
@@ -44,9 +42,9 @@ import androidx.compose.runtime.remember
  * @param genreId TMDB TV genre identifier.
  * @param genreName Localized TV genre label.
  * @param onSeriesClick Opens TV series details.
- * @param onBackClick Returns to the previous destination.
+ * @param onBackClick Returns to the previous destination using the shared circular focus indicator.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TvGenreResultsScreen(
     viewModel: TvGenreResultsViewModel,
@@ -63,8 +61,6 @@ fun TvGenreResultsScreen(
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val gridState = rememberLazyGridState()
     val sortFocusRequester = remember { FocusRequester() }
-    val context = LocalContext.current
-    val isTv = remember(context) { context.isTvDevice() }
 
     LaunchedEffect(genreId) { viewModel.setGenre(genreId) }
     LaunchedEffect(genreId, selectedSort, descending) {
@@ -81,26 +77,16 @@ fun TvGenreResultsScreen(
                     )
                 },
                 navigationIcon = {
-                    if (isTv) {
-                        TvIconButton(
-                            onClick = onBackClick,
-                            modifier = Modifier.focusProperties { down = sortFocusRequester }
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.back_desc)
-                            )
-                        }
-                    } else {
-                        IconButton(
-                            onClick = onBackClick,
-                            modifier = Modifier.focusProperties { down = sortFocusRequester }
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.back_desc)
-                            )
-                        }
+                    IconButton(
+                        onClick = onBackClick,
+                        modifier = Modifier
+                            .focusHighlight(shape = CircleShape)
+                            .focusProperties { down = sortFocusRequester }
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back_desc)
+                        )
                     }
                 }
             )

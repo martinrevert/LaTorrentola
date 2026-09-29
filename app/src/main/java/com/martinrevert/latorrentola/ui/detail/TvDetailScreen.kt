@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,8 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -88,7 +91,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.tv.material3.IconButton as TvIconButton
 import androidx.tv.material3.Surface as TvSurface
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
@@ -167,40 +169,34 @@ fun TvDetailScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = if (!isTv) topBarContainerColor else MaterialTheme.colorScheme.surface),
                 title = { Text(stringResource(R.string.tv_details_title)) },
                 navigationIcon = {
-                    if (isTv) {
-                        TvIconButton(
-                            onClick = onBackClick,
-                            modifier = if (firstContentFocusRequester != null) {
-                                Modifier
-                                    .focusProperties { down = firstContentFocusRequester }
-                                    .onPreviewKeyEvent { event ->
-                                        if (
-                                            isTv &&
-                                            event.type == KeyEventType.KeyDown &&
-                                            event.key == Key.DirectionDown
-                                        ) {
-                                            firstContentFocusRequester.requestFocus()
-                                            true
-                                        } else {
-                                            false
+                    IconButton(
+                        onClick = onBackClick,
+                        modifier = Modifier
+                            .focusHighlight(shape = CircleShape)
+                            .then(
+                                if (isTv && firstContentFocusRequester != null) {
+                                    Modifier
+                                        .focusProperties { down = firstContentFocusRequester }
+                                        .onPreviewKeyEvent { event ->
+                                            if (
+                                                event.type == KeyEventType.KeyDown &&
+                                                event.key == Key.DirectionDown
+                                            ) {
+                                                firstContentFocusRequester.requestFocus()
+                                                true
+                                            } else {
+                                                false
+                                            }
                                         }
-                                    }
-                            } else Modifier
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.back_desc)
+                                } else {
+                                    Modifier
+                                }
                             )
-                        }
-                    } else {
-                        IconButton(
-                            onClick = onBackClick
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.back_desc)
-                            )
-                        }
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back_desc)
+                        )
                     }
                 },
                 actions = {
@@ -220,7 +216,14 @@ fun TvDetailScreen(
                                     putExtra(Intent.EXTRA_TEXT, shareText)
                                 }
                                 context.startActivity(Intent.createChooser(shareIntent, resources.getString(R.string.share_movie_chooser)))
-                            }
+                            },
+                            modifier = Modifier
+                                .focusHighlight(shape = CircleShape)
+                                .then(
+                                    if (isTv && firstContentFocusRequester != null) {
+                                        Modifier.focusProperties { down = firstContentFocusRequester }
+                                    } else Modifier
+                                )
                         ) {
                             Icon(
                                 Icons.Default.Share,
@@ -513,7 +516,7 @@ private fun TvDetailContent(
 }
 
 /**
- * Displays a cast member as a TV-native focus target or a themed phone card.
+ * Displays a cast member using the same circular portrait and focus treatment as movie cast cards.
  *
  * @param name Cast member name.
  * @param character Character played by the cast member.
@@ -532,6 +535,8 @@ private fun TvCastMember(
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
     val content: @Composable () -> Unit = {
         Column(
             modifier = Modifier
@@ -553,29 +558,44 @@ private fun TvCastMember(
             )
             Text(
                 name,
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center
             )
-            Text(
-                character,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
+            if (!isTv) {
+                Text(
+                    character,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 
     if (isTv) {
         TvSurface(
             onClick = onClick,
-            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
-            shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+            shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = Color.Transparent,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+            interactionSource = interactionSource,
             modifier = modifier
+                .width(90.dp)
+                .padding(4.dp)
+                .border(
+                    width = if (isFocused) 2.dp else 0.dp,
+                    color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    shape = MaterialTheme.shapes.small
+                )
         ) {
             content()
         }

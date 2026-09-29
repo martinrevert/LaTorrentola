@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -50,9 +51,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.tv.material3.IconButton as TvIconButton
+import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface as TvSurface
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
@@ -72,7 +72,7 @@ import java.net.URLEncoder
  * @param episodeNumber Episode number within season.
  * @param seriesName Series display name.
  * @param episodeJson Serialized [TmdbTvEpisode] payload when available.
- * @param onBackClick Navigation callback to return to previous screen.
+ * @param onBackClick Navigation callback to return to previous screen with the shared circular focus indicator.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
 @Composable
@@ -105,30 +105,22 @@ fun TvEpisodeDetailScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.tv_episode_details_title)) },
                 navigationIcon = {
-                    if (isTv) {
-                        TvIconButton(
-                            onClick = onBackClick,
-                            modifier = if (uiState is TvEpisodeDetailUiState.Success) {
-                                Modifier.focusProperties { down = contentFocusRequester }
-                            } else Modifier
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.back_desc)
+                    IconButton(
+                        onClick = onBackClick,
+                        modifier = Modifier
+                            .focusHighlight(shape = CircleShape)
+                            .then(
+                                if (uiState is TvEpisodeDetailUiState.Success) {
+                                    Modifier.focusProperties { down = contentFocusRequester }
+                                } else {
+                                    Modifier
+                                }
                             )
-                        }
-                    } else {
-                        IconButton(
-                            onClick = onBackClick,
-                            modifier = if (uiState is TvEpisodeDetailUiState.Success) {
-                                Modifier.focusProperties { down = contentFocusRequester }
-                            } else Modifier
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.back_desc)
-                            )
-                        }
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back_desc)
+                        )
                     }
                 }
             )
