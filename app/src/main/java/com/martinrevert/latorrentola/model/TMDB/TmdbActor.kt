@@ -132,6 +132,7 @@ data class TmdbCreditsResponse(
  * @property releaseDate Movie release date.
  * @property firstAirDate Television first-air date.
  * @property voteAverage TMDB average user rating.
+ * @property mediaType TMDB media type, such as `movie` or `tv`.
  */
 @Serializable
 data class TmdbCastCredit(
@@ -165,7 +166,11 @@ data class TmdbCastCredit(
 
     @SerializedName("vote_average")
     @SerialName("vote_average")
-    val voteAverage: Double? = null
+    val voteAverage: Double? = null,
+
+    @SerializedName("media_type")
+    @SerialName("media_type")
+    val mediaType: String? = null
 ) {
     /** Best available display title, preferring the movie title to the TV name. */
     val displayTitle: String

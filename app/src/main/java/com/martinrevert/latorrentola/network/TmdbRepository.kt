@@ -41,8 +41,7 @@ class TmdbRepository @Inject constructor(
 
             val searchResponse = tmdbService.searchPerson(
                 apiKey = apiKey,
-                query = actorName,
-                language = "es-ES"
+                query = actorName
             )
 
             val personId = searchResponse.results?.firstOrNull()?.id
@@ -70,8 +69,7 @@ class TmdbRepository @Inject constructor(
                 tmdbService.getPersonDetail(
                     personId = personId,
                     apiKey = apiKey,
-                    appendToResponse = "combined_credits",
-                    language = "es-ES"
+                    appendToResponse = "combined_credits"
                 )
             )
         } catch (e: Exception) {

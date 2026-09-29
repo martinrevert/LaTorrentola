@@ -79,7 +79,9 @@ class TvDetailViewModel @Inject constructor(
             try {
                 val series = tmdbRepository.getTvDetails(seriesId)
                 _uiState.value = TvDetailUiState.Success(series)
-                val initialSeason = series.seasons.firstOrNull { it.seasonNumber > 0 }
+                val initialSeason = series.seasons
+                    .filter { it.seasonNumber > 0 }
+                    .maxByOrNull { it.seasonNumber }
                     ?: series.seasons.firstOrNull()
                 if (initialSeason != null) selectSeason(initialSeason)
                 else _seasonState.value = TvSeasonUiState.Error("No seasons available")

@@ -59,6 +59,7 @@ import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.options.IFram
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
+import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.Torrent
 import com.martinrevert.latorrentola.model.YTS.Cast
@@ -83,11 +84,18 @@ import com.martinrevert.latorrentola.utils.UiText
 import com.martinrevert.latorrentola.utils.IntentAppsFinder
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
-/** Connects movie detail state and user actions to the detail presentation. */
+/**
+ * Connects movie detail state and user actions to the detail presentation.
+ *
+ * @param viewModel Movie details and actor lookup state.
+ * @param onBackClick Returns to the previous destination.
+ * @param onTvSeriesClick Opens a TV series selected from actor filmography.
+ */
 @Composable
 fun MovieDetailScreen(
     viewModel: DetailViewModel,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onTvSeriesClick: (Int) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val downloadedHashes by viewModel.downloadedHashes.collectAsState()
@@ -150,16 +158,24 @@ fun MovieDetailScreen(
             showActorSheet = false
             viewModel.clearSelectedActor()
         },
-        onActorMovieClick = { tmdbMovieId, fallbackTitle ->
+        onActorCreditClick = { credit ->
             showActorSheet = false
             viewModel.clearSelectedActor()
-            viewModel.fetchAndOpenMovieByTmdbId(tmdbMovieId, fallbackTitle)
+            if (credit.mediaType == "tv") {
+                onTvSeriesClick(credit.id)
+            } else {
+                viewModel.fetchAndOpenMovieByTmdbId(credit.id, credit.displayTitle)
+            }
         }
     )
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
-/** Hosts the responsive detail screen, including app-bar and actor-sheet state. */
+/**
+ * Hosts the responsive detail screen, including app-bar and actor-sheet state.
+ *
+ * @param onActorCreditClick Opens the selected movie or TV credit.
+ */
 @Composable
 private fun MovieDetailScreenContent(
     uiState: DetailUiState,
@@ -177,7 +193,7 @@ private fun MovieDetailScreenContent(
     onAddLanguageToFilter: (String) -> Unit,
     onCastClick: (String) -> Unit,
     onDismissActorSheet: () -> Unit,
-    onActorMovieClick: (tmdbMovieId: Int, fallbackTitle: String) -> Unit
+    onActorCreditClick: (TmdbCastCredit) -> Unit
 ) {
     val hazeState = rememberHazeState()
     val isInspection = LocalInspectionMode.current
@@ -288,7 +304,7 @@ private fun MovieDetailScreenContent(
             onDismiss = onDismissActorSheet,
             sheetState = actorSheetState,
             hazeState = hazeState,
-            onMovieClick = onActorMovieClick
+            onCreditClick = onActorCreditClick
         )
     }
 }
@@ -846,7 +862,7 @@ fun MovieDetailScreenTvPreview() {
             onAddLanguageToFilter = {},
             onCastClick = {},
             onDismissActorSheet = {},
-            onActorMovieClick = { _, _ -> }
+            onActorCreditClick = { _ -> }
         )
     }
 }
@@ -893,7 +909,7 @@ fun MovieDetailScreenPreview() {
             onAddLanguageToFilter = {},
             onCastClick = {},
             onDismissActorSheet = {},
-            onActorMovieClick = { _, _ -> }
+            onActorCreditClick = { _ -> }
         )
     }
 }
@@ -941,7 +957,7 @@ fun MovieDetailScreenTabletPreview() {
             onAddLanguageToFilter = {},
             onCastClick = {},
             onDismissActorSheet = {},
-            onActorMovieClick = { _, _ -> }
+            onActorCreditClick = { _ -> }
         )
     }
 }

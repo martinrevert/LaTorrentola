@@ -91,6 +91,14 @@
     <string name="tv_details_unavailable">Series details are unavailable.</string>
     <string name="tv_cast">Cast</string>
     <string name="tv_series_status">Status: %1$s</string>
+    <string name="filmography_type_movie">Movie</string>
+    <string name="filmography_type_tv">TV show</string>
+    <string name="filmography_metadata">%1$s · %2$s</string>
+    <string name="actor_birthday">Born</string>
+    <string name="actor_deathday">Died</string>
+    <string name="actor_place_of_birth">Place of birth</string>
+    <string name="actor_known_for">Known for</string>
+    <string name="actor_detail_value">%1$s: %2$s</string>
     <string name="tv_episode_runtime">%1$d min</string>
     <string name="tv_episode_number">Episode %1$d</string>
     <string name="tv_episode_details_title">Episode details</string>

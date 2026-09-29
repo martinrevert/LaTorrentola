@@ -2,6 +2,8 @@ package com.martinrevert.latorrentola.ui.detail
 
 import android.content.Intent
 import android.os.Build
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -64,6 +67,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -76,7 +80,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -88,6 +95,7 @@ import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeason
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
 import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.ui.components.AdaptiveChip
 import com.martinrevert.latorrentola.ui.components.ActorDetailBottomSheet
@@ -103,6 +111,7 @@ import java.util.Locale
  * @param seriesId TMDB TV series identifier.
  * @param onEpisodeClick Triggers navigation to detail screen for a selected episode.
  * @param onBackClick Returns to the previous destination.
+ * @param onFilmographyCreditClick Opens the selected movie or series from actor filmography.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
 @Composable
@@ -110,7 +119,8 @@ fun TvDetailScreen(
     viewModel: TvDetailViewModel,
     seriesId: Int,
     onEpisodeClick: (seriesName: String, episode: TmdbTvEpisode) -> Unit = { _, _ -> },
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onFilmographyCreditClick: (TmdbCastCredit) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val selectedSeason by viewModel.selectedSeason.collectAsState()
@@ -279,7 +289,12 @@ fun TvDetailScreen(
                 showActorSheet = false
                 viewModel.clearSelectedActor()
             },
-            sheetState = actorSheetState
+            sheetState = actorSheetState,
+            onCreditClick = { credit ->
+                showActorSheet = false
+                viewModel.clearSelectedActor()
+                onFilmographyCreditClick(credit)
+            }
         )
     }
 }
@@ -315,6 +330,12 @@ private fun TvDetailContent(
     val isTv = remember(context) { context.isTvDevice() }
     val isWide = LocalConfiguration.current.screenWidthDp >= 600 || isTv
     val cast = series.aggregateCredits?.cast.orEmpty()
+    val orderedSeasons = remember(series.seasons) {
+        series.seasons.sortedWith(
+            compareBy<TmdbTvSeason> { it.seasonNumber == 0 }
+                .thenByDescending { it.seasonNumber }
+        )
+    }
 
     // Downloaded episodes for active series
     val seriesDownloads = remember(downloadedEpisodes, series.id) {
@@ -379,7 +400,7 @@ private fun TvDetailContent(
                 }
             }
         }
-        if (series.seasons.isNotEmpty()) {
+        if (orderedSeasons.isNotEmpty()) {
             Text(
                 stringResource(R.string.tv_seasons),
                 style = MaterialTheme.typography.titleLarge,
@@ -391,7 +412,7 @@ private fun TvDetailContent(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                series.seasons.forEach { season ->
+                orderedSeasons.forEach { season ->
                     val baseName = season.name ?: stringResource(
                         R.string.tv_season_number,
                         season.seasonNumber
@@ -415,7 +436,7 @@ private fun TvDetailContent(
                         label = { Text(statusLabel) },
                         modifier = if (
                             season.seasonNumber == selectedSeasonNumber ||
-                            (selectedSeasonNumber == null && season == series.seasons.first())
+                            (selectedSeasonNumber == null && season == orderedSeasons.first())
                         ) {
                             Modifier
                                 .focusRequester(contentFocusRequester)
@@ -514,29 +535,37 @@ private fun TvCastMember(
     val content: @Composable () -> Unit = {
         Column(
             modifier = Modifier
-                .width(112.dp)
-                .padding(8.dp),
+                .width(90.dp)
+                .padding(6.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             AsyncImage(
                 model = profileUrl,
                 contentDescription = name,
                 modifier = Modifier
-                    .size(88.dp)
-                    .aspectRatio(1f),
+                    .size(60.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                placeholder = painterResource(R.drawable.ic_launcher_foreground),
+                error = painterResource(R.drawable.ic_launcher_foreground),
+                fallback = painterResource(R.drawable.ic_launcher_foreground),
                 contentScale = ContentScale.Crop
             )
             Text(
                 name,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
             )
             Text(
                 character,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
             )
         }
     }
@@ -551,11 +580,43 @@ private fun TvCastMember(
             content()
         }
     } else {
-        Card(
-            onClick = onClick,
-            modifier = modifier.focusHighlight(shape = MaterialTheme.shapes.medium)
+        Column(
+            modifier = modifier
+                .width(80.dp)
+                .clip(MaterialTheme.shapes.small)
+                .clickable(onClick = onClick),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            content()
+            AsyncImage(
+                model = profileUrl,
+                contentDescription = name,
+                modifier = Modifier
+                    .size(70.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                placeholder = painterResource(R.drawable.ic_launcher_foreground),
+                error = painterResource(R.drawable.ic_launcher_foreground),
+                fallback = painterResource(R.drawable.ic_launcher_foreground),
+                contentScale = ContentScale.Crop
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                name,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                character,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }

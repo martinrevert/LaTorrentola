@@ -25,6 +25,7 @@ import com.martinrevert.latorrentola.ui.search.SearchViewModel
 import com.martinrevert.latorrentola.ui.settings.SettingsScreen
 import com.martinrevert.latorrentola.ui.settings.SettingsViewModel
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
+import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
 import com.martinrevert.latorrentola.model.YTS.Movie
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -42,11 +43,15 @@ sealed interface Route : NavKey {
      * @property movieJson Serialized YTS movie payload, when supplied.
      * @property movieId YTS movie identifier, when supplied.
      * @property query Search term such as an IMDb title identifier.
+     * @property tmdbMovieId TMDB movie identifier for actor filmography navigation.
+     * @property tmdbMovieTitle Fallback title used to find the movie in YTS.
      */
     @Serializable data class Detail(
         val movieJson: String? = null, 
         val movieId: Int? = null,
-        val query: String? = null
+        val query: String? = null,
+        val tmdbMovieId: Int? = null,
+        val tmdbMovieTitle: String? = null
     ) : Route
     /** User settings destination. */
     @Serializable object Settings : Route
@@ -184,9 +189,18 @@ fun AppNavigation(
                         viewModel.setMovieById(it)
                     } ?: detailKey.query?.let {
                         viewModel.setMovieByQuery(it)
+                    } ?: detailKey.tmdbMovieId?.let { tmdbMovieId ->
+                        viewModel.fetchAndOpenMovieByTmdbId(
+                            tmdbMovieId,
+                            detailKey.tmdbMovieTitle.orEmpty()
+                        )
                     }
                 }
-                MovieDetailScreen(viewModel = viewModel, onBackClick = { backStack.removeLastOrNull() })
+                MovieDetailScreen(
+                    viewModel = viewModel,
+                    onBackClick = { backStack.removeLastOrNull() },
+                    onTvSeriesClick = { backStack.add(Route.TvDetail(it)) }
+                )
             }
             entry<Route.Settings> {
                 val viewModel: SettingsViewModel = hiltViewModel()
@@ -254,7 +268,19 @@ fun AppNavigation(
                             )
                         )
                     },
-                    onBackClick = { backStack.removeLastOrNull() }
+                    onBackClick = { backStack.removeLastOrNull() },
+                    onFilmographyCreditClick = { credit: TmdbCastCredit ->
+                        if (credit.mediaType == "tv") {
+                            backStack.add(Route.TvDetail(credit.id))
+                        } else {
+                            backStack.add(
+                                Route.Detail(
+                                    tmdbMovieId = credit.id,
+                                    tmdbMovieTitle = credit.displayTitle
+                                )
+                            )
+                        }
+                    }
                 )
             }
             entry<Route.TvEpisodeDetail> { episodeKey ->

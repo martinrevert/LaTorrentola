@@ -91,6 +91,14 @@
     <string name="tv_details_unavailable">Los detalles de la serie no están disponibles.</string>
     <string name="tv_cast">Reparto</string>
     <string name="tv_series_status">Estado: %1$s</string>
+    <string name="filmography_type_movie">Película</string>
+    <string name="filmography_type_tv">Serie de TV</string>
+    <string name="filmography_metadata">%1$s · %2$s</string>
+    <string name="actor_birthday">Nacimiento</string>
+    <string name="actor_deathday">Fallecimiento</string>
+    <string name="actor_place_of_birth">Lugar de nacimiento</string>
+    <string name="actor_known_for">Conocido por</string>
+    <string name="actor_detail_value">%1$s: %2$s</string>
     <string name="tv_episode_runtime">%1$d min</string>
     <string name="tv_episode_number">Episodio %1$d</string>
     <string name="tv_episode_details_title">Detalles del episodio</string>

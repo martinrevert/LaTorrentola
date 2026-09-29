@@ -19,7 +19,7 @@ interface TmdbService {
     suspend fun searchPerson(
         @Query("api_key") apiKey: String,
         @Query("query") query: String,
-        @Query("language") language: String = "es-ES"
+        @Query("language") language: String = TmdbLanguage.current()
     ): TmdbSearchPersonResponse
 
     /** Searches TMDB for TV series matching [query]. */
@@ -28,7 +28,7 @@ interface TmdbService {
         @Query("api_key") apiKey: String,
         @Query("query") query: String,
         @Query("page") page: Int = 1,
-        @Query("language") language: String = "es-ES"
+        @Query("language") language: String = TmdbLanguage.current()
     ): TmdbTvPage
 
     /** Retrieves a person's details and requested appended response data. */
@@ -37,7 +37,7 @@ interface TmdbService {
         @Path("person_id") personId: Int,
         @Query("api_key") apiKey: String,
         @Query("append_to_response") appendToResponse: String = "combined_credits",
-        @Query("language") language: String = "es-ES"
+        @Query("language") language: String = TmdbLanguage.current()
     ): TmdbActorDetail
 
     /** Retrieves external identifiers associated with a TMDB movie. */
@@ -52,7 +52,7 @@ interface TmdbService {
     suspend fun getOnTheAirTv(
         @Query("api_key") apiKey: String,
         @Query("page") page: Int,
-        @Query("language") language: String = "es-ES"
+        @Query("language") language: String = TmdbLanguage.current()
     ): TmdbTvPage
 
     /** Retrieves a page of series airing today. */
@@ -60,7 +60,7 @@ interface TmdbService {
     suspend fun getAiringTodayTv(
         @Query("api_key") apiKey: String,
         @Query("page") page: Int,
-        @Query("language") language: String = "es-ES"
+        @Query("language") language: String = TmdbLanguage.current()
     ): TmdbTvPage
 
     /** Retrieves a page of series ordered by popularity. */
@@ -68,7 +68,7 @@ interface TmdbService {
     suspend fun getPopularTv(
         @Query("api_key") apiKey: String,
         @Query("page") page: Int,
-        @Query("language") language: String = "es-ES"
+        @Query("language") language: String = TmdbLanguage.current()
     ): TmdbTvPage
 
     /** Retrieves a page of series ordered by TMDB rating. */
@@ -76,14 +76,14 @@ interface TmdbService {
     suspend fun getTopRatedTv(
         @Query("api_key") apiKey: String,
         @Query("page") page: Int,
-        @Query("language") language: String = "es-ES"
+        @Query("language") language: String = TmdbLanguage.current()
     ): TmdbTvPage
 
     /** Retrieves the available television genres. */
     @GET("genre/tv/list")
     suspend fun getTvGenres(
         @Query("api_key") apiKey: String,
-        @Query("language") language: String = "es-ES"
+        @Query("language") language: String = TmdbLanguage.current()
     ): TmdbTvGenrePage
 
     /** Retrieves a sorted page of TV series matching [genreId]. */
@@ -93,7 +93,7 @@ interface TmdbService {
         @Query("with_genres") genreId: Int,
         @Query("sort_by") sortBy: String,
         @Query("page") page: Int,
-        @Query("language") language: String = "es-ES"
+        @Query("language") language: String = TmdbLanguage.current()
     ): TmdbTvPage
 
     /** Retrieves TV series details, seasons, and aggregate cast. */
@@ -102,7 +102,7 @@ interface TmdbService {
         @Path("series_id") seriesId: Int,
         @Query("api_key") apiKey: String,
         @Query("append_to_response") appendToResponse: String = "aggregate_credits",
-        @Query("language") language: String = "es-ES"
+        @Query("language") language: String = TmdbLanguage.current()
     ): TmdbTvSummary
 
     /** Retrieves episode listings and metadata for one season. */
@@ -111,7 +111,7 @@ interface TmdbService {
         @Path("series_id") seriesId: Int,
         @Path("season_number") seasonNumber: Int,
         @Query("api_key") apiKey: String,
-        @Query("language") language: String = "es-ES"
+        @Query("language") language: String = TmdbLanguage.current()
     ): TmdbTvSeasonDetails
 
     /** Retrieves external identifiers associated with a TMDB TV series. */
@@ -121,4 +121,3 @@ interface TmdbService {
         @Query("api_key") apiKey: String
     ): TmdbTvExternalIds
 }
-
