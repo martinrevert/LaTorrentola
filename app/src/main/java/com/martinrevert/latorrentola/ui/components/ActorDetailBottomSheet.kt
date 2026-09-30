@@ -197,7 +197,7 @@ private fun TvActorContent(
                 placeholder = painterResource(R.drawable.ic_launcher_foreground),
                 error = painterResource(R.drawable.ic_launcher_foreground),
                 modifier = Modifier
-                    .fillMaxWidth(0.85f)
+                    .fillMaxWidth(0.6f)
                     .aspectRatio(0.75f)
                     .clip(MaterialTheme.shapes.large),
                 contentScale = ContentScale.Crop
