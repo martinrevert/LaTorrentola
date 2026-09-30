@@ -95,8 +95,8 @@ android {
 
     defaultConfig {
         applicationId = "com.martinrevert.latorrentola"
-        versionCode = 20000 + gitVersionCode
-        versionName = "2.0.$gitVersionCode"
+        versionCode = 30000 + gitVersionCode
+        versionName = "3.0.$gitVersionCode"
         minSdk = 24
         targetSdk = 37
         testInstrumentationRunner = "com.martinrevert.latorrentola.HiltTestRunner"
@@ -174,7 +174,7 @@ android {
 
 // Global base name for all generated archives (APKs, AABs, etc.)
 base {
-    archivesName = "LaTorrentola-v2.0.$gitVersionCount"
+    archivesName = "LaTorrentola-v3.0.$gitVersionCount"
 }
 
 dependencies {
