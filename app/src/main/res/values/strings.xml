@@ -46,6 +46,7 @@
     <string name="selected_count">%1$d selected</string>
     <string name="my_favorites">My Favorites</string>
     <string name="search_placeholder">Search movies&#8230;</string>
+    <string name="tv_search_placeholder">Search TV series&#8230;</string>
     <string name="voice_search_prompt">Speak to search movies</string>
     <string name="start_searching">Start searching&#8230;</string>
     <string name="no_results">No results found</string>

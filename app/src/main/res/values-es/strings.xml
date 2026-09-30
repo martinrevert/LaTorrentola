@@ -46,6 +46,7 @@
     <string name="selected_count">%1$d seleccionados</string>
     <string name="my_favorites">Mis Favoritos</string>
     <string name="search_placeholder">Buscar películas&#8230;</string>
+    <string name="tv_search_placeholder">Buscar series de TV&#8230;</string>
     <string name="voice_search_prompt">Hable para buscar películas</string>
     <string name="start_searching">Comience a buscar&#8230;</string>
     <string name="no_results">No se encontraron resultados</string>

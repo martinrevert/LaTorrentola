@@ -41,7 +41,6 @@ import androidx.compose.ui.platform.LocalFocusManager
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.YTS.Movie
-import com.martinrevert.latorrentola.ui.components.HomeMediaModeChips
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.MovieList
 import com.martinrevert.latorrentola.ui.components.MovieItem
@@ -172,7 +171,6 @@ fun SearchScreen(
         isTv = isTv,
         isLoadingMore = isLoadingMore,
         focusRequester = focusRequester,
-        onTvModeToggle = { viewModel.setTvMode(it) },
         onSearchQueryChange = {
             searchQuery = it
             if (it.length > 2) {
@@ -241,7 +239,6 @@ private fun SearchScreenContent(
     isTv: Boolean,
     isLoadingMore: Boolean = false,
     focusRequester: FocusRequester,
-    onTvModeToggle: (Boolean) -> Unit = {},
     onSearchQueryChange: (String) -> Unit,
     onVoiceSearchClick: () -> Unit,
     onQualityClick: (String) -> Unit,
@@ -258,6 +255,7 @@ private fun SearchScreenContent(
     val focusManager = LocalFocusManager.current
     val gridState = rememberLazyGridState()
     val qualityChipsFocusRequester = remember { FocusRequester() }
+    val resultsFocusRequester = remember { FocusRequester() }
     val hazeState = if (!isTv) rememberHazeState() else null
     val isInspection = LocalInspectionMode.current
     val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
@@ -287,7 +285,9 @@ private fun SearchScreenContent(
         topBar = {
             TopAppBar(
                 modifier = Modifier
-                    .focusProperties { down = qualityChipsFocusRequester }
+                    .focusProperties {
+                        down = if (isTvMode) resultsFocusRequester else qualityChipsFocusRequester
+                    }
                     .then(
                         if (hazeState != null) {
                             Modifier
@@ -315,6 +315,7 @@ private fun SearchScreenContent(
                             onSearchQueryChange = onSearchQueryChange,
                             onVoiceSearchClick = onVoiceSearchClick,
                             showVoiceSearch = !isTv,
+                            isTvMode = isTvMode,
                             modifier = Modifier
                                 .focusRequester(focusRequester)
                                 .then(if (isTv) Modifier.focusHighlight() else Modifier)
@@ -362,19 +363,12 @@ private fun SearchScreenContent(
     ) { padding ->
         if (isTv) {
             // TV Layout: Single vertical column for unbroken D-pad focus traversal
-            val movieListFocusRequester = remember { FocusRequester() }
-
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
                     .consumeWindowInsets(padding)
             ) {
-                HomeMediaModeChips(
-                    isTvMode = isTvMode,
-                    onMoviesClick = { onTvModeToggle(false) },
-                    onTvClick = { onTvModeToggle(true) }
-                )
                 if (!isTvMode) {
                     QualityChips(
                         options = qualityOptions,
@@ -382,7 +376,7 @@ private fun SearchScreenContent(
                         onQualityClick = onQualityClick,
                         modifier = Modifier
                             .focusRequester(qualityChipsFocusRequester)
-                            .focusProperties { down = movieListFocusRequester }
+                            .focusProperties { down = resultsFocusRequester }
                     )
                 }
                 HorizontalDivider(
@@ -413,7 +407,7 @@ private fun SearchScreenContent(
                                 initialFocusId = lastClickedSeriesId,
                                 onFocusRestored = onTvFocusRestored,
                                 contentPadding = PaddingValues(16.dp),
-                                modifier = Modifier.focusRequester(movieListFocusRequester)
+                                modifier = Modifier.focusRequester(resultsFocusRequester)
                             )
                             is SearchTvUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(text = stringResource(R.string.no_results))
@@ -440,7 +434,7 @@ private fun SearchScreenContent(
                                 initialFocusId = lastClickedMovieId,
                                 onFocusRestored = onFocusRestored,
                                 contentPadding = PaddingValues(16.dp),
-                                modifier = Modifier.focusRequester(movieListFocusRequester)
+                                modifier = Modifier.focusRequester(resultsFocusRequester)
                             )
                             is SearchUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(text = stringResource(R.string.no_results))
@@ -455,7 +449,7 @@ private fun SearchScreenContent(
         } else {
             // Handheld Layout: Edge-to-edge with Haze top blur and translucent bottom bar
             val searchContentPadding = PaddingValues(
-                top = padding.calculateTopPadding() + 112.dp,
+                top = padding.calculateTopPadding() + 64.dp,
                 bottom = padding.calculateBottomPadding() + 16.dp,
                 start = 16.dp,
                 end = 16.dp
@@ -531,11 +525,6 @@ private fun SearchScreenContent(
                             } else Modifier
                         )
                 ) {
-                    HomeMediaModeChips(
-                        isTvMode = isTvMode,
-                        onMoviesClick = { onTvModeToggle(false) },
-                        onTvClick = { onTvModeToggle(true) }
-                    )
                     if (!isTvMode) {
                         QualityChips(
                             options = qualityOptions,
@@ -556,19 +545,35 @@ private fun SearchScreenContent(
 }
 
 
-/** Provides an accessible search field with optional voice input. */
+/**
+ * Provides an accessible search field with a catalog-specific hint and optional voice input.
+ *
+ * @param searchQuery Current search text.
+ * @param onSearchQueryChange Updates the search text.
+ * @param onVoiceSearchClick Starts voice input.
+ * @param modifier Modifier applied to the text field.
+ * @param showVoiceSearch Whether to display voice input.
+ * @param isTvMode Whether the search targets TV series.
+ */
 @Composable
 private fun SearchTextField(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onVoiceSearchClick: () -> Unit,
     modifier: Modifier = Modifier,
-    showVoiceSearch: Boolean = true
+    showVoiceSearch: Boolean = true,
+    isTvMode: Boolean = false
 ) {
     TextField(
         value = searchQuery,
         onValueChange = onSearchQueryChange,
-        placeholder = { Text(stringResource(com.martinrevert.latorrentola.R.string.search_placeholder)) },
+        placeholder = {
+            Text(
+                stringResource(
+                    if (isTvMode) R.string.tv_search_placeholder else R.string.search_placeholder
+                )
+            )
+        },
         modifier = modifier.fillMaxWidth(),
         singleLine = true,
         trailingIcon = if (showVoiceSearch) {
