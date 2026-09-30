@@ -85,9 +85,13 @@ class HomeViewModel @Inject constructor(
     /** Quality labels offered in the home filter. */
     val qualityOptions = listOf("All", "2160p", "1080p.x265", "1080p", "720p", "3D")
 
-    /** Number of favorite movies currently in the user's library. */
-    val favoritesCount: StateFlow<Int> = ytsRepository.getFavoriteMovies()
-        .map { it.size }
+    /** Number of favorite movies and TV series currently in the user's library. */
+    val favoritesCount: StateFlow<Int> = combine(
+        ytsRepository.getFavoriteMovies(),
+        userLibraryRepository.getFavoriteTvSeries()
+    ) { movies, series ->
+        movies.size + series.size
+    }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),

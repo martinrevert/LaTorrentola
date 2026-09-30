@@ -76,6 +76,11 @@ class SearchViewModel @Inject constructor(
     /** IDs selected for bulk favorite removal. */
     val selectedFavoriteIds: StateFlow<Set<Int>> = _selectedFavoriteIds.asStateFlow()
 
+    /** Mutable backing state for favorite TV series displayed alongside movies. */
+    private val _favoriteTvSeries = MutableStateFlow<List<TmdbTvSummary>>(emptyList())
+    /** Favorite TV series displayed in the mixed favorites collection. */
+    val favoriteTvSeries: StateFlow<List<TmdbTvSummary>> = _favoriteTvSeries.asStateFlow()
+
     /** IDs of movies recorded in the user's download library. */
     val downloadedMovieIds: StateFlow<Set<Int>> = userLibraryRepository.getDownloadedMovies()
         .map { it.map { download -> download.movieId }.toSet() }
@@ -367,8 +372,12 @@ class SearchViewModel @Inject constructor(
         favoritesJob?.cancel()
         favoritesJob = viewModelScope.launch {
             _uiState.value = SearchUiState.Loading
-            ytsRepository.getFavoriteMovies().collect { favorites ->
+            combine(
+                ytsRepository.getFavoriteMovies(),
+                userLibraryRepository.getFavoriteTvSeries()
+            ) { movies, series -> movies to series }.collect { (favorites, series) ->
                 if (isShowingFavorites) {
+                    _favoriteTvSeries.value = series
                     allResults.clear()
                     
                     val excludedLangs = preferenceManager.getFilteredLanguages()
@@ -379,7 +388,7 @@ class SearchViewModel @Inject constructor(
                     ).distinctBy { it.id }
                     
                     allResults.addAll(filteredFavorites)
-                    if (allResults.isEmpty()) {
+                    if (allResults.isEmpty() && series.isEmpty()) {
                         _uiState.value = SearchUiState.Empty
                     } else {
                         _uiState.value = SearchUiState.Success(allResults.toList(), isFavorites = true)

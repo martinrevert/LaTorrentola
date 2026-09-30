@@ -45,7 +45,7 @@ import com.martinrevert.latorrentola.utils.isTvDevice
 import kotlinx.coroutines.delay
 
 /**
- * Displays a movie card with adaptive TV/handheld interaction and download/selection indicators.
+ * Displays a movie card with adaptive TV/handheld interaction, poster loading, and download/selection indicators.
  *
  * @param movie Movie metadata rendered by the card.
  * @param onClick Invoked to open the movie when no selection handler overrides the click.
@@ -366,7 +366,10 @@ fun MovieItem(
             }
         }
         if (isImageLoading) {
-            MovieItemPlaceholder(isTv = isTv)
+            MovieItemPlaceholder(
+                isTv = isTv,
+                modifier = Modifier.matchParentSize()
+            )
         }
     }
 }

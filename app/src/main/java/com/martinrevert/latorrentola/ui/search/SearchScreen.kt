@@ -8,6 +8,9 @@ import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
@@ -21,6 +24,7 @@ import androidx.compose.animation.core.EaseInOutCubic
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
@@ -30,6 +34,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -46,6 +51,7 @@ import com.martinrevert.latorrentola.ui.components.MovieList
 import com.martinrevert.latorrentola.ui.components.MovieItem
 import com.martinrevert.latorrentola.ui.components.QualityChips
 import com.martinrevert.latorrentola.ui.components.TvSeriesGrid
+import com.martinrevert.latorrentola.ui.components.TvSeriesCard
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.GenreTranslation
@@ -53,6 +59,7 @@ import com.martinrevert.latorrentola.utils.isTvDevice
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalConfiguration
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
 import dev.chrisbanes.haze.rememberHazeState
 import dev.chrisbanes.haze.hazeSource
@@ -86,6 +93,7 @@ fun SearchScreen(
     val isTvMode by viewModel.isTvMode.collectAsState()
     val tvUiState by viewModel.tvUiState.collectAsState()
     val downloadedSeriesIds by viewModel.downloadedSeriesIds.collectAsState()
+    val favoriteTvSeries by viewModel.favoriteTvSeries.collectAsState()
     val tvGenres by viewModel.tvGenres.collectAsState()
     val lastClickedSeriesId by viewModel.lastClickedSeriesId.collectAsState()
     val selectedQuality by viewModel.selectedQuality.collectAsState()
@@ -155,6 +163,7 @@ fun SearchScreen(
         isTvMode = isTvMode,
         tvUiState = tvUiState,
         downloadedSeriesIds = downloadedSeriesIds,
+        favoriteTvSeries = favoriteTvSeries,
         tvGenres = tvGenres,
         lastClickedSeriesId = lastClickedSeriesId,
         selectedQuality = selectedQuality,
@@ -197,11 +206,13 @@ fun SearchScreen(
             if (selectedFavoriteIds.isNotEmpty()) {
                 viewModel.toggleFavoriteSelection(it.id)
             } else {
+                viewModel.clearLastClickedSeriesId()
                 viewModel.setLastClickedMovieId(it.id)
                 onMovieClick(it)
             }
         },
         onTvSeriesClick = {
+            viewModel.clearLastClickedMovieId()
             viewModel.setLastClickedSeriesId(it.id)
             onTvSeriesClick(it)
         },
@@ -216,13 +227,50 @@ fun SearchScreen(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-/** Renders the adaptive search interface and its current result collection. */
+/**
+ * Renders the adaptive search interface and its current result collection.
+ *
+ * @param uiState Current movie search or movie-collection state.
+ * @param isTvMode Whether the active catalog search targets TV series.
+ * @param tvUiState Current TV catalog search state.
+ * @param downloadedSeriesIds IDs of series with downloaded episodes.
+ * @param favoriteTvSeries TV favorites displayed alongside favorite movies.
+ * @param tvGenres Available TV genres used to label series cards.
+ * @param lastClickedSeriesId Series ID to refocus when returning from details.
+ * @param selectedQuality Current movie quality filter.
+ * @param lastClickedMovieId Movie ID to refocus when returning from details.
+ * @param downloadedMovieIds Movie IDs with download records.
+ * @param selectedFavoriteIds Movie favorites selected for bulk removal.
+ * @param qualityOptions Available movie quality filters.
+ * @param searchQuery Current search text.
+ * @param isShowingFavorites Whether the mixed favorites collection is active.
+ * @param isShowingDownloads Whether downloaded movies are active.
+ * @param isShowingNew Whether new movies are active.
+ * @param isShowingGenre Whether a movie genre is active.
+ * @param initialGenre Initial collection or genre key.
+ * @param isTv Whether the device uses the TV layout.
+ * @param isLoadingMore Whether additional results are loading.
+ * @param focusRequester Search field focus target.
+ * @param onSearchQueryChange Updates the active query.
+ * @param onVoiceSearchClick Starts voice input.
+ * @param onQualityClick Changes movie quality.
+ * @param onMovieClick Opens or selects a movie.
+ * @param onTvSeriesClick Opens a TV series.
+ * @param onLongClick Selects a favorite movie.
+ * @param onLoadMore Loads another catalog page.
+ * @param onBackClick Returns to the previous screen.
+ * @param onClearSelection Clears favorite movie selection.
+ * @param onDeleteSelectedFavorites Removes selected favorite movies.
+ * @param onFocusRestored Clears the pending movie focus target.
+ * @param onTvFocusRestored Clears the pending TV focus target.
+ */
 @Composable
 private fun SearchScreenContent(
     uiState: SearchUiState,
     isTvMode: Boolean = false,
     tvUiState: SearchTvUiState = SearchTvUiState.Idle,
     downloadedSeriesIds: Set<Int> = emptySet(),
+    favoriteTvSeries: List<TmdbTvSummary> = emptyList(),
     tvGenres: List<TmdbTvGenre> = emptyList(),
     lastClickedSeriesId: Int? = null,
     selectedQuality: String?,
@@ -422,14 +470,33 @@ private fun SearchScreenContent(
                                 Text(text = stringResource(R.string.start_searching))
                             }
                             is SearchUiState.Loading -> MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
-                            is SearchUiState.Success -> MovieList(
+                            is SearchUiState.Success -> if (state.isFavorites) {
+                                FavoriteItemsGrid(
+                                    movies = state.movies,
+                                    series = favoriteTvSeries,
+                                    tvGenres = tvGenres,
+                                    state = gridState,
+                                    downloadedMovieIds = downloadedMovieIds,
+                                    downloadedSeriesIds = downloadedSeriesIds,
+                                    selectedMovieIds = selectedFavoriteIds,
+                                    lastClickedMovieId = lastClickedMovieId,
+                                    lastClickedSeriesId = lastClickedSeriesId,
+                                    onMovieClick = onMovieClick,
+                                    onTvSeriesClick = onTvSeriesClick,
+                                    onMovieLongClick = onLongClick,
+                                    onMovieFocusRestored = onFocusRestored,
+                                    onTvFocusRestored = onTvFocusRestored,
+                                    contentPadding = PaddingValues(16.dp),
+                                    modifier = Modifier.focusRequester(resultsFocusRequester)
+                                )
+                            } else MovieList(
                                 movies = state.movies,
                                 state = gridState,
                                 downloadedMovieIds = downloadedMovieIds,
                                 selectedIds = selectedFavoriteIds,
                                 isLoadingMore = isLoadingMore,
                                 onMovieClick = onMovieClick,
-                                onLongClick = if (state.isFavorites) onLongClick else null,
+                                onLongClick = null,
                                 onLoadMore = { if (!state.isFavorites && !state.isDownloads && !state.isNew) onLoadMore() },
                                 initialFocusId = lastClickedMovieId,
                                 onFocusRestored = onFocusRestored,
@@ -491,14 +558,32 @@ private fun SearchScreenContent(
                             Text(text = stringResource(R.string.start_searching))
                         }
                         is SearchUiState.Loading -> MovieListPlaceholder(contentPadding = searchContentPadding)
-                        is SearchUiState.Success -> MovieList(
+                        is SearchUiState.Success -> if (state.isFavorites) {
+                            FavoriteItemsGrid(
+                                movies = state.movies,
+                                series = favoriteTvSeries,
+                                tvGenres = tvGenres,
+                                state = gridState,
+                                downloadedMovieIds = downloadedMovieIds,
+                                downloadedSeriesIds = downloadedSeriesIds,
+                                selectedMovieIds = selectedFavoriteIds,
+                                lastClickedMovieId = lastClickedMovieId,
+                                lastClickedSeriesId = lastClickedSeriesId,
+                                onMovieClick = onMovieClick,
+                                onTvSeriesClick = onTvSeriesClick,
+                                onMovieLongClick = onLongClick,
+                                onMovieFocusRestored = onFocusRestored,
+                                onTvFocusRestored = onTvFocusRestored,
+                                contentPadding = searchContentPadding
+                            )
+                        } else MovieList(
                             movies = state.movies,
                             state = gridState,
                             downloadedMovieIds = downloadedMovieIds,
                             selectedIds = selectedFavoriteIds,
                             isLoadingMore = isLoadingMore,
                             onMovieClick = onMovieClick,
-                            onLongClick = if (state.isFavorites) onLongClick else null,
+                            onLongClick = null,
                             onLoadMore = { if (!state.isFavorites && !state.isDownloads && !state.isNew) onLoadMore() },
                             initialFocusId = lastClickedMovieId,
                             onFocusRestored = onFocusRestored,
@@ -544,6 +629,93 @@ private fun SearchScreenContent(
     }
 }
 
+
+/**
+ * Displays movie and TV favorites together in the same responsive poster grid.
+ *
+ * @param movies Favorite movie metadata.
+ * @param series Favorite TV series metadata.
+ * @param tvGenres TV genres used to label series cards.
+ * @param state Shared scroll state for the mixed collection.
+ * @param downloadedMovieIds Favorite movie IDs with download records.
+ * @param downloadedSeriesIds Favorite series IDs with downloaded episodes.
+ * @param selectedMovieIds Movie IDs selected for bulk removal.
+ * @param lastClickedMovieId Movie ID to focus after returning from details.
+ * @param lastClickedSeriesId TV series ID to focus after returning from details.
+ * @param onMovieClick Opens a movie or updates its selection.
+ * @param onTvSeriesClick Opens the TV series detail screen.
+ * @param onMovieLongClick Adds a movie to bulk selection.
+ * @param onMovieFocusRestored Clears the pending movie focus target.
+ * @param onTvFocusRestored Clears the pending TV focus target.
+ * @param contentPadding Insets matching the containing screen.
+ * @param modifier Modifier applied to the grid.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun FavoriteItemsGrid(
+    movies: List<Movie>,
+    series: List<TmdbTvSummary>,
+    tvGenres: List<TmdbTvGenre>,
+    state: androidx.compose.foundation.lazy.grid.LazyGridState,
+    downloadedMovieIds: Set<Int>,
+    downloadedSeriesIds: Set<Int>,
+    selectedMovieIds: Set<Int>,
+    lastClickedMovieId: Int?,
+    lastClickedSeriesId: Int?,
+    onMovieClick: (Movie) -> Unit,
+    onTvSeriesClick: (TmdbTvSummary) -> Unit,
+    onMovieLongClick: (Int) -> Unit,
+    onMovieFocusRestored: () -> Unit,
+    onTvFocusRestored: () -> Unit,
+    contentPadding: PaddingValues,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val columns = when {
+        isTv -> GridCells.Fixed(6)
+        screenWidth < 600.dp -> GridCells.Fixed(2)
+        screenWidth < 900.dp -> GridCells.Adaptive(minSize = 160.dp)
+        else -> GridCells.Adaptive(minSize = 200.dp)
+    }
+    val genreNames = remember(tvGenres) { tvGenres.associate { it.id to it.name } }
+
+    LazyVerticalGrid(
+        columns = columns,
+        state = state,
+        modifier = modifier
+            .fillMaxSize()
+            .focusRestorer(),
+        contentPadding = contentPadding,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        items(movies, key = { "movie_${it.id}" }) { movie ->
+            MovieItem(
+                movie = movie,
+                isDownloaded = movie.id in downloadedMovieIds,
+                isSelected = movie.id in selectedMovieIds,
+                onClick = { onMovieClick(movie) },
+                onLongClick = { onMovieLongClick(movie.id) },
+                shouldRequestFocus = movie.id == lastClickedMovieId,
+                onFocusRestored = onMovieFocusRestored
+            )
+        }
+        items(series, key = { "tv_${it.id}" }) { item ->
+            TvSeriesCard(
+                series = item,
+                genres = item.genres.map { it.name }.ifEmpty {
+                    item.genreIds.mapNotNull(genreNames::get)
+                },
+                hasDownloads = item.id in downloadedSeriesIds,
+                onClick = { onTvSeriesClick(item) },
+                shouldRequestFocus = item.id == lastClickedSeriesId,
+                onFocusRestored = onTvFocusRestored
+            )
+        }
+    }
+}
 
 /**
  * Provides an accessible search field with a catalog-specific hint and optional voice input.

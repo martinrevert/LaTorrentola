@@ -9,6 +9,8 @@
     <string name="details_title">Detalles</string>
     <string name="back_desc">Atrás</string>
     <string name="favorite_desc">Favorito</string>
+    <string name="add_favorite_desc">Añadir a favoritos</string>
+    <string name="remove_favorite_desc">Quitar de favoritos</string>
     <string name="pause_desc">Pausar</string>
     <string name="play_desc">Reproducir</string>
     <string name="downloaded_desc">Descargado</string>

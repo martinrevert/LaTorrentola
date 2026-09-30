@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -24,7 +25,7 @@ import javax.inject.Inject
  * Loads TMDB series details, selected season's episodes, and tracks downloaded episodes.
  *
  * @property tmdbRepository TMDB series and season endpoint access.
- * @property userLibraryRepository Access to user's downloaded episode history in Firestore.
+ * @property userLibraryRepository Access to the user's episode downloads and TV favorites in Firestore.
  */
 @HiltViewModel
 class TvDetailViewModel @Inject constructor(
@@ -54,6 +55,21 @@ class TvDetailViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
+    /** IDs of TV series currently saved in the user's favorites. */
+    val favoriteTvSeriesIds: StateFlow<Set<Int>> = userLibraryRepository
+        .getFavoriteTvSeries()
+        .map { series -> series.map { it.id }.toSet() }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptySet()
+        )
+
+    /** Mutable backing state for favorite write errors. */
+    private val _favoriteActionError = MutableStateFlow<String?>(null)
+    /** User-facing error from the latest favorite update. */
+    val favoriteActionError: StateFlow<String?> = _favoriteActionError.asStateFlow()
 
     /** Mutable backing state for the selected cast member's TMDB detail result. */
     private val _selectedActorDetail = MutableStateFlow<Result<TmdbActorDetail>?>(null)
@@ -112,6 +128,30 @@ class TvDetailViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /** Adds [series] to favorites, or removes it when it is already saved. */
+    fun toggleFavorite(series: TmdbTvSummary) {
+        viewModelScope.launch {
+            _favoriteActionError.value = null
+            try {
+                if (series.id in favoriteTvSeriesIds.value) {
+                    userLibraryRepository.removeFavoriteTvSeries(series)
+                } else {
+                    userLibraryRepository.addFavoriteTvSeries(series)
+                }
+            } catch (e: Exception) {
+                if (e !is CancellationException) {
+                    _favoriteActionError.value = e.localizedMessage
+                        ?: "Unable to update TV favorites"
+                }
+            }
+        }
+    }
+
+    /** Clears the current favorite write error. */
+    fun clearFavoriteActionError() {
+        _favoriteActionError.value = null
     }
 
     /** Loads TMDB actor details for the selected cast member. */

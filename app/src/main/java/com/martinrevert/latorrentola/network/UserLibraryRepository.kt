@@ -6,6 +6,8 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.model.user.FavoriteTvSeries
 import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.model.user.DownloadedMovie
 import com.martinrevert.latorrentola.utils.PreferenceManager
@@ -136,7 +138,9 @@ class UserLibraryRepository @Inject constructor(
                     return@addSnapshotListener
                 }
                 
-                val favorites = snapshot?.documents?.mapNotNull { 
+                val favorites = snapshot?.documents?.filterNot {
+                    it.id.startsWith("tv_")
+                }?.mapNotNull {
                     it.toObject(Movie::class.java) 
                 } ?: emptyList()
                 
@@ -174,6 +178,77 @@ class UserLibraryRepository @Inject constructor(
         } catch (e: Exception) {
             Log.e("Firestore", "Error removing favorite: ${e.message}")
         }
+    }
+
+    /** Observes the signed-in user's favorite TV series. */
+    fun getFavoriteTvSeries(): Flow<List<TmdbTvSummary>> = callbackFlow {
+        val uid = userId
+        if (uid == null) {
+            trySend(emptyList())
+            return@callbackFlow
+        }
+
+        val subscription = firestore.collection("users")
+            .document(uid)
+            .collection("favorites")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e("Firestore", "Error fetching favorite TV series: ${error.message}")
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+
+                val favorites = snapshot?.documents
+                    ?.filter { it.id.startsWith("tv_") }
+                    ?.mapNotNull { document ->
+                        val id = document.getLong("id")?.toInt() ?: return@mapNotNull null
+                        FavoriteTvSeries(
+                            id = id,
+                            name = document.getString("name"),
+                            posterPath = document.getString("posterPath"),
+                            firstAirDate = document.getString("firstAirDate"),
+                            voteAverage = document.getDouble("voteAverage"),
+                            genreIds = (document.get("genreIds") as? List<*>)
+                                .orEmpty()
+                                .mapNotNull { (it as? Number)?.toInt() }
+                        ).toTmdbTvSummary()
+                    } ?: emptyList()
+                trySend(favorites)
+            }
+
+        awaitClose { subscription.remove() }
+    }
+
+    /** Saves or replaces [series] in the signed-in user's TV favorites. */
+    suspend fun addFavoriteTvSeries(series: TmdbTvSummary) {
+        val uid = userId ?: throw IllegalStateException("User not logged in")
+        val favorite = FavoriteTvSeries.from(series)
+        firestore.collection("users")
+            .document(uid)
+            .collection("favorites")
+            .document("tv_${series.id}")
+            .set(
+                mapOf(
+                    "id" to favorite.id,
+                    "name" to favorite.name,
+                    "posterPath" to favorite.posterPath,
+                    "firstAirDate" to favorite.firstAirDate,
+                    "voteAverage" to favorite.voteAverage,
+                    "genreIds" to favorite.genreIds
+                )
+            )
+            .await()
+    }
+
+    /** Removes [series] from the signed-in user's TV favorites. */
+    suspend fun removeFavoriteTvSeries(series: TmdbTvSummary) {
+        val uid = userId ?: throw IllegalStateException("User not logged in")
+        firestore.collection("users")
+            .document(uid)
+            .collection("favorites")
+            .document("tv_${series.id}")
+            .delete()
+            .await()
     }
 
     /** Checks whether the signed-in user's library contains [movieId]. */

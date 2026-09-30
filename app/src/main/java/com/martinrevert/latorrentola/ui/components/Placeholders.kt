@@ -56,14 +56,23 @@ fun Modifier.shimmer(): Modifier = composed {
     background(brush)
 }
 
-/** Displays a card-shaped loading placeholder for the current device class. */
+/**
+ * Displays a card-shaped loading placeholder for the current device class.
+ *
+ * @param isTv Whether to use the TV card layout.
+ * @param modifier Modifier applied to the placeholder card.
+ */
 @Composable
-fun MovieItemPlaceholder(isTv: Boolean) {
+fun MovieItemPlaceholder(
+    isTv: Boolean,
+    modifier: Modifier = Modifier
+) {
     if (isTv) {
         Column(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxWidth()
                 .clip(MaterialTheme.shapes.medium)
+                .background(androidx.tv.material3.MaterialTheme.colorScheme.surface)
         ) {
             Box(
                 modifier = Modifier
@@ -73,14 +82,14 @@ fun MovieItemPlaceholder(isTv: Boolean) {
             )
             Column(
                 modifier = Modifier
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .background(androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant)
                     .padding(12.dp)
                     .fillMaxWidth()
             ) {
                 Box(modifier = Modifier.fillMaxWidth(0.7f).height(16.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Box(modifier = Modifier.fillMaxWidth(0.4f).height(12.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -92,7 +101,7 @@ fun MovieItemPlaceholder(isTv: Boolean) {
         }
     } else {
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
             shape = MaterialTheme.shapes.medium
         ) {
@@ -105,11 +114,11 @@ fun MovieItemPlaceholder(isTv: Boolean) {
                 )
                 Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
                     Box(modifier = Modifier.fillMaxWidth(0.8f).height(16.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Box(modifier = Modifier.fillMaxWidth(0.5f).height(14.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Row(
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 24.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {

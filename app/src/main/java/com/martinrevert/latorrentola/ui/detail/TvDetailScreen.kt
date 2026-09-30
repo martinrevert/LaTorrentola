@@ -37,6 +37,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -47,6 +49,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -129,6 +133,8 @@ fun TvDetailScreen(
     val selectedSeason by viewModel.selectedSeason.collectAsState()
     val seasonState by viewModel.seasonState.collectAsState()
     val downloadedEpisodes by viewModel.downloadedEpisodes.collectAsState()
+    val favoriteTvSeriesIds by viewModel.favoriteTvSeriesIds.collectAsState()
+    val favoriteActionError by viewModel.favoriteActionError.collectAsState()
     val selectedActorDetail by viewModel.selectedActorDetail.collectAsState()
     val isActorLoading by viewModel.isActorLoading.collectAsState()
     val context = LocalContext.current
@@ -148,13 +154,21 @@ fun TvDetailScreen(
     val firstCastFocusRequester = remember { FocusRequester() }
     var showActorSheet by remember { mutableStateOf(false) }
     val actorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val favoriteSnackbarHostState = remember { SnackbarHostState() }
     val firstContentFocusRequester =
         if (uiState is TvDetailUiState.Success) seriesInformationFocusRequester else null
 
     LaunchedEffect(seriesId) { viewModel.load(seriesId) }
+    LaunchedEffect(favoriteActionError) {
+        favoriteActionError?.let { message ->
+            favoriteSnackbarHostState.showSnackbar(message)
+            viewModel.clearFavoriteActionError()
+        }
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
+        snackbarHost = { SnackbarHost(favoriteSnackbarHostState) },
         topBar = {
             TopAppBar(
                 modifier = if (hazeState != null) {
@@ -196,6 +210,36 @@ fun TvDetailScreen(
                 actions = {
                     val state = uiState
                     if (state is TvDetailUiState.Success) {
+                        IconButton(
+                            onClick = { viewModel.toggleFavorite(state.series) },
+                            modifier = Modifier
+                                .focusHighlight(shape = CircleShape)
+                                .then(
+                                    if (isTv && firstContentFocusRequester != null) {
+                                        Modifier.focusProperties { down = firstContentFocusRequester }
+                                    } else Modifier
+                                )
+                        ) {
+                            Icon(
+                                imageVector = if (state.series.id in favoriteTvSeriesIds) {
+                                    Icons.Default.Favorite
+                                } else {
+                                    Icons.Default.FavoriteBorder
+                                },
+                                contentDescription = stringResource(
+                                    if (state.series.id in favoriteTvSeriesIds) {
+                                        R.string.remove_favorite_desc
+                                    } else {
+                                        R.string.add_favorite_desc
+                                    }
+                                ),
+                                tint = if (state.series.id in favoriteTvSeriesIds) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                }
+                            )
+                        }
                         IconButton(
                             onClick = {
                                 val shareUrl = "https://www.themoviedb.org/tv/${state.series.id}"
