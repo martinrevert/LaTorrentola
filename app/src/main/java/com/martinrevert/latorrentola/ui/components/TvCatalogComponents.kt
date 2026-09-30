@@ -334,7 +334,7 @@ fun TvSeriesGrid(
         items(series, key = { it.id }) { item ->
             TvSeriesCard(
                 series = item,
-                genres = item.genreIds.mapNotNull(genreNames::get),
+                genres = item.genreIds.orEmpty().mapNotNull(genreNames::get),
                 hasDownloads = item.id in downloadedSeriesIds,
                 onClick = { onSeriesClick(item) },
                 shouldRequestFocus = item.id == initialFocusId,

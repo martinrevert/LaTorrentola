@@ -234,10 +234,11 @@ class SearchViewModel @Inject constructor(
             _tvUiState.value = SearchTvUiState.Loading
             try {
                 val page = tmdbRepository.searchTvSeries(query)
-                if (page.results.isEmpty()) {
+                val results = page.results.orEmpty()
+                if (results.isEmpty()) {
                     _tvUiState.value = SearchTvUiState.Empty
                 } else {
-                    _tvUiState.value = SearchTvUiState.Success(page.results)
+                    _tvUiState.value = SearchTvUiState.Success(results)
                 }
             } catch (e: Exception) {
                 _tvUiState.value = SearchTvUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
@@ -277,10 +278,11 @@ class SearchViewModel @Inject constructor(
             _tvUiState.value = SearchTvUiState.Loading
             try {
                 val page = tmdbRepository.getHomeTvFeed(TmdbTvFeed.POPULAR, 1)
-                if (page.results.isEmpty()) {
+                val results = page.results.orEmpty()
+                if (results.isEmpty()) {
                     _tvUiState.value = SearchTvUiState.Empty
                 } else {
-                    _tvUiState.value = SearchTvUiState.Success(page.results)
+                    _tvUiState.value = SearchTvUiState.Success(results)
                 }
             } catch (e: Exception) {
                 _tvUiState.value = SearchTvUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))

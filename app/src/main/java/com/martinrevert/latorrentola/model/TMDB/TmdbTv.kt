@@ -22,7 +22,7 @@ data class TmdbTvPage(
     /** @property results Series returned on this page. */
     @SerializedName("results")
     @SerialName("results")
-    val results: List<TmdbTvSummary> = emptyList()
+    val results: List<TmdbTvSummary>? = emptyList()
 )
 
 /**
@@ -82,13 +82,13 @@ data class TmdbTvSummary(
     val popularity: Double? = null,
     @SerializedName("genre_ids")
     @SerialName("genre_ids")
-    val genreIds: List<Int> = emptyList(),
+    val genreIds: List<Int>? = emptyList(),
     @SerializedName("genres")
     @SerialName("genres")
-    val genres: List<TmdbTvGenre> = emptyList(),
+    val genres: List<TmdbTvGenre>? = emptyList(),
     @SerializedName("origin_country")
     @SerialName("origin_country")
-    val originCountry: List<String> = emptyList(),
+    val originCountry: List<String>? = emptyList(),
     @SerializedName("original_language")
     @SerialName("original_language")
     val originalLanguage: String? = null,
@@ -103,7 +103,7 @@ data class TmdbTvSummary(
     val numberOfEpisodes: Int? = null,
     @SerializedName("seasons")
     @SerialName("seasons")
-    val seasons: List<TmdbTvSeason> = emptyList(),
+    val seasons: List<TmdbTvSeason>? = emptyList(),
     @SerializedName("aggregate_credits")
     @SerialName("aggregate_credits")
     val aggregateCredits: TmdbTvAggregateCredits? = null
@@ -146,7 +146,7 @@ data class TmdbTvGenre(
 data class TmdbTvGenrePage(
     @SerializedName("genres")
     @SerialName("genres")
-    val genres: List<TmdbTvGenre> = emptyList()
+    val genres: List<TmdbTvGenre>? = emptyList()
 )
 
 /**
@@ -158,7 +158,7 @@ data class TmdbTvGenrePage(
 data class TmdbTvAggregateCredits(
     @SerializedName("cast")
     @SerialName("cast")
-    val cast: List<TmdbTvCastMember> = emptyList()
+    val cast: List<TmdbTvCastMember>? = emptyList()
 )
 
 /**
@@ -182,7 +182,7 @@ data class TmdbTvCastMember(
     val profilePath: String? = null,
     @SerializedName("roles")
     @SerialName("roles")
-    val roles: List<TmdbTvCastRole> = emptyList()
+    val roles: List<TmdbTvCastRole>? = emptyList()
 ) {
     /** Full-size profile image URL, or `null` when unavailable. */
     val fullProfileUrl: String?
@@ -266,7 +266,7 @@ data class TmdbTvSeasonDetails(
     val seasonNumber: Int,
     @SerializedName("episodes")
     @SerialName("episodes")
-    val episodes: List<TmdbTvEpisode> = emptyList()
+    val episodes: List<TmdbTvEpisode>? = emptyList()
 )
 
 /**

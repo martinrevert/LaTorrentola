@@ -95,15 +95,20 @@ class TvDetailViewModel @Inject constructor(
             try {
                 val series = tmdbRepository.getTvDetails(seriesId)
                 _uiState.value = TvDetailUiState.Success(series)
-                val initialSeason = series.seasons
+                val seasons = series.seasons.orEmpty()
+                val initialSeason = seasons
                     .filter { it.seasonNumber > 0 }
                     .maxByOrNull { it.seasonNumber }
-                    ?: series.seasons.firstOrNull()
+                    ?: seasons.firstOrNull()
                 if (initialSeason != null) selectSeason(initialSeason)
                 else _seasonState.value = TvSeasonUiState.Error("No seasons available")
             } catch (e: Exception) {
                 if (e !is CancellationException) {
-                    _uiState.value = TvDetailUiState.Error(e.localizedMessage ?: "Unable to load series")
+                    _uiState.value = TvDetailUiState.Error(
+                        e.localizedMessage?.takeIf { it.isNotBlank() && it != "null" }
+                            ?: e.message?.takeIf { it.isNotBlank() && it != "null" }
+                            ?: "Unable to load series"
+                    )
                 }
             }
         }
@@ -123,7 +128,9 @@ class TvDetailViewModel @Inject constructor(
             } catch (e: Exception) {
                 if (e !is CancellationException) {
                     _seasonState.value = TvSeasonUiState.Error(
-                        e.localizedMessage ?: "Unable to load episodes"
+                        e.localizedMessage?.takeIf { it.isNotBlank() && it != "null" }
+                            ?: e.message?.takeIf { it.isNotBlank() && it != "null" }
+                            ?: "Unable to load episodes"
                     )
                 }
             }
@@ -142,7 +149,8 @@ class TvDetailViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 if (e !is CancellationException) {
-                    _favoriteActionError.value = e.localizedMessage
+                    _favoriteActionError.value = e.localizedMessage?.takeIf { it.isNotBlank() && it != "null" }
+                        ?: e.message?.takeIf { it.isNotBlank() && it != "null" }
                         ?: "Unable to update TV favorites"
                 }
             }

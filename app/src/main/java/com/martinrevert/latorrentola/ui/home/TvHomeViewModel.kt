@@ -192,7 +192,7 @@ class TvHomeViewModel @Inject constructor(
             val page = tmdbRepository.getHomeTvFeed(_selectedFeed.value, requestedPage)
             if (generation != requestGeneration) return
             totalPages = page.totalPages.coerceAtLeast(page.page)
-            allSeries.addAll(page.results.filterNot { candidate ->
+            allSeries.addAll(page.results.orEmpty().filterNot { candidate ->
                 allSeries.any { it.id == candidate.id }
             })
             currentPage = page.page + 1

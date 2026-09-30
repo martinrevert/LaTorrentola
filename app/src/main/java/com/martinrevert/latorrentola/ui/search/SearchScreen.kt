@@ -705,8 +705,8 @@ private fun FavoriteItemsGrid(
         items(series, key = { "tv_${it.id}" }) { item ->
             TvSeriesCard(
                 series = item,
-                genres = item.genres.map { it.name }.ifEmpty {
-                    item.genreIds.mapNotNull(genreNames::get)
+                genres = item.genres.orEmpty().map { it.name }.ifEmpty {
+                    item.genreIds.orEmpty().mapNotNull(genreNames::get)
                 },
                 hasDownloads = item.id in downloadedSeriesIds,
                 onClick = { onTvSeriesClick(item) },

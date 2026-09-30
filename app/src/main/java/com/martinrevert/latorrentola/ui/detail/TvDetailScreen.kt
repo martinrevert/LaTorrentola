@@ -375,7 +375,7 @@ private fun TvDetailContent(
     val isWide = LocalConfiguration.current.screenWidthDp >= 600 || isTv
     val cast = series.aggregateCredits?.cast.orEmpty()
     val orderedSeasons = remember(series.seasons) {
-        series.seasons.sortedWith(
+        series.seasons.orEmpty().sortedWith(
             compareBy<TmdbTvSeason> { it.seasonNumber == 0 }
                 .thenByDescending { it.seasonNumber }
         )
@@ -440,7 +440,7 @@ private fun TvDetailContent(
                 items(cast, key = { it.id }) { actor ->
                     TvCastMember(
                         name = actor.name.orEmpty(),
-                        character = actor.roles.firstOrNull()?.character.orEmpty(),
+                        character = actor.roles.orEmpty().firstOrNull()?.character.orEmpty(),
                         profileUrl = actor.fullProfileUrl,
                         onClick = { onCastClick(actor.id) },
                         modifier = Modifier
@@ -500,7 +500,7 @@ private fun TvDetailContent(
                                 .focusProperties {
                                     if (
                                         seasonState is TvSeasonUiState.Success &&
-                                        seasonState.season.episodes.isNotEmpty()
+                                        seasonState.season.episodes.orEmpty().isNotEmpty()
                                     ) {
                                         down = firstEpisodeFocusRequester
                                     }
@@ -524,16 +524,17 @@ private fun TvDetailContent(
             ) { CircularProgressIndicator() }
             is TvSeasonUiState.Error -> Text(episodes.message, color = MaterialTheme.colorScheme.error)
             is TvSeasonUiState.Success -> {
-                if (episodes.season.episodes.isEmpty()) {
+                val episodeList = episodes.season.episodes.orEmpty()
+                if (episodeList.isEmpty()) {
                     Text(
                         stringResource(R.string.tv_no_episodes),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else {
-                    val episodeFocusRequesters = remember(episodes.season.episodes.map { it.id }) {
-                        episodes.season.episodes.indices.map { index ->
+                    val episodeFocusRequesters = remember(episodeList.map { it.id }) {
+                        episodeList.indices.map { index ->
                             if (index == 0) {
-                                if (series.seasons.isEmpty()) {
+                                if (series.seasons.isNullOrEmpty()) {
                                     contentFocusRequester
                                 } else {
                                     firstEpisodeFocusRequester
@@ -543,7 +544,7 @@ private fun TvDetailContent(
                             }
                         }
                     }
-                    episodes.season.episodes.forEachIndexed { index, episode ->
+                    episodeList.forEachIndexed { index, episode ->
                         val isDownloaded = seriesDownloads.any {
                             it.seasonNumber == selectedSeasonNumber && it.episodeNumber == episode.episodeNumber
                         }
@@ -554,7 +555,7 @@ private fun TvDetailContent(
                             modifier = Modifier
                                 .focusRequester(episodeFocusRequesters[index])
                                 .focusProperties {
-                                    if (series.seasons.isNotEmpty()) {
+                                    if (!series.seasons.isNullOrEmpty()) {
                                         up = contentFocusRequester
                                     }
                                     if (index < episodeFocusRequesters.lastIndex) {
@@ -764,9 +765,9 @@ private fun TvSeriesInformation(
                 modifier = Modifier.padding(top = 4.dp)
             )
         }
-        if (series.genres.isNotEmpty()) {
+        if (!series.genres.isNullOrEmpty()) {
             Text(
-                series.genres.joinToString(", ") { it.name },
+                series.genres.orEmpty().joinToString(", ") { it.name },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp)

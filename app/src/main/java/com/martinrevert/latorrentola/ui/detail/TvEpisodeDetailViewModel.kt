@@ -87,7 +87,7 @@ class TvEpisodeDetailViewModel @Inject constructor(
 
                 if (episode == null) {
                     val seasonDetails = tmdbRepository.getTvSeasonDetails(seriesId, seasonNumber)
-                    episode = seasonDetails.episodes.firstOrNull { it.episodeNumber == episodeNumber }
+                    episode = seasonDetails.episodes.orEmpty().firstOrNull { it.episodeNumber == episodeNumber }
                         ?: TmdbTvEpisode(
                             id = 0,
                             name = "Episode $episodeNumber",

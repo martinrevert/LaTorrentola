@@ -201,13 +201,13 @@ class UserLibraryRepository @Inject constructor(
                 val favorites = snapshot?.documents
                     ?.filter { it.id.startsWith("tv_") }
                     ?.mapNotNull { document ->
-                        val id = document.getLong("id")?.toInt() ?: return@mapNotNull null
+                        val id = (document.get("id") as? Number)?.toInt() ?: return@mapNotNull null
                         FavoriteTvSeries(
                             id = id,
                             name = document.getString("name"),
                             posterPath = document.getString("posterPath"),
                             firstAirDate = document.getString("firstAirDate"),
-                            voteAverage = document.getDouble("voteAverage"),
+                            voteAverage = (document.get("voteAverage") as? Number)?.toDouble(),
                             genreIds = (document.get("genreIds") as? List<*>)
                                 .orEmpty()
                                 .mapNotNull { (it as? Number)?.toInt() }
@@ -234,7 +234,7 @@ class UserLibraryRepository @Inject constructor(
                     "posterPath" to favorite.posterPath,
                     "firstAirDate" to favorite.firstAirDate,
                     "voteAverage" to favorite.voteAverage,
-                    "genreIds" to favorite.genreIds
+                    "genreIds" to favorite.genreIds.orEmpty()
                 )
             )
             .await()

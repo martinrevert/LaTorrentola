@@ -8,6 +8,7 @@ import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
 import com.martinrevert.latorrentola.model.YTS.Torrent
+import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.utils.UiText
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -26,6 +27,7 @@ class SearchViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val repository: YtsRepository = mockk(relaxed = true)
+    private val tmdbRepository: TmdbRepository = mockk(relaxed = true)
     private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
     private val preferenceManager: com.martinrevert.latorrentola.utils.PreferenceManager = mockk(relaxed = true)
     private lateinit var viewModel: SearchViewModel
@@ -33,11 +35,12 @@ class SearchViewModelTest {
     @Before
     fun setUp() {
         every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(emptyList())
         every { preferenceManager.getFilteredLanguages() } returns ""
-        every { preferenceManager.filteredLanguagesFlow } returns kotlinx.coroutines.flow.MutableStateFlow("")
+        every { preferenceManager.filteredLanguagesFlow } returns MutableStateFlow("")
         every { preferenceManager.getMinimumRating() } returns 6f
         every { preferenceManager.minimumRatingFlow } returns MutableStateFlow(6f)
-        viewModel = SearchViewModel(repository, userLibraryRepository, preferenceManager)
+        viewModel = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager)
     }
 
     @Test

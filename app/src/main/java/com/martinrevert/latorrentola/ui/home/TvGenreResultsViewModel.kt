@@ -160,7 +160,7 @@ class TvGenreResultsViewModel @Inject constructor(
             val page = tmdbRepository.discoverTvByGenre(requestedGenreId, sortBy, requestedPage)
             if (generation != requestGeneration) return
             totalPages = page.totalPages.coerceAtLeast(page.page)
-            allSeries.addAll(page.results.filterNot { candidate ->
+            allSeries.addAll(page.results.orEmpty().filterNot { candidate ->
                 allSeries.any { it.id == candidate.id }
             })
             currentPage = page.page + 1

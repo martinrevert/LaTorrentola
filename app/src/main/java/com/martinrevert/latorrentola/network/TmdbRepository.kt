@@ -109,7 +109,7 @@ class TmdbRepository @Inject constructor(
     /** Loads the TMDB television genre catalog. */
     suspend fun getTvGenres(): List<TmdbTvGenre> {
         requireConfiguredApiKey()
-        return tmdbService.getTvGenres(apiKey = apiKey).genres
+        return tmdbService.getTvGenres(apiKey = apiKey).genres.orEmpty()
     }
 
     /** Observes TMDB TV genre IDs ordered by local usage count. */
