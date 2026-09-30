@@ -13,6 +13,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusable
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -178,6 +182,8 @@ private fun TvActorContent(
     onDismiss: () -> Unit,
     onCreditClick: ((TmdbCastCredit) -> Unit)? = null
 ) {
+    val biographyFocusRequester = remember { FocusRequester() }
+
     Row(
         modifier = Modifier.fillMaxSize(),
         horizontalArrangement = Arrangement.spacedBy(32.dp)
@@ -220,7 +226,11 @@ private fun TvActorContent(
                 .fillMaxHeight()
                 .verticalScroll(rememberScrollState())
         ) {
-            ActorBiography(actor, isTv = true)
+            ActorBiography(
+                actor = actor,
+                isTv = true,
+                summaryFocusRequester = biographyFocusRequester
+            )
 
             val credits = actor.combinedCredits?.cast.orEmpty()
             if (credits.isNotEmpty()) {
@@ -232,7 +242,9 @@ private fun TvActorContent(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 LazyRow(
-                    modifier = Modifier.focusRestorer(),
+                    modifier = Modifier
+                        .focusRestorer()
+                        .focusProperties { up = biographyFocusRequester },
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(credits) { credit ->
@@ -280,19 +292,24 @@ private fun ActorPersonalDetails(actor: TmdbActorDetail, centered: Boolean, isTv
  * @param actor Actor details returned by TMDB.
  * @param modifier Layout modifier for this section.
  * @param isTv Whether to use the larger type scale for TV viewing distance.
+ * @param summaryFocusRequester Optional TV focus target for the summary heading.
  */
 @Composable
 private fun ActorBiography(
     actor: TmdbActorDetail,
     modifier: Modifier = Modifier,
-    isTv: Boolean = false
+    isTv: Boolean = false,
+    summaryFocusRequester: FocusRequester? = null
 ) {
     Column(modifier = modifier) {
         Text(
             text = stringResource(R.string.summary_header),
             style = if (isTv) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = summaryFocusRequester?.let {
+                Modifier.focusRequester(it).focusable()
+            } ?: Modifier
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(

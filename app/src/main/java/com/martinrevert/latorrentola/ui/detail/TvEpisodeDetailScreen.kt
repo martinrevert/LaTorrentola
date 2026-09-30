@@ -88,7 +88,8 @@ fun TvEpisodeDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
-    val contentFocusRequester = remember { FocusRequester() }
+    val episodeSummaryFocusRequester = remember { FocusRequester() }
+    val firstTorrentFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(seriesId, seasonNumber, episodeNumber) {
         viewModel.loadEpisode(
@@ -110,8 +111,8 @@ fun TvEpisodeDetailScreen(
                         modifier = Modifier
                             .focusHighlight(shape = CircleShape)
                             .then(
-                                if (uiState is TvEpisodeDetailUiState.Success) {
-                                    Modifier.focusProperties { down = contentFocusRequester }
+                                if (isTv && uiState is TvEpisodeDetailUiState.Success) {
+                                    Modifier.focusProperties { down = episodeSummaryFocusRequester }
                                 } else {
                                     Modifier
                                 }
@@ -151,7 +152,8 @@ fun TvEpisodeDetailScreen(
                 episode = state.episode,
                 torrents = state.torrents,
                 topPadding = padding.calculateTopPadding(),
-                contentFocusRequester = contentFocusRequester,
+                episodeSummaryFocusRequester = if (isTv) episodeSummaryFocusRequester else null,
+                firstTorrentFocusRequester = if (isTv) firstTorrentFocusRequester else null,
                 onTorrentClick = { torrent ->
                     viewModel.markEpisodeAsDownloaded(torrent)
                     launchMagnetLink(context, state.seriesName, state.episode, torrent)
@@ -161,14 +163,25 @@ fun TvEpisodeDetailScreen(
     }
 }
 
-/** Renders the episode metadata hero and the list of available torrent releases. */
+/**
+ * Renders the episode metadata hero and the list of available torrent releases.
+ *
+ * @param seriesName Parent series display name.
+ * @param episode Episode metadata.
+ * @param torrents Matching EZTV releases.
+ * @param topPadding Space reserved for the app bar and system insets.
+ * @param episodeSummaryFocusRequester Optional TV focus target for the episode summary.
+ * @param firstTorrentFocusRequester Optional TV focus target for the first release.
+ * @param onTorrentClick Records and opens the selected release.
+ */
 @Composable
 private fun EpisodeDetailContent(
     seriesName: String,
     episode: TmdbTvEpisode,
     torrents: List<EztvTorrent>,
     topPadding: Dp,
-    contentFocusRequester: FocusRequester,
+    episodeSummaryFocusRequester: FocusRequester?,
+    firstTorrentFocusRequester: FocusRequester?,
     onTorrentClick: (EztvTorrent) -> Unit
 ) {
     val context = LocalContext.current
@@ -190,7 +203,9 @@ private fun EpisodeDetailContent(
         EpisodeHeader(
             seriesName = seriesName,
             episode = episode,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            summaryFocusRequester = episodeSummaryFocusRequester,
+            nextFocusRequester = firstTorrentFocusRequester.takeIf { torrents.isNotEmpty() }
         )
 
         Text(
@@ -209,11 +224,7 @@ private fun EpisodeDetailContent(
                 modifier = Modifier
                     .padding(vertical = 8.dp)
                     .then(
-                        if (isTv) {
-                            Modifier
-                                .focusRequester(contentFocusRequester)
-                                .focusable()
-                        } else Modifier
+                        if (isTv) Modifier.focusable() else Modifier
                     )
             )
         } else {
@@ -221,8 +232,14 @@ private fun EpisodeDetailContent(
                 TorrentReleaseCard(
                     torrent = torrent,
                     onClick = { onTorrentClick(torrent) },
-                    modifier = if (index == 0) {
-                        Modifier.focusRequester(contentFocusRequester)
+                    modifier = if (
+                        index == 0 &&
+                        firstTorrentFocusRequester != null &&
+                        episodeSummaryFocusRequester != null
+                    ) {
+                        Modifier
+                            .focusRequester(firstTorrentFocusRequester)
+                            .focusProperties { up = episodeSummaryFocusRequester }
                     } else Modifier
                 )
             }
@@ -230,12 +247,22 @@ private fun EpisodeDetailContent(
     }
 }
 
-/** Displays episode artwork, season/episode tags, title, air date, runtime, and overview. */
+/**
+ * Displays episode artwork, season/episode tags, title, air date, runtime, and overview.
+ *
+ * @param seriesName Parent series display name.
+ * @param episode Episode metadata to display.
+ * @param modifier Layout modifier for the episode header.
+ * @param summaryFocusRequester Optional TV focus target for the episode title.
+ * @param nextFocusRequester Optional next target below the episode summary.
+ */
 @Composable
 private fun EpisodeHeader(
     seriesName: String,
     episode: TmdbTvEpisode,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    summaryFocusRequester: FocusRequester? = null,
+    nextFocusRequester: FocusRequester? = null
 ) {
     Column(modifier = modifier) {
         if (episode.fullStillUrl != null) {
@@ -266,7 +293,17 @@ private fun EpisodeHeader(
             ),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = summaryFocusRequester?.let { requester ->
+                Modifier
+                    .focusRequester(requester)
+                    .focusable()
+                    .then(
+                        nextFocusRequester?.let { next ->
+                            Modifier.focusProperties { down = next }
+                        } ?: Modifier
+                    )
+            } ?: Modifier
         )
 
         val metaList = listOfNotNull(

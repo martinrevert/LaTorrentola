@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
@@ -143,19 +144,12 @@ fun TvDetailScreen(
     }
 
     val detailContentFocusRequester = remember { FocusRequester() }
+    val seriesInformationFocusRequester = remember { FocusRequester() }
     val firstCastFocusRequester = remember { FocusRequester() }
     var showActorSheet by remember { mutableStateOf(false) }
     val actorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val firstContentFocusRequester = when (val state = uiState) {
-        is TvDetailUiState.Success -> if (
-            state.series.aggregateCredits?.cast.isNullOrEmpty()
-        ) {
-            detailContentFocusRequester
-        } else {
-            firstCastFocusRequester
-        }
-        else -> null
-    }
+    val firstContentFocusRequester =
+        if (uiState is TvDetailUiState.Success) seriesInformationFocusRequester else null
 
     LaunchedEffect(seriesId) { viewModel.load(seriesId) }
 
@@ -273,6 +267,7 @@ fun TvDetailScreen(
                     onSeasonSelected = viewModel::selectSeason,
                     onEpisodeClick = { episode -> onEpisodeClick(state.series.name.orEmpty(), episode) },
                     contentFocusRequester = detailContentFocusRequester,
+                    seriesInformationFocusRequester = seriesInformationFocusRequester.takeIf { isTv },
                     firstCastFocusRequester = firstCastFocusRequester,
                     onCastClick = { personId ->
                         showActorSheet = true
@@ -312,6 +307,7 @@ fun TvDetailScreen(
  * @param onSeasonSelected Loads episodes for a selected season.
  * @param onEpisodeClick Navigates to episode detail view when tapped.
  * @param contentFocusRequester First focusable control in the detail content.
+ * @param seriesInformationFocusRequester Series title and summary focus target.
  * @param firstCastFocusRequester First cast member focus target, when cast is available.
  * @param onCastClick Opens the shared actor detail sheet for the selected TMDB person.
  * @param topPadding Space reserved for the app bar and system insets.
@@ -325,6 +321,7 @@ private fun TvDetailContent(
     onSeasonSelected: (TmdbTvSeason) -> Unit,
     onEpisodeClick: (TmdbTvEpisode) -> Unit,
     contentFocusRequester: FocusRequester,
+    seriesInformationFocusRequester: FocusRequester?,
     firstCastFocusRequester: FocusRequester,
     onCastClick: (Int) -> Unit,
     topPadding: Dp
@@ -366,13 +363,23 @@ private fun TvDetailContent(
                 horizontalArrangement = Arrangement.spacedBy(24.dp)
             ) {
                 TvSeriesHero(series, Modifier.weight(0.6f))
-                TvSeriesInformation(series, Modifier.weight(0.4f))
+                TvSeriesInformation(
+                    series,
+                    Modifier.weight(0.4f),
+                    informationFocusRequester = seriesInformationFocusRequester.takeIf { isTv },
+                    nextFocusRequester = firstCastFocusRequester.takeIf { isTv && cast.isNotEmpty() }
+                )
             }
         } else {
             Column {
                 TvSeriesHero(series, Modifier.fillMaxWidth())
                 Spacer(Modifier.height(16.dp))
-                TvSeriesInformation(series, Modifier.fillMaxWidth())
+                TvSeriesInformation(
+                    series,
+                    Modifier.fillMaxWidth(),
+                    informationFocusRequester = seriesInformationFocusRequester.takeIf { isTv },
+                    nextFocusRequester = firstCastFocusRequester.takeIf { isTv && cast.isNotEmpty() }
+                )
             }
         }
         if (cast.isNotEmpty()) {
@@ -398,7 +405,10 @@ private fun TvDetailContent(
                                     Modifier.focusRequester(firstCastFocusRequester)
                                 } else Modifier
                             )
-                            .focusProperties { down = contentFocusRequester }
+                            .focusProperties {
+                                down = contentFocusRequester
+                                if (isTv) seriesInformationFocusRequester?.let { up = it }
+                            }
                     )
                 }
             }
@@ -664,15 +674,32 @@ private fun TvSeriesHero(series: TmdbTvSummary, modifier: Modifier) {
  *
  * @param series TV series metadata.
  * @param modifier Layout constraints for the metadata.
+ * @param informationFocusRequester Optional focus target for the title and summary.
+ * @param nextFocusRequester Optional next focus target below the series information.
  */
 @Composable
-private fun TvSeriesInformation(series: TmdbTvSummary, modifier: Modifier) {
+private fun TvSeriesInformation(
+    series: TmdbTvSummary,
+    modifier: Modifier,
+    informationFocusRequester: FocusRequester? = null,
+    nextFocusRequester: FocusRequester? = null
+) {
     Column(modifier = modifier) {
         Text(
             series.name.orEmpty(),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = informationFocusRequester?.let { requester ->
+                Modifier
+                    .focusRequester(requester)
+                    .focusable()
+                    .then(
+                        nextFocusRequester?.let { next ->
+                            Modifier.focusProperties { down = next }
+                        } ?: Modifier
+                    )
+            } ?: Modifier
         )
         Spacer(Modifier.height(8.dp))
         Text(
