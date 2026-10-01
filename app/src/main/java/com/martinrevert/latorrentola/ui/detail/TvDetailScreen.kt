@@ -242,7 +242,12 @@ fun TvDetailScreen(
                         }
                         IconButton(
                             onClick = {
-                                val shareUrl = "https://www.themoviedb.org/tv/${state.series.id}"
+                                val imdbCode = state.imdbId?.let { if (it.startsWith("tt")) it else "tt$it" }
+                                val shareUrl = if (!imdbCode.isNullOrBlank()) {
+                                    "https://www.imdb.com/title/$imdbCode"
+                                } else {
+                                    "https://www.themoviedb.org/tv/${state.series.id}"
+                                }
                                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_SUBJECT, state.series.name)

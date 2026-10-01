@@ -94,7 +94,8 @@ class TvDetailViewModel @Inject constructor(
             _uiState.value = TvDetailUiState.Loading
             try {
                 val series = tmdbRepository.getTvDetails(seriesId)
-                _uiState.value = TvDetailUiState.Success(series)
+                val imdbId = tmdbRepository.getTvImdbId(seriesId)
+                _uiState.value = TvDetailUiState.Success(series, imdbId)
                 val seasons = series.seasons.orEmpty()
                 val initialSeason = seasons
                     .filter { it.seasonNumber > 0 }
@@ -188,8 +189,9 @@ sealed interface TvDetailUiState {
      * Series details loaded.
      *
      * @property series TMDB series metadata.
+     * @property imdbId Linked IMDb title identifier, when available.
      */
-    data class Success(val series: TmdbTvSummary) : TvDetailUiState
+    data class Success(val series: TmdbTvSummary, val imdbId: String? = null) : TvDetailUiState
 
     /**
      * Series detail request failed.

@@ -7,7 +7,7 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.dokka)
-    id 'jacoco'
+    id("jacoco")
 }
 
 def getGitVersionCount(providers) {
@@ -120,7 +120,6 @@ android {
             excludes += '/META-INF/{AL2.0,LGPL2.1}'
         }
         jniLibs {
-            useLegacyPackaging = true
             keepDebugSymbols.add('**/libandroidx.graphics.path.so')
             keepDebugSymbols.add('**/libtranslate_jni.so')
         }
@@ -143,7 +142,7 @@ android {
     buildTypes {
         debug {
             enableUnitTestCoverage = true
-            signingConfig signingConfigs.debug
+            signingConfig = signingConfigs.debug
         }
         release {
             signingConfig = signingConfigs.release
@@ -154,8 +153,8 @@ android {
     }
 
     testOptions {
-        unitTests.all {
-            jvmArgs(
+        unitTests.all { Test test ->
+            test.jvmArgs(
                 "-XX:+EnableDynamicAgentLoading",
                 "--add-opens=java.base/java.lang=ALL-UNNAMED",
                 "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
@@ -166,15 +165,15 @@ android {
                 "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
                 "-XX:+IgnoreUnrecognizedVMOptions"
             )
-            systemProperty "net.bytebuddy.experimental", "true"
-            systemProperty "jdk.attach.allowAttachSelf", "true"
+            test.systemProperty "net.bytebuddy.experimental", "true"
+            test.systemProperty "jdk.attach.allowAttachSelf", "true"
         }
     }
 }
 
 // Global base name for all generated archives (APKs, AABs, etc.)
 base {
-    archivesName = "LaTorrentola-v3.0.$gitVersionCount"
+    archivesName.set("LaTorrentola-v3.0.$gitVersionCount")
 }
 
 dependencies {
@@ -296,49 +295,47 @@ tasks.withType(Test).configureEach {
     ]
 }
 
-project.afterEvaluate {
-    tasks.register('jacocoTestReport', JacocoReport) {
-        dependsOn 'testDebugUnitTest'
+tasks.register('jacocoTestReport', JacocoReport) {
+    dependsOn 'testDebugUnitTest'
 
-        reports {
-            xml.required = true
-            html.required = true
-        }
-
-        def fileFilter = [
-            '**/R.class',
-            '**/R$*.class',
-            '**/BuildConfig.*',
-            '**/Manifest*.*',
-            '**/*Test*.*',
-            'android/**/*.*',
-            '**/*$ViewInjector*.*',
-            '**/*$ViewBinder*.*',
-            '**/Lambda$*.class',
-            '**/Lambda.class',
-            '**/*Lambda.class',
-            '**/*Lambda*.class',
-            '**/*_MembersInjector.class',
-            '**/Dagger*Component*.*',
-            '**/*Module_*Factory.class',
-            '**/*_Factory*.*',
-            '**/*_Provide*Factory*.*',
-            '**/*Extensions*.*',
-            '**/*$Result.*',
-            '**/*$Result$*.*',
-            '**/*Args*.*',
-            '**/*Directions*.*'
-        ]
-
-        def kotlinClasses = fileTree(dir: "${project.layout.buildDirectory.get().asFile}/intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes", excludes: fileFilter)
-        def javaClasses = fileTree(dir: "${project.layout.buildDirectory.get().asFile}/intermediates/javac/debug/classes", excludes: fileFilter)
-        def debugTree = kotlinClasses + javaClasses
-        def mainSrc = "${project.projectDir}/src/main/java"
-
-        sourceDirectories.setFrom(files([mainSrc]))
-        classDirectories.setFrom(files([debugTree]))
-        executionData.setFrom(fileTree(dir: project.layout.buildDirectory.get().asFile, includes: [
-            'jacoco/testDebugUnitTest.exec', 'outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec'
-        ]))
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
     }
+
+    def fileFilter = [
+        '**/R.class',
+        '**/R$*.class',
+        '**/BuildConfig.*',
+        '**/Manifest*.*',
+        '**/*Test*.*',
+        'android/**/*.*',
+        '**/*$ViewInjector*.*',
+        '**/*$ViewBinder*.*',
+        '**/Lambda$*.class',
+        '**/Lambda.class',
+        '**/*Lambda.class',
+        '**/*Lambda*.class',
+        '**/*_MembersInjector.class',
+        '**/Dagger*Component*.*',
+        '**/*Module_*Factory.class',
+        '**/*_Factory*.*',
+        '**/*_Provide*Factory*.*',
+        '**/*Extensions*.*',
+        '**/*$Result.*',
+        '**/*$Result$*.*',
+        '**/*Args*.*',
+        '**/*Directions*.*'
+    ]
+
+    def kotlinClasses = fileTree(dir: layout.buildDirectory.dir("intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes"), excludes: fileFilter)
+    def javaClasses = fileTree(dir: layout.buildDirectory.dir("intermediates/javac/debug/classes"), excludes: fileFilter)
+    def debugTree = kotlinClasses + javaClasses
+    def mainSrc = "${project.projectDir}/src/main/java"
+
+    sourceDirectories.setFrom(files([mainSrc]))
+    classDirectories.setFrom(files([debugTree]))
+    executionData.setFrom(fileTree(dir: layout.buildDirectory, includes: [
+        'jacoco/testDebugUnitTest.exec', 'outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec'
+    ]))
 }
