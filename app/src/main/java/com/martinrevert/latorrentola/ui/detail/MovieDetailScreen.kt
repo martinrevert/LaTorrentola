@@ -7,6 +7,7 @@ import android.os.Build
 import androidx.core.net.toUri
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -72,9 +73,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.lifecycle.LifecycleOwner
+import kotlinx.coroutines.launch
 import java.net.URLEncoder
 import androidx.tv.material3.Button as TvButton
 import androidx.tv.material3.IconButtonDefaults
@@ -205,6 +208,8 @@ private fun MovieDetailScreenContent(
     }
 
     val contentFocusRequester = remember { FocusRequester() }
+    val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -221,6 +226,11 @@ private fun MovieDetailScreenContent(
                         modifier = Modifier
                             .focusHighlight(shape = CircleShape)
                             .focusProperties { down = contentFocusRequester }
+                            .onFocusChanged { focusState ->
+                                if (focusState.isFocused) {
+                                    coroutineScope.launch { scrollState.animateScrollTo(0) }
+                                }
+                            }
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back_desc))
                     }
@@ -233,6 +243,11 @@ private fun MovieDetailScreenContent(
                             modifier = Modifier
                                 .focusHighlight(shape = CircleShape)
                                 .focusProperties { down = contentFocusRequester }
+                                .onFocusChanged { focusState ->
+                                    if (focusState.isFocused) {
+                                        coroutineScope.launch { scrollState.animateScrollTo(0) }
+                                    }
+                                }
                         ) {
                             Icon(
                                 Icons.Default.Share,
@@ -244,6 +259,11 @@ private fun MovieDetailScreenContent(
                             modifier = Modifier
                                 .focusHighlight(shape = CircleShape)
                                 .focusProperties { down = contentFocusRequester }
+                                .onFocusChanged { focusState ->
+                                    if (focusState.isFocused) {
+                                        coroutineScope.launch { scrollState.animateScrollTo(0) }
+                                    }
+                                }
                         ) {
                             Icon(
                                 if (state.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -285,7 +305,8 @@ private fun MovieDetailScreenContent(
                         onAddLanguageToFilter = onAddLanguageToFilter,
                         onCastClick = onCastClick,
                         contentFocusRequester = contentFocusRequester,
-                        contentPadding = detailContentPadding
+                        contentPadding = detailContentPadding,
+                        scrollState = scrollState
                     )
                 }
                 is DetailUiState.Error -> {
@@ -310,7 +331,11 @@ private fun MovieDetailScreenContent(
 }
 
 
-/** Renders a movie's trailer, summary, metadata, cast, and available torrents. */
+/**
+ * Renders a movie's trailer, summary, metadata, cast, and available torrents.
+ *
+ * @param scrollState Scroll state for managing vertical scroll offset during focus changes.
+ */
 @Composable
 fun MovieDetailContent(
     movie: Movie,
@@ -321,14 +346,16 @@ fun MovieDetailContent(
     onAddLanguageToFilter: (String) -> Unit,
     onCastClick: (String) -> Unit,
     contentFocusRequester: FocusRequester? = null,
-    contentPadding: PaddingValues = PaddingValues(16.dp)
+    contentPadding: PaddingValues = PaddingValues(16.dp),
+    scrollState: ScrollState = rememberScrollState()
 ) {
     val firstTorrentFocusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .padding(contentPadding)
     ) {
         if (isWideScreen && !movie.ytTrailerCode.isNullOrEmpty()) {
@@ -340,7 +367,10 @@ fun MovieDetailContent(
                     YoutubePlayer(
                         youtubeVideoId = movie.ytTrailerCode,
                         lifecycleOwner = LocalLifecycleOwner.current,
-                        focusRequester = contentFocusRequester
+                        focusRequester = contentFocusRequester,
+                        onFocused = {
+                            coroutineScope.launch { scrollState.animateScrollTo(0) }
+                        }
                     )
                 }
                 Column(modifier = Modifier.weight(0.4f)) {
@@ -356,7 +386,12 @@ fun MovieDetailContent(
                     MovieMetadata(
                         movie = movie,
                         onAddLanguageToFilter = onAddLanguageToFilter,
-                        focusRequester = if (movie.ytTrailerCode.isNullOrEmpty()) contentFocusRequester else null
+                        focusRequester = if (movie.ytTrailerCode.isNullOrEmpty()) contentFocusRequester else null,
+                        onFocused = {
+                            if (movie.ytTrailerCode.isNullOrEmpty()) {
+                                coroutineScope.launch { scrollState.animateScrollTo(0) }
+                            }
+                        }
                     )
                 }
             }
@@ -365,7 +400,10 @@ fun MovieDetailContent(
                 YoutubePlayer(
                     youtubeVideoId = movie.ytTrailerCode,
                     lifecycleOwner = LocalLifecycleOwner.current,
-                    focusRequester = contentFocusRequester
+                    focusRequester = contentFocusRequester,
+                    onFocused = {
+                        coroutineScope.launch { scrollState.animateScrollTo(0) }
+                    }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }
@@ -380,7 +418,12 @@ fun MovieDetailContent(
             MovieMetadata(
                 movie = movie,
                 onAddLanguageToFilter = onAddLanguageToFilter,
-                focusRequester = if (movie.ytTrailerCode.isNullOrEmpty()) contentFocusRequester else null
+                focusRequester = if (movie.ytTrailerCode.isNullOrEmpty()) contentFocusRequester else null,
+                onFocused = {
+                    if (movie.ytTrailerCode.isNullOrEmpty()) {
+                        coroutineScope.launch { scrollState.animateScrollTo(0) }
+                    }
+                }
             )
         }
         
@@ -421,13 +464,18 @@ fun MovieDetailContent(
     }
 }
 
-/** Displays localized movie metadata and an action to exclude its language. */
+/**
+ * Displays localized movie metadata and an action to exclude its language.
+ *
+ * @param onFocused Callback invoked when the exclude button gains focus.
+ */
 @Composable
 fun MovieMetadata(
     movie: Movie, 
     modifier: Modifier = Modifier,
     onAddLanguageToFilter: (String) -> Unit,
-    focusRequester: FocusRequester? = null
+    focusRequester: FocusRequester? = null,
+    onFocused: (() -> Unit)? = null
 ) {
     Column(modifier = modifier) {
         if (!movie.genres.isNullOrEmpty()) {
@@ -451,7 +499,12 @@ fun MovieMetadata(
                     modifier = Modifier
                         .height(28.dp)
                         .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-                        .focusHighlight(shape = MaterialTheme.shapes.small),
+                        .focusHighlight(shape = MaterialTheme.shapes.small)
+                        .onFocusChanged { focusState ->
+                            if (focusState.isFocused) {
+                                onFocused?.invoke()
+                            }
+                        },
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                     shape = MaterialTheme.shapes.small
                 ) {
@@ -473,12 +526,17 @@ fun MovieMetadata(
     }
 }
 
-/** Embeds a YouTube trailer with native play/pause controls and lifecycle handling. */
+/**
+ * Embeds a YouTube trailer with native play/pause controls and lifecycle handling.
+ *
+ * @param onFocused Callback invoked when the play/pause button gains focus to align scroll position.
+ */
 @Composable
 fun YoutubePlayer(
     youtubeVideoId: String,
     lifecycleOwner: LifecycleOwner,
-    focusRequester: FocusRequester? = null
+    focusRequester: FocusRequester? = null,
+    onFocused: (() -> Unit)? = null
 ) {
     var playerState by remember { mutableStateOf(PlayerConstants.PlayerState.UNKNOWN) }
     var youTubePlayerInstance by remember { mutableStateOf<YouTubePlayer?>(null) }
@@ -530,6 +588,11 @@ fun YoutubePlayer(
         val playButtonModifier = Modifier
             .size(64.dp)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .onFocusChanged { focusState ->
+                if (focusState.isFocused) {
+                    onFocused?.invoke()
+                }
+            }
 
         if (isTv) {
             androidx.tv.material3.IconButton(

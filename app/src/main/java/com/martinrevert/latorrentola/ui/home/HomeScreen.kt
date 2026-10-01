@@ -646,30 +646,29 @@ private fun HomeTopAppBar(
             ) {
                 Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search_desc))
             }
-            BadgedBox(
-                badge = {
-                    if (favoritesCount > 0) {
-                        Badge(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                            contentColor = MaterialTheme.colorScheme.onErrorContainer
-                        ) {
-                            Text(
-                                text = if (favoritesCount > 99) "99+" else favoritesCount.toString(),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 4.dp)
-                            )
+            IconButton(
+                onClick = onFavoritesClick,
+                modifier = Modifier
+                    .focusHighlight(shape = CircleShape)
+                    .focusProperties { down = focusDownRequester }
+            ) {
+                BadgedBox(
+                    badge = {
+                        if (favoritesCount > 0) {
+                            Badge(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            ) {
+                                Text(
+                                    text = if (favoritesCount > 99) "99+" else favoritesCount.toString(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    maxLines = 1,
+                                    modifier = Modifier.padding(horizontal = 2.dp)
+                                )
+                            }
                         }
                     }
-                },
-                modifier = Modifier.padding(end = 4.dp, top = 4.dp)
-            ) {
-                IconButton(
-                    onClick = onFavoritesClick,
-                    modifier = Modifier
-                        .focusHighlight(shape = CircleShape)
-                        .focusProperties { down = focusDownRequester }
                 ) {
                     Icon(Icons.Default.Favorite, contentDescription = stringResource(R.string.favorites_desc))
                 }
