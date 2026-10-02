@@ -181,7 +181,7 @@ fun TvDetailScreen(
                     IconButton(
                         onClick = onBackClick,
                         modifier = Modifier
-                            .focusHighlight(shape = CircleShape)
+                            .then(if (!isTv) Modifier.focusHighlight(shape = CircleShape) else Modifier)
                             .then(
                                 if (isTv && firstContentFocusRequester != null) {
                                     Modifier
@@ -214,7 +214,7 @@ fun TvDetailScreen(
                         IconButton(
                             onClick = { viewModel.toggleFavorite(state.series) },
                             modifier = Modifier
-                                .focusHighlight(shape = CircleShape)
+                                .then(if (!isTv) Modifier.focusHighlight(shape = CircleShape) else Modifier)
                                 .then(
                                     if (isTv && firstContentFocusRequester != null) {
                                         Modifier.focusProperties { down = firstContentFocusRequester }
@@ -262,7 +262,7 @@ fun TvDetailScreen(
                                 context.startActivity(Intent.createChooser(shareIntent, resources.getString(R.string.share_movie_chooser)))
                             },
                             modifier = Modifier
-                                .focusHighlight(shape = CircleShape)
+                                .then(if (!isTv) Modifier.focusHighlight(shape = CircleShape) else Modifier)
                                 .then(
                                     if (isTv && firstContentFocusRequester != null) {
                                         Modifier.focusProperties { down = firstContentFocusRequester }
@@ -664,11 +664,6 @@ private fun TvCastMember(
             modifier = modifier
                 .width(90.dp)
                 .padding(4.dp)
-                .border(
-                    width = if (isFocused) 2.dp else 0.dp,
-                    color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
-                    shape = MaterialTheme.shapes.small
-                )
         ) {
             content()
         }
@@ -894,9 +889,6 @@ private fun TvEpisodeCard(
     }
 
     if (isTv) {
-        val interactionSource = remember { MutableInteractionSource() }
-        val isFocused by interactionSource.collectIsFocusedAsState()
-
         TvSurface(
             onClick = onClick,
             scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
@@ -907,14 +899,7 @@ private fun TvEpisodeCard(
                 contentColor = MaterialTheme.colorScheme.onSurface,
                 focusedContentColor = MaterialTheme.colorScheme.onSurface
             ),
-            interactionSource = interactionSource,
-            modifier = modifier
-                .fillMaxWidth()
-                .border(
-                    width = if (isFocused) 2.dp else 0.dp,
-                    color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
-                    shape = MaterialTheme.shapes.medium
-                )
+            modifier = modifier.fillMaxWidth()
         ) {
             cardContent()
         }
