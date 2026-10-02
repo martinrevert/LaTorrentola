@@ -11,9 +11,10 @@ import com.martinrevert.latorrentola.network.UserLibraryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
@@ -32,14 +33,42 @@ class TvEpisodeDetailViewModel @Inject constructor(
     private val userLibraryRepository: UserLibraryRepository
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow<TvEpisodeDetailUiState>(TvEpisodeDetailUiState.Loading)
-    val uiState: StateFlow<TvEpisodeDetailUiState> = _uiState.asStateFlow()
+    private val _rawUiState = MutableStateFlow<TvEpisodeDetailRawUiState>(TvEpisodeDetailRawUiState.Loading)
 
     private var activeSeriesId: Int = 0
     private var activeSeasonNumber: Int = 0
     private var activeEpisodeNumber: Int = 0
     private var activeSeriesName: String = ""
     private var currentEpisode: TmdbTvEpisode? = null
+
+    /** Observes downloaded episode history and dynamically reflects download status. */
+    val uiState: StateFlow<TvEpisodeDetailUiState> = combine(
+        _rawUiState,
+        userLibraryRepository.getDownloadedEpisodes()
+    ) { rawState, downloads ->
+        when (rawState) {
+            is TvEpisodeDetailRawUiState.Loading -> TvEpisodeDetailUiState.Loading
+            is TvEpisodeDetailRawUiState.Error -> TvEpisodeDetailUiState.Error(rawState.message)
+            is TvEpisodeDetailRawUiState.Success -> {
+                val matching = downloads.filter {
+                    it.seriesId == activeSeriesId &&
+                            it.seasonNumber == activeSeasonNumber &&
+                            it.episodeNumber == activeEpisodeNumber
+                }
+                TvEpisodeDetailUiState.Success(
+                    seriesName = rawState.seriesName,
+                    episode = rawState.episode,
+                    torrents = rawState.torrents,
+                    isDownloaded = matching.isNotEmpty(),
+                    downloadedHashes = matching.map { it.hash }.toSet()
+                )
+            }
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = TvEpisodeDetailUiState.Loading
+    )
 
     /**
      * Loads episode details and searches EZTV for matching torrent releases.
@@ -60,7 +89,7 @@ class TvEpisodeDetailViewModel @Inject constructor(
         if (activeSeriesId == seriesId &&
             activeSeasonNumber == seasonNumber &&
             activeEpisodeNumber == episodeNumber &&
-            _uiState.value !is TvEpisodeDetailUiState.Loading
+            _rawUiState.value !is TvEpisodeDetailRawUiState.Loading
         ) {
             return
         }
@@ -71,7 +100,7 @@ class TvEpisodeDetailViewModel @Inject constructor(
         activeSeriesName = seriesName
 
         viewModelScope.launch {
-            _uiState.value = TvEpisodeDetailUiState.Loading
+            _rawUiState.value = TvEpisodeDetailRawUiState.Loading
             try {
                 // 1. Resolve episode metadata
                 var episode = if (!episodeJson.isNullOrBlank()) {
@@ -113,14 +142,14 @@ class TvEpisodeDetailViewModel @Inject constructor(
                     eztvRepository.getTorrentsForEpisode(imdbId, seasonNumber, episodeNumber)
                 } else emptyList()
 
-                _uiState.value = TvEpisodeDetailUiState.Success(
+                _rawUiState.value = TvEpisodeDetailRawUiState.Success(
                     seriesName = resolvedSeriesName,
                     episode = episode,
                     torrents = torrents
                 )
             } catch (e: Exception) {
                 if (e !is CancellationException) {
-                    _uiState.value = TvEpisodeDetailUiState.Error(
+                    _rawUiState.value = TvEpisodeDetailRawUiState.Error(
                         e.localizedMessage ?: "Unable to load episode details"
                     )
                 }
@@ -136,6 +165,12 @@ class TvEpisodeDetailViewModel @Inject constructor(
     fun markEpisodeAsDownloaded(torrent: EztvTorrent) {
         val episode = currentEpisode ?: return
         viewModelScope.launch {
+            val validHash = when {
+                torrent.hash.isNotBlank() -> torrent.hash
+                torrent.magnetUrl.isNotBlank() -> extractHashFromMagnet(torrent.magnetUrl)
+                else -> null
+            } ?: "tv_${activeSeriesId}_s${activeSeasonNumber}_e${activeEpisodeNumber}"
+
             userLibraryRepository.markEpisodeAsDownloaded(
                 DownloadedEpisode(
                     seriesId = activeSeriesId,
@@ -145,13 +180,20 @@ class TvEpisodeDetailViewModel @Inject constructor(
                     episodeName = episode.name.orEmpty(),
                     releaseTitle = torrent.title,
                     quality = extractQuality(torrent.title),
-                    hash = torrent.hash,
+                    hash = validHash,
                     magnetUrl = torrent.magnetUrl,
                     timestamp = System.currentTimeMillis(),
                     stillPath = episode.stillPath
                 )
             )
         }
+    }
+
+    /** Extracts infohash from a magnet URL if torrent.hash is blank. */
+    private fun extractHashFromMagnet(magnetUrl: String): String? {
+        if (magnetUrl.isBlank()) return null
+        val regex = Regex("""xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})""", RegexOption.IGNORE_CASE)
+        return regex.find(magnetUrl)?.groupValues?.get(1)?.lowercase()
     }
 
     /** Helper to extract a short quality label (e.g. "1080p", "720p", "2160p") from release title. */
@@ -167,6 +209,19 @@ class TvEpisodeDetailViewModel @Inject constructor(
     }
 }
 
+/** Internal raw UI states for episode details before combining with download history. */
+private sealed interface TvEpisodeDetailRawUiState {
+    data object Loading : TvEpisodeDetailRawUiState
+
+    data class Success(
+        val seriesName: String,
+        val episode: TmdbTvEpisode,
+        val torrents: List<EztvTorrent>
+    ) : TvEpisodeDetailRawUiState
+
+    data class Error(val message: String) : TvEpisodeDetailRawUiState
+}
+
 /** UI states for the episode detail screen. */
 sealed interface TvEpisodeDetailUiState {
     data object Loading : TvEpisodeDetailUiState
@@ -174,7 +229,9 @@ sealed interface TvEpisodeDetailUiState {
     data class Success(
         val seriesName: String,
         val episode: TmdbTvEpisode,
-        val torrents: List<EztvTorrent>
+        val torrents: List<EztvTorrent>,
+        val isDownloaded: Boolean = false,
+        val downloadedHashes: Set<String> = emptySet()
     ) : TvEpisodeDetailUiState
 
     data class Error(val message: String) : TvEpisodeDetailUiState

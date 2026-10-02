@@ -19,10 +19,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -147,18 +152,28 @@ fun TvEpisodeDetailScreen(
                 Text(state.message, color = MaterialTheme.colorScheme.error)
             }
 
-            is TvEpisodeDetailUiState.Success -> EpisodeDetailContent(
-                seriesName = state.seriesName,
-                episode = state.episode,
-                torrents = state.torrents,
-                topPadding = padding.calculateTopPadding(),
-                episodeSummaryFocusRequester = if (isTv) episodeSummaryFocusRequester else null,
-                firstTorrentFocusRequester = if (isTv) firstTorrentFocusRequester else null,
-                onTorrentClick = { torrent ->
-                    viewModel.markEpisodeAsDownloaded(torrent)
-                    launchMagnetLink(context, state.seriesName, state.episode, torrent)
-                }
-            )
+            is TvEpisodeDetailUiState.Success -> {
+                val downloadedText = stringResource(R.string.tv_episode_downloaded)
+                EpisodeDetailContent(
+                    seriesName = state.seriesName,
+                    episode = state.episode,
+                    torrents = state.torrents,
+                    isDownloaded = state.isDownloaded,
+                    downloadedHashes = state.downloadedHashes,
+                    topPadding = padding.calculateTopPadding(),
+                    episodeSummaryFocusRequester = if (isTv) episodeSummaryFocusRequester else null,
+                    firstTorrentFocusRequester = if (isTv) firstTorrentFocusRequester else null,
+                    onTorrentClick = { torrent ->
+                        viewModel.markEpisodeAsDownloaded(torrent)
+                        Toast.makeText(
+                            context,
+                            downloadedText,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        launchMagnetLink(context, state.seriesName, state.episode, torrent)
+                    }
+                )
+            }
         }
     }
 }
@@ -169,6 +184,8 @@ fun TvEpisodeDetailScreen(
  * @param seriesName Parent series display name.
  * @param episode Episode metadata.
  * @param torrents Matching EZTV releases.
+ * @param isDownloaded Whether this episode has been downloaded.
+ * @param downloadedHashes Specific release infohashes recorded in user downloads.
  * @param topPadding Space reserved for the app bar and system insets.
  * @param episodeSummaryFocusRequester Optional TV focus target for the episode summary.
  * @param firstTorrentFocusRequester Optional TV focus target for the first release.
@@ -179,6 +196,8 @@ private fun EpisodeDetailContent(
     seriesName: String,
     episode: TmdbTvEpisode,
     torrents: List<EztvTorrent>,
+    isDownloaded: Boolean = false,
+    downloadedHashes: Set<String> = emptySet(),
     topPadding: Dp,
     episodeSummaryFocusRequester: FocusRequester?,
     firstTorrentFocusRequester: FocusRequester?,
@@ -203,6 +222,7 @@ private fun EpisodeDetailContent(
         EpisodeHeader(
             seriesName = seriesName,
             episode = episode,
+            isDownloaded = isDownloaded,
             modifier = Modifier.fillMaxWidth(),
             summaryFocusRequester = episodeSummaryFocusRequester,
             nextFocusRequester = firstTorrentFocusRequester.takeIf { torrents.isNotEmpty() }
@@ -229,8 +249,11 @@ private fun EpisodeDetailContent(
             )
         } else {
             torrents.forEachIndexed { index, torrent ->
+                val isTorrentDownloaded = (torrent.hash.isNotBlank() && torrent.hash in downloadedHashes) ||
+                        isDownloaded
                 TorrentReleaseCard(
                     torrent = torrent,
+                    isDownloaded = isTorrentDownloaded,
                     onClick = { onTorrentClick(torrent) },
                     modifier = if (
                         index == 0 &&
@@ -248,10 +271,11 @@ private fun EpisodeDetailContent(
 }
 
 /**
- * Displays episode artwork, season/episode tags, title, air date, runtime, and overview.
+ * Displays episode artwork, season/episode tags, title, air date, runtime, overview, and download badge.
  *
  * @param seriesName Parent series display name.
  * @param episode Episode metadata to display.
+ * @param isDownloaded Whether this episode has been downloaded.
  * @param modifier Layout modifier for the episode header.
  * @param summaryFocusRequester Optional TV focus target for the episode title.
  * @param nextFocusRequester Optional next target below the episode summary.
@@ -260,6 +284,7 @@ private fun EpisodeDetailContent(
 private fun EpisodeHeader(
     seriesName: String,
     episode: TmdbTvEpisode,
+    isDownloaded: Boolean = false,
     modifier: Modifier = Modifier,
     summaryFocusRequester: FocusRequester? = null,
     nextFocusRequester: FocusRequester? = null
@@ -277,12 +302,37 @@ private fun EpisodeHeader(
             Spacer(Modifier.height(16.dp))
         }
 
-        if (seriesName.isNotBlank()) {
-            Text(
-                text = seriesName,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (seriesName.isNotBlank()) {
+                Text(
+                    text = seriesName,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            if (isDownloaded) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudDone,
+                        contentDescription = stringResource(R.string.tv_episode_downloaded),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.tv_episode_downloaded),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
         }
 
         Text(
@@ -330,11 +380,12 @@ private fun EpisodeHeader(
     }
 }
 
-/** Displays a torrent release with native TV focus behavior and the shared phone focus indicator. */
+/** Displays a torrent release with native TV focus behavior, release info, and download status. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun TorrentReleaseCard(
     torrent: EztvTorrent,
+    isDownloaded: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -349,12 +400,26 @@ private fun TorrentReleaseCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = torrent.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = torrent.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (isDownloaded) {
+                        Text(
+                            text = stringResource(R.string.tv_episode_downloaded),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
                 Spacer(Modifier.height(4.dp))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -380,8 +445,8 @@ private fun TorrentReleaseCard(
             }
             Spacer(Modifier.width(12.dp))
             Icon(
-                imageVector = Icons.Default.Download,
-                contentDescription = stringResource(R.string.tv_download_torrent_desc),
+                imageVector = if (isDownloaded) Icons.Default.CloudDone else Icons.Default.Download,
+                contentDescription = if (isDownloaded) stringResource(R.string.tv_episode_downloaded) else stringResource(R.string.tv_download_torrent_desc),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(28.dp)
             )
@@ -389,11 +454,27 @@ private fun TorrentReleaseCard(
     }
 
     if (isTv) {
+        val interactionSource = remember { MutableInteractionSource() }
+        val isFocused by interactionSource.collectIsFocusedAsState()
+
         TvSurface(
             onClick = onClick,
-            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
             shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
-            modifier = modifier.fillMaxWidth()
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                focusedContentColor = MaterialTheme.colorScheme.onSurface
+            ),
+            interactionSource = interactionSource,
+            modifier = modifier
+                .fillMaxWidth()
+                .border(
+                    width = if (isFocused) 2.dp else 0.dp,
+                    color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    shape = MaterialTheme.shapes.medium
+                )
         ) {
             cardContent()
         }
@@ -404,7 +485,8 @@ private fun TorrentReleaseCard(
                 .fillMaxWidth()
                 .focusHighlight(shape = MaterialTheme.shapes.medium),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface
             )
         ) {
             cardContent()

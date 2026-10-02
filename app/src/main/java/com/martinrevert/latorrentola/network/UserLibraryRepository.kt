@@ -105,15 +105,19 @@ class UserLibraryRepository @Inject constructor(
         awaitClose { subscription.remove() }
     }
 
-    /** Saves or replaces a TV episode download record, keyed by its torrent hash. */
+    /** Saves or replaces a TV episode download record, keyed by its torrent hash or fallback document ID. */
     suspend fun markEpisodeAsDownloaded(download: DownloadedEpisode) {
         val uid = userId ?: return
+        val docId = download.hash.ifBlank {
+            "tv_${download.seriesId}_s${download.seasonNumber}_e${download.episodeNumber}"
+        }
+        val sanitizedDownload = download.copy(hash = docId)
         try {
             firestore.collection("users")
                 .document(uid)
                 .collection("tv_downloads")
-                .document(download.hash)
-                .set(download)
+                .document(docId)
+                .set(sanitizedDownload)
                 .await()
         } catch (e: Exception) {
             Log.e("Firestore", "Error saving TV episode download: ${e.message}")

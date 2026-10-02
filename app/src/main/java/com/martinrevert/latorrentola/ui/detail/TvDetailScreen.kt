@@ -36,11 +36,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -483,12 +484,23 @@ private fun TvDetailContent(
                         .filter { it.seasonNumber == season.seasonNumber }
                         .distinctBy { it.episodeNumber }
                         .size
-                    val totalCount = season.episodeCount ?: 0
+                    val totalCount = if (
+                        seasonState is TvSeasonUiState.Success &&
+                        seasonState.season.seasonNumber == season.seasonNumber
+                    ) {
+                        seasonState.season.episodes.orEmpty().size.coerceAtLeast(season.episodeCount ?: 0)
+                    } else {
+                        season.episodeCount ?: 0
+                    }
                     val statusLabel = when {
                         downloadedCount > 0 && totalCount > 0 && downloadedCount >= totalCount ->
                             "$baseName · " + stringResource(R.string.tv_season_completed)
                         downloadedCount > 0 ->
-                            "$baseName · " + stringResource(R.string.tv_season_partial, downloadedCount, totalCount)
+                            if (totalCount > 0) {
+                                "$baseName · " + stringResource(R.string.tv_season_partial, downloadedCount, totalCount)
+                            } else {
+                                "$baseName · " + stringResource(R.string.tv_season_partial, downloadedCount, downloadedCount)
+                            }
                         else -> baseName
                     }
 
@@ -551,7 +563,8 @@ private fun TvDetailContent(
                     }
                     episodeList.forEachIndexed { index, episode ->
                         val isDownloaded = seriesDownloads.any {
-                            it.seasonNumber == selectedSeasonNumber && it.episodeNumber == episode.episodeNumber
+                            it.seasonNumber == (selectedSeasonNumber ?: episode.seasonNumber) &&
+                                    it.episodeNumber == episode.episodeNumber
                         }
                         TvEpisodeCard(
                             episode = episode,
@@ -842,7 +855,7 @@ private fun TvEpisodeCard(
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.CheckCircle,
+                                imageVector = Icons.Default.CloudDone,
                                 contentDescription = stringResource(R.string.tv_episode_downloaded),
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(16.dp)
@@ -881,18 +894,38 @@ private fun TvEpisodeCard(
     }
 
     if (isTv) {
-        androidx.tv.material3.Surface(
+        val interactionSource = remember { MutableInteractionSource() }
+        val isFocused by interactionSource.collectIsFocusedAsState()
+
+        TvSurface(
             onClick = onClick,
-            scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
-            shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
-            modifier = modifier.fillMaxWidth()
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+            shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                focusedContentColor = MaterialTheme.colorScheme.onSurface
+            ),
+            interactionSource = interactionSource,
+            modifier = modifier
+                .fillMaxWidth()
+                .border(
+                    width = if (isFocused) 2.dp else 0.dp,
+                    color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    shape = MaterialTheme.shapes.medium
+                )
         ) {
             cardContent()
         }
     } else {
         Card(
             onClick = onClick,
-            modifier = modifier.focusHighlight(shape = MaterialTheme.shapes.medium)
+            modifier = modifier.focusHighlight(shape = MaterialTheme.shapes.medium),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            )
         ) {
             cardContent()
         }
