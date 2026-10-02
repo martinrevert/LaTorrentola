@@ -28,6 +28,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -197,14 +198,20 @@ private fun TorrentDownloadItem(
             ) {
                 if (playable) {
                     if (isTv) {
-                        TvIconButton(onClick = onPlay) {
+                        TvIconButton(
+                            onClick = onPlay,
+                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                        ) {
                             TvIcon(
                                 Icons.Default.PlayArrow,
                                 contentDescription = stringResource(R.string.play_desc)
                             )
                         }
                     } else {
-                        IconButton(onClick = onPlay) {
+                        IconButton(
+                            onClick = onPlay,
+                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                        ) {
                             Icon(
                                 Icons.Default.PlayArrow,
                                 contentDescription = stringResource(R.string.play_desc)
@@ -214,7 +221,10 @@ private fun TorrentDownloadItem(
                 }
                 if (!completed) {
                     if (isTv) {
-                        TvIconButton(onClick = onPauseResume) {
+                        TvIconButton(
+                            onClick = onPauseResume,
+                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                        ) {
                             TvIcon(
                                 if (resumable) Icons.Default.PlayArrow else Icons.Default.Pause,
                                 contentDescription = stringResource(
@@ -223,7 +233,10 @@ private fun TorrentDownloadItem(
                             )
                         }
                     } else {
-                        IconButton(onClick = onPauseResume) {
+                        IconButton(
+                            onClick = onPauseResume,
+                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                        ) {
                             Icon(
                                 if (resumable) Icons.Default.PlayArrow else Icons.Default.Pause,
                                 contentDescription = stringResource(
@@ -234,14 +247,20 @@ private fun TorrentDownloadItem(
                     }
                 }
                 if (isTv) {
-                    TvIconButton(onClick = onDelete) {
+                    TvIconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.focusHighlight(shape = CircleShape)
+                    ) {
                         TvIcon(
                             Icons.Default.Delete,
                             contentDescription = stringResource(R.string.torrent_delete)
                         )
                     }
                 } else {
-                    IconButton(onClick = onDelete) {
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.focusHighlight(shape = CircleShape)
+                    ) {
                         Icon(
                             Icons.Default.Delete,
                             contentDescription = stringResource(R.string.torrent_delete)
