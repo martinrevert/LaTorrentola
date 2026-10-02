@@ -38,7 +38,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.IconButton as TvIconButton
 import androidx.tv.material3.Icon as TvIcon
-import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Surface as TvSurface
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.torrent.TorrentDownload
@@ -273,14 +273,10 @@ private fun TorrentDownloadItem(
 
     if (isTv) {
         TvSurface(
-            onClick = if (playable) onPlay else onPauseResume,
-            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
-            shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
-            colors = ClickableSurfaceDefaults.colors(
+            shape = MaterialTheme.shapes.medium,
+            colors = SurfaceDefaults.colors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                focusedContentColor = MaterialTheme.colorScheme.onSurface
+                contentColor = MaterialTheme.colorScheme.onSurface
             )
         ) {
             cardContent()
