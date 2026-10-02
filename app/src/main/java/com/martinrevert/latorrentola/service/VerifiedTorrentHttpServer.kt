@@ -244,6 +244,6 @@ class VerifiedTorrentHttpServer(
         const val SOCKET_READ_TIMEOUT = 5_000
 
         /** Maximum byte interval verified before the response stream advances. */
-        const val VERIFIED_CHUNK_BYTES = 256L * 1024L
+        const val VERIFIED_CHUNK_BYTES = 1024L * 1024L
     }
 }

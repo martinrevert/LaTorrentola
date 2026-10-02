@@ -70,6 +70,16 @@
     <string name="opensubtitles_support">Añade tu cuenta para buscar y cargar subtítulos en la reproducción local o por Cast.</string>
     <string name="opensubtitles_configured">Las credenciales están cifradas y guardadas en este dispositivo.</string>
     <string name="opensubtitles_search">Buscar subtítulos</string>
+    <string name="player_audio_tracks">Audio</string>
+    <string name="player_subtitle_tracks">Subtítulos</string>
+    <string name="player_search_opensubtitles">Buscar en OpenSubtitles</string>
+    <string name="player_audio_auto">Automático</string>
+    <string name="player_subtitles_off">Desactivados</string>
+    <string name="player_no_audio_tracks">No hay pistas de audio seleccionables.</string>
+    <string name="player_no_subtitle_tracks">No hay pistas de subtítulos seleccionables.</string>
+    <string name="player_audio_channels">%1$d canales</string>
+    <string name="player_track_number">Pista %1$d</string>
+    <string name="player_track_unknown">Pista desconocida</string>
     <string name="opensubtitles_no_results">No se encontraron subtítulos para este título.</string>
     <string name="opensubtitles_request_failed">Falló la solicitud a OpenSubtitles.</string>
     <string name="opensubtitles_results_title">Elegir subtítulos</string>

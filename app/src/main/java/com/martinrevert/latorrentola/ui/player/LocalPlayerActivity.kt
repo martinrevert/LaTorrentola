@@ -7,8 +7,9 @@ import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageButton
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
@@ -21,7 +22,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.TrackGroup
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.google.android.gms.cast.framework.CastContext
@@ -46,6 +50,33 @@ import java.io.File
 import java.io.IOException
 import java.util.Locale
 import javax.inject.Inject
+import com.google.android.gms.cast.MediaTrack as GoogleMediaTrack
+
+/** Track type exposed by the in-player audio and subtitle selectors. */
+private enum class PlaybackTrackType {
+    /** Audio tracks in the media file or Cast receiver. */
+    AUDIO,
+
+    /** Subtitle tracks in the media file or Cast receiver. */
+    SUBTITLE
+}
+
+/**
+ * One selectable track exposed by either Media3 or the Cast receiver.
+ *
+ * @property label Label rendered in the track selection dialog.
+ * @property group Media3 track group, or `null` for receiver-provided tracks.
+ * @property trackIndex Index within [group], or `null` for receiver-provided tracks.
+ * @property castTrackId Cast receiver track identifier, or `null` for local Media3 tracks.
+ * @property isSelected Whether the option is currently active on its playback target.
+ */
+private data class PlaybackTrackOption(
+    val label: String,
+    val group: TrackGroup?,
+    val trackIndex: Int?,
+    val castTrackId: Long?,
+    val isSelected: Boolean
+)
 
 /** Keeps Cast subtitle endpoints alive after the player activity is closed. */
 private object SubtitleServerRegistry {
@@ -113,7 +144,7 @@ class LocalPlayerActivity : ComponentActivity() {
     private var mediaTitle = ""
 
     /**
-     * Creates a player and wires local playback, Cast routing, and subtitle search controls.
+     * Creates a player and places playback actions in the native Media3 controller.
      *
      * @param savedInstanceState Previously saved activity state, if any.
      */
@@ -144,7 +175,20 @@ class LocalPlayerActivity : ComponentActivity() {
 
         val playerView = PlayerView(this)
         this.playerView = playerView
-        val local = ExoPlayer.Builder(this).build()
+        addControllerOptions(playerView)
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                20_000,
+                60_000,
+                5_000,
+                10_000
+            )
+            .setTargetBufferBytes(32 * 1024 * 1024)
+            .setPrioritizeTimeOverSizeThresholds(false)
+            .build()
+        val local = ExoPlayer.Builder(this)
+            .setLoadControl(loadControl)
+            .build()
         localPlayer = local
         activePlayer = local
         playerView.player = local
@@ -176,20 +220,295 @@ class LocalPlayerActivity : ComponentActivity() {
                 )
             )
         }
-        val subtitlesButton = Button(this).apply {
-            text = getString(R.string.opensubtitles_search)
-            setOnClickListener { searchSubtitles() }
-        }
-        root.addView(
-            subtitlesButton,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP or Gravity.START
-            )
-        )
-
         setContentView(root)
+    }
+
+    /**
+     * Adds audio, subtitle, and OpenSubtitles actions to Media3's own controller row.
+     *
+     * @param view Media3 player view whose native controller receives the actions.
+     */
+    private fun addControllerOptions(view: PlayerView) {
+        val controls = requireNotNull(
+            view.findViewById<LinearLayout>(androidx.media3.ui.R.id.exo_basic_controls)
+        ) { "Media3 basic controller controls are unavailable" }
+        val subtitleButton = requireNotNull(
+            view.findViewById<ImageButton>(androidx.media3.ui.R.id.exo_subtitle)
+        ) { "Media3 subtitle controller button is unavailable" }
+        subtitleButton.setOnClickListener { showSubtitleOptions() }
+        subtitleButton.isFocusable = true
+        val buttonStyle = androidx.media3.ui.R.style.ExoStyledControls_Button_Bottom
+        listOf(
+            Triple(
+                androidx.media3.ui.R.drawable.exo_ic_audiotrack,
+                R.string.player_audio_tracks
+            ) { showTrackOptions(PlaybackTrackType.AUDIO) },
+        ).forEach { (icon, description, action) ->
+            controls.addView(
+                ImageButton(this, null, 0, buttonStyle).apply {
+                    setImageResource(icon)
+                    contentDescription = getString(description)
+                    setOnClickListener { action() }
+                    isFocusable = true
+                    isFocusableInTouchMode = true
+                    id = View.generateViewId()
+                }
+            )
+        }
+    }
+
+    /**
+     * Presents selectable audio or subtitle tracks available on the active playback target.
+     *
+     * @param type Track kind requested by the user.
+     */
+    private fun showTrackOptions(type: PlaybackTrackType) {
+        val options = availableTrackOptions(type)
+        val isSubtitle = type == PlaybackTrackType.SUBTITLE
+        val defaultLabel = getString(
+            if (isSubtitle) R.string.player_subtitles_off else R.string.player_audio_auto
+        )
+        if (options.isEmpty()) {
+            val dialog = AlertDialog.Builder(this)
+                .setTitle(
+                    if (isSubtitle) R.string.player_subtitle_tracks
+                    else R.string.player_audio_tracks
+                )
+                .setMessage(
+                    if (isSubtitle) R.string.player_no_subtitle_tracks
+                    else R.string.player_no_audio_tracks
+                )
+                .setPositiveButton(android.R.string.ok, null)
+                .create()
+            showAdaptiveDialog(dialog)
+            return
+        }
+
+        val labels = listOf(defaultLabel) + options.map(PlaybackTrackOption::label)
+        val selectedIndex = options.indexOfFirst { option ->
+            if (option.castTrackId != null) {
+                castActiveTrackIds().contains(option.castTrackId)
+            } else {
+                option.isSelected
+            }
+        }.let { if (it < 0) 0 else it + 1 }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(
+                if (isSubtitle) R.string.player_subtitle_tracks
+                else R.string.player_audio_tracks
+            )
+            .setSingleChoiceItems(labels.toTypedArray(), selectedIndex) { choice, index ->
+                if (castSessionActive) {
+                    selectCastTrack(type, options.getOrNull(index - 1)?.castTrackId)
+                } else {
+                    selectLocalTrack(type, options.getOrNull(index - 1))
+                }
+                choice.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        showAdaptiveDialog(dialog)
+    }
+
+    /** Shows internal subtitle tracks and OpenSubtitles search in the native CC control menu. */
+    private fun showSubtitleOptions() {
+        val options = availableTrackOptions(PlaybackTrackType.SUBTITLE)
+        val labels = buildList {
+            add(getString(R.string.player_subtitles_off))
+            addAll(options.map(PlaybackTrackOption::label))
+            add(getString(R.string.player_search_opensubtitles))
+        }
+        val selectedTrackIndex = options.indexOfFirst(PlaybackTrackOption::isSelected)
+        val selectedIndex = if (selectedTrackIndex < 0) 0 else selectedTrackIndex + 1
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.player_subtitle_tracks)
+            .setSingleChoiceItems(labels.toTypedArray(), selectedIndex) { choice, index ->
+                when {
+                    index == labels.lastIndex -> searchSubtitles()
+                    castSessionActive -> {
+                        selectCastTrack(
+                            PlaybackTrackType.SUBTITLE,
+                            options.getOrNull(index - 1)?.castTrackId
+                        )
+                    }
+                    else -> selectLocalTrack(
+                        PlaybackTrackType.SUBTITLE,
+                        options.getOrNull(index - 1)
+                    )
+                }
+                choice.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        showAdaptiveDialog(dialog)
+    }
+
+    /**
+     * Returns local Media3 or Cast receiver tracks for the selected track type.
+     *
+     * @param type Requested audio or subtitle track type.
+     * @return Currently available selectable tracks.
+     */
+    private fun availableTrackOptions(type: PlaybackTrackType): List<PlaybackTrackOption> =
+        if (castSessionActive) castTrackOptions(type) else localTrackOptions(type)
+
+    /**
+     * Returns supported local Media3 tracks for the selected track type.
+     *
+     * @param type Requested audio or subtitle track type.
+     * @return Supported track groups and individual track indices.
+     */
+    private fun localTrackOptions(type: PlaybackTrackType): List<PlaybackTrackOption> {
+        val media3Type = type.toMedia3TrackType()
+        return localPlayer?.currentTracks
+            ?.groups
+            .orEmpty()
+            .filter { it.type == media3Type }
+            .flatMap { group ->
+                (0 until group.length)
+                    .filter(group::isTrackSupported)
+                    .map { index ->
+                        PlaybackTrackOption(
+                            label = trackLabel(group.getTrackFormat(index), type),
+                            group = group.mediaTrackGroup,
+                            trackIndex = index,
+                            castTrackId = null,
+                            isSelected = group.isTrackSelected(index)
+                        )
+                    }
+            }
+    }
+
+    /**
+     * Returns tracks advertised by the active Cast receiver.
+     *
+     * @param type Requested audio or subtitle track type.
+     * @return Receiver tracks supported by the target.
+     */
+    private fun castTrackOptions(type: PlaybackTrackType): List<PlaybackTrackOption> {
+        val receiverType = when (type) {
+            PlaybackTrackType.AUDIO -> GoogleMediaTrack.TYPE_AUDIO
+            PlaybackTrackType.SUBTITLE -> GoogleMediaTrack.TYPE_TEXT
+        }
+        return CastContext.getSharedInstance(this)
+            .sessionManager
+            .currentCastSession
+            ?.remoteMediaClient
+            ?.mediaInfo
+            ?.mediaTracks
+            .orEmpty()
+            .filter { it.type == receiverType }
+            .map { track ->
+                PlaybackTrackOption(
+                    label = track.name?.takeIf(String::isNotBlank)
+                        ?: track.language?.let(::languageLabel)
+                        ?: getString(R.string.player_track_number, track.id),
+                    group = null,
+                    trackIndex = null,
+                    castTrackId = track.id,
+                    isSelected = castActiveTrackIds().contains(track.id)
+                )
+            }
+    }
+
+    /**
+     * Applies a selected local track, or restores the player's automatic selection.
+     *
+     * @param type Track kind to update.
+     * @param option Selected track, or `null` for automatic audio / subtitles off.
+     */
+    private fun selectLocalTrack(type: PlaybackTrackType, option: PlaybackTrackOption?) {
+        val player = localPlayer ?: return
+        val trackType = type.toMedia3TrackType()
+        val parameters = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(trackType)
+            .setTrackTypeDisabled(trackType, type == PlaybackTrackType.SUBTITLE && option == null)
+        if (option != null) {
+            val group = option.group ?: return
+            val trackIndex = option.trackIndex ?: return
+            player.trackSelectionParameters = parameters
+                .setTrackTypeDisabled(trackType, false)
+                .setOverrideForType(TrackSelectionOverride(group, listOf(trackIndex)))
+                .build()
+        } else {
+            player.trackSelectionParameters = parameters.build()
+        }
+    }
+
+    /**
+     * Updates the active receiver track while preserving active tracks of the other type.
+     *
+     * @param type Track kind to update.
+     * @param selectedTrackId Receiver track to activate, or `null` for auto/off.
+     */
+    private fun selectCastTrack(type: PlaybackTrackType, selectedTrackId: Long?) {
+        val remoteClient = CastContext.getSharedInstance(this)
+            .sessionManager
+            .currentCastSession
+            ?.remoteMediaClient
+            ?: return
+        val receiverType = when (type) {
+            PlaybackTrackType.AUDIO -> GoogleMediaTrack.TYPE_AUDIO
+            PlaybackTrackType.SUBTITLE -> GoogleMediaTrack.TYPE_TEXT
+        }
+        val tracks = remoteClient.mediaInfo?.mediaTracks.orEmpty()
+        val retainedTrackIds = castActiveTrackIds().filter { activeId ->
+            tracks.none { it.id == activeId && it.type == receiverType }
+        }
+        val selectedTrackIds = buildList {
+            addAll(retainedTrackIds)
+            selectedTrackId?.let(::add)
+        }
+        remoteClient.setActiveMediaTracks(selectedTrackIds.toLongArray())
+    }
+
+    /** Returns active receiver track identifiers, if a Cast media status is available. */
+    private fun castActiveTrackIds(): List<Long> =
+        CastContext.getSharedInstance(this)
+            .sessionManager
+            .currentCastSession
+            ?.remoteMediaClient
+            ?.mediaStatus
+            ?.activeTrackIds
+            ?.toList()
+            .orEmpty()
+
+    /**
+     * Creates a readable language/format label for an audio or subtitle format.
+     *
+     * @param format Media3 format metadata.
+     * @param type Track kind for extra audio channel details.
+     * @return Track label shown to the user.
+     */
+    private fun trackLabel(format: androidx.media3.common.Format, type: PlaybackTrackType): String {
+        val language = format.language?.let(::languageLabel)
+        val label = format.label?.takeIf(String::isNotBlank)
+        val channels = if (type == PlaybackTrackType.AUDIO && format.channelCount > 0) {
+            getString(R.string.player_audio_channels, format.channelCount)
+        } else {
+            null
+        }
+        return listOfNotNull(label, language, channels)
+            .distinct()
+            .joinToString(" · ")
+            .ifBlank { format.sampleMimeType ?: getString(R.string.player_track_unknown) }
+    }
+
+    /**
+     * Converts a language tag to a localized display name.
+     *
+     * @param language BCP-47 language code.
+     * @return Localized language name or the original code.
+     */
+    private fun languageLabel(language: String): String =
+        Locale.forLanguageTag(language).getDisplayName(Locale.getDefault())
+            .takeIf(String::isNotBlank)
+            ?: language
+
+    /** Maps the in-player track category to the corresponding Media3 track type. */
+    private fun PlaybackTrackType.toMedia3TrackType(): Int = when (this) {
+        PlaybackTrackType.AUDIO -> C.TRACK_TYPE_AUDIO
+        PlaybackTrackType.SUBTITLE -> C.TRACK_TYPE_TEXT
     }
 
     /** Searches OpenSubtitles for the current title and presents selectable matching releases. */

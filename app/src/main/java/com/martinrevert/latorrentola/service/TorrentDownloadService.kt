@@ -1037,6 +1037,6 @@ class TorrentDownloadService : Service() {
         /** Transfer failed and is available for an explicit retry. */
         const val STATE_FAILED = "FAILED"
         /** Minimum verified startup buffer before playback may be offered. */
-        const val STARTUP_BUFFER_BYTES = 4L * 1024L * 1024L
+        const val STARTUP_BUFFER_BYTES = 16L * 1024L * 1024L
     }
 }
