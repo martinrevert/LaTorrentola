@@ -1,0 +1,519 @@
+package com.martinrevert.latorrentola.ui.player
+
+import android.app.AlertDialog
+import android.net.Uri
+import android.os.Bundle
+import android.view.ContextThemeWrapper
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.lifecycle.lifecycleScope
+import androidx.media3.cast.CastPlayer
+import androidx.media3.cast.DefaultMediaItemConverter
+import androidx.media3.cast.MediaItemConverter
+import androidx.media3.cast.SessionAvailabilityListener
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import com.google.android.gms.cast.framework.CastContext
+import androidx.mediarouter.R as MediaRouterR
+import androidx.mediarouter.app.MediaRouteButton
+import com.google.android.gms.cast.MediaInfo
+import com.google.android.gms.cast.MediaMetadata as CastMetadata
+import com.google.android.gms.cast.MediaQueueItem
+import com.google.android.gms.cast.MediaTrack
+import com.google.android.gms.cast.framework.CastButtonFactory
+import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.network.OpenSubtitlesException
+import com.martinrevert.latorrentola.network.OpenSubtitleRepository
+import com.martinrevert.latorrentola.network.OpenSubtitleResult
+import com.martinrevert.latorrentola.service.VerifiedTorrentHttpServer
+import com.martinrevert.latorrentola.utils.mediaMimeType
+import com.martinrevert.latorrentola.utils.isTvDevice
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import java.io.File
+import java.io.IOException
+import java.util.Locale
+import javax.inject.Inject
+
+/** Keeps Cast subtitle endpoints alive after the player activity is closed. */
+private object SubtitleServerRegistry {
+    /** Active subtitle servers shared by player activity instances. */
+    private val servers = java.util.Collections.synchronizedSet(
+        mutableSetOf<VerifiedTorrentHttpServer>()
+    )
+
+    /** Retains a running server for the current Cast playback session. */
+    fun retain(server: VerifiedTorrentHttpServer) {
+        servers.add(server)
+    }
+
+    /** Stops all cached subtitle endpoints after Cast playback ends. */
+    fun stopAll() {
+        synchronized(servers) {
+            servers.forEach(VerifiedTorrentHttpServer::stop)
+            servers.clear()
+        }
+    }
+}
+
+/**
+ * Plays verified torrent content locally or on Cast and supports OpenSubtitles tracks.
+ */
+@AndroidEntryPoint
+@OptIn(UnstableApi::class)
+class LocalPlayerActivity : ComponentActivity() {
+
+    /** Media3 player used when no Cast session is active. */
+    private var localPlayer: ExoPlayer? = null
+
+    /** Player which switches between local playback and an active Cast session. */
+    private var castPlayer: CastPlayer? = null
+
+    /** Player currently presenting local or Cast playback. */
+    private var activePlayer: Player? = null
+
+    /** View whose controller follows the active local or remote player. */
+    private var playerView: PlayerView? = null
+
+    /** OpenSubtitles search and download integration. */
+    @Inject
+    lateinit var openSubtitlesRepository: OpenSubtitleRepository
+
+    /** Maps local subtitle URIs to matching receiver-accessible URLs. */
+    private val castSubtitleUrls = mutableMapOf<String, String>()
+
+    /** Current Media3 item retained when a subtitle selection replaces its track list. */
+    private var currentMediaItem: MediaItem? = null
+
+    /** Current local HTTP stream URL, restored when playback transfers back from Cast. */
+    private var localStreamUrl: String = ""
+
+    /** HTTP URL on the device's local network used by Cast receivers. */
+    private var castStreamUrl: String = ""
+
+    /** Whether the selected torrent mode enabled Cast playback. */
+    private var castEnabled = false
+
+    /** Whether a Cast receiver is currently using this activity's stream servers. */
+    private var castSessionActive = false
+
+    /** User-visible title used for subtitle search and playback metadata. */
+    private var mediaTitle = ""
+
+    /**
+     * Creates a player and wires local playback, Cast routing, and subtitle search controls.
+     *
+     * @param savedInstanceState Previously saved activity state, if any.
+     */
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        localStreamUrl = intent.getStringExtra(EXTRA_STREAM_URL).orEmpty()
+        castStreamUrl = intent.getStringExtra(EXTRA_CAST_URL).orEmpty()
+        val file = intent.getStringExtra(EXTRA_FILE_PATH)?.let(::File)
+        val mediaUri = localStreamUrl.takeIf(String::isNotBlank)?.let(Uri::parse)
+            ?: file?.takeIf { it.isFile && it.canRead() }?.let { Uri.fromFile(it) }
+        if (mediaUri == null) {
+            finish()
+            return
+        }
+
+        mediaTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty()
+        val castRequested = intent.getBooleanExtra(EXTRA_CAST_ENABLED, false)
+        castEnabled = castRequested && castStreamUrl.isNotBlank()
+        if (castRequested && !castEnabled) {
+            Toast.makeText(this, R.string.torrent_cast_unavailable, Toast.LENGTH_LONG).show()
+        }
+        val mediaItem = MediaItem.Builder()
+            .setUri(mediaUri)
+            .setMimeType(intent.getStringExtra(EXTRA_MIME_TYPE) ?: file?.mediaMimeType())
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(mediaTitle).build())
+            .build()
+        currentMediaItem = mediaItem
+
+        val playerView = PlayerView(this)
+        this.playerView = playerView
+        val local = ExoPlayer.Builder(this).build()
+        localPlayer = local
+        activePlayer = local
+        playerView.player = local
+        local.setMediaItem(mediaItem)
+        local.prepare()
+        local.playWhenReady = true
+        if (castEnabled && buildCastPlayer() == null) castEnabled = false
+
+        val root = FrameLayout(this)
+        root.addView(
+            playerView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        if (castEnabled) {
+            val routeButton = MediaRouteButton(
+                ContextThemeWrapper(this, MediaRouterR.style.Theme_MediaRouter)
+            )
+            routeButton.id = View.generateViewId()
+            CastButtonFactory.setUpMediaRouteButton(applicationContext, routeButton)
+            root.addView(
+                routeButton,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP or Gravity.END
+                )
+            )
+        }
+        val subtitlesButton = Button(this).apply {
+            text = getString(R.string.opensubtitles_search)
+            setOnClickListener { searchSubtitles() }
+        }
+        root.addView(
+            subtitlesButton,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.START
+            )
+        )
+
+        setContentView(root)
+    }
+
+    /** Searches OpenSubtitles for the current title and presents selectable matching releases. */
+    private fun searchSubtitles() {
+        lifecycleScope.launch {
+            try {
+                val mediaType = if (EPISODE_PATTERN.containsMatchIn(mediaTitle)) "episode" else "movie"
+                val results = openSubtitlesRepository.search(mediaTitle, type = mediaType)
+                if (results.isEmpty()) {
+                    showSubtitleMessage(getString(R.string.opensubtitles_no_results))
+                } else {
+                    showSubtitleResults(results)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: OpenSubtitlesException) {
+                showSubtitleMessage(error.message ?: getString(R.string.opensubtitles_request_failed))
+            } catch (error: IOException) {
+                showSubtitleMessage(error.message ?: getString(R.string.opensubtitles_request_failed))
+            } catch (error: IllegalArgumentException) {
+                showSubtitleMessage(
+                    error.message ?: getString(R.string.opensubtitles_request_failed)
+                )
+            }
+        }
+    }
+
+    /**
+     * Shows the matching subtitle releases as an accessible selectable list.
+     *
+     * @param results OpenSubtitles results for this media title.
+     */
+    private fun showSubtitleResults(results: List<OpenSubtitleResult>) {
+        val labels = results.map { result ->
+            val feature = result.featureTitle?.takeIf(String::isNotBlank)
+            listOfNotNull(
+                result.language.uppercase(Locale.ROOT),
+                result.release.takeIf(String::isNotBlank),
+                feature
+            ).joinToString(" · ")
+        }.toTypedArray()
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.opensubtitles_results_title)
+            .setItems(labels) { _, index -> downloadSubtitle(results[index]) }
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        showAdaptiveDialog(dialog)
+    }
+
+    /**
+     * Downloads a selected subtitle and attaches it to local and Cast playback.
+     *
+     * @param result Subtitle result selected from the OpenSubtitles list.
+     */
+    private fun downloadSubtitle(result: OpenSubtitleResult) {
+        lifecycleScope.launch {
+            try {
+                val subtitle = openSubtitlesRepository.download(result)
+                val localUri = Uri.fromFile(subtitle.file)
+                val castUri = if (castEnabled) {
+                    val server = VerifiedTorrentHttpServer(
+                        subtitle.file,
+                        subtitle.file.length()
+                    ) { _, _ -> true }
+                    server.startServer()
+                    try {
+                        server.lanUrl().also { SubtitleServerRegistry.retain(server) }
+                    } catch (error: IllegalStateException) {
+                        server.stop()
+                        throw error
+                    }
+                } else {
+                    null
+                }
+                if (castUri != null) {
+                    castSubtitleUrls[localUri.toString()] = castUri
+                }
+                val subtitleConfiguration = MediaItem.SubtitleConfiguration.Builder(localUri)
+                    .setMimeType(MimeTypes.TEXT_VTT)
+                    .setLanguage(toLanguageTag(subtitle.language))
+                    .setLabel(subtitle.label)
+                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    .setRoleFlags(C.ROLE_FLAG_CAPTION)
+                    .build()
+                val updatedItem = requireNotNull(currentMediaItem)
+                    .buildUpon()
+                    .setSubtitleConfigurations(listOf(subtitleConfiguration))
+                    .build()
+                currentMediaItem = updatedItem
+                val player = requireNotNull(activePlayer)
+                val currentPosition = player.currentPosition
+                val wasPlaying = player.playWhenReady
+                player.setMediaItem(updatedItem, currentPosition)
+                player.prepare()
+                player.playWhenReady = wasPlaying
+                Toast.makeText(this@LocalPlayerActivity, R.string.opensubtitles_loaded, Toast.LENGTH_SHORT)
+                    .show()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: OpenSubtitlesException) {
+                showSubtitleMessage(error.message ?: getString(R.string.opensubtitles_download_failed))
+            } catch (error: IOException) {
+                showSubtitleMessage(error.message ?: getString(R.string.opensubtitles_download_failed))
+            } catch (error: IllegalStateException) {
+                showSubtitleMessage(error.message ?: getString(R.string.opensubtitles_download_failed))
+            } catch (error: IllegalArgumentException) {
+                showSubtitleMessage(
+                    error.message ?: getString(R.string.opensubtitles_download_failed)
+                )
+            }
+        }
+    }
+
+    /**
+     * Presents subtitle service or download errors without concealing the actionable message.
+     *
+     * @param message Actionable subtitle service error.
+     */
+    private fun showSubtitleMessage(message: String) {
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.opensubtitles_title)
+            .setMessage(message)
+            .setPositiveButton(android.R.string.ok, null)
+            .create()
+        showAdaptiveDialog(dialog)
+    }
+
+    /**
+     * Sizes subtitle dialogs for touch screens and viewing-distance layouts.
+     *
+     * @param dialog Subtitle dialog to show.
+     */
+    private fun showAdaptiveDialog(dialog: AlertDialog) {
+        dialog.setOnShowListener {
+            val widthFraction = if (isTvDevice()) 0.72f else 0.92f
+            val width = (resources.displayMetrics.widthPixels * widthFraction).toInt()
+            dialog.window?.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        dialog.show()
+    }
+
+    /**
+     * Creates the unified local/Cast player, keeping local playback available if Cast is unavailable.
+     *
+     * @param local Local ExoPlayer used when no receiver session is active.
+     * @return Configured Cast player, or `null` if Cast services are unavailable.
+     */
+    private fun buildCastPlayer(): CastPlayer? {
+        return try {
+            val remotePlayer = CastPlayer(
+                CastContext.getSharedInstance(this),
+                castUrlConverter(castStreamUrl, localStreamUrl)
+            )
+            castPlayer = remotePlayer
+            remotePlayer.setSessionAvailabilityListener(
+                object : SessionAvailabilityListener {
+                    override fun onCastSessionAvailable() {
+                        switchToCastPlayer()
+                    }
+
+                    override fun onCastSessionUnavailable() {
+                        switchToLocalPlayer()
+                    }
+                }
+            )
+            if (remotePlayer.isCastSessionAvailable()) switchToCastPlayer()
+            remotePlayer
+        } catch (_: IllegalStateException) {
+            Toast.makeText(this, R.string.torrent_cast_framework_unavailable, Toast.LENGTH_LONG)
+                .show()
+            null
+        } catch (_: SecurityException) {
+            Toast.makeText(this, R.string.torrent_cast_framework_unavailable, Toast.LENGTH_LONG)
+                .show()
+            null
+        }
+    }
+
+    /** Transfers the current local playback item and position to an available Cast receiver. */
+    private fun switchToCastPlayer() {
+        val local = localPlayer ?: return
+        val remote = castPlayer ?: return
+        val view = playerView ?: return
+        val item = currentMediaItem ?: return
+        val position = local.currentPosition
+        val shouldPlay = local.playWhenReady
+        local.playWhenReady = false
+        remote.setMediaItem(item, position)
+        remote.prepare()
+        remote.playWhenReady = shouldPlay
+        activePlayer = remote
+        view.player = remote
+        castSessionActive = true
+    }
+
+    /** Returns playback to the local player when the receiver session ends. */
+    private fun switchToLocalPlayer() {
+        val remote = castPlayer ?: return
+        val local = localPlayer ?: return
+        val view = playerView ?: return
+        val item = currentMediaItem ?: return
+        val position = remote.currentPosition.coerceAtLeast(0L)
+        val shouldPlay = remote.playWhenReady
+        local.setMediaItem(item, position)
+        local.prepare()
+        local.playWhenReady = shouldPlay
+        activePlayer = local
+        view.player = local
+        castSessionActive = false
+    }
+
+    /**
+     * Maps common OpenSubtitles ISO-639-2 codes to BCP-47 tags understood by playback engines.
+     *
+     * @param language OpenSubtitles language code.
+     * @return BCP-47 language tag used by Media3 and Cast.
+     */
+    private fun toLanguageTag(language: String): String {
+        val code = when (language.lowercase(Locale.ROOT)) {
+            "eng" -> "en"
+            "spa" -> "es"
+            "fra", "fre" -> "fr"
+            "deu", "ger" -> "de"
+            "ita" -> "it"
+            "por" -> "pt"
+            "jpn" -> "ja"
+            "kor" -> "ko"
+            "rus" -> "ru"
+            "zho", "chi" -> "zh"
+            else -> language.lowercase(Locale.ROOT)
+        }
+        return Locale.forLanguageTag(code).toLanguageTag()
+    }
+
+    /**
+     * Converts app-local playback items into receiver-reachable Cast media and subtitle tracks.
+     *
+     * @param castUrl Receiver-reachable URL for the torrent media stream.
+     * @param localUrl Loopback URL for local playback when a Cast session ends.
+     * @return Media3 converter that maps downloaded subtitle tracks to their LAN URLs.
+     */
+    private fun castUrlConverter(castUrl: String, localUrl: String): MediaItemConverter {
+        val delegate = DefaultMediaItemConverter()
+        return object : MediaItemConverter {
+            override fun toMediaQueueItem(mediaItem: MediaItem): MediaQueueItem {
+                val remoteItem = mediaItem.buildUpon().setUri(Uri.parse(castUrl)).build()
+                val defaultItem = delegate.toMediaQueueItem(remoteItem)
+                val defaultMedia = requireNotNull(defaultItem.media)
+                val tracks = remoteItem.localConfiguration?.subtitleConfigurations
+                    .orEmpty()
+                    .mapIndexed { index, subtitle ->
+                        MediaTrack.Builder((index + 1).toLong(), MediaTrack.TYPE_TEXT)
+                            .setContentId(
+                                castSubtitleUrls[subtitle.uri.toString()] ?: subtitle.uri.toString()
+                            )
+                            .setContentType(subtitle.mimeType ?: MimeTypes.TEXT_VTT)
+                            .setName(subtitle.label ?: subtitle.language.orEmpty())
+                            .setLanguage(subtitle.language.orEmpty())
+                            .setSubtype(MediaTrack.SUBTYPE_SUBTITLES)
+                            .build()
+                    }
+                val metadata = CastMetadata(CastMetadata.MEDIA_TYPE_MOVIE).apply {
+                    mediaItem.mediaMetadata.title?.toString()?.let {
+                        putString(CastMetadata.KEY_TITLE, it)
+                    }
+                }
+                val mediaInfo = MediaInfo.Builder(castUrl)
+                    .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
+                    .setContentType(remoteItem.localConfiguration?.mimeType ?: MimeTypes.VIDEO_UNKNOWN)
+                    .setMetadata(metadata)
+                    .setMediaTracks(tracks)
+                    .setCustomData(defaultMedia.customData)
+                    .build()
+                val queueItemBuilder = MediaQueueItem.Builder(mediaInfo)
+                if (tracks.isNotEmpty()) {
+                    queueItemBuilder.setActiveTrackIds(longArrayOf(tracks.first().id))
+                }
+                return queueItemBuilder.build()
+            }
+
+            override fun toMediaItem(mediaQueueItem: MediaQueueItem): MediaItem =
+                delegate.toMediaItem(mediaQueueItem)
+                    .buildUpon()
+                    .setUri(Uri.parse(localUrl))
+                    .build()
+        }
+    }
+
+    /** Releases decoder and subtitle streaming resources when this activity is destroyed. */
+    override fun onDestroy() {
+        castPlayer?.release()
+        localPlayer?.release()
+        if (!castSessionActive) SubtitleServerRegistry.stopAll()
+        castSubtitleUrls.clear()
+        activePlayer = null
+        playerView = null
+        castPlayer = null
+        localPlayer = null
+        super.onDestroy()
+    }
+
+    companion object {
+        /** Intent extra containing an app-private, fully verified media file path. */
+        const val EXTRA_FILE_PATH = "verified_media_file_path"
+
+        /** Intent extra containing the local HTTP stream URL for verified byte ranges. */
+        const val EXTRA_STREAM_URL = "verified_media_stream_url"
+
+        /** Intent extra containing the local-network URL available to Cast receivers. */
+        const val EXTRA_CAST_URL = "verified_media_cast_url"
+
+        /** Intent extra containing the local torrent's stable info hash. */
+        const val EXTRA_INFO_HASH = "torrent_info_hash"
+
+        /** Intent extra indicating whether Cast device selection should be available. */
+        const val EXTRA_CAST_ENABLED = "torrent_cast_enabled"
+
+        /** Intent extra containing the video MIME type. */
+        const val EXTRA_MIME_TYPE = "torrent_media_mime_type"
+
+        /** Intent extra containing the user-visible media title. */
+        const val EXTRA_TITLE = "torrent_media_title"
+
+        /** Identifies the season/episode naming used by the TV release-selection screen. */
+        val EPISODE_PATTERN = Regex("""\bS\d{2}E\d{2}\b""", RegexOption.IGNORE_CASE)
+    }
+}
