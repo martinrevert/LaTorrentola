@@ -2,6 +2,7 @@
 <full-backup-content>
     <include domain="sharedpref" path="."/>
     <exclude domain="sharedpref" path="latorrentola_prefs.xml"/>
+    <exclude domain="sharedpref" path="opensubtitles_credentials.xml"/>
     <!-- Note: We exclude prefs because it contains FCM tokens.
          App will resync settings from Firestore on login. -->
 </full-backup-content>

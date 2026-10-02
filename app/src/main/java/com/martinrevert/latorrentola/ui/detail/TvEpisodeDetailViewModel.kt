@@ -4,10 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
+import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.network.EztvRepository
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,13 +27,19 @@ import javax.inject.Inject
  * @property tmdbRepository Access to TMDB episode metadata and external IDs.
  * @property eztvRepository Access to EZTV episode torrent releases.
  * @property userLibraryRepository Firestore persistence for downloaded episode records.
+ * @property preferenceManager provides the selected torrent handling mode.
  */
 @HiltViewModel
 class TvEpisodeDetailViewModel @Inject constructor(
     private val tmdbRepository: TmdbRepository,
     private val eztvRepository: EztvRepository,
-    private val userLibraryRepository: UserLibraryRepository
+    private val userLibraryRepository: UserLibraryRepository,
+    private val preferenceManager: PreferenceManager
 ) : ViewModel() {
+
+    /** Torrent handling mode selected in Settings. */
+    val torrentHandlingMode: StateFlow<TorrentHandlingMode> =
+        preferenceManager.torrentHandlingModeFlow
 
     private val _rawUiState = MutableStateFlow<TvEpisodeDetailRawUiState>(TvEpisodeDetailRawUiState.Loading)
 

@@ -3,10 +3,12 @@ package com.martinrevert.latorrentola.ui.detail
 import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.user.DownloadedEpisode
+import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.network.EztvRepository
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -26,14 +28,22 @@ class TvEpisodeDetailViewModelTest {
     private val tmdbRepository: TmdbRepository = mockk(relaxed = true)
     private val eztvRepository: EztvRepository = mockk(relaxed = true)
     private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
+    private val preferenceManager: PreferenceManager = mockk(relaxed = true)
     private val downloadsFlow = MutableStateFlow<List<DownloadedEpisode>>(emptyList())
+    private val torrentModeFlow = MutableStateFlow(TorrentHandlingMode.EXTERNAL_CLIENT)
 
     private lateinit var viewModel: TvEpisodeDetailViewModel
 
     @Before
     fun setUp() {
         every { userLibraryRepository.getDownloadedEpisodes() } returns downloadsFlow
-        viewModel = TvEpisodeDetailViewModel(tmdbRepository, eztvRepository, userLibraryRepository)
+        every { preferenceManager.torrentHandlingModeFlow } returns torrentModeFlow
+        viewModel = TvEpisodeDetailViewModel(
+            tmdbRepository,
+            eztvRepository,
+            userLibraryRepository,
+            preferenceManager
+        )
     }
 
     @Test

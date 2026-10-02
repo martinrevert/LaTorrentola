@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.model.user.DownloadedMovie
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
 import com.martinrevert.latorrentola.network.TmdbRepository
@@ -47,6 +48,10 @@ class DetailViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<DetailUiState>(DetailUiState.Loading)
     /** Current movie detail state. */
     val uiState: StateFlow<DetailUiState> = _uiState.asStateFlow()
+
+    /** Torrent handling mode selected in Settings. */
+    val torrentHandlingMode: StateFlow<TorrentHandlingMode> =
+        preferenceManager.torrentHandlingModeFlow
 
     /** Mutable backing state for the selected TMDB actor lookup. */
     private val _selectedActorDetail = MutableStateFlow<Result<TmdbActorDetail>?>(null)

@@ -4,6 +4,7 @@ import com.martinrevert.latorrentola.BuildConfig
 import com.martinrevert.latorrentola.constants.Constants
 import com.martinrevert.latorrentola.network.EztvService
 import com.martinrevert.latorrentola.network.FcmService
+import com.martinrevert.latorrentola.network.OpenSubtitlesService
 import com.martinrevert.latorrentola.network.TmdbService
 import com.martinrevert.latorrentola.network.YtsService
 import dagger.Module
@@ -118,6 +119,43 @@ object NetworkModule {
     fun provideEztvService(@EztvRetrofit retrofit: Retrofit): EztvService {
         return retrofit.create(EztvService::class.java)
     }
+
+    /** Provides an isolated OpenSubtitles client without an HTTP logging interceptor. */
+    @Provides
+    @Singleton
+    @OpenSubtitlesHttpClient
+    fun provideOpenSubtitlesHttpClient(): OkHttpClient {
+        return OkHttpClient.Builder()
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
+    }
+
+    /** Creates a separately qualified Retrofit instance for OpenSubtitles API v1. */
+    @Provides
+    @Singleton
+    @OpenSubtitlesRetrofit
+    fun provideOpenSubtitlesRetrofit(
+        @OpenSubtitlesHttpClient okHttpClient: OkHttpClient
+    ): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(OPEN_SUBTITLES_BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            .client(okHttpClient)
+            .build()
+    }
+
+    /** Creates the typed OpenSubtitles API service. */
+    @Provides
+    @Singleton
+    fun provideOpenSubtitlesService(
+        @OpenSubtitlesRetrofit retrofit: Retrofit
+    ): OpenSubtitlesService {
+        return retrofit.create(OpenSubtitlesService::class.java)
+    }
+
+    /** OpenSubtitles API v1 HTTPS base URL. */
+    private const val OPEN_SUBTITLES_BASE_URL = "https://api.opensubtitles.com/api/v1/"
 }
 
 /** Hilt qualifier for the YTS Retrofit client. */
@@ -140,3 +178,12 @@ annotation class TmdbRetrofit
 @Retention(AnnotationRetention.BINARY)
 annotation class EztvRetrofit
 
+/** Hilt qualifier for the OpenSubtitles Retrofit instance. */
+@javax.inject.Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class OpenSubtitlesRetrofit
+
+/** Hilt qualifier for the OpenSubtitles HTTP client without body logging. */
+@javax.inject.Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class OpenSubtitlesHttpClient

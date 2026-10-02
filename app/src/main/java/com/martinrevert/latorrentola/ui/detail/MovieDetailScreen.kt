@@ -2,9 +2,7 @@ package com.martinrevert.latorrentola.ui.detail
 
 import android.content.Intent
 import android.content.res.Configuration
-import android.net.Uri
 import android.os.Build
-import androidx.core.net.toUri
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.compose.foundation.ScrollState
@@ -64,6 +62,7 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.Torrent
 import com.martinrevert.latorrentola.model.YTS.Cast
+import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.ui.components.ActorDetailBottomSheet
 import com.martinrevert.latorrentola.ui.components.MovieDetailPlaceholder
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
@@ -78,13 +77,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.lifecycle.LifecycleOwner
 import kotlinx.coroutines.launch
-import java.net.URLEncoder
 import androidx.tv.material3.Button as TvButton
 import androidx.tv.material3.IconButtonDefaults
 import androidx.tv.material3.Surface
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.UiText
 import com.martinrevert.latorrentola.utils.IntentAppsFinder
+import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
+import com.martinrevert.latorrentola.utils.TorrentLaunchResult
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
 /**
@@ -102,6 +102,7 @@ fun MovieDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val downloadedHashes by viewModel.downloadedHashes.collectAsState()
+    val torrentHandlingMode by viewModel.torrentHandlingMode.collectAsState()
     val selectedActorDetail by viewModel.selectedActorDetail.collectAsState()
     val isActorLoading by viewModel.isActorLoading.collectAsState()
     var showActorSheet by remember { mutableStateOf(false) }
@@ -122,6 +123,7 @@ fun MovieDetailScreen(
     MovieDetailScreenContent(
         uiState = uiState,
         downloadedHashes = downloadedHashes,
+        torrentHandlingMode = torrentHandlingMode,
         isWideScreen = isWideScreen,
         isTv = isTv,
         selectedActorDetail = selectedActorDetail,
@@ -177,12 +179,14 @@ fun MovieDetailScreen(
 /**
  * Hosts the responsive detail screen, including app-bar and actor-sheet state.
  *
+ * @param torrentHandlingMode Configured external or local torrent handling behavior.
  * @param onActorCreditClick Opens the selected movie or TV credit.
  */
 @Composable
 private fun MovieDetailScreenContent(
     uiState: DetailUiState,
     downloadedHashes: Set<String>,
+    torrentHandlingMode: TorrentHandlingMode = TorrentHandlingMode.EXTERNAL_CLIENT,
     isWideScreen: Boolean,
     isTv: Boolean,
     selectedActorDetail: Result<TmdbActorDetail>?,
@@ -299,6 +303,7 @@ private fun MovieDetailScreenContent(
                     MovieDetailContent(
                         movie = state.movie,
                         downloadedHashes = downloadedHashes,
+                        torrentHandlingMode = torrentHandlingMode,
                         isWideScreen = isWideScreen,
                         isTv = isTv,
                         onTorrentClick = { onTorrentClick(state.movie, it) },
@@ -334,12 +339,14 @@ private fun MovieDetailScreenContent(
 /**
  * Renders a movie's trailer, summary, metadata, cast, and available torrents.
  *
+ * @param torrentHandlingMode Configured behavior when a torrent release is selected.
  * @param scrollState Scroll state for managing vertical scroll offset during focus changes.
  */
 @Composable
 fun MovieDetailContent(
     movie: Movie,
     downloadedHashes: Set<String>,
+    torrentHandlingMode: TorrentHandlingMode = TorrentHandlingMode.EXTERNAL_CLIENT,
     isWideScreen: Boolean,
     isTv: Boolean,
     onTorrentClick: (Torrent) -> Unit,
@@ -452,6 +459,7 @@ fun MovieDetailContent(
                     torrent = torrent,
                     isDownloaded = downloadedHashes.contains(torrent.hash),
                     onTorrentClick = onTorrentClick,
+                    handlingMode = torrentHandlingMode,
                     focusRequester = when {
                         isTv && index == 0 && !movie.cast.isNullOrEmpty() ->
                             firstTorrentFocusRequester
@@ -769,41 +777,57 @@ fun CastItem(cast: Cast, onCastClick: (String) -> Unit) {
     }
 }
 
-/** Displays torrent quality and opens a compatible handler for the magnet link. */
+/**
+ * Displays torrent quality and dispatches the release using the configured handling mode.
+ *
+ * @param handlingMode Configured external, local-download, or unsupported Cast mode.
+ */
 @Composable
 fun TorrentItem(
     movie: Movie,
     torrent: Torrent,
     isDownloaded: Boolean,
     onTorrentClick: (Torrent) -> Unit,
-    focusRequester: FocusRequester? = null
+    focusRequester: FocusRequester? = null,
+    handlingMode: TorrentHandlingMode = TorrentHandlingMode.EXTERNAL_CLIENT
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
     val isTv = remember(context) { context.isTvDevice() }
 
     val onTorrentClickInternal = {
-        onTorrentClick(torrent)
         val hash = torrent.hash
-        if (hash != null) {
+        if (hash.isNullOrBlank()) {
+            Toast.makeText(context, resources.getString(R.string.toast_magnet_error), Toast.LENGTH_SHORT).show()
+        } else {
             try {
-                val encodedTitle = URLEncoder.encode(movie.title ?: "Movie", "UTF-8")
-                val magnetUri = "magnet:?xt=urn:btih:$hash" +
-                        "&dn=$encodedTitle" +
-                        "&tr=udp://open.demonii.com:1337/announce" +
-                        "&tr=udp://tracker.openbittorrent.com:80"
-
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    data = magnetUri.toUri()
-                    addCategory(Intent.CATEGORY_BROWSABLE)
+                val title = movie.title ?: resources.getString(R.string.torrent_download_title)
+                val magnetUri = TorrentLaunchHelper.buildMagnetUri(hash, title)
+                when (TorrentLaunchHelper.launch(context, handlingMode, magnetUri, title)) {
+                    TorrentLaunchResult.Started -> {
+                        onTorrentClick(torrent)
+                        if (handlingMode != TorrentHandlingMode.EXTERNAL_CLIENT) {
+                            Toast.makeText(
+                                context,
+                                resources.getString(R.string.torrent_download_queued),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                    TorrentLaunchResult.NoExternalClient -> Toast.makeText(
+                        context,
+                        resources.getString(R.string.toast_no_torrent_client),
+                        Toast.LENGTH_LONG
+                    ).show()
+                    TorrentLaunchResult.CastUnavailable -> Toast.makeText(
+                        context,
+                        resources.getString(R.string.torrent_cast_unavailable),
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
-
-                try {
-                    context.startActivity(intent)
-                } catch (e: Exception) {
-                    Toast.makeText(context, resources.getString(R.string.toast_no_torrent_client), Toast.LENGTH_LONG).show()
-                }
-            } catch (e: Exception) {
+            } catch (e: IllegalArgumentException) {
+                Toast.makeText(context, resources.getString(R.string.toast_magnet_error), Toast.LENGTH_SHORT).show()
+            } catch (e: IllegalStateException) {
                 Toast.makeText(context, resources.getString(R.string.toast_magnet_error), Toast.LENGTH_SHORT).show()
             }
         }

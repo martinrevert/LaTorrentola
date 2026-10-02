@@ -50,6 +50,12 @@
 # YouTube Player
 -keep class com.pierfrancescosoffritti.androidyoutubeplayer.** { *; }
 
+# libtorrent4j JNI entry points
+-keep class org.libtorrent4j.swig.libtorrent_jni { *; }
+
+# Google Cast loads this options provider by its manifest metadata class name.
+-keep class com.martinrevert.latorrentola.service.AppCastOptionsProvider { *; }
+
 # Navigation 3
 -keep class androidx.navigation3.** { *; }
 -keep interface androidx.navigation3.** { *; }

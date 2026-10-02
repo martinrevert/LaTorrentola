@@ -97,9 +97,12 @@ android {
         applicationId = "com.martinrevert.latorrentola"
         versionCode = 30000 + gitVersionCode
         versionName = "3.0.$gitVersionCode"
-        minSdk = 24
+        minSdk = 28
         targetSdk = 37
         testInstrumentationRunner = "com.martinrevert.latorrentola.HiltTestRunner"
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a'
+        }
 
         def localProperties = new Properties()
         def localPropertiesFile = rootProject.file('local.properties')
@@ -108,6 +111,7 @@ android {
         }
         buildConfigField "String", "WEB_CLIENT_ID", "\"${localProperties.getProperty('FIREBASE_WEB_CLIENT_ID', '')}\""
         buildConfigField "String", "TMDB_API_KEY", "\"${localProperties.getProperty('TMDB_API_KEY', '')}\""
+        buildConfigField "String", "OPEN_SUBTITLES_API_KEY", "\"${localProperties.getProperty('OPEN_SUBTITLES_API_KEY', '')}\""
     }
 
     buildFeatures {
@@ -187,6 +191,7 @@ dependencies {
     implementation libs.androidx.compose.material
     implementation(libs.androidx.compose.material.icons.extended)
     implementation libs.androidx.activity.compose
+    implementation libs.androidx.lifecycle.runtime.ktx
 
     // Navigation
     implementation libs.androidx.navigation3.runtime
@@ -235,6 +240,19 @@ dependencies {
 
     // YouTube Player
     implementation libs.youtube.player
+
+    // In-app torrenting
+    implementation libs.libtorrent4j
+    implementation libs.libtorrent4j.android.arm
+    implementation libs.libtorrent4j.android.arm64
+    implementation libs.nanohttpd
+
+    // Local playback and Google Cast
+    implementation libs.androidx.media3.exoplayer
+    implementation libs.androidx.media3.ui
+    implementation libs.androidx.media3.cast
+    implementation libs.play.services.cast.framework
+    implementation libs.androidx.mediarouter
 
     // Haze 2.0 Visual Effects
     implementation libs.haze

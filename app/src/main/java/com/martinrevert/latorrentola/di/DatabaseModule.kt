@@ -5,6 +5,7 @@ import com.martinrevert.latorrentola.database.AppDatabase
 import com.martinrevert.latorrentola.database.DateDao
 import com.martinrevert.latorrentola.database.GenreDao
 import com.martinrevert.latorrentola.database.TvGenreDao
+import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -40,5 +41,11 @@ object DatabaseModule {
     @Provides
     fun provideTvGenreDao(appDatabase: AppDatabase): TvGenreDao {
         return appDatabase.tvGenreDao()
+    }
+
+    /** Provides the local torrent-job DAO. */
+    @Provides
+    fun provideTorrentDownloadDao(appDatabase: AppDatabase): TorrentDownloadDao {
+        return appDatabase.torrentDownloadDao()
     }
 }

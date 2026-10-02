@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.Torrent
+import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import io.mockk.every
 import io.mockk.mockk
@@ -28,6 +29,8 @@ class DetailUiTest {
         
         every { viewModel.uiState } returns MutableStateFlow(uiState)
         every { viewModel.downloadedHashes } returns MutableStateFlow(emptySet())
+        every { viewModel.torrentHandlingMode } returns
+            MutableStateFlow(TorrentHandlingMode.EXTERNAL_CLIENT)
 
         composeTestRule.setContent {
             MovieDetailScreen(

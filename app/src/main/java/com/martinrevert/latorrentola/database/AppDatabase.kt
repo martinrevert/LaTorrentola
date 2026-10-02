@@ -10,11 +10,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.martinrevert.latorrentola.model.date.DateLastVisit
 import com.martinrevert.latorrentola.model.stats.GenreStats
 import com.martinrevert.latorrentola.model.stats.TvGenreStats
+import com.martinrevert.latorrentola.model.torrent.TorrentDownload
 
 /** Room database for local visit dates and media genre statistics. */
 @Database(
-    entities = [DateLastVisit::class, GenreStats::class, TvGenreStats::class],
-    version = 7,
+    entities = [DateLastVisit::class, GenreStats::class, TvGenreStats::class, TorrentDownload::class],
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -26,6 +27,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun genreDao(): GenreDao
     /** Provides database access to TV genre visit statistics. */
     abstract fun tvGenreDao(): TvGenreDao
+    /** Provides database access to app-managed torrent downloads. */
+    abstract fun torrentDownloadDao(): TorrentDownloadDao
 
     companion object {
         /** Lazily initialized process-wide database instance. */
@@ -46,7 +49,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_3_4,
                         MIGRATION_4_5,
                         MIGRATION_5_6,
-                        MIGRATION_6_7
+                        MIGRATION_6_7,
+                        MIGRATION_7_8
                     )
                     .build()
                 INSTANCE = instance
@@ -69,6 +73,21 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE TABLE IF NOT EXISTS `tv_genre_stats` " +
                         "(`genreId` INTEGER NOT NULL, `count` INTEGER NOT NULL, PRIMARY KEY(`genreId`))"
+                )
+            }
+        }
+
+        /** Adds local torrent jobs while preserving existing user and genre data. */
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            /** Applies the local torrent-job schema change to [db]. */
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `torrent_downloads` (" +
+                        "`infoHash` TEXT NOT NULL, `magnetUri` TEXT NOT NULL, `title` TEXT NOT NULL, " +
+                        "`state` TEXT NOT NULL, `progressPercent` INTEGER NOT NULL, " +
+                        "`mediaPath` TEXT, `castWhenReady` INTEGER NOT NULL, " +
+                        "`updatedAtMillis` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`infoHash`))"
                 )
             }
         }

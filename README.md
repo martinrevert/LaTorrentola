@@ -10,14 +10,15 @@ Built for phones, tablets, foldables, and **Android TV / Chromecast**, the app f
 
 ### 📱 For Users
 * **Catalog & Quality Filters**: Browse movies sorted by video quality (**4K 2160p**, **1080p x265**, **1080p**, **720p**) and genres (Action, Sci-Fi, Comedy, Drama, New Releases, and Previously Watched).
-* **TV Series Catalog**: Switch Home between Movies and TV to browse TMDB series by airing status, popularity, rating, or genre. Open seasons and episodes, find releases through EZTV, and send episode magnets directly to a compatible torrent client.
+* **TV Series Catalog**: Switch Home between Movies and TV to browse TMDB series by airing status, popularity, rating, or genre. Open seasons and episodes, find releases through EZTV, and use the configured torrent mode.
 * **Google Cloud Library Sync**: Sign in with your Google account to back up and automatically synchronize your favorite movies and watch history across all your devices.
 * **TV Episode Download History**: TV episode torrent selections are recorded separately from movie downloads and synced to the signed-in user's cloud library.
 * **Integrated Trailer Player**: Watch official YouTube HD trailers directly inside the app without ads or pop-ups.
 * **On-Device Spanish Translation**: Instant, automatic summary translation powered by local on-device AI—no additional mobile data or cloud costs.
 * **Language Exclusion Filter**: Automatically hide movies in languages you prefer not to watch.
 * **100% Android TV & Remote Ready**: Smooth navigation engineered for TV remotes with responsive card scaling, high-contrast focus indicators, and D-pad shortcuts.
-* **One-Tap Magnet Link Launching**: Tap any download quality option to generate a standard *magnet link* that opens in your preferred torrent client (phone or NAS).
+* **Torrent handling**: Choose external-client handoff, in-app download with local playback, or in-app download with Chromecast from Settings. In-app playback starts after a contiguous startup buffer has been verified by libtorrent4j; later HTTP byte ranges are served only after every overlapping torrent piece passes its hash check. Completed downloads remain in the app's download manager until deleted.
+* **Subtitles**: Local playback and Cast playback can search and load subtitles through OpenSubtitles when an API key is configured and the user has saved their account credentials in Settings.
 
 ---
 
@@ -26,7 +27,7 @@ Built for phones, tablets, foldables, and **Android TV / Chromecast**, the app f
 1. **Explore the Catalog**: Scroll through the main home screen to discover popular movies and new releases. Use the top chips to filter by genre or resolution.
 2. **Browse TV Series**: Select **TV** on Home, choose a feed or genre, then open a series to select a season and episode.
 3. **Find an Episode Release**: Open an episode to see matching EZTV releases and available quality/seed information.
-4. **Start Downloads**: Select a movie quality or TV episode release to send its magnet link to your torrent client or NAS.
+4. **Start Downloads**: Select a movie quality or TV episode release. Settings choose whether the magnet is sent to an external torrent app, downloaded and streamed locally, or downloaded and offered to a Chromecast-compatible receiver. In-app transfers can be paused, resumed, played, or deleted from **In-app downloads** in Settings.
 5. **Search and Details**: Search movie titles or cast, or open a movie poster for summaries, cast, IMDb ratings, and trailers.
 6. **Sync Your Library**: Sign in and save favorites or select downloads; movie and TV download histories are stored separately in your account.
 
@@ -56,13 +57,16 @@ This app has been refactored to leverage the latest Jetpack Compose libraries an
 ### Prerequisites
 
 1. **Credentials in `local.properties`**:
-   Add the Firebase Web Client ID and TMDB API key to `local.properties` in the project root:
+   Add the Firebase Web Client ID and TMDB / OpenSubtitles API keys to `local.properties` in the project root:
    ```properties
    FIREBASE_WEB_CLIENT_ID=your_web_client_id_here
    TMDB_API_KEY=your_tmdb_api_key_here
+   OPEN_SUBTITLES_API_KEY=your_opensubtitles_api_key_here
    ```
    The build exposes these through `BuildConfig`; do not commit credentials or hardcode them in source.
-   A TMDB key is required for the TV-series catalog and detail screens.
+   A TMDB key is required for the TV-series catalog and detail screens. The OpenSubtitles API key is required for subtitle search; users enter their own OpenSubtitles username and password in Settings, where credentials are encrypted using Android Keystore.
+   Build-time API keys can be extracted from a distributed APK; do not treat them as secrets and use appropriately scoped keys and quotas.
+   In-app libtorrent support raises `minSdk` to Android 9 (API 28). Cast playback requires the phone/TV and receiver to be reachable on the same local network.
 
 2. **Google Services Config**:
    Place your `google-services.json` inside the `app/` folder. Ensure your development SHA-1 fingerprint is registered in the Firebase Console.

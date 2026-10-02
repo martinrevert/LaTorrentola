@@ -6,6 +6,8 @@ import com.martinrevert.latorrentola.network.FirebaseMessagingInitializer
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.utils.OpenSubtitlesCredentialStore
+import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import io.mockk.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,12 +17,14 @@ import org.junit.Rule
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
+/** Verifies local and remotely synchronized settings behavior. */
 class SettingsViewModelTest {
 
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
 
     private val preferenceManager: PreferenceManager = mockk(relaxed = true)
+    private val openSubtitlesCredentialStore: OpenSubtitlesCredentialStore = mockk(relaxed = true)
     private val firebaseMessagingInitializer: FirebaseMessagingInitializer = mockk(relaxed = true)
     private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
     private val authRepository: AuthRepository = mockk(relaxed = true)
@@ -36,11 +40,18 @@ class SettingsViewModelTest {
         every { preferenceManager.isPushEnabled() } returns true
         every { preferenceManager.getTheme() } returns PreferenceManager.THEME_DARK
         every { preferenceManager.getMinimumRating() } returns PreferenceManager.DEFAULT_MINIMUM_RATING
+        every { preferenceManager.getTorrentHandlingMode() } returns TorrentHandlingMode.EXTERNAL_CLIENT
         every { preferenceManager.filteredLanguagesFlow } returns MutableStateFlow("es")
         every { preferenceManager.minimumRatingFlow } returns MutableStateFlow(PreferenceManager.DEFAULT_MINIMUM_RATING)
         every { authRepository.authStateFlow } returns MutableStateFlow(null)
         
-        viewModel = SettingsViewModel(preferenceManager, firebaseMessagingInitializer, userLibraryRepository, authRepository)
+        viewModel = SettingsViewModel(
+            preferenceManager,
+            openSubtitlesCredentialStore,
+            firebaseMessagingInitializer,
+            userLibraryRepository,
+            authRepository
+        )
     }
 
     @Test
@@ -64,6 +75,32 @@ class SettingsViewModelTest {
         viewModel.setTheme(PreferenceManager.THEME_LIGHT)
         verify { preferenceManager.setTheme(PreferenceManager.THEME_LIGHT) }
         assertThat(viewModel.uiState.value.theme).isEqualTo(PreferenceManager.THEME_LIGHT)
+    }
+
+    /** Checks that selecting an in-app mode updates persisted and displayed state. */
+    @Test
+    fun `setTorrentHandlingMode should update preference and state`() {
+        viewModel.setTorrentHandlingMode(TorrentHandlingMode.LOCAL_PLAYBACK)
+
+        verify { preferenceManager.setTorrentHandlingMode(TorrentHandlingMode.LOCAL_PLAYBACK) }
+        assertThat(viewModel.uiState.value.torrentHandlingMode)
+            .isEqualTo(TorrentHandlingMode.LOCAL_PLAYBACK)
+    }
+
+    /** Checks that subtitle account credentials are stored and cleared through the secure store. */
+    @Test
+    fun `saving and clearing subtitle credentials updates local settings state`() {
+        viewModel.saveOpenSubtitlesCredentials("user", "password")
+
+        verify { openSubtitlesCredentialStore.save(match { it.username == "user" && it.password == "password" }) }
+        assertThat(viewModel.uiState.value.openSubtitlesUsername).isEqualTo("user")
+        assertThat(viewModel.uiState.value.openSubtitlesCredentialsConfigured).isTrue()
+
+        viewModel.clearOpenSubtitlesCredentials()
+
+        verify { openSubtitlesCredentialStore.clear() }
+        assertThat(viewModel.uiState.value.openSubtitlesUsername).isEmpty()
+        assertThat(viewModel.uiState.value.openSubtitlesCredentialsConfigured).isFalse()
     }
 
     @Test

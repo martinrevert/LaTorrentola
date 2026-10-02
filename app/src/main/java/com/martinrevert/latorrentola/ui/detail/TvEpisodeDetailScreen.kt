@@ -1,7 +1,5 @@
 package com.martinrevert.latorrentola.ui.detail
 
-import android.content.Context
-import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
@@ -55,7 +53,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface as TvSurface
@@ -63,10 +60,12 @@ import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
+import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.ui.components.MovieDetailPlaceholder
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
+import com.martinrevert.latorrentola.utils.TorrentLaunchResult
 import com.martinrevert.latorrentola.utils.isTvDevice
-import java.net.URLEncoder
 
 /**
  * Screen displaying details and available EZTV torrent releases for an episode.
@@ -91,6 +90,7 @@ fun TvEpisodeDetailScreen(
     onBackClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val torrentHandlingMode by viewModel.torrentHandlingMode.collectAsState()
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
     val episodeSummaryFocusRequester = remember { FocusRequester() }
@@ -164,13 +164,60 @@ fun TvEpisodeDetailScreen(
                     episodeSummaryFocusRequester = if (isTv) episodeSummaryFocusRequester else null,
                     firstTorrentFocusRequester = if (isTv) firstTorrentFocusRequester else null,
                     onTorrentClick = { torrent ->
-                        viewModel.markEpisodeAsDownloaded(torrent)
-                        Toast.makeText(
-                            context,
-                            downloadedText,
-                            Toast.LENGTH_SHORT
-                        ).show()
-                        launchMagnetLink(context, state.seriesName, state.episode, torrent)
+                        val title = "%s S%02dE%02d %s".format(
+                            state.seriesName,
+                            state.episode.seasonNumber,
+                            state.episode.episodeNumber,
+                            torrent.title
+                        )
+                        val magnetUri = torrent.magnetUrl.ifBlank {
+                            torrent.hash.takeIf(String::isNotBlank)?.let {
+                                TorrentLaunchHelper.buildMagnetUri(it, title)
+                            }.orEmpty()
+                        }
+                        if (magnetUri.isBlank()) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.toast_magnet_error),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } else {
+                            when (
+                                TorrentLaunchHelper.launch(
+                                    context,
+                                    torrentHandlingMode,
+                                    magnetUri,
+                                    title
+                                )
+                            ) {
+                                TorrentLaunchResult.Started -> {
+                                    viewModel.markEpisodeAsDownloaded(torrent)
+                                    if (torrentHandlingMode == TorrentHandlingMode.EXTERNAL_CLIENT) {
+                                        Toast.makeText(
+                                            context,
+                                            downloadedText,
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    } else {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.torrent_download_queued),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                                TorrentLaunchResult.NoExternalClient -> Toast.makeText(
+                                    context,
+                                    context.getString(R.string.toast_no_torrent_client),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                TorrentLaunchResult.CastUnavailable -> Toast.makeText(
+                                    context,
+                                    context.getString(R.string.torrent_cast_unavailable),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
                     }
                 )
             }
@@ -491,46 +538,5 @@ private fun TorrentReleaseCard(
         ) {
             cardContent()
         }
-    }
-}
-
-/** Constructs formatted magnet URI and launches Intent.ACTION_VIEW directly without chooser. */
-private fun launchMagnetLink(
-    context: Context,
-    seriesName: String,
-    episode: TmdbTvEpisode,
-    torrent: EztvTorrent
-) {
-    try {
-        val magnetUriString = if (torrent.magnetUrl.isNotBlank()) {
-            torrent.magnetUrl
-        } else if (torrent.hash.isNotBlank()) {
-            val titleParam = URLEncoder.encode(
-                "$seriesName S%02dE%02d ${torrent.title}".format(
-                    episode.seasonNumber,
-                    episode.episodeNumber
-                ),
-                "UTF-8"
-            )
-            "magnet:?xt=urn:btih:${torrent.hash}&dn=$titleParam" +
-                    "&tr=udp://open.demonii.com:1337/announce" +
-                    "&tr=udp://tracker.openbittorrent.com:80"
-        } else {
-            Toast.makeText(context, context.getString(R.string.toast_magnet_error), Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            data = magnetUriString.toUri()
-            addCategory(Intent.CATEGORY_BROWSABLE)
-        }
-
-        context.startActivity(intent)
-    } catch (e: Exception) {
-        Toast.makeText(
-            context,
-            context.getString(R.string.toast_no_torrent_client),
-            Toast.LENGTH_LONG
-        ).show()
     }
 }

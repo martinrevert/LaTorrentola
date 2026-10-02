@@ -24,6 +24,7 @@ import com.martinrevert.latorrentola.ui.search.SearchScreen
 import com.martinrevert.latorrentola.ui.search.SearchViewModel
 import com.martinrevert.latorrentola.ui.settings.SettingsScreen
 import com.martinrevert.latorrentola.ui.settings.SettingsViewModel
+import com.martinrevert.latorrentola.ui.downloads.TorrentDownloadsScreen
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
 import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
 import com.martinrevert.latorrentola.model.YTS.Movie
@@ -55,6 +56,8 @@ sealed interface Route : NavKey {
     ) : Route
     /** User settings destination. */
     @Serializable object Settings : Route
+    /** App-managed torrent download list. */
+    @Serializable object Downloads : Route
     /**
      * Search destination with optional genre or text query.
      *
@@ -215,7 +218,13 @@ fun AppNavigation(
                         authViewModel.signOut()
                         backStack.clear()
                         backStack.add(Route.Login)
-                    }
+                    },
+                    onDownloadsClick = { backStack.add(Route.Downloads) }
+                )
+            }
+            entry<Route.Downloads> {
+                TorrentDownloadsScreen(
+                    onBackClick = { backStack.removeLastOrNull() }
                 )
             }
             entry<Route.Search> { searchKey ->

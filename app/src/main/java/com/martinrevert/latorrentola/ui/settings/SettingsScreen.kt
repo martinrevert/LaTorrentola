@@ -1,6 +1,8 @@
 package com.martinrevert.latorrentola.ui.settings
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import android.content.res.Configuration
 import android.os.Build
 import androidx.compose.foundation.layout.*
@@ -16,8 +18,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -34,6 +39,7 @@ import com.martinrevert.latorrentola.BuildConfig
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import androidx.compose.ui.tooling.preview.Preview
@@ -55,7 +61,8 @@ fun SettingsScreen(
     userName: String?,
     userEmail: String?,
     onBackClick: () -> Unit,
-    onLogoutClick: () -> Unit
+    onLogoutClick: () -> Unit,
+    onDownloadsClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -69,6 +76,7 @@ fun SettingsScreen(
         isTv = isTv,
         onBackClick = onBackClick,
         onLogoutClick = onLogoutClick,
+        onDownloadsClick = onDownloadsClick,
         onToggleVoiceSystem = { viewModel.toggleVoiceSystem(it) },
         onToggleVoiceSummary = { viewModel.toggleVoiceSummary(it) },
         onToggleVoiceTranslation = { viewModel.toggleVoiceTranslation(it) },
@@ -76,7 +84,12 @@ fun SettingsScreen(
         onTogglePushEnabled = { viewModel.togglePushEnabled(it) },
         onSetTheme = { viewModel.setTheme(it) },
         onSetFilteredLanguages = { viewModel.setFilteredLanguages(it) },
-        onSetMinimumRating = { viewModel.setMinimumRating(it) }
+        onSetMinimumRating = { viewModel.setMinimumRating(it) },
+        onSetTorrentHandlingMode = { viewModel.setTorrentHandlingMode(it) },
+        onSaveOpenSubtitlesCredentials = { username, password ->
+            viewModel.saveOpenSubtitlesCredentials(username, password)
+        },
+        onClearOpenSubtitlesCredentials = { viewModel.clearOpenSubtitlesCredentials() }
     )
 }
 
@@ -91,6 +104,7 @@ private fun SettingsScreenContent(
     isTv: Boolean,
     onBackClick: () -> Unit,
     onLogoutClick: () -> Unit,
+    onDownloadsClick: () -> Unit,
     onToggleVoiceSystem: (Boolean) -> Unit,
     onToggleVoiceSummary: (Boolean) -> Unit,
     onToggleVoiceTranslation: (Boolean) -> Unit,
@@ -98,7 +112,10 @@ private fun SettingsScreenContent(
     onTogglePushEnabled: (Boolean) -> Unit,
     onSetTheme: (Int) -> Unit,
     onSetFilteredLanguages: (String) -> Unit,
-    onSetMinimumRating: (Float) -> Unit
+    onSetMinimumRating: (Float) -> Unit,
+    onSetTorrentHandlingMode: (TorrentHandlingMode) -> Unit,
+    onSaveOpenSubtitlesCredentials: (String, String) -> Unit,
+    onClearOpenSubtitlesCredentials: () -> Unit
 ) {
     val configuration = LocalConfiguration.current
     val isWideScreen = configuration.screenWidthDp >= 600 || isTv
@@ -168,6 +185,7 @@ private fun SettingsScreenContent(
 
                     Text(text = stringResource(R.string.settings_theme), style = MaterialTheme.typography.titleMedium)
                     ThemeSelector(selectedTheme = uiState.theme, onThemeSelected = onSetTheme)
+                    DownloadsManagerButton(isTv = isTv, onClick = onDownloadsClick)
 
                     Spacer(modifier = Modifier.weight(1f))
 
@@ -212,6 +230,19 @@ private fun SettingsScreenContent(
                             onCheckedChange = onTogglePushEnabled
                         )
                     }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    TorrentModeSetting(
+                        selectedMode = uiState.torrentHandlingMode,
+                        onModeSelected = onSetTorrentHandlingMode
+                    )
+                    OpenSubtitlesCredentialsSetting(
+                        uiState = uiState,
+                        isTv = isTv,
+                        onSave = onSaveOpenSubtitlesCredentials,
+                        onClear = onClearOpenSubtitlesCredentials
+                    )
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
@@ -294,6 +325,20 @@ private fun SettingsScreenContent(
                     selectedTheme = uiState.theme,
                     onThemeSelected = onSetTheme
                 )
+                DownloadsManagerButton(isTv = isTv, onClick = onDownloadsClick)
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                TorrentModeSetting(
+                    selectedMode = uiState.torrentHandlingMode,
+                    onModeSelected = onSetTorrentHandlingMode
+                )
+                OpenSubtitlesCredentialsSetting(
+                    uiState = uiState,
+                    isTv = isTv,
+                    onSave = onSaveOpenSubtitlesCredentials,
+                    onClear = onClearOpenSubtitlesCredentials
+                )
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
@@ -328,6 +373,217 @@ private fun SettingsScreenContent(
         }
     }
 }
+}
+
+/**
+ * Opens the locally managed torrent jobs.
+ *
+ * @param isTv Whether to use the native TV button.
+ * @param onClick Navigates to the download manager.
+ */
+@Composable
+private fun DownloadsManagerButton(isTv: Boolean, onClick: () -> Unit) {
+    if (isTv) {
+        androidx.tv.material3.Button(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth(),
+            colors = androidx.tv.material3.ButtonDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+        ) {
+            androidx.tv.material3.Text(stringResource(R.string.torrent_downloads_title))
+        }
+    } else {
+        androidx.compose.material3.OutlinedButton(
+            onClick = onClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusHighlight(shape = ButtonDefaults.shape)
+        ) {
+            Text(stringResource(R.string.torrent_downloads_title))
+        }
+    }
+}
+
+/**
+ * Presents the mutually exclusive torrent launch behavior.
+ *
+ * @param selectedMode Currently stored handling mode.
+ * @param onModeSelected Persists a user-selected mode.
+ */
+@Composable
+private fun TorrentModeSetting(
+    selectedMode: TorrentHandlingMode,
+    onModeSelected: (TorrentHandlingMode) -> Unit
+) {
+    val options = listOf(
+        Triple(TorrentHandlingMode.EXTERNAL_CLIENT, R.string.torrent_mode_external, R.string.torrent_mode_external_support),
+        Triple(TorrentHandlingMode.LOCAL_PLAYBACK, R.string.torrent_mode_local, R.string.torrent_mode_local_support),
+        Triple(TorrentHandlingMode.CHROMECAST, R.string.torrent_mode_cast, R.string.torrent_mode_cast_support)
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectableGroup()
+    ) {
+        Text(
+            text = stringResource(R.string.torrent_mode_title),
+            style = MaterialTheme.typography.titleMedium
+        )
+        options.forEach { (mode, title, support) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusHighlight(shape = MaterialTheme.shapes.small)
+                    .selectable(
+                        selected = selectedMode == mode,
+                        enabled = true,
+                        onClick = { onModeSelected(mode) },
+                        role = Role.RadioButton
+                    )
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = selectedMode == mode,
+                    onClick = null,
+                    colors = RadioButtonDefaults.colors(
+                        selectedColor = MaterialTheme.colorScheme.primary
+                    )
+                )
+                Column(modifier = Modifier.padding(start = 8.dp)) {
+                    Text(
+                        text = stringResource(title),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = stringResource(support),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Edits OpenSubtitles credentials and reports whether an encrypted account is configured.
+ *
+ * @param uiState Current credential status and username.
+ * @param isTv Whether to use TV-native action buttons.
+ * @param onSave Encrypts and stores the entered account credentials.
+ * @param onClear Removes saved credentials.
+ */
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun OpenSubtitlesCredentialsSetting(
+    uiState: SettingsUiState,
+    isTv: Boolean,
+    onSave: (String, String) -> Unit,
+    onClear: () -> Unit
+) {
+    var username by remember(uiState.openSubtitlesUsername) {
+        mutableStateOf(uiState.openSubtitlesUsername)
+    }
+    var password by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.opensubtitles_title),
+            style = MaterialTheme.typography.titleMedium
+        )
+        Text(
+            text = stringResource(
+                if (uiState.openSubtitlesCredentialsConfigured) {
+                    R.string.opensubtitles_configured
+                } else {
+                    R.string.opensubtitles_support
+                }
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        OutlinedTextField(
+            value = username,
+            onValueChange = { username = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusHighlight(shape = OutlinedTextFieldDefaults.shape),
+            label = { Text(stringResource(R.string.opensubtitles_username)) },
+            singleLine = true
+        )
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusHighlight(shape = OutlinedTextFieldDefaults.shape),
+            label = { Text(stringResource(R.string.opensubtitles_password)) },
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            singleLine = true
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (isTv) {
+                androidx.tv.material3.Button(
+                    onClick = {
+                        onSave(username.trim(), password)
+                        password = ""
+                    },
+                    enabled = username.isNotBlank() && password.isNotBlank()
+                ) {
+                    androidx.tv.material3.Text(stringResource(R.string.opensubtitles_save))
+                }
+                if (uiState.openSubtitlesCredentialsConfigured) {
+                    androidx.tv.material3.Button(
+                        onClick = {
+                            onClear()
+                            username = ""
+                            password = ""
+                        },
+                        colors = androidx.tv.material3.ButtonDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    ) {
+                        androidx.tv.material3.Text(stringResource(R.string.opensubtitles_clear))
+                    }
+                }
+            } else {
+                androidx.compose.material3.Button(
+                    onClick = {
+                        onSave(username.trim(), password)
+                        password = ""
+                    },
+                    enabled = username.isNotBlank() && password.isNotBlank(),
+                    modifier = Modifier.focusHighlight(shape = ButtonDefaults.shape)
+                ) {
+                    Text(stringResource(R.string.opensubtitles_save))
+                }
+                if (uiState.openSubtitlesCredentialsConfigured) {
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = {
+                            onClear()
+                            username = ""
+                            password = ""
+                        },
+                        modifier = Modifier.focusHighlight(shape = ButtonDefaults.shape)
+                    ) {
+                        Text(stringResource(R.string.opensubtitles_clear))
+                    }
+                }
+            }
+        }
+    }
 }
 
 /** Displays the sign-out action using the appropriate device styling. */
@@ -600,6 +856,7 @@ fun SettingsScreenTvPreview() {
             isTv = true,
             onBackClick = {},
             onLogoutClick = {},
+            onDownloadsClick = {},
             onToggleVoiceSystem = {},
             onToggleVoiceSummary = {},
             onToggleVoiceTranslation = {},
@@ -607,7 +864,10 @@ fun SettingsScreenTvPreview() {
             onTogglePushEnabled = {},
             onSetTheme = {},
             onSetFilteredLanguages = {},
-            onSetMinimumRating = {}
+            onSetMinimumRating = {},
+            onSetTorrentHandlingMode = {},
+            onSaveOpenSubtitlesCredentials = { _, _ -> },
+            onClearOpenSubtitlesCredentials = {}
         )
     }
 }
@@ -630,6 +890,7 @@ fun SettingsScreenPreview() {
             isTv = false,
             onBackClick = {},
             onLogoutClick = {},
+            onDownloadsClick = {},
             onToggleVoiceSystem = {},
             onToggleVoiceSummary = {},
             onToggleVoiceTranslation = {},
@@ -637,7 +898,10 @@ fun SettingsScreenPreview() {
             onTogglePushEnabled = {},
             onSetTheme = {},
             onSetFilteredLanguages = {},
-            onSetMinimumRating = {}
+            onSetMinimumRating = {},
+            onSetTorrentHandlingMode = {},
+            onSaveOpenSubtitlesCredentials = { _, _ -> },
+            onClearOpenSubtitlesCredentials = {}
         )
     }
 }

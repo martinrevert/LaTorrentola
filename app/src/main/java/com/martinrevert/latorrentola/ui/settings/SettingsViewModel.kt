@@ -3,6 +3,9 @@ package com.martinrevert.latorrentola.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.network.FirebaseMessagingInitializer
+import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
+import com.martinrevert.latorrentola.utils.OpenSubtitlesCredentialStore
+import com.martinrevert.latorrentola.utils.OpenSubtitlesCredentials
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -14,6 +17,7 @@ import javax.inject.Inject
  * Maintains settings UI state and synchronizes account settings with Firebase.
  *
  * @property preferenceManager reads and persists local settings.
+ * @property openSubtitlesCredentialStore securely persists subtitle service credentials.
  * @property firebaseMessagingInitializer applies push subscription changes.
  * @property userLibraryRepository observes and updates cloud-saved preferences.
  * @property authRepository exposes signed-in account changes.
@@ -22,6 +26,7 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val preferenceManager: PreferenceManager,
+    private val openSubtitlesCredentialStore: OpenSubtitlesCredentialStore,
     private val firebaseMessagingInitializer: FirebaseMessagingInitializer,
     private val userLibraryRepository: com.martinrevert.latorrentola.network.UserLibraryRepository,
     private val authRepository: com.martinrevert.latorrentola.network.AuthRepository
@@ -40,6 +45,7 @@ class SettingsViewModel @Inject constructor(
     /** Loads local preferences, starts remote synchronization, and observes preference changes. */
     init {
         val localFiltered = preferenceManager.getFilteredLanguages()
+        val openSubtitlesCredentials = openSubtitlesCredentialStore.load()
         _uiState.value = SettingsUiState(
             voiceSystem = preferenceManager.getVoiceSystem(),
             voiceSummary = preferenceManager.getVoiceSummary(),
@@ -48,7 +54,10 @@ class SettingsViewModel @Inject constructor(
             pushEnabled = preferenceManager.isPushEnabled(),
             theme = preferenceManager.getTheme(),
             filteredLanguages = localFiltered,
-            minimumRating = preferenceManager.getMinimumRating()
+            minimumRating = preferenceManager.getMinimumRating(),
+            torrentHandlingMode = preferenceManager.getTorrentHandlingMode(),
+            openSubtitlesUsername = openSubtitlesCredentials?.username.orEmpty(),
+            openSubtitlesCredentialsConfigured = openSubtitlesCredentials != null
         )
         syncSettings()
         observeSettingsChanges()
@@ -162,6 +171,39 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Updates and persists the torrent handling mode.
+     *
+     * @param mode Selected external, local-playback, or Cast mode.
+     */
+    fun setTorrentHandlingMode(mode: TorrentHandlingMode) {
+        preferenceManager.setTorrentHandlingMode(mode)
+        _uiState.value = _uiState.value.copy(torrentHandlingMode = mode)
+    }
+
+    /**
+     * Encrypts and stores the user's OpenSubtitles login.
+     *
+     * @param username Account username.
+     * @param password Account password.
+     */
+    fun saveOpenSubtitlesCredentials(username: String, password: String) {
+        openSubtitlesCredentialStore.save(OpenSubtitlesCredentials(username, password))
+        _uiState.value = _uiState.value.copy(
+            openSubtitlesUsername = username,
+            openSubtitlesCredentialsConfigured = true
+        )
+    }
+
+    /** Removes the user's saved OpenSubtitles login. */
+    fun clearOpenSubtitlesCredentials() {
+        openSubtitlesCredentialStore.clear()
+        _uiState.value = _uiState.value.copy(
+            openSubtitlesUsername = "",
+            openSubtitlesCredentialsConfigured = false
+        )
+    }
+
 }
 
 /**
@@ -175,6 +217,9 @@ class SettingsViewModel @Inject constructor(
  * @property theme Selected theme mode.
  * @property filteredLanguages Comma-separated language codes excluded from movie lists.
  * @property minimumRating Minimum movie rating used for filtering.
+ * @property torrentHandlingMode How selected torrents are handed off or played.
+ * @property openSubtitlesUsername Username stored for OpenSubtitles authentication.
+ * @property openSubtitlesCredentialsConfigured Whether both OpenSubtitles credentials are saved.
  */
 data class SettingsUiState(
     val voiceSystem: Boolean = true,
@@ -184,5 +229,8 @@ data class SettingsUiState(
     val pushEnabled: Boolean = true,
     val theme: Int = PreferenceManager.THEME_SYSTEM,
     val filteredLanguages: String = "",
-    val minimumRating: Float = PreferenceManager.DEFAULT_MINIMUM_RATING
+    val minimumRating: Float = PreferenceManager.DEFAULT_MINIMUM_RATING,
+    val torrentHandlingMode: TorrentHandlingMode = TorrentHandlingMode.EXTERNAL_CLIENT,
+    val openSubtitlesUsername: String = "",
+    val openSubtitlesCredentialsConfigured: Boolean = false
 )

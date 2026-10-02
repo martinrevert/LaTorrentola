@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +34,12 @@ class PreferenceManager @Inject constructor(
     private val _minimumRatingFlow = MutableStateFlow(getMinimumRating())
     /** Observable minimum movie rating. */
     val minimumRatingFlow: StateFlow<Float> = _minimumRatingFlow.asStateFlow()
+
+    /** Mutable backing stream for the configured torrent handling mode. */
+    private val _torrentHandlingModeFlow = MutableStateFlow(getTorrentHandlingMode())
+    /** Observable torrent handling mode. */
+    val torrentHandlingModeFlow: StateFlow<TorrentHandlingMode> =
+        _torrentHandlingModeFlow.asStateFlow()
 
     /** Persists whether voice guidance is enabled. */
     fun setVoiceSystem(enabled: Boolean) {
@@ -150,6 +157,19 @@ class PreferenceManager @Inject constructor(
         }
     }
 
+    /** Persists and publishes the configured torrent handling mode. */
+    fun setTorrentHandlingMode(mode: TorrentHandlingMode) {
+        sharedPreferences.edit { putString(KEY_TORRENT_HANDLING_MODE, mode.name) }
+        _torrentHandlingModeFlow.value = mode
+    }
+
+    /** Returns the configured torrent handling mode, defaulting to external handoff. */
+    fun getTorrentHandlingMode(): TorrentHandlingMode {
+        val storedMode = sharedPreferences.getString(KEY_TORRENT_HANDLING_MODE, null)
+        return TorrentHandlingMode.values().firstOrNull { it.name == storedMode }
+            ?: TorrentHandlingMode.EXTERNAL_CLIENT
+    }
+
     companion object {
         /** Preference key controlling general voice guidance. */
         private const val KEY_VOICE_SYSTEM = "voice_system"
@@ -175,6 +195,8 @@ class PreferenceManager @Inject constructor(
         private const val KEY_FILTERED_LANGUAGES = "filtered_languages"
         /** Preference key for the minimum movie rating. */
         private const val KEY_MINIMUM_RATING = "minimum_rating"
+        /** Preference key for the selected torrent handling mode. */
+        private const val KEY_TORRENT_HANDLING_MODE = "torrent_handling_mode"
 
         /** Follow the system theme. */
         const val THEME_SYSTEM = 0
