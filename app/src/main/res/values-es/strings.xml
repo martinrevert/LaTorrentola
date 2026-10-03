@@ -70,6 +70,8 @@
     <string name="opensubtitles_support">Añade tu cuenta para buscar y cargar subtítulos en la reproducción local o por Cast.</string>
     <string name="opensubtitles_configured">Las credenciales están cifradas y guardadas en este dispositivo.</string>
     <string name="opensubtitles_search">Buscar subtítulos</string>
+    <string name="opensubtitles_searching">Buscando subtítulos…</string>
+    <string name="opensubtitles_downloading">Descargando y cargando subtítulo…</string>
     <string name="player_audio_tracks">Audio</string>
     <string name="player_subtitle_tracks">Subtítulos</string>
     <string name="player_search_opensubtitles">Buscar en OpenSubtitles</string>

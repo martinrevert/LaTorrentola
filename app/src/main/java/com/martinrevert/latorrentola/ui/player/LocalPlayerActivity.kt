@@ -11,6 +11,7 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
@@ -161,6 +162,9 @@ class LocalPlayerActivity : ComponentActivity() {
 
     /** Managed torrent owning the current playback, used to scope downloaded subtitles. */
     private var torrentInfoHash = ""
+
+    /** Prevents overlapping subtitle searches and downloads from repeated controller clicks. */
+    private var subtitleOperationInProgress = false
 
     /**
      * Creates the player, using early-start extraction for incomplete torrents, and adds
@@ -631,28 +635,35 @@ class LocalPlayerActivity : ComponentActivity() {
         PlaybackTrackType.SUBTITLE -> C.TRACK_TYPE_TEXT
     }
 
-    /** Searches OpenSubtitles for the current title and presents selectable matching releases. */
+    /** Searches OpenSubtitles once per user action and presents matching releases. */
     private fun searchSubtitles() {
+        if (subtitleOperationInProgress) return
+        subtitleOperationInProgress = true
+        val progressDialog = showSubtitleProgressDialog(R.string.opensubtitles_searching)
         lifecycleScope.launch {
+            var results: List<OpenSubtitleResult>? = null
+            var message: String? = null
             try {
                 val mediaType = if (EPISODE_PATTERN.containsMatchIn(mediaTitle)) "episode" else "movie"
-                val results = openSubtitlesRepository.search(mediaTitle, type = mediaType)
-                if (results.isEmpty()) {
-                    showSubtitleMessage(getString(R.string.opensubtitles_no_results))
-                } else {
-                    showSubtitleResults(results)
+                val foundResults = openSubtitlesRepository.search(mediaTitle, type = mediaType)
+                results = foundResults
+                if (foundResults.isEmpty()) {
+                    message = getString(R.string.opensubtitles_no_results)
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: OpenSubtitlesException) {
-                showSubtitleMessage(error.message ?: getString(R.string.opensubtitles_request_failed))
+                message = error.message ?: getString(R.string.opensubtitles_request_failed)
             } catch (error: IOException) {
-                showSubtitleMessage(error.message ?: getString(R.string.opensubtitles_request_failed))
+                message = error.message ?: getString(R.string.opensubtitles_request_failed)
             } catch (error: IllegalArgumentException) {
-                showSubtitleMessage(
-                    error.message ?: getString(R.string.opensubtitles_request_failed)
-                )
+                message = error.message ?: getString(R.string.opensubtitles_request_failed)
+            } finally {
+                progressDialog.dismiss()
+                subtitleOperationInProgress = false
             }
+            results?.takeIf { it.isNotEmpty() }?.let(::showSubtitleResults)
+            message?.let(::showSubtitleMessage)
         }
     }
 
@@ -684,7 +695,11 @@ class LocalPlayerActivity : ComponentActivity() {
      * @param result Subtitle result selected from the OpenSubtitles list.
      */
     private fun downloadSubtitle(result: OpenSubtitleResult) {
+        if (subtitleOperationInProgress) return
+        subtitleOperationInProgress = true
+        val progressDialog = showSubtitleProgressDialog(R.string.opensubtitles_downloading)
         lifecycleScope.launch {
+            var errorMessage: String? = null
             try {
                 val subtitle = openSubtitlesRepository.download(
                     result,
@@ -732,18 +747,35 @@ class LocalPlayerActivity : ComponentActivity() {
             } catch (error: CancellationException) {
                 throw error
             } catch (error: OpenSubtitlesException) {
-                showSubtitleMessage(error.message ?: getString(R.string.opensubtitles_download_failed))
+                errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
             } catch (error: IOException) {
-                showSubtitleMessage(error.message ?: getString(R.string.opensubtitles_download_failed))
+                errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
             } catch (error: IllegalStateException) {
-                showSubtitleMessage(error.message ?: getString(R.string.opensubtitles_download_failed))
+                errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
             } catch (error: IllegalArgumentException) {
-                showSubtitleMessage(
-                    error.message ?: getString(R.string.opensubtitles_download_failed)
-                )
+                errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
+            } finally {
+                progressDialog.dismiss()
+                subtitleOperationInProgress = false
             }
+            errorMessage?.let(::showSubtitleMessage)
         }
     }
+
+    /**
+     * Shows a non-cancelable progress dialog sized for the current form factor.
+     *
+     * @param message Resource describing the active subtitle operation.
+     * @return Visible progress dialog dismissed when the operation completes.
+     */
+    private fun showSubtitleProgressDialog(message: Int): AlertDialog =
+        AlertDialog.Builder(this)
+            .setTitle(R.string.opensubtitles_title)
+            .setMessage(message)
+            .setView(ProgressBar(this).apply { isIndeterminate = true })
+            .setCancelable(false)
+            .create()
+            .also(::showAdaptiveDialog)
 
     /**
      * Presents subtitle service or download errors without concealing the actionable message.
