@@ -1,6 +1,8 @@
 package com.martinrevert.latorrentola.network
 
 import android.content.Context
+import com.google.gson.JsonParseException
+import com.google.gson.JsonParser
 import com.martinrevert.latorrentola.BuildConfig
 import com.martinrevert.latorrentola.utils.OpenSubtitlesCredentialStore
 import com.martinrevert.latorrentola.utils.OpenSubtitlesCredentials
@@ -239,10 +241,13 @@ class OpenSubtitlesRepository @Inject constructor(
                 openSubtitlesService.downloadFile(downloadUrl)
             }
             if (!response.isSuccessful) {
-                response.errorBody()?.close()
+                val errorMessage = response.errorBody()?.let(::readSafeApiErrorMessage)
                 throw OpenSubtitlesException(
                     OpenSubtitlesErrorCode.HTTP_FAILURE,
-                    "OpenSubtitles subtitle download failed (HTTP ${response.code()})",
+                    buildString {
+                        append("OpenSubtitles subtitle download failed (HTTP ${response.code()})")
+                        errorMessage?.let { append(": ").append(it) }
+                    },
                     response.code()
                 )
             }
@@ -389,7 +394,7 @@ class OpenSubtitlesRepository @Inject constructor(
      */
     private fun <T : Any> responseBody(response: Response<T>, operation: String): T {
         if (!response.isSuccessful) {
-            response.errorBody()?.close()
+            val errorMessage = response.errorBody()?.let(::readSafeApiErrorMessage)
             val code = if (response.code() == HTTP_UNAUTHORIZED) {
                 OpenSubtitlesErrorCode.AUTHENTICATION_EXPIRED
             } else {
@@ -397,7 +402,10 @@ class OpenSubtitlesRepository @Inject constructor(
             }
             throw OpenSubtitlesException(
                 code,
-                "OpenSubtitles $operation failed (HTTP ${response.code()})",
+                buildString {
+                    append("OpenSubtitles $operation failed (HTTP ${response.code()})")
+                    errorMessage?.let { append(": ").append(it) }
+                },
                 response.code()
             )
         }
@@ -406,6 +414,33 @@ class OpenSubtitlesRepository @Inject constructor(
                 OpenSubtitlesErrorCode.INVALID_RESPONSE,
                 "OpenSubtitles returned an empty response during $operation"
             )
+    }
+
+    /**
+     * Extracts a bounded server message from a JSON error response without exposing raw bodies.
+     *
+     * @param body HTTP error body, consumed and closed by this function.
+     * @return Sanitized server message, or `null` when no JSON message is available.
+     */
+    private fun readSafeApiErrorMessage(body: okhttp3.ResponseBody): String? {
+        val responseText = try {
+            body.use { it.string() }
+        } catch (_: IOException) {
+            return null
+        }
+        val errorJson = try {
+            JsonParser.parseString(responseText).takeIf { it.isJsonObject }?.asJsonObject
+        } catch (_: JsonParseException) {
+            null
+        } ?: return null
+        val message = errorJson.get("message")
+            ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+            ?.asString
+            ?: return null
+        return message
+            .filterNot(Char::isISOControl)
+            .take(MAX_API_ERROR_MESSAGE_LENGTH)
+            .takeIf(String::isNotBlank)
     }
 
     /**
@@ -661,6 +696,8 @@ class OpenSubtitlesRepository @Inject constructor(
         const val HTTP_FORBIDDEN = 403
         /** Maximum compressed or uncompressed subtitle data accepted. */
         const val MAX_SUBTITLE_BYTES = 16 * 1024 * 1024
+        /** Maximum server-provided error detail shown alongside an HTTP status. */
+        const val MAX_API_ERROR_MESSAGE_LENGTH = 200
         /** Number of authorized requests attempted before reporting expired authentication. */
         const val AUTH_RETRY_COUNT = 2
         /** Private app cache subdirectory for downloaded subtitles. */

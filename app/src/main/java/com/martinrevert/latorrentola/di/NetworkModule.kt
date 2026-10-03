@@ -11,6 +11,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import java.net.ProtocolException
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -120,14 +121,29 @@ object NetworkModule {
         return retrofit.create(EztvService::class.java)
     }
 
-    /** Provides an isolated OpenSubtitles client without an HTTP logging interceptor. */
+    /**
+     * Provides an isolated OpenSubtitles client that follows only HTTPS redirects on the API host.
+     */
     @Provides
     @Singleton
     @OpenSubtitlesHttpClient
     fun provideOpenSubtitlesHttpClient(): OkHttpClient {
         return OkHttpClient.Builder()
-            .followRedirects(false)
+            .followRedirects(true)
             .followSslRedirects(false)
+            .addNetworkInterceptor { chain ->
+                val request = chain.request()
+                val url = request.url
+                val isTrustedHost = url.host == OPEN_SUBTITLES_API_HOST ||
+                    url.host.endsWith(".$OPEN_SUBTITLES_API_HOST")
+                val carriesApiKey = request.header("Api-Key") != null
+                if (!url.isHttps || !isTrustedHost || url.port != HTTPS_PORT ||
+                    carriesApiKey && url.host != OPEN_SUBTITLES_API_HOST
+                ) {
+                    throw ProtocolException("OpenSubtitles API redirected to an untrusted URL")
+                }
+                chain.proceed(request)
+            }
             .build()
     }
 
@@ -154,8 +170,14 @@ object NetworkModule {
         return retrofit.create(OpenSubtitlesService::class.java)
     }
 
+    /** HTTPS host used by the OpenSubtitles API and its same-host redirect policy. */
+    private const val OPEN_SUBTITLES_API_HOST = "api.opensubtitles.com"
+
+    /** Standard HTTPS port used for OpenSubtitles API requests. */
+    private const val HTTPS_PORT = 443
+
     /** OpenSubtitles API v1 HTTPS base URL. */
-    private const val OPEN_SUBTITLES_BASE_URL = "https://api.opensubtitles.com/api/v1/"
+    private const val OPEN_SUBTITLES_BASE_URL = "https://$OPEN_SUBTITLES_API_HOST/api/v1/"
 }
 
 /** Hilt qualifier for the YTS Retrofit client. */

@@ -22,7 +22,7 @@ interface OpenSubtitlesService {
      * @param request Account login payload.
      * @return HTTP response containing the short-lived bearer token on success.
      */
-    @POST("login")
+    @POST("login/")
     suspend fun login(
         @Header("Api-Key") apiKey: String,
         @Header("User-Agent") userAgent: String,
@@ -47,7 +47,7 @@ interface OpenSubtitlesService {
      * @param page Page number to retrieve.
      * @return HTTP response containing typed subtitle results on success.
      */
-    @GET("subtitles")
+    @GET("subtitles/")
     suspend fun searchSubtitles(
         @Header("Api-Key") apiKey: String,
         @Header("User-Agent") userAgent: String,
@@ -73,7 +73,7 @@ interface OpenSubtitlesService {
      * @param request File identifier and desired subtitle format.
      * @return HTTP response containing a short-lived HTTPS download link.
      */
-    @POST("download")
+    @POST("download/")
     suspend fun requestSubtitleDownload(
         @Header("Api-Key") apiKey: String,
         @Header("User-Agent") userAgent: String,
