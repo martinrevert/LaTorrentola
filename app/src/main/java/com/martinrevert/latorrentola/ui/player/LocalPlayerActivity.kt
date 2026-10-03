@@ -1,5 +1,6 @@
 package com.martinrevert.latorrentola.ui.player
 
+import android.animation.ObjectAnimator
 import android.app.AlertDialog
 import android.net.Uri
 import android.os.Bundle
@@ -8,6 +9,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
@@ -166,6 +168,12 @@ class LocalPlayerActivity : ComponentActivity() {
     /** Prevents overlapping subtitle searches and downloads from repeated controller clicks. */
     private var subtitleOperationInProgress = false
 
+    /** OpenSubtitles controller action, animated while a request is pending. */
+    private var subtitleSearchButton: ImageButton? = null
+
+    /** Rotation animation communicating that OpenSubtitles is still being contacted. */
+    private var subtitleSearchAnimator: ObjectAnimator? = null
+
     /**
      * Creates the player, using early-start extraction for incomplete torrents, and adds
      * playback actions to the native Media3 controller.
@@ -295,17 +303,21 @@ class LocalPlayerActivity : ComponentActivity() {
                 ::searchSubtitles
             )
         ).forEachIndexed { index, (icon, description, action) ->
-            controls.addView(
-                ImageButton(this, null, 0, buttonStyle).apply {
-                    setImageResource(icon)
-                    contentDescription = getString(description)
-                    setOnClickListener { action() }
-                    isFocusable = true
-                    isFocusableInTouchMode = true
-                    id = View.generateViewId()
-                },
-                subtitleButtonIndex + index + 1
-            )
+            val button = ImageButton(this, null, 0, buttonStyle).apply {
+                setImageResource(icon)
+                contentDescription = getString(description)
+                setOnClickListener { action() }
+                isFocusable = true
+                isFocusableInTouchMode = true
+                id = View.generateViewId()
+            }
+            if (icon == R.drawable.ic_subtitles_search) {
+                subtitleSearchButton = button
+                if (subtitleOperationInProgress) {
+                    updateSubtitleSearchButton(inProgress = true)
+                }
+            }
+            controls.addView(button, subtitleButtonIndex + index + 1)
         }
         listOf(
             Triple(
@@ -635,10 +647,35 @@ class LocalPlayerActivity : ComponentActivity() {
         PlaybackTrackType.SUBTITLE -> C.TRACK_TYPE_TEXT
     }
 
+    /**
+     * Animates and disables the OpenSubtitles search control while a request is unresolved.
+     *
+     * @param inProgress Whether login, search, or subtitle download is still active.
+     */
+    private fun updateSubtitleSearchButton(inProgress: Boolean) {
+        subtitleOperationInProgress = inProgress
+        val button = subtitleSearchButton ?: return
+        button.isEnabled = !inProgress
+        if (inProgress) {
+            button.contentDescription = getString(R.string.opensubtitles_searching)
+            subtitleSearchAnimator = ObjectAnimator.ofFloat(button, View.ROTATION, 0f, 360f).apply {
+                duration = 1_000L
+                repeatCount = ObjectAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                start()
+            }
+        } else {
+            subtitleSearchAnimator?.cancel()
+            subtitleSearchAnimator = null
+            button.rotation = 0f
+            button.contentDescription = getString(R.string.opensubtitles_search)
+        }
+    }
+
     /** Searches OpenSubtitles once per user action and presents matching releases. */
     private fun searchSubtitles() {
         if (subtitleOperationInProgress) return
-        subtitleOperationInProgress = true
+        updateSubtitleSearchButton(inProgress = true)
         val progressDialog = showSubtitleProgressDialog(R.string.opensubtitles_searching)
         lifecycleScope.launch {
             var results: List<OpenSubtitleResult>? = null
@@ -660,7 +697,7 @@ class LocalPlayerActivity : ComponentActivity() {
                 message = error.message ?: getString(R.string.opensubtitles_request_failed)
             } finally {
                 progressDialog.dismiss()
-                subtitleOperationInProgress = false
+                updateSubtitleSearchButton(inProgress = false)
             }
             results?.takeIf { it.isNotEmpty() }?.let(::showSubtitleResults)
             message?.let(::showSubtitleMessage)
@@ -696,7 +733,7 @@ class LocalPlayerActivity : ComponentActivity() {
      */
     private fun downloadSubtitle(result: OpenSubtitleResult) {
         if (subtitleOperationInProgress) return
-        subtitleOperationInProgress = true
+        updateSubtitleSearchButton(inProgress = true)
         val progressDialog = showSubtitleProgressDialog(R.string.opensubtitles_downloading)
         lifecycleScope.launch {
             var errorMessage: String? = null
@@ -756,7 +793,7 @@ class LocalPlayerActivity : ComponentActivity() {
                 errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
             } finally {
                 progressDialog.dismiss()
-                subtitleOperationInProgress = false
+                updateSubtitleSearchButton(inProgress = false)
             }
             errorMessage?.let(::showSubtitleMessage)
         }
@@ -1003,6 +1040,8 @@ class LocalPlayerActivity : ComponentActivity() {
 
     /** Releases decoder and subtitle streaming resources when this activity is destroyed. */
     override fun onDestroy() {
+        subtitleSearchAnimator?.cancel()
+        subtitleSearchAnimator = null
         screenAwakePlayer?.let { player ->
             screenAwakeListener?.let(player::removeListener)
         }

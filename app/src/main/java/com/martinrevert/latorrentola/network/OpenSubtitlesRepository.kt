@@ -249,7 +249,7 @@ class OpenSubtitlesRepository @Inject constructor(
             }
             logDownloadLinkResponse(downloadInfo)
             val downloadUrl = validateDownloadUrl(downloadInfo.link)
-            val response = retryTransientRequest("subtitle file download") {
+            val response = retryNetworkFailures("subtitle file download") {
                 openSubtitlesService.downloadFile(downloadUrl)
             }
             if (!response.isSuccessful) {
@@ -286,7 +286,7 @@ class OpenSubtitlesRepository @Inject constructor(
         }
 
     /**
-     * Requests typed API data with automatic token refresh and bounded transient-failure retries.
+     * Requests typed API data, retrying transient failures until the service responds.
      *
      * @param credentials Decrypted account credentials associated with the token.
      * @param operation Safe operation description for error messages.
@@ -299,53 +299,45 @@ class OpenSubtitlesRepository @Inject constructor(
         request: suspend (String) -> Response<T>
     ): T {
         var token = authenticatedToken(credentials)
-        repeat(AUTH_RETRY_COUNT) { attempt ->
-            val response = retryTransientRequest(operation) { request("Bearer $token") }
-            if (response.code() == HTTP_UNAUTHORIZED && attempt == 0) {
+        var authenticationRefreshed = false
+        while (true) {
+            val response = retryNetworkFailures(operation) { request("Bearer $token") }
+            if (response.code() == HTTP_UNAUTHORIZED && !authenticationRefreshed) {
                 response.errorBody()?.close()
                 invalidateToken(token)
                 token = authenticatedToken(credentials)
+                authenticationRefreshed = true
             } else {
                 return responseBody(response, operation)
             }
         }
-        throw OpenSubtitlesException(
-            OpenSubtitlesErrorCode.AUTHENTICATION_EXPIRED,
-            "OpenSubtitles authentication expired"
-        )
     }
 
     /**
-     * Retries network failures and server errors with a short bounded backoff.
+     * Retries transport failures with a capped exponential backoff until an HTTP response arrives
+     * or the caller cancels the operation. HTTP errors are returned to the caller for presentation.
      *
      * @param operation Safe operation description for error messages.
      * @param request Retrofit request to execute.
      * @return The first non-retryable or successful HTTP response.
      */
-    private suspend fun <T : Any> retryTransientRequest(
+    private suspend fun <T : Any> retryNetworkFailures(
         operation: String,
         request: suspend () -> Response<T>
     ): Response<T> {
-        var retryCount = 0
+        var retryDelayMs = INITIAL_RETRY_DELAY_MS
         while (true) {
             val response = try {
                 executeRequest(operation, request)
             } catch (error: OpenSubtitlesException) {
-                if (error.code != OpenSubtitlesErrorCode.NETWORK_FAILURE ||
-                    retryCount >= TRANSIENT_RETRY_COUNT
-                ) {
+                if (error.code != OpenSubtitlesErrorCode.NETWORK_FAILURE) {
                     throw error
                 }
-                delay(TRANSIENT_RETRY_DELAYS_MS[retryCount++])
+                delay(retryDelayMs)
+                retryDelayMs = (retryDelayMs * 2).coerceAtMost(MAX_RETRY_DELAY_MS)
                 continue
             }
-            if (response.code() !in HTTP_SERVER_ERROR_RANGE ||
-                retryCount >= TRANSIENT_RETRY_COUNT
-            ) {
-                return response
-            }
-            response.errorBody()?.close()
-            delay(TRANSIENT_RETRY_DELAYS_MS[retryCount++])
+            return response
         }
     }
 
@@ -358,7 +350,7 @@ class OpenSubtitlesRepository @Inject constructor(
     private suspend fun authenticatedToken(credentials: OpenSubtitlesCredentials): String =
         authenticationLock.withLock {
             session?.takeIf { it.username == credentials.username }?.let { return@withLock it.token }
-            val response = retryTransientRequest("login") {
+            val response = retryNetworkFailures("login") {
                 openSubtitlesService.login(
                     apiKey = apiKey(),
                     userAgent = userAgent(),
@@ -863,14 +855,10 @@ class OpenSubtitlesRepository @Inject constructor(
         const val MAX_API_ERROR_MESSAGE_LENGTH = 200
         /** Maximum server-provided field length included in diagnostic logs. */
         const val MAX_LOG_VALUE_LENGTH = 200
-        /** Number of authorized requests attempted before reporting expired authentication. */
-        const val AUTH_RETRY_COUNT = 2
-        /** Number of retries after an initial transient network or server failure. */
-        const val TRANSIENT_RETRY_COUNT = 2
-        /** HTTP status range for retryable server errors. */
-        val HTTP_SERVER_ERROR_RANGE = 500..599
-        /** Backoff delays before transient retries, in milliseconds. */
-        val TRANSIENT_RETRY_DELAYS_MS = longArrayOf(500L, 1_000L)
+        /** Initial delay before retrying transient request failures. */
+        const val INITIAL_RETRY_DELAY_MS = 500L
+        /** Maximum delay between retries while the service remains unavailable. */
+        const val MAX_RETRY_DELAY_MS = 30_000L
         /** Private app cache subdirectory for downloaded subtitles. */
         const val SUBTITLE_DIRECTORY = "opensubtitles"
         /** App-private directory removed with its corresponding managed torrent. */
