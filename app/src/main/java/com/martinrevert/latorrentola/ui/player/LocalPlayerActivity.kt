@@ -4,6 +4,7 @@ import android.animation.ObjectAnimator
 import android.app.AlertDialog
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.View
@@ -208,6 +209,8 @@ class LocalPlayerActivity : ComponentActivity() {
 
         val playerView = PlayerView(this)
         this.playerView = playerView
+        playerView.controllerShowTimeoutMs = 0
+        playerView.controllerHideOnTouch = false
         addControllerOptions(playerView)
         val trackSelector = DefaultTrackSelector(this).apply {
             setParameters(
@@ -273,6 +276,7 @@ class LocalPlayerActivity : ComponentActivity() {
             )
         }
         setContentView(root)
+        playerView.showController()
     }
 
     /**
@@ -300,13 +304,25 @@ class LocalPlayerActivity : ComponentActivity() {
             Triple(
                 R.drawable.ic_subtitles_search,
                 R.string.opensubtitles_search,
-                ::searchSubtitles
+                ::showOpenSubtitlesOptions
             )
         ).forEachIndexed { index, (icon, description, action) ->
             val button = ImageButton(this, null, 0, buttonStyle).apply {
                 setImageResource(icon)
                 contentDescription = getString(description)
-                setOnClickListener { action() }
+                setOnClickListener {
+                    Log.i(TAG, "Player controller action clicked: ${getString(description)}")
+                    action()
+                }
+                setOnTouchListener { _, event ->
+                    when (event.actionMasked) {
+                        android.view.MotionEvent.ACTION_DOWN ->
+                            Log.d(TAG, "Player controller action touch down: ${getString(description)}")
+                        android.view.MotionEvent.ACTION_UP ->
+                            Log.d(TAG, "Player controller action touch up: ${getString(description)}")
+                    }
+                    false
+                }
                 isFocusable = true
                 isFocusableInTouchMode = true
                 id = View.generateViewId()
@@ -648,6 +664,22 @@ class LocalPlayerActivity : ComponentActivity() {
     }
 
     /**
+     * Opens the OpenSubtitles action menu so the next selection explicitly starts a search.
+     */
+    private fun showOpenSubtitlesOptions() {
+        Log.i(TAG, "OpenSubtitles submenu opened")
+        val options = arrayOf(getString(R.string.opensubtitles_search))
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.opensubtitles_menu_title)
+            .setItems(options) { _, index ->
+                if (index == 0) searchSubtitles()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        showAdaptiveDialog(dialog)
+    }
+
+    /**
      * Animates and disables the OpenSubtitles search control while a request is unresolved.
      *
      * @param inProgress Whether login, search, or subtitle download is still active.
@@ -674,7 +706,11 @@ class LocalPlayerActivity : ComponentActivity() {
 
     /** Searches OpenSubtitles once per user action and presents matching releases. */
     private fun searchSubtitles() {
-        if (subtitleOperationInProgress) return
+        if (subtitleOperationInProgress) {
+            Log.w(TAG, "OpenSubtitles search tap ignored: an operation is already active")
+            return
+        }
+        Log.i(TAG, "OpenSubtitles search tapped")
         updateSubtitleSearchButton(inProgress = true)
         val progressDialog = showSubtitleProgressDialog(R.string.opensubtitles_searching)
         lifecycleScope.launch {
@@ -684,17 +720,28 @@ class LocalPlayerActivity : ComponentActivity() {
                 val mediaType = if (EPISODE_PATTERN.containsMatchIn(mediaTitle)) "episode" else "movie"
                 val foundResults = openSubtitlesRepository.search(mediaTitle, type = mediaType)
                 results = foundResults
+                Log.i(TAG, "OpenSubtitles search finished: resultCount=${foundResults.size}")
                 if (foundResults.isEmpty()) {
                     message = getString(R.string.opensubtitles_no_results)
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: OpenSubtitlesException) {
+                Log.e(
+                    TAG,
+                    "OpenSubtitles search failed: code=${error.code}, httpStatus=${error.httpStatus}, " +
+                        "message=${error.message}"
+                )
                 message = error.message ?: getString(R.string.opensubtitles_request_failed)
             } catch (error: IOException) {
+                Log.e(TAG, "OpenSubtitles search I/O failure: ${error.javaClass.simpleName}")
                 message = error.message ?: getString(R.string.opensubtitles_request_failed)
             } catch (error: IllegalArgumentException) {
+                Log.e(TAG, "OpenSubtitles search input failure: ${error.javaClass.simpleName}")
                 message = error.message ?: getString(R.string.opensubtitles_request_failed)
+            } catch (error: Exception) {
+                Log.e(TAG, "Unexpected OpenSubtitles search failure: ${error.javaClass.simpleName}")
+                message = getString(R.string.opensubtitles_request_failed)
             } finally {
                 progressDialog.dismiss()
                 updateSubtitleSearchButton(inProgress = false)
@@ -718,6 +765,7 @@ class LocalPlayerActivity : ComponentActivity() {
                 feature
             ).joinToString(" · ")
         }.toTypedArray()
+        Log.i(TAG, "Showing OpenSubtitles list: resultCount=${results.size}")
         val dialog = AlertDialog.Builder(this)
             .setTitle(R.string.opensubtitles_results_title)
             .setItems(labels) { _, index -> downloadSubtitle(results[index]) }
@@ -732,7 +780,11 @@ class LocalPlayerActivity : ComponentActivity() {
      * @param result Subtitle result selected from the OpenSubtitles list.
      */
     private fun downloadSubtitle(result: OpenSubtitleResult) {
-        if (subtitleOperationInProgress) return
+        if (subtitleOperationInProgress) {
+            Log.w(TAG, "OpenSubtitles download tap ignored: an operation is already active")
+            return
+        }
+        Log.i(TAG, "OpenSubtitles subtitle selected: language=${result.language}, fileId=${result.fileId}")
         updateSubtitleSearchButton(inProgress = true)
         val progressDialog = showSubtitleProgressDialog(R.string.opensubtitles_downloading)
         lifecycleScope.launch {
@@ -779,18 +831,30 @@ class LocalPlayerActivity : ComponentActivity() {
                 player.setMediaItem(updatedItem, currentPosition)
                 player.prepare()
                 player.playWhenReady = wasPlaying
+                Log.i(TAG, "OpenSubtitles subtitle attached to playback")
                 Toast.makeText(this@LocalPlayerActivity, R.string.opensubtitles_loaded, Toast.LENGTH_SHORT)
                     .show()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: OpenSubtitlesException) {
+                Log.e(
+                    TAG,
+                    "OpenSubtitles download failed: code=${error.code}, httpStatus=${error.httpStatus}, " +
+                        "message=${error.message}"
+                )
                 errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
             } catch (error: IOException) {
+                Log.e(TAG, "OpenSubtitles download I/O failure: ${error.javaClass.simpleName}")
                 errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
             } catch (error: IllegalStateException) {
+                Log.e(TAG, "OpenSubtitles playback setup failure: ${error.javaClass.simpleName}")
                 errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
             } catch (error: IllegalArgumentException) {
+                Log.e(TAG, "OpenSubtitles download argument failure: ${error.javaClass.simpleName}")
                 errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
+            } catch (error: Exception) {
+                Log.e(TAG, "Unexpected OpenSubtitles download failure: ${error.javaClass.simpleName}")
+                errorMessage = getString(R.string.opensubtitles_download_failed)
             } finally {
                 progressDialog.dismiss()
                 updateSubtitleSearchButton(inProgress = false)
@@ -1060,6 +1124,9 @@ class LocalPlayerActivity : ComponentActivity() {
     }
 
     companion object {
+        /** Logcat tag for local playback and subtitle search diagnostics. */
+        private const val TAG = "LocalPlayer"
+
         /** Intent extra containing an app-private, fully verified media file path. */
         const val EXTRA_FILE_PATH = "verified_media_file_path"
 

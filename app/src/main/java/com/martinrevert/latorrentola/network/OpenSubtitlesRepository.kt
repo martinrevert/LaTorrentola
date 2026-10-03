@@ -160,9 +160,11 @@ class OpenSubtitlesRepository @Inject constructor(
                 type = type?.takeIf(String::isNotBlank)
             )
         }
-        response.data.orEmpty()
+        val mappedResults = response.data.orEmpty()
             .mapNotNull(::mapSearchResult)
             .filter { it.language.isEnglishOrSpanish() }
+        Log.i(TAG, "Subtitle search completed: returned=${response.data?.size ?: 0}, usable=${mappedResults.size}")
+        mappedResults
     }
 
     /**
@@ -215,9 +217,11 @@ class OpenSubtitlesRepository @Inject constructor(
                 type = if (isEpisodeSearch) "episode" else "movie"
             )
         }
-        response.data.orEmpty()
+        val mappedResults = response.data.orEmpty()
             .mapNotNull(::mapSearchResult)
             .filter { it.language.isEnglishOrSpanish() }
+        Log.i(TAG, "IMDb subtitle search completed: returned=${response.data?.size ?: 0}, usable=${mappedResults.size}")
+        mappedResults
     }
 
     /**
@@ -269,6 +273,7 @@ class OpenSubtitlesRepository @Inject constructor(
                     response.code()
                 )
             }
+            Log.i(TAG, "Subtitle file response received: HTTP ${response.code()}")
             val body = response.body()
                 ?: throw OpenSubtitlesException(
                     OpenSubtitlesErrorCode.INVALID_SUBTITLE,
@@ -278,6 +283,7 @@ class OpenSubtitlesRepository @Inject constructor(
             val subtitleText = subtitleText(bytes)
             val webVtt = OpenSubtitleFormatConverter.toWebVtt(subtitleText)
             val file = saveSubtitle(subtitle.fileId, webVtt, torrentInfoHash)
+            Log.i(TAG, "Subtitle file saved and converted: bytes=${file.length()}")
             DownloadedSubtitle(
                 file = file,
                 language = subtitle.language,
@@ -303,6 +309,7 @@ class OpenSubtitlesRepository @Inject constructor(
         while (true) {
             val response = retryNetworkFailures(operation) { request("Bearer $token") }
             if (response.code() == HTTP_UNAUTHORIZED && !authenticationRefreshed) {
+                Log.w(TAG, "$operation received HTTP 401; refreshing account session")
                 response.errorBody()?.close()
                 invalidateToken(token)
                 token = authenticatedToken(credentials)
@@ -326,17 +333,30 @@ class OpenSubtitlesRepository @Inject constructor(
         request: suspend () -> Response<T>
     ): Response<T> {
         var retryDelayMs = INITIAL_RETRY_DELAY_MS
+        var attempt = 0
         while (true) {
+            attempt++
+            val startedAt = System.nanoTime()
             val response = try {
                 executeRequest(operation, request)
             } catch (error: OpenSubtitlesException) {
                 if (error.code != OpenSubtitlesErrorCode.NETWORK_FAILURE) {
                     throw error
                 }
+                Log.w(
+                    TAG,
+                    "$operation network attempt=$attempt failed; retryInMs=$retryDelayMs, " +
+                        "cause=${error.cause?.javaClass?.simpleName ?: "unknown"}"
+                )
                 delay(retryDelayMs)
                 retryDelayMs = (retryDelayMs * 2).coerceAtMost(MAX_RETRY_DELAY_MS)
                 continue
             }
+            val durationMs = (System.nanoTime() - startedAt) / NANOS_PER_MILLISECOND
+            Log.i(
+                TAG,
+                "$operation HTTP ${response.code()} attempt=$attempt durationMs=$durationMs"
+            )
             return response
         }
     }
@@ -361,7 +381,12 @@ class OpenSubtitlesRepository @Inject constructor(
                 )
             }
             if (!response.isSuccessful) {
-                response.errorBody()?.close()
+                val errorMessage = response.errorBody()?.let(::readSafeApiErrorMessage)
+                Log.w(
+                    TAG,
+                    "OpenSubtitles login rejected: HTTP ${response.code()}, " +
+                        "message=${errorMessage?.let(::sanitizeLogValue) ?: "unavailable"}"
+                )
                 val code = if (response.code() == HTTP_UNAUTHORIZED ||
                     response.code() == HTTP_FORBIDDEN
                 ) {
@@ -385,6 +410,7 @@ class OpenSubtitlesRepository @Inject constructor(
                     "OpenSubtitles login did not return an access token"
                 )
             session = AuthenticatedSession(credentials.username, token)
+            Log.i(TAG, "OpenSubtitles account login succeeded")
             token
         }
 
@@ -415,12 +441,21 @@ class OpenSubtitlesRepository @Inject constructor(
         } catch (error: CancellationException) {
             throw error
         } catch (error: IOException) {
+            Log.w(
+                TAG,
+                "$operation transport failure: ${error.javaClass.simpleName}"
+            )
             throw OpenSubtitlesException(
                 OpenSubtitlesErrorCode.NETWORK_FAILURE,
                 "OpenSubtitles $operation could not reach the service",
                 cause = error
             )
         } catch (error: Exception) {
+            Log.e(
+                TAG,
+                "$operation request failed unexpectedly: ${error.javaClass.simpleName}, " +
+                    "message=${error.message?.let(::sanitizeLogValue) ?: "unavailable"}"
+            )
             throw OpenSubtitlesException(
                 OpenSubtitlesErrorCode.INVALID_RESPONSE,
                 "OpenSubtitles returned an invalid response during $operation",
@@ -459,6 +494,7 @@ class OpenSubtitlesRepository @Inject constructor(
                 response.code()
             )
         }
+        Log.i(TAG, "$operation response body accepted: HTTP ${response.code()}")
         return response.body()
             ?: throw OpenSubtitlesException(
                 OpenSubtitlesErrorCode.INVALID_RESPONSE,
@@ -859,6 +895,8 @@ class OpenSubtitlesRepository @Inject constructor(
         const val INITIAL_RETRY_DELAY_MS = 500L
         /** Maximum delay between retries while the service remains unavailable. */
         const val MAX_RETRY_DELAY_MS = 30_000L
+        /** Nanoseconds per millisecond when reporting request durations. */
+        const val NANOS_PER_MILLISECOND = 1_000_000L
         /** Private app cache subdirectory for downloaded subtitles. */
         const val SUBTITLE_DIRECTORY = "opensubtitles"
         /** App-private directory removed with its corresponding managed torrent. */

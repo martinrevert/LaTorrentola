@@ -67,6 +67,7 @@
     <string name="torrent_mode_cast">Chromecast</string>
     <string name="torrent_mode_cast_support">Elige un dispositivo Cast tras verificar un búfer inicial seguro.</string>
     <string name="opensubtitles_title">Cuenta de OpenSubtitles</string>
+    <string name="opensubtitles_menu_title">OpenSubtitles</string>
     <string name="opensubtitles_support">Añade tu cuenta para buscar y cargar subtítulos en la reproducción local o por Cast.</string>
     <string name="opensubtitles_configured">Las credenciales están cifradas y guardadas en este dispositivo.</string>
     <string name="opensubtitles_search">Buscar subtítulos</string>
