@@ -141,6 +141,52 @@ class OpenSubtitlesRepository @Inject constructor(
     }
 
     /**
+     * Finds the most recently downloaded subtitle saved for the current torrent.
+     *
+     * @param torrentInfoHash Info hash identifying the subtitle's owning torrent.
+     * @return Cached subtitle metadata, or `null` when this torrent has no saved subtitles.
+     */
+    suspend fun findLatestDownloaded(
+        torrentInfoHash: String?
+    ): DownloadedSubtitle? = withContext(Dispatchers.IO) {
+        val normalizedHash = torrentInfoHash?.trim()?.lowercase(Locale.ROOT)
+            ?.takeIf(String::isNotBlank)
+            ?: return@withContext null
+        if (!TORRENT_INFO_HASH_PATTERN.matches(normalizedHash)) {
+            throw OpenSubtitlesException(
+                OpenSubtitlesErrorCode.INVALID_SUBTITLE,
+                "The torrent identifier for subtitle lookup is invalid"
+            )
+        }
+        val torrentDirectory = File(context.filesDir, "$TORRENT_DIRECTORY/$normalizedHash")
+            .canonicalFile
+        if (torrentDirectory.parentFile != File(context.filesDir, TORRENT_DIRECTORY).canonicalFile) {
+            throw OpenSubtitlesException(
+                OpenSubtitlesErrorCode.INVALID_SUBTITLE,
+                "The torrent subtitle directory is outside private app storage"
+            )
+        }
+        val subtitleDirectory = File(torrentDirectory, SUBTITLE_DIRECTORY).canonicalFile
+        if (subtitleDirectory.parentFile != torrentDirectory || !subtitleDirectory.isDirectory) {
+            return@withContext null
+        }
+        val subtitleFile = subtitleDirectory.listFiles()
+            .orEmpty()
+            .asSequence()
+            .filter { it.isFile && it.extension.equals(SUBTITLE_EXTENSION, ignoreCase = true) }
+            .map { it.canonicalFile }
+            .filter { it.parentFile == subtitleDirectory }
+            .maxByOrNull { it.lastModified() }
+            ?: return@withContext null
+
+        DownloadedSubtitle(
+            file = subtitleFile,
+            language = UNKNOWN_LANGUAGE,
+            label = subtitleFile.nameWithoutExtension
+        )
+    }
+
+    /**
      * Searches subtitles by title or release query.
      *
      * @param query Media title or release name.
@@ -909,6 +955,10 @@ class OpenSubtitlesRepository @Inject constructor(
         const val NANOS_PER_MILLISECOND = 1_000_000L
         /** Private app cache subdirectory for downloaded subtitles. */
         const val SUBTITLE_DIRECTORY = "opensubtitles"
+        /** Extension of converted cached subtitle files. */
+        const val SUBTITLE_EXTENSION = "vtt"
+        /** Language marker used when cached subtitle language metadata is unavailable. */
+        const val UNKNOWN_LANGUAGE = "und"
         /** App-private directory removed with its corresponding managed torrent. */
         const val TORRENT_DIRECTORY = "torrent_downloads"
         /** Exact OpenSubtitles hosts allowed to serve temporary subtitle files. */

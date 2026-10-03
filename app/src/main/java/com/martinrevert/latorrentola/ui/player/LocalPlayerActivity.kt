@@ -8,6 +8,7 @@ import android.util.Log
 import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.animation.LinearInterpolator
@@ -48,6 +49,7 @@ import com.google.android.gms.cast.MediaQueueItem
 import com.google.android.gms.cast.MediaTrack
 import com.google.android.gms.cast.framework.CastButtonFactory
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.network.DownloadedSubtitle
 import com.martinrevert.latorrentola.network.OpenSubtitlesException
 import com.martinrevert.latorrentola.network.OpenSubtitleRepository
 import com.martinrevert.latorrentola.network.OpenSubtitleResult
@@ -169,8 +171,8 @@ class LocalPlayerActivity : ComponentActivity() {
     /** Prevents overlapping subtitle searches and downloads from repeated controller clicks. */
     private var subtitleOperationInProgress = false
 
-    /** Prevents starting more than one background session warm-up for the current playback. */
-    private var subtitleWarmupStarted = false
+    /** Ensures cached subtitle lookup and optional account warm-up run once per playback. */
+    private var subtitleStartupCheckStarted = false
 
     /** OpenSubtitles controller action, animated while a request is pending. */
     private var subtitleSearchButton: ImageButton? = null
@@ -212,8 +214,8 @@ class LocalPlayerActivity : ComponentActivity() {
 
         val playerView = PlayerView(this)
         this.playerView = playerView
-        playerView.controllerShowTimeoutMs = 0
-        playerView.controllerHideOnTouch = false
+        playerView.controllerShowTimeoutMs = PLAYER_CONTROLLER_SHOW_TIMEOUT_MS
+        playerView.controllerHideOnTouch = true
         addControllerOptions(playerView)
         val trackSelector = DefaultTrackSelector(this).apply {
             setParameters(
@@ -317,20 +319,12 @@ class LocalPlayerActivity : ComponentActivity() {
                     Log.i(TAG, "Player controller action clicked: ${getString(description)}")
                     action()
                 }
-                setOnTouchListener { _, event ->
-                    when (event.actionMasked) {
-                        android.view.MotionEvent.ACTION_DOWN ->
-                            Log.d(TAG, "Player controller action touch down: ${getString(description)}")
-                        android.view.MotionEvent.ACTION_UP ->
-                            Log.d(TAG, "Player controller action touch up: ${getString(description)}")
-                    }
-                    false
-                }
                 isFocusable = true
                 isFocusableInTouchMode = true
                 id = View.generateViewId()
             }
             if (icon == R.drawable.ic_subtitles_search) {
+                installDirectTouchActivation(button, description)
                 subtitleSearchButton = button
                 if (subtitleOperationInProgress) {
                     updateSubtitleSearchButton(inProgress = true)
@@ -358,6 +352,50 @@ class LocalPlayerActivity : ComponentActivity() {
     }
 
     /**
+     * Delivers one explicit click after a complete touch gesture on the OpenSubtitles control.
+     *
+     * @param button Search button receiving the touch gesture.
+     * @param description Resource identifying the action in diagnostics.
+     */
+    private fun installDirectTouchActivation(button: ImageButton, description: Int) {
+        var touchStartedOnButton = false
+        val touchSlop = ViewConfiguration.get(this).scaledTouchSlop.toFloat()
+        button.setOnTouchListener { target, event ->
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    touchStartedOnButton = target.isEnabled
+                    target.isPressed = touchStartedOnButton
+                    true
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    target.isPressed = touchStartedOnButton &&
+                        event.x >= -touchSlop && event.x <= target.width + touchSlop &&
+                        event.y >= -touchSlop && event.y <= target.height + touchSlop
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP -> {
+                    val shouldClick = touchStartedOnButton && target.isEnabled &&
+                        event.x >= -touchSlop && event.x <= target.width + touchSlop &&
+                        event.y >= -touchSlop && event.y <= target.height + touchSlop
+                    touchStartedOnButton = false
+                    target.isPressed = false
+                    if (shouldClick) {
+                        Log.i(TAG, "Direct touch activated: ${getString(description)}")
+                        target.performClick()
+                    }
+                    true
+                }
+                android.view.MotionEvent.ACTION_CANCEL -> {
+                    touchStartedOnButton = false
+                    target.isPressed = false
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    /**
      * Keeps the native CC control available even when a file has no embedded subtitles.
      *
      * @param view Media3 view whose controller hosts the subtitle actions.
@@ -371,12 +409,12 @@ class LocalPlayerActivity : ComponentActivity() {
             object : Player.Listener {
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                     button.visibility = View.VISIBLE
-                    warmUpOpenSubtitlesIfNeeded(tracks)
+                    prepareSubtitleTrackIfNeeded(tracks)
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_READY) {
-                        warmUpOpenSubtitlesIfNeeded(localPlayer?.currentTracks)
+                        prepareSubtitleTrackIfNeeded(localPlayer?.currentTracks)
                     }
                 }
             }
@@ -384,24 +422,36 @@ class LocalPlayerActivity : ComponentActivity() {
     }
 
     /**
-     * Starts OpenSubtitles authentication in the background after playback confirms no embedded
-     * text tracks are available.
+     * Loads the latest torrent-cached subtitle, or warms the OpenSubtitles session, when playback
+     * has no supported embedded text track.
      *
      * @param tracks Current available playback tracks, or `null` before they are initialized.
      */
-    private fun warmUpOpenSubtitlesIfNeeded(tracks: androidx.media3.common.Tracks?) {
+    private fun prepareSubtitleTrackIfNeeded(tracks: androidx.media3.common.Tracks?) {
         val player = localPlayer ?: return
-        if (subtitleWarmupStarted || player.playbackState != Player.STATE_READY ||
-            tracks == null || tracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
-        ) {
+        if (subtitleStartupCheckStarted || player.playbackState != Player.STATE_READY || tracks == null) {
             return
         }
-        subtitleWarmupStarted = true
-        Log.i(TAG, "No embedded subtitle tracks; starting OpenSubtitles session warm-up")
+        val hasSupportedEmbeddedSubtitles = tracks.groups
+            .filter { it.type == C.TRACK_TYPE_TEXT }
+            .any { group -> (0 until group.length).any(group::isTrackSupported) }
+        if (hasSupportedEmbeddedSubtitles) return
+
+        subtitleStartupCheckStarted = true
+        Log.i(TAG, "No supported embedded subtitles; checking torrent subtitle cache")
         lifecycleScope.launch {
             try {
-                openSubtitlesRepository.warmUp()
-                Log.i(TAG, "OpenSubtitles session warm-up completed")
+                val cachedSubtitle = openSubtitlesRepository.findLatestDownloaded(
+                    torrentInfoHash.takeIf(String::isNotBlank)
+                )
+                if (cachedSubtitle != null) {
+                    Log.i(TAG, "Found saved subtitle for current torrent; attaching automatically")
+                    if (!subtitleOperationInProgress) attachSubtitle(cachedSubtitle)
+                } else {
+                    Log.i(TAG, "No saved subtitle for current torrent; warming OpenSubtitles session")
+                    openSubtitlesRepository.warmUp()
+                    Log.i(TAG, "OpenSubtitles session warm-up completed")
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -819,46 +869,7 @@ class LocalPlayerActivity : ComponentActivity() {
                     result,
                     torrentInfoHash = torrentInfoHash.takeIf(String::isNotBlank)
                 )
-                val localUri = Uri.fromFile(subtitle.file)
-                val castUri = if (castEnabled) {
-                    val server = VerifiedTorrentHttpServer(
-                        subtitle.file,
-                        subtitle.file.length()
-                    ) { _, _ -> true }
-                    server.startServer()
-                    try {
-                        server.lanUrl().also { SubtitleServerRegistry.retain(server) }
-                    } catch (error: IllegalStateException) {
-                        server.stop()
-                        throw error
-                    }
-                } else {
-                    null
-                }
-                if (castUri != null) {
-                    castSubtitleUrls[localUri.toString()] = castUri
-                }
-                val subtitleConfiguration = MediaItem.SubtitleConfiguration.Builder(localUri)
-                    .setMimeType(MimeTypes.TEXT_VTT)
-                    .setLanguage(toLanguageTag(subtitle.language))
-                    .setLabel(subtitle.label)
-                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                    .setRoleFlags(C.ROLE_FLAG_CAPTION)
-                    .build()
-                val updatedItem = requireNotNull(currentMediaItem)
-                    .buildUpon()
-                    .setSubtitleConfigurations(listOf(subtitleConfiguration))
-                    .build()
-                currentMediaItem = updatedItem
-                val player = requireNotNull(activePlayer)
-                val currentPosition = player.currentPosition
-                val wasPlaying = player.playWhenReady
-                player.setMediaItem(updatedItem, currentPosition)
-                player.prepare()
-                player.playWhenReady = wasPlaying
-                Log.i(TAG, "OpenSubtitles subtitle attached to playback")
-                Toast.makeText(this@LocalPlayerActivity, R.string.opensubtitles_loaded, Toast.LENGTH_SHORT)
-                    .show()
+                attachSubtitle(subtitle)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: OpenSubtitlesException) {
@@ -886,6 +897,48 @@ class LocalPlayerActivity : ComponentActivity() {
             }
             errorMessage?.let(::showSubtitleMessage)
         }
+    }
+
+    /**
+     * Adds a saved WebVTT subtitle to the current local or Cast playback item.
+     *
+     * @param subtitle Cached or newly downloaded subtitle to activate.
+     */
+    private fun attachSubtitle(subtitle: DownloadedSubtitle) {
+        val localUri = Uri.fromFile(subtitle.file)
+        val castUri = if (castEnabled) {
+            val server = VerifiedTorrentHttpServer(subtitle.file, subtitle.file.length()) { _, _ -> true }
+            server.startServer()
+            try {
+                server.lanUrl().also { SubtitleServerRegistry.retain(server) }
+            } catch (error: IllegalStateException) {
+                server.stop()
+                throw error
+            }
+        } else {
+            null
+        }
+        if (castUri != null) castSubtitleUrls[localUri.toString()] = castUri
+        val subtitleConfiguration = MediaItem.SubtitleConfiguration.Builder(localUri)
+            .setMimeType(MimeTypes.TEXT_VTT)
+            .setLanguage(toLanguageTag(subtitle.language))
+            .setLabel(subtitle.label)
+            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+            .setRoleFlags(C.ROLE_FLAG_CAPTION)
+            .build()
+        val updatedItem = requireNotNull(currentMediaItem)
+            .buildUpon()
+            .setSubtitleConfigurations(listOf(subtitleConfiguration))
+            .build()
+        currentMediaItem = updatedItem
+        val player = requireNotNull(activePlayer)
+        val currentPosition = player.currentPosition
+        val wasPlaying = player.playWhenReady
+        player.setMediaItem(updatedItem, currentPosition)
+        player.prepare()
+        player.playWhenReady = wasPlaying
+        Log.i(TAG, "OpenSubtitles subtitle attached to playback")
+        Toast.makeText(this, R.string.opensubtitles_loaded, Toast.LENGTH_SHORT).show()
     }
 
     /**
@@ -1151,6 +1204,9 @@ class LocalPlayerActivity : ComponentActivity() {
     companion object {
         /** Logcat tag for local playback and subtitle search diagnostics. */
         private const val TAG = "LocalPlayer"
+
+        /** Initial player control visibility duration before Media3 hides the controls. */
+        private const val PLAYER_CONTROLLER_SHOW_TIMEOUT_MS = 5_000
 
         /** Intent extra containing an app-private, fully verified media file path. */
         const val EXTRA_FILE_PATH = "verified_media_file_path"
