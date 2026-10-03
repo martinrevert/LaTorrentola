@@ -7,6 +7,7 @@ import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.Headers
 import retrofit2.http.POST
 import retrofit2.http.Query
 import retrofit2.http.Streaming
@@ -22,6 +23,7 @@ interface OpenSubtitlesService {
      * @param request Account login payload.
      * @return HTTP response containing the short-lived bearer token on success.
      */
+    @Headers("Accept: application/json")
     @POST("login/")
     suspend fun login(
         @Header("Api-Key") apiKey: String,
@@ -47,6 +49,7 @@ interface OpenSubtitlesService {
      * @param page Page number to retrieve.
      * @return HTTP response containing typed subtitle results on success.
      */
+    @Headers("Accept: application/json")
     @GET("subtitles/")
     suspend fun searchSubtitles(
         @Header("Api-Key") apiKey: String,
@@ -70,9 +73,10 @@ interface OpenSubtitlesService {
      * @param apiKey OpenSubtitles consumer key.
      * @param userAgent Identifying client name and version.
      * @param authorization Bearer token returned by [login].
-     * @param request File identifier and desired subtitle format.
+     * @param request File identifier to download without requesting a server-side format conversion.
      * @return HTTP response containing a short-lived HTTPS download link.
      */
+    @Headers("Accept: application/json")
     @POST("download/")
     suspend fun requestSubtitleDownload(
         @Header("Api-Key") apiKey: String,
@@ -113,14 +117,12 @@ data class OpenSubtitlesLoginResponse(
 )
 
 /**
- * JSON payload asking OpenSubtitles to prepare a subtitle file.
+ * JSON payload asking OpenSubtitles to prepare the selected subtitle file.
  *
  * @property fileId Identifier of the subtitle file selected from search results.
- * @property format Requested subtitle format returned by the download endpoint.
  */
 data class OpenSubtitlesDownloadRequest(
-    @SerializedName("file_id") val fileId: Long,
-    @SerializedName("sub_format") val format: String = "srt"
+    @SerializedName("file_id") val fileId: Long
 )
 
 /**

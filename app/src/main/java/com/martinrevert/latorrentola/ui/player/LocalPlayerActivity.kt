@@ -159,6 +159,9 @@ class LocalPlayerActivity : ComponentActivity() {
     /** User-visible title used for subtitle search and playback metadata. */
     private var mediaTitle = ""
 
+    /** Managed torrent owning the current playback, used to scope downloaded subtitles. */
+    private var torrentInfoHash = ""
+
     /**
      * Creates the player, using early-start extraction for incomplete torrents, and adds
      * playback actions to the native Media3 controller.
@@ -178,6 +181,7 @@ class LocalPlayerActivity : ComponentActivity() {
         }
 
         mediaTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty()
+        torrentInfoHash = intent.getStringExtra(EXTRA_INFO_HASH).orEmpty()
         val castRequested = intent.getBooleanExtra(EXTRA_CAST_ENABLED, false)
         castEnabled = castRequested && castStreamUrl.isNotBlank()
         if (castRequested && !castEnabled) {
@@ -682,7 +686,10 @@ class LocalPlayerActivity : ComponentActivity() {
     private fun downloadSubtitle(result: OpenSubtitleResult) {
         lifecycleScope.launch {
             try {
-                val subtitle = openSubtitlesRepository.download(result)
+                val subtitle = openSubtitlesRepository.download(
+                    result,
+                    torrentInfoHash = torrentInfoHash.takeIf(String::isNotBlank)
+                )
                 val localUri = Uri.fromFile(subtitle.file)
                 val castUri = if (castEnabled) {
                     val server = VerifiedTorrentHttpServer(

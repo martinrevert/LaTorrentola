@@ -20,6 +20,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.util.Locale
 import java.util.UUID
 import java.util.zip.ZipInputStream
 import javax.inject.Inject
@@ -111,7 +112,7 @@ class OpenSubtitlesException(
  * All API calls use the dedicated Retrofit client without an HTTP logging interceptor so passwords,
  * bearer tokens, and account response data are never written to logs.
  *
- * @property context Application context used for private subtitle cache files.
+ * @property context Application context used for private subtitle storage.
  * @property openSubtitlesService Typed Retrofit interface for OpenSubtitles API v1.
  * @property credentialStore Encrypted per-user OpenSubtitles account credentials.
  */
@@ -131,7 +132,7 @@ class OpenSubtitlesRepository @Inject constructor(
      * Searches subtitles by title or release query.
      *
      * @param query Media title or release name.
-     * @param language Optional OpenSubtitles language code.
+     * @param language Optional preferred language; only English and Spanish are returned.
      * @param type Optional `movie` or `episode` type filter.
      * @return Matching subtitles ordered by download count.
      */
@@ -153,11 +154,13 @@ class OpenSubtitlesRepository @Inject constructor(
                 userAgent = userAgent(),
                 authorization = authorization,
                 query = query,
-                languages = language?.takeIf(String::isNotBlank),
+                languages = requestedLanguages(language),
                 type = type?.takeIf(String::isNotBlank)
             )
         }
-        response.data.orEmpty().mapNotNull(::mapSearchResult)
+        response.data.orEmpty()
+            .mapNotNull(::mapSearchResult)
+            .filter { it.language.isEnglishOrSpanish() }
     }
 
     /**
@@ -169,7 +172,7 @@ class OpenSubtitlesRepository @Inject constructor(
      * @param imdbId IMDb identifier, with or without its `tt` prefix.
      * @param seasonNumber TV season number; supply together with [episodeNumber].
      * @param episodeNumber TV episode number; supply together with [seasonNumber].
-     * @param language Optional OpenSubtitles language code.
+     * @param language Optional preferred language; only English and Spanish are returned.
      * @return Matching subtitles ordered by download count.
      */
     suspend fun searchByImdbId(
@@ -206,20 +209,26 @@ class OpenSubtitlesRepository @Inject constructor(
                 parentImdbId = normalizedImdbId.takeIf { isEpisodeSearch },
                 seasonNumber = seasonNumber,
                 episodeNumber = episodeNumber,
-                languages = language?.takeIf(String::isNotBlank),
+                languages = requestedLanguages(language),
                 type = if (isEpisodeSearch) "episode" else "movie"
             )
         }
-        response.data.orEmpty().mapNotNull(::mapSearchResult)
+        response.data.orEmpty()
+            .mapNotNull(::mapSearchResult)
+            .filter { it.language.isEnglishOrSpanish() }
     }
 
     /**
-     * Downloads a selected result and saves a converted WebVTT asset in the private cache.
+     * Downloads a selected result and saves its WebVTT asset alongside its owning torrent when known.
      *
      * @param subtitle Subtitle result selected by the user.
+     * @param torrentInfoHash Info hash of the managed torrent that owns this playback, if available.
      * @return Private subtitle file, language, label, and MIME type for a playback client.
      */
-    suspend fun download(subtitle: OpenSubtitleResult): DownloadedSubtitle =
+    suspend fun download(
+        subtitle: OpenSubtitleResult,
+        torrentInfoHash: String? = null
+    ): DownloadedSubtitle =
         withContext(Dispatchers.IO) {
             if (subtitle.fileId <= 0L) {
                 throw OpenSubtitlesException(
@@ -259,7 +268,7 @@ class OpenSubtitlesRepository @Inject constructor(
             val bytes = readSubtitleBody(body)
             val subtitleText = subtitleText(bytes)
             val webVtt = OpenSubtitleFormatConverter.toWebVtt(subtitleText)
-            val file = saveSubtitle(subtitle.fileId, webVtt)
+            val file = saveSubtitle(subtitle.fileId, webVtt, torrentInfoHash)
             DownloadedSubtitle(
                 file = file,
                 language = subtitle.language,
@@ -501,6 +510,37 @@ class OpenSubtitlesRepository @Inject constructor(
     }
 
     /**
+     * Builds the API language filter, constraining results to English and Spanish.
+     *
+     * @param preferredLanguage Optional requested language.
+     * @return Comma-separated supported language codes for the API query.
+     */
+    private fun requestedLanguages(preferredLanguage: String?): String {
+        val requestedCode = preferredLanguage
+            ?.trim()
+            ?.lowercase(Locale.ROOT)
+            ?.substringBefore('-')
+            ?.substringBefore('_')
+        return when (requestedCode) {
+            "en", "eng" -> "en"
+            "es", "spa" -> "es"
+            else -> SUPPORTED_LANGUAGE_CODES
+        }
+    }
+
+    /**
+     * Checks whether an OpenSubtitles result uses English or Spanish.
+     *
+     * @return `true` for English and Spanish ISO language codes.
+     */
+    private fun String.isEnglishOrSpanish(): Boolean = when (
+        lowercase(Locale.ROOT).substringBefore('-').substringBefore('_')
+    ) {
+        "en", "eng", "es", "spa" -> true
+        else -> false
+    }
+
+    /**
      * Validates an API-supplied temporary link before making an unauthenticated file request.
      *
      * @param link Temporary download URL returned by OpenSubtitles.
@@ -626,22 +666,43 @@ class OpenSubtitlesRepository @Inject constructor(
     }
 
     /**
-     * Stores a finished WebVTT file atomically inside the private app cache.
+     * Stores a finished WebVTT file atomically in private app storage.
      *
      * @param fileId OpenSubtitles file identifier used to name the cache entry.
      * @param webVtt Validated WebVTT content to save.
-     * @return App-private file containing the subtitle.
+     * @param torrentInfoHash Optional owning torrent info hash.
+     * @return App-private subtitle file, in the torrent directory when an owner is supplied.
      */
-    private fun saveSubtitle(fileId: Long, webVtt: String): File {
-        val directory = File(context.cacheDir, SUBTITLE_DIRECTORY)
+    private fun saveSubtitle(fileId: Long, webVtt: String, torrentInfoHash: String?): File {
+        val normalizedHash = torrentInfoHash?.trim()?.lowercase(Locale.ROOT)
+        if (normalizedHash != null && !TORRENT_INFO_HASH_PATTERN.matches(normalizedHash)) {
+            throw OpenSubtitlesException(
+                OpenSubtitlesErrorCode.INVALID_SUBTITLE,
+                "The torrent identifier for subtitle storage is invalid"
+            )
+        }
+        val ownerDirectory = normalizedHash?.let {
+            File(context.filesDir, "$TORRENT_DIRECTORY/$it")
+        }
+        val directory = if (ownerDirectory != null) {
+            File(ownerDirectory, SUBTITLE_DIRECTORY)
+        } else {
+            File(context.cacheDir, SUBTITLE_DIRECTORY)
+        }
         var temporaryFile: File? = null
         try {
             if (!directory.exists() && !directory.mkdirs()) {
                 throw IOException("Unable to create subtitle cache directory")
             }
             val canonicalDirectory = directory.canonicalFile
-            if (canonicalDirectory.parentFile != context.cacheDir.canonicalFile) {
-                throw IOException("Subtitle cache directory is outside the app cache")
+            val expectedParent = (ownerDirectory ?: context.cacheDir).canonicalFile
+            if (ownerDirectory != null &&
+                expectedParent.parentFile != File(context.filesDir, TORRENT_DIRECTORY).canonicalFile
+            ) {
+                throw IOException("Torrent subtitle owner is outside private torrent storage")
+            }
+            if (canonicalDirectory.parentFile != expectedParent) {
+                throw IOException("Subtitle directory is outside its private owner directory")
             }
             val destination = File(canonicalDirectory, "$fileId.vtt").canonicalFile
             if (destination.parentFile != canonicalDirectory) {
@@ -702,6 +763,12 @@ class OpenSubtitlesRepository @Inject constructor(
         const val AUTH_RETRY_COUNT = 2
         /** Private app cache subdirectory for downloaded subtitles. */
         const val SUBTITLE_DIRECTORY = "opensubtitles"
+        /** App-private directory removed with its corresponding managed torrent. */
+        const val TORRENT_DIRECTORY = "torrent_downloads"
+        /** OpenSubtitles language filter covering both languages supported in the result list. */
+        const val SUPPORTED_LANGUAGE_CODES = "en,es"
+        /** Expected hexadecimal SHA-1 info-hash format used to scope subtitle files. */
+        val TORRENT_INFO_HASH_PATTERN = Regex("[a-f0-9]{40}")
         /** Minimum ZIP signature length inspected in a response. */
         const val ZIP_SIGNATURE_SIZE = 2
         /** First byte of a ZIP local-file signature. */
