@@ -126,12 +126,24 @@ data class OpenSubtitlesDownloadRequest(
 )
 
 /**
- * Successful response containing a temporary subtitle download link.
+ * Response containing a temporary subtitle download link and account quota information.
  *
  * @property link HTTPS URL from which the selected subtitle file can be retrieved.
+ * @property fileName Subtitle filename reported by the API.
+ * @property requests Number of download requests used in the current quota period.
+ * @property remaining Number of download requests remaining in the current quota period.
+ * @property message API message describing the quota or download result.
+ * @property resetTime Human-readable time until the quota resets.
+ * @property resetTimeUtc UTC timestamp when the quota resets.
  */
 data class OpenSubtitlesDownloadResponse(
-    @SerializedName("link") val link: String?
+    @SerializedName("link") val link: String?,
+    @SerializedName("file_name") val fileName: String?,
+    @SerializedName("requests") val requests: Int?,
+    @SerializedName("remaining") val remaining: Int?,
+    @SerializedName("message") val message: String?,
+    @SerializedName("reset_time") val resetTime: String?,
+    @SerializedName("reset_time_utc") val resetTimeUtc: String?
 )
 
 /**

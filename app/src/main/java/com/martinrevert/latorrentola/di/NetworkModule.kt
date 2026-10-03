@@ -122,7 +122,7 @@ object NetworkModule {
     }
 
     /**
-     * Provides an isolated OpenSubtitles client that follows only HTTPS redirects on the API host.
+     * Provides an isolated HTTPS-only OpenSubtitles client with an explicit host allowlist.
      */
     @Provides
     @Singleton
@@ -134,11 +134,11 @@ object NetworkModule {
             .addNetworkInterceptor { chain ->
                 val request = chain.request()
                 val url = request.url
-                val isTrustedHost = url.host == OPEN_SUBTITLES_API_HOST ||
-                    url.host.endsWith(".$OPEN_SUBTITLES_API_HOST")
+                val isTrustedHost = url.host in OPEN_SUBTITLES_TRUSTED_HOSTS
                 val carriesApiKey = request.header("Api-Key") != null
+                val carriesAuthorization = request.header("Authorization") != null
                 if (!url.isHttps || !isTrustedHost || url.port != HTTPS_PORT ||
-                    carriesApiKey && url.host != OPEN_SUBTITLES_API_HOST
+                    (carriesApiKey || carriesAuthorization) && url.host != OPEN_SUBTITLES_API_HOST
                 ) {
                     throw ProtocolException("OpenSubtitles API redirected to an untrusted URL")
                 }
@@ -172,6 +172,13 @@ object NetworkModule {
 
     /** HTTPS host used by the OpenSubtitles API and its same-host redirect policy. */
     private const val OPEN_SUBTITLES_API_HOST = "api.opensubtitles.com"
+
+    /** Exact OpenSubtitles hosts accepted for API and temporary subtitle file requests. */
+    private val OPEN_SUBTITLES_TRUSTED_HOSTS = setOf(
+        OPEN_SUBTITLES_API_HOST,
+        "www.opensubtitles.com",
+        "opensubtitles.com"
+    )
 
     /** Standard HTTPS port used for OpenSubtitles API requests. */
     private const val HTTPS_PORT = 443

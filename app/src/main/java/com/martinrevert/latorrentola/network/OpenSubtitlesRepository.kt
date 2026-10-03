@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.network
 
 import android.content.Context
+import android.util.Log
 import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
 import com.martinrevert.latorrentola.BuildConfig
@@ -109,8 +110,8 @@ class OpenSubtitlesException(
 /**
  * Authenticates to OpenSubtitles, searches releases, and downloads private WebVTT assets.
  *
- * All API calls use the dedicated Retrofit client without an HTTP logging interceptor so passwords,
- * bearer tokens, and account response data are never written to logs.
+ * API diagnostics log only selected response fields; credentials, bearer tokens, and signed download
+ * URL contents are never written to logs.
  *
  * @property context Application context used for private subtitle storage.
  * @property openSubtitlesService Typed Retrofit interface for OpenSubtitles API v1.
@@ -245,12 +246,19 @@ class OpenSubtitlesRepository @Inject constructor(
                     request = OpenSubtitlesDownloadRequest(fileId = subtitle.fileId)
                 )
             }
+            logDownloadLinkResponse(downloadInfo)
             val downloadUrl = validateDownloadUrl(downloadInfo.link)
             val response = executeRequest("subtitle file download") {
                 openSubtitlesService.downloadFile(downloadUrl)
             }
             if (!response.isSuccessful) {
                 val errorMessage = response.errorBody()?.let(::readSafeApiErrorMessage)
+                Log.w(
+                    TAG,
+                    "Subtitle file request failed: HTTP ${response.code()}, " +
+                        "retryAfter=${response.headers()["Retry-After"]?.let(::sanitizeLogValue) ?: "missing"}, " +
+                        "message=${errorMessage?.let(::sanitizeLogValue) ?: "unavailable"}"
+                )
                 throw OpenSubtitlesException(
                     OpenSubtitlesErrorCode.HTTP_FAILURE,
                     buildString {
@@ -404,6 +412,12 @@ class OpenSubtitlesRepository @Inject constructor(
     private fun <T : Any> responseBody(response: Response<T>, operation: String): T {
         if (!response.isSuccessful) {
             val errorMessage = response.errorBody()?.let(::readSafeApiErrorMessage)
+            Log.w(
+                TAG,
+                "$operation failed: HTTP ${response.code()}, " +
+                    "retryAfter=${response.headers()["Retry-After"]?.let(::sanitizeLogValue) ?: "missing"}, " +
+                    "message=${errorMessage?.let(::sanitizeLogValue) ?: "unavailable"}"
+            )
             val code = if (response.code() == HTTP_UNAUTHORIZED) {
                 OpenSubtitlesErrorCode.AUTHENTICATION_EXPIRED
             } else {
@@ -450,6 +464,51 @@ class OpenSubtitlesRepository @Inject constructor(
             .filterNot(Char::isISOControl)
             .take(MAX_API_ERROR_MESSAGE_LENGTH)
             .takeIf(String::isNotBlank)
+    }
+
+    /**
+     * Logs useful download-link response fields while redacting the temporary signed URL.
+     *
+     * @param response Parsed response from the OpenSubtitles download endpoint.
+     */
+    private fun logDownloadLinkResponse(response: OpenSubtitlesDownloadResponse) {
+        val link = response.link?.toHttpUrlOrNull()
+        val safeMessage = response.message?.let(::sanitizeLogValue)
+        val safeFileName = response.fileName?.let(::sanitizeLogValue)
+        Log.i(
+            TAG,
+            "Download-link response: status=200, fileName=${safeFileName ?: "missing"}, " +
+                "requests=${response.requests ?: "missing"}, " +
+                "remaining=${response.remaining ?: "missing"}, " +
+                "message=${safeMessage ?: "missing"}, " +
+                "resetTime=${response.resetTime?.let(::sanitizeLogValue) ?: "missing"}, " +
+                "resetTimeUtc=${response.resetTimeUtc?.let(::sanitizeLogValue) ?: "missing"}, " +
+                "link=${describeUrl(link)}"
+        )
+    }
+
+    /**
+     * Sanitizes a server-provided value for logs, removing control characters and URLs.
+     *
+     * @param value Untrusted text returned by OpenSubtitles.
+     * @return Bounded text with URL contents redacted.
+     */
+    private fun sanitizeLogValue(value: String): String =
+        value
+            .replace(URL_PATTERN, "[redacted-url]")
+            .filterNot(Char::isISOControl)
+            .take(MAX_LOG_VALUE_LENGTH)
+
+    /**
+     * Describes only non-secret URL properties; signed path and query values are omitted.
+     *
+     * @param url Parsed response URL, or `null` when the supplied value is malformed.
+     * @return Redacted URL diagnostics for logcat.
+     */
+    private fun describeUrl(url: HttpUrl?): String {
+        if (url == null) return "invalid-or-missing"
+        return "scheme=${url.scheme},host=${url.host},port=${url.port}," +
+            "pathSegments=${url.pathSegments.size},queryPresent=${url.query != null}"
     }
 
     /**
@@ -549,10 +608,16 @@ class OpenSubtitlesRepository @Inject constructor(
     private fun validateDownloadUrl(link: String?): HttpUrl {
         val url = link?.toHttpUrlOrNull()
         val host = url?.host.orEmpty()
-        val trustedHost = host == API_HOST || host.endsWith(".$API_HOST")
+        val trustedHost = host in TRUSTED_DOWNLOAD_HOSTS
         if (url == null || !url.isHttps || url.port != HTTPS_PORT ||
             url.username.isNotEmpty() || url.password.isNotEmpty() || !trustedHost
         ) {
+            Log.w(
+                TAG,
+                "Rejected subtitle URL: parsed=${url != null}, scheme=${url?.scheme ?: "invalid"}, " +
+                    "host=${host.ifBlank { "invalid" }}, port=${url?.port ?: "invalid"}, " +
+                    "credentialsPresent=${url?.let { it.username.isNotEmpty() || it.password.isNotEmpty() } ?: false}"
+            )
             throw OpenSubtitlesException(
                 OpenSubtitlesErrorCode.INVALID_SUBTITLE,
                 "OpenSubtitles returned an invalid or untrusted subtitle URL"
@@ -749,6 +814,8 @@ class OpenSubtitlesRepository @Inject constructor(
     private companion object {
         /** OpenSubtitles API v1 base host. */
         const val API_HOST = "api.opensubtitles.com"
+        /** Android log tag for redacted OpenSubtitles request diagnostics. */
+        const val TAG = "OpenSubtitles"
         /** HTTPS default port. */
         const val HTTPS_PORT = 443
         /** Unauthorized response status. */
@@ -759,12 +826,18 @@ class OpenSubtitlesRepository @Inject constructor(
         const val MAX_SUBTITLE_BYTES = 16 * 1024 * 1024
         /** Maximum server-provided error detail shown alongside an HTTP status. */
         const val MAX_API_ERROR_MESSAGE_LENGTH = 200
+        /** Maximum server-provided field length included in diagnostic logs. */
+        const val MAX_LOG_VALUE_LENGTH = 200
         /** Number of authorized requests attempted before reporting expired authentication. */
         const val AUTH_RETRY_COUNT = 2
         /** Private app cache subdirectory for downloaded subtitles. */
         const val SUBTITLE_DIRECTORY = "opensubtitles"
         /** App-private directory removed with its corresponding managed torrent. */
         const val TORRENT_DIRECTORY = "torrent_downloads"
+        /** Exact OpenSubtitles hosts allowed to serve temporary subtitle files. */
+        val TRUSTED_DOWNLOAD_HOSTS = setOf(API_HOST, "www.opensubtitles.com", "opensubtitles.com")
+        /** URL pattern used to redact signed URL contents from server-provided log messages. */
+        val URL_PATTERN = Regex("""https?://[^\s"'<>]+""", RegexOption.IGNORE_CASE)
         /** OpenSubtitles language filter covering both languages supported in the result list. */
         const val SUPPORTED_LANGUAGE_CODES = "en,es"
         /** Expected hexadecimal SHA-1 info-hash format used to scope subtitle files. */
