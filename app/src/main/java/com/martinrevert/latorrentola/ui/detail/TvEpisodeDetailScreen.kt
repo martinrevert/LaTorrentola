@@ -515,13 +515,7 @@ private fun TorrentReleaseCard(
                 focusedContentColor = MaterialTheme.colorScheme.onSurface
             ),
             interactionSource = interactionSource,
-            modifier = modifier
-                .fillMaxWidth()
-                .border(
-                    width = if (isFocused) 2.dp else 0.dp,
-                    color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
-                    shape = MaterialTheme.shapes.medium
-                )
+            modifier = modifier.fillMaxWidth()
         ) {
             cardContent()
         }

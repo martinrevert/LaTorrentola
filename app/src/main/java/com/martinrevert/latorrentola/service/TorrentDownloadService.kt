@@ -75,9 +75,11 @@ class TorrentDownloadService : Service() {
     private val deletedActiveHashes = ConcurrentHashMap.newKeySet<String>()
 
     /** Whether a worker currently owns the transfer queue. */
+    @Volatile
     private var workerStarted = false
 
     /** Most recently delivered service start identifier for safe shutdown. */
+    @Volatile
     private var latestStartId = 0
     /** Hash of the currently active torrent, if one is downloading. */
     @Volatile
@@ -243,8 +245,10 @@ class TorrentDownloadService : Service() {
                         File(filesDir, "$TORRENT_DIRECTORY/$requestedHash").deleteRecursively()
                         torrentDownloadDao.delete(requestedHash)
                         if (!workerStarted && streamServers.isEmpty()) {
-                            stopForeground(STOP_FOREGROUND_REMOVE)
-                            stopSelf(startId)
+                            withContext(Dispatchers.Main.immediate) {
+                                stopForeground(STOP_FOREGROUND_REMOVE)
+                                stopSelf(startId)
+                            }
                         }
                     }
                 }
@@ -368,26 +372,31 @@ class TorrentDownloadService : Service() {
     private suspend fun openReadyPlayer(infoHash: String) {
         val readyIntent = readyPlayerIntents[infoHash]
         if (readyIntent != null) {
-            streamServers[infoHash]?.let { server ->
-                val title = readyIntent.getStringExtra(LocalPlayerActivity.EXTRA_TITLE)
-                    .orEmpty()
-                startForegroundForPlayback(
-                    buildReadyNotification(title, readyIntent, server.listeningPort)
-                )
+            val server = streamServers[infoHash]
+            val title = readyIntent.getStringExtra(LocalPlayerActivity.EXTRA_TITLE).orEmpty()
+            withContext(Dispatchers.Main.immediate) {
+                server?.let {
+                    startForegroundForPlayback(
+                        buildReadyNotification(title, readyIntent, it.listeningPort)
+                    )
+                }
+                startActivity(Intent(readyIntent))
             }
-            withContext(Dispatchers.Main) { startActivity(Intent(readyIntent)) }
             return
         }
         openWhenReadyHashes.add(infoHash)
         readyPlayerIntents[infoHash]?.let { intent ->
             if (openWhenReadyHashes.remove(infoHash)) {
-                streamServers[infoHash]?.let { server ->
-                    val title = intent.getStringExtra(LocalPlayerActivity.EXTRA_TITLE).orEmpty()
-                    startForegroundForPlayback(
-                        buildReadyNotification(title, intent, server.listeningPort)
-                    )
+                val server = streamServers[infoHash]
+                val title = intent.getStringExtra(LocalPlayerActivity.EXTRA_TITLE).orEmpty()
+                withContext(Dispatchers.Main.immediate) {
+                    server?.let {
+                        startForegroundForPlayback(
+                            buildReadyNotification(title, intent, it.listeningPort)
+                        )
+                    }
+                    startActivity(Intent(intent))
                 }
-                withContext(Dispatchers.Main) { startActivity(Intent(intent)) }
             }
         }
     }
@@ -397,14 +406,19 @@ class TorrentDownloadService : Service() {
      *
      * @param title Title shown while the transfer queue is active.
      */
-    private fun startQueueWorker(title: String) {
-        synchronized(queueLock) {
-            if (!workerStarted && downloadQueue.isNotEmpty()) {
-                workerStarted = true
-                startForegroundForDownload(buildProgressNotification(title, 0))
-                serviceScope.launch { processDownloadQueue() }
+    private suspend fun startQueueWorker(title: String) {
+        val shouldStart = withContext(Dispatchers.Main.immediate) {
+            synchronized(queueLock) {
+                if (!workerStarted && downloadQueue.isNotEmpty()) {
+                    workerStarted = true
+                    startForegroundForDownload(buildProgressNotification(title, 0))
+                    true
+                } else {
+                    false
+                }
             }
         }
+        if (shouldStart) serviceScope.launch { processDownloadQueue() }
     }
 
     /** Processes queued transfers serially and safely stops once the queue is empty. */
@@ -500,9 +514,13 @@ class TorrentDownloadService : Service() {
         val manager = SessionManager()
         synchronized(sessionLock) {
             sessionManager = manager
+            manager.start()
+            manager.download(
+                request.magnetUri,
+                downloadDirectory,
+                TorrentFlags.SEQUENTIAL_DOWNLOAD
+            )
         }
-        manager.start()
-        manager.download(request.magnetUri, downloadDirectory, TorrentFlags.SEQUENTIAL_DOWNLOAD)
         var mediaTarget: MediaTarget? = null
         var readyNotified = false
         var readyPlayerIntent: Intent? = null
@@ -511,23 +529,49 @@ class TorrentDownloadService : Service() {
 
         while (true) {
             if (request.infoHash in deletedActiveHashes) return
-            val handle = manager.find(Sha1Hash.parseHex(infoHash))
-            if (handle != null && handle.isValid()) {
-                if (pausedInfoHash == infoHash) handle.pause()
-                if (mediaTarget == null) {
-                    mediaTarget = findMediaTarget(handle, downloadDirectory)
-                    mediaTarget?.let { target ->
-                        for (index in 0 until target.fileCount) {
-                            handle.filePriority(
-                                index,
-                                if (index == target.fileIndex) Priority.DEFAULT else Priority.IGNORE
-                            )
+            val targetWasMissing = mediaTarget == null
+            val handle = synchronized(sessionLock) {
+                if (sessionManager !== manager) {
+                    null
+                } else {
+                    manager.find(Sha1Hash.parseHex(infoHash))
+                        ?.takeIf { it.isValid() }
+                        ?.also { handle ->
+                            if (pausedInfoHash == infoHash) handle.pause()
+                            if (mediaTarget == null) {
+                                mediaTarget = findMediaTarget(handle, downloadDirectory)
+                                mediaTarget?.let { target ->
+                                    for (index in 0 until target.fileCount) {
+                                        handle.filePriority(
+                                            index,
+                                            if (index == target.fileIndex) {
+                                                Priority.DEFAULT
+                                            } else {
+                                                Priority.IGNORE
+                                            }
+                                        )
+                                    }
+                                    handle.setSequentialRange(
+                                        target.firstPiece,
+                                        target.lastPiece
+                                    )
+                                }
+                            }
                         }
-                        handle.setSequentialRange(target.firstPiece, target.lastPiece)
-                        updateDownloadRecord(request, STATE_BUFFERING, 0, target.file.absolutePath)
-                    }
                 }
-                val status = handle.status()
+            }
+            if (handle != null) {
+                val target = mediaTarget
+                if (target != null && targetWasMissing) {
+                    updateDownloadRecord(request, STATE_BUFFERING, 0, target.file.absolutePath)
+                }
+                val status = synchronized(sessionLock) {
+                    if (sessionManager === manager && handle.isValid()) handle.status() else null
+                }
+                if (status == null) {
+                    delay(1_000)
+                    continue
+                }
                 val progress = (status.progress() * 100).toInt().coerceIn(0, 100)
                 val readyIntent = readyPlayerIntent
                 if (readyIntent == null) {
@@ -547,10 +591,12 @@ class TorrentDownloadService : Service() {
                     progress,
                     mediaTarget?.file?.absolutePath
                 )
-                val target = mediaTarget
                 if (!readyNotified && target != null && hasVerifiedBuffer(handle, target)) {
                     val server = VerifiedTorrentHttpServer(target.file, target.length) { start, end ->
-                        completed.get() || isVerifiedRange(handle, target, start, end)
+                        completed.get() || synchronized(sessionLock) {
+                            sessionManager === manager &&
+                                isVerifiedRange(handle, target, start, end)
+                        }
                     }
                     val port = server.startServer()
                     val castUrl = if (request.castWhenReady) {
@@ -568,6 +614,7 @@ class TorrentDownloadService : Service() {
                         .putExtra(LocalPlayerActivity.EXTRA_STREAM_URL, server.localUrl())
                         .putExtra(LocalPlayerActivity.EXTRA_CAST_URL, castUrl)
                         .putExtra(LocalPlayerActivity.EXTRA_INFO_HASH, infoHash)
+                        .putExtra(LocalPlayerActivity.EXTRA_PARTIAL_TORRENT_STREAM, true)
                         .putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, request.castWhenReady)
                         .putExtra(LocalPlayerActivity.EXTRA_MIME_TYPE, target.file.mediaMimeType())
                         .putExtra(LocalPlayerActivity.EXTRA_TITLE, request.title)
@@ -575,9 +622,11 @@ class TorrentDownloadService : Service() {
                     readyPlayerIntent = playerIntent
                     readyPlayerIntents[infoHash] = playerIntent
                     readyServerPort = port
-                    startForegroundForPlayback(
-                        buildReadyNotification(request.title, playerIntent, port)
-                    )
+                    withContext(Dispatchers.Main.immediate) {
+                        startForegroundForPlayback(
+                            buildReadyNotification(request.title, playerIntent, port)
+                        )
+                    }
                     updateDownloadRecord(request, STATE_READY, progress, target.file.absolutePath)
                     if (openWhenReadyHashes.remove(infoHash)) {
                         withContext(Dispatchers.Main) { startActivity(playerIntent) }
@@ -704,11 +753,13 @@ class TorrentDownloadService : Service() {
         target: MediaTarget,
         start: Long,
         end: Long
-    ): Boolean {
-        if (start < 0 || end < start || end >= target.length || !handle.isValid()) return false
+    ): Boolean = synchronized(sessionLock) {
+        if (start < 0 || end < start || end >= target.length || !handle.isValid()) {
+            return@synchronized false
+        }
         val firstPiece = ((target.fileOffset + start) / target.pieceLength).toInt()
         val lastPiece = ((target.fileOffset + end) / target.pieceLength).toInt()
-        return (firstPiece..lastPiece).all(handle::havePiece)
+        (firstPiece..lastPiece).all(handle::havePiece)
     }
 
     /**
@@ -922,10 +973,18 @@ class TorrentDownloadService : Service() {
 
     /** Stops and clears the active native session without racing service teardown. */
     private suspend fun stopSessionManager() {
-        val manager = synchronized(sessionLock) {
-            sessionManager.also { sessionManager = null }
-        } ?: return
-        withContext(Dispatchers.IO) { manager.stop() }
+        val manager = synchronized(sessionLock) { sessionManager } ?: return
+        withContext(Dispatchers.IO) {
+            synchronized(sessionLock) {
+                if (sessionManager === manager) {
+                    try {
+                        manager.stop()
+                    } finally {
+                        sessionManager = null
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -983,10 +1042,16 @@ class TorrentDownloadService : Service() {
 
     /** Closes the session from the teardown helper thread without blocking the main thread. */
     private fun runBlockingStopSession() {
-        val manager = synchronized(sessionLock) {
-            sessionManager.also { sessionManager = null }
-        } ?: return
-        manager.stop()
+        val manager = synchronized(sessionLock) { sessionManager } ?: return
+        synchronized(sessionLock) {
+            if (sessionManager === manager) {
+                try {
+                    manager.stop()
+                } finally {
+                    sessionManager = null
+                }
+            }
+        }
     }
 
     companion object {

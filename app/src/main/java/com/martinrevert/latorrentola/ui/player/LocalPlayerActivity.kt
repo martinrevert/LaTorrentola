@@ -28,6 +28,9 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.mkv.MatroskaExtractor
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
@@ -150,7 +153,8 @@ class LocalPlayerActivity : ComponentActivity() {
     private var mediaTitle = ""
 
     /**
-     * Creates a player and places playback actions in the native Media3 controller.
+     * Creates the player, using early-start extraction for incomplete torrents, and adds
+     * playback actions to the native Media3 controller.
      *
      * @param savedInstanceState Previously saved activity state, if any.
      */
@@ -199,7 +203,15 @@ class LocalPlayerActivity : ComponentActivity() {
             .setTargetBufferBytes(32 * 1024 * 1024)
             .setPrioritizeTimeOverSizeThresholds(false)
             .build()
+        val extractorsFactory = DefaultExtractorsFactory()
+        if (intent.getBooleanExtra(EXTRA_PARTIAL_TORRENT_STREAM, false)) {
+            // Matroska cues commonly live at EOF; avoid seeking there before track formats exist.
+            extractorsFactory.setMatroskaExtractorFlags(
+                MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES
+            )
+        }
         val local = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(this, extractorsFactory))
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
             .build()
@@ -752,6 +764,7 @@ class LocalPlayerActivity : ComponentActivity() {
      * @param local Local ExoPlayer used when no receiver session is active.
      * @return Configured Cast player, or `null` if Cast services are unavailable.
      */
+    @androidx.annotation.OptIn(UnstableApi::class)
     private fun buildCastPlayer(): CastPlayer? {
         return try {
             val remotePlayer = CastPlayer(
@@ -918,6 +931,9 @@ class LocalPlayerActivity : ComponentActivity() {
 
         /** Intent extra containing the local torrent's stable info hash. */
         const val EXTRA_INFO_HASH = "torrent_info_hash"
+
+        /** Intent extra enabling early-start extraction without cue seeking for an incomplete stream. */
+        const val EXTRA_PARTIAL_TORRENT_STREAM = "partial_torrent_stream"
 
         /** Intent extra indicating whether Cast device selection should be available. */
         const val EXTRA_CAST_ENABLED = "torrent_cast_enabled"
