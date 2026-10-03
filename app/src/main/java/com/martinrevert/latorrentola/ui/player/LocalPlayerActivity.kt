@@ -169,6 +169,9 @@ class LocalPlayerActivity : ComponentActivity() {
     /** Prevents overlapping subtitle searches and downloads from repeated controller clicks. */
     private var subtitleOperationInProgress = false
 
+    /** Prevents starting more than one background session warm-up for the current playback. */
+    private var subtitleWarmupStarted = false
+
     /** OpenSubtitles controller action, animated while a request is pending. */
     private var subtitleSearchButton: ImageButton? = null
 
@@ -304,7 +307,7 @@ class LocalPlayerActivity : ComponentActivity() {
             Triple(
                 R.drawable.ic_subtitles_search,
                 R.string.opensubtitles_search,
-                ::showOpenSubtitlesOptions
+                ::searchSubtitles
             )
         ).forEachIndexed { index, (icon, description, action) ->
             val button = ImageButton(this, null, 0, buttonStyle).apply {
@@ -368,9 +371,47 @@ class LocalPlayerActivity : ComponentActivity() {
             object : Player.Listener {
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                     button.visibility = View.VISIBLE
+                    warmUpOpenSubtitlesIfNeeded(tracks)
+                }
+
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_READY) {
+                        warmUpOpenSubtitlesIfNeeded(localPlayer?.currentTracks)
+                    }
                 }
             }
         )
+    }
+
+    /**
+     * Starts OpenSubtitles authentication in the background after playback confirms no embedded
+     * text tracks are available.
+     *
+     * @param tracks Current available playback tracks, or `null` before they are initialized.
+     */
+    private fun warmUpOpenSubtitlesIfNeeded(tracks: androidx.media3.common.Tracks?) {
+        val player = localPlayer ?: return
+        if (subtitleWarmupStarted || player.playbackState != Player.STATE_READY ||
+            tracks == null || tracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
+        ) {
+            return
+        }
+        subtitleWarmupStarted = true
+        Log.i(TAG, "No embedded subtitle tracks; starting OpenSubtitles session warm-up")
+        lifecycleScope.launch {
+            try {
+                openSubtitlesRepository.warmUp()
+                Log.i(TAG, "OpenSubtitles session warm-up completed")
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.w(
+                    TAG,
+                    "OpenSubtitles session warm-up failed: ${error.javaClass.simpleName}, " +
+                        "message=${error.message}"
+                )
+            }
+        }
     }
 
     /**
@@ -661,22 +702,6 @@ class LocalPlayerActivity : ComponentActivity() {
     private fun PlaybackTrackType.toMedia3TrackType(): Int = when (this) {
         PlaybackTrackType.AUDIO -> C.TRACK_TYPE_AUDIO
         PlaybackTrackType.SUBTITLE -> C.TRACK_TYPE_TEXT
-    }
-
-    /**
-     * Opens the OpenSubtitles action menu so the next selection explicitly starts a search.
-     */
-    private fun showOpenSubtitlesOptions() {
-        Log.i(TAG, "OpenSubtitles submenu opened")
-        val options = arrayOf(getString(R.string.opensubtitles_search))
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(R.string.opensubtitles_menu_title)
-            .setItems(options) { _, index ->
-                if (index == 0) searchSubtitles()
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .create()
-        showAdaptiveDialog(dialog)
     }
 
     /**

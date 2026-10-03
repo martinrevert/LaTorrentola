@@ -131,6 +131,16 @@ class OpenSubtitlesRepository @Inject constructor(
     private var session: AuthenticatedSession? = null
 
     /**
+     * Loads the saved account session before the user opens the subtitle search menu.
+     *
+     * @throws OpenSubtitlesException When credentials are missing or the service rejects login.
+     */
+    suspend fun warmUp() = withContext(Dispatchers.IO) {
+        val credentials = loadCredentials()
+        authenticatedToken(credentials)
+    }
+
+    /**
      * Searches subtitles by title or release query.
      *
      * @param query Media title or release name.
