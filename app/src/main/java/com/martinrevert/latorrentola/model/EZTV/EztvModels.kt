@@ -115,3 +115,21 @@ data class EztvTorrent(
             }
         }
 }
+
+/**
+ * Returns the normalized BitTorrent info hash for this release, using its magnet URI if needed.
+ *
+ * @return Lowercase release info hash, or `null` when neither source contains one.
+ */
+fun EztvTorrent.downloadInfoHash(): String? {
+    val directHash = hash.trim().takeIf(String::isNotEmpty)
+    val magnetHash = MAGNET_INFO_HASH_PATTERN
+        .find(magnetUrl)
+        ?.groupValues
+        ?.get(1)
+    return (directHash ?: magnetHash)?.lowercase()
+}
+
+/** Pattern for extracting a BitTorrent v1 info hash from a magnet URI. */
+private val MAGNET_INFO_HASH_PATTERN =
+    Regex("""xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})""", RegexOption.IGNORE_CASE)

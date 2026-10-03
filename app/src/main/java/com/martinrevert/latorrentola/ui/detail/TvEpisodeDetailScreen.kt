@@ -59,6 +59,7 @@ import androidx.tv.material3.Surface as TvSurface
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
+import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.ui.components.MovieDetailPlaceholder
@@ -296,8 +297,8 @@ private fun EpisodeDetailContent(
             )
         } else {
             torrents.forEachIndexed { index, torrent ->
-                val isTorrentDownloaded = (torrent.hash.isNotBlank() && torrent.hash in downloadedHashes) ||
-                        isDownloaded
+                val isTorrentDownloaded =
+                    torrent.downloadInfoHash()?.let(downloadedHashes::contains) == true
                 TorrentReleaseCard(
                     torrent = torrent,
                     isDownloaded = isTorrentDownloaded,

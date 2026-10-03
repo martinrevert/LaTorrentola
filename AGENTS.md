@@ -123,6 +123,17 @@ For every UI change, including changes requested for only one screen:
 ## 🛠️ Development & Testing Workflows
 
 ### PowerShell Commands
+#### Gradle and Java in this Windows environment
+- Run Gradle from the repository root (`D:\AndroidProjects\LaTorrentola`) using the checked-in wrapper: `.\gradlew.bat`. Do not rely on a separately installed Gradle.
+- Gradle must use Android Studio's bundled JBR at `C:\Program Files\Android\Android Studio\jbr`. The `java` found on the default system path is Oracle GraalVM 25; it fails Android's `androidJdkImage`/`jlink` transform for this project's Android SDK. Set `JAVA_HOME` and put its `bin` first on `Path` in the same PowerShell process before invoking the wrapper:
+  ```powershell
+  $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
+  $env:Path = "$env:JAVA_HOME\bin;$env:Path"
+  .\gradlew.bat :app:testDebugUnitTest --tests "com.martinrevert.latorrentola.ui.detail.TvEpisodeDetailViewModelTest" --no-configuration-cache
+  ```
+- Each agent PowerShell command starts in a fresh process, so set these environment variables again for every Gradle invocation. Keep the `--no-configuration-cache` flag for test runs in this environment; it avoids the wrapper's configuration-cache serialization failure.
+- For any other Gradle task below, apply the same JDK setup in that command before running `.\gradlew.bat`; add `--no-configuration-cache` when running tests.
+
 ```powershell
 # Clean & build debug APK
 .\gradlew.bat clean; .\gradlew.bat assembleDebug

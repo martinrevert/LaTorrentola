@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola.ui.detail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
+import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.model.user.DownloadedEpisode
@@ -63,12 +64,15 @@ class TvEpisodeDetailViewModel @Inject constructor(
                             it.seasonNumber == activeSeasonNumber &&
                             it.episodeNumber == activeEpisodeNumber
                 }
+                val downloadedHashes = matching.mapNotNull {
+                    it.hash.takeIf(String::isNotBlank)?.lowercase()
+                }.toSet()
                 TvEpisodeDetailUiState.Success(
                     seriesName = rawState.seriesName,
                     episode = rawState.episode,
                     torrents = rawState.torrents,
                     isDownloaded = matching.isNotEmpty(),
-                    downloadedHashes = matching.map { it.hash }.toSet()
+                    downloadedHashes = downloadedHashes
                 )
             }
         }
@@ -173,11 +177,8 @@ class TvEpisodeDetailViewModel @Inject constructor(
     fun markEpisodeAsDownloaded(torrent: EztvTorrent) {
         val episode = currentEpisode ?: return
         viewModelScope.launch {
-            val validHash = when {
-                torrent.hash.isNotBlank() -> torrent.hash
-                torrent.magnetUrl.isNotBlank() -> extractHashFromMagnet(torrent.magnetUrl)
-                else -> null
-            } ?: "tv_${activeSeriesId}_s${activeSeasonNumber}_e${activeEpisodeNumber}"
+            val validHash = torrent.downloadInfoHash()
+                ?: "tv_${activeSeriesId}_s${activeSeasonNumber}_e${activeEpisodeNumber}"
 
             userLibraryRepository.markEpisodeAsDownloaded(
                 DownloadedEpisode(
@@ -195,13 +196,6 @@ class TvEpisodeDetailViewModel @Inject constructor(
                 )
             )
         }
-    }
-
-    /** Extracts infohash from a magnet URL if torrent.hash is blank. */
-    private fun extractHashFromMagnet(magnetUrl: String): String? {
-        if (magnetUrl.isBlank()) return null
-        val regex = Regex("""xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})""", RegexOption.IGNORE_CASE)
-        return regex.find(magnetUrl)?.groupValues?.get(1)?.lowercase()
     }
 
     /** Helper to extract a short quality label (e.g. "1080p", "720p", "2160p") from release title. */

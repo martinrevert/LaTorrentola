@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.ui.detail
 
 import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
+import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
 import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.network.EztvRepository
@@ -130,6 +131,12 @@ class TvEpisodeDetailViewModelTest {
         val episodeNum = 2
 
         coEvery { tmdbRepository.getTvImdbId(seriesId) } returns "123456"
+        coEvery {
+            eztvRepository.getTorrentsForEpisode("123456", seasonNum, episodeNum)
+        } returns listOf(
+            EztvTorrent(title = "Breaking.Bad.S01E02.720p", hash = "release-one"),
+            EztvTorrent(title = "Breaking.Bad.S01E02.1080p", hash = "release-two")
+        )
 
         val job = backgroundScope.launch {
             viewModel.uiState.collect {}
@@ -151,15 +158,51 @@ class TvEpisodeDetailViewModelTest {
                 seriesName = "Breaking Bad",
                 seasonNumber = seasonNum,
                 episodeNumber = episodeNum,
-                hash = "4f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a"
+                hash = "release-one"
             )
         )
         testScheduler.advanceUntilIdle()
 
         val successState = viewModel.uiState.value as TvEpisodeDetailUiState.Success
         assertThat(successState.isDownloaded).isTrue()
-        assertThat(successState.downloadedHashes).contains("4f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a")
+        assertThat(successState.downloadedHashes).containsExactly("release-one")
+        assertThat(
+            successState.torrents.filter {
+                it.downloadInfoHash()?.let(successState.downloadedHashes::contains) == true
+            }
+        ).hasSize(1)
+
+        downloadsFlow.value = listOf(
+            DownloadedEpisode(
+                seriesId = seriesId,
+                seasonNumber = seasonNum,
+                episodeNumber = episodeNum,
+                hash = "release-one"
+            ),
+            DownloadedEpisode(
+                seriesId = seriesId,
+                seasonNumber = seasonNum,
+                episodeNumber = episodeNum,
+                hash = "release-two"
+            )
+        )
+        testScheduler.advanceUntilIdle()
+        assertThat(
+            (viewModel.uiState.value as TvEpisodeDetailUiState.Success).downloadedHashes
+        ).containsExactly("release-one", "release-two")
 
         job.cancel()
+    }
+
+    /** Verifies hash normalization and extraction for EZTV releases. */
+    @Test
+    fun `downloadInfoHash uses a normalized torrent hash or magnet hash`() {
+        val torrentHash = EztvTorrent(hash = "ABCDEF0123456789").downloadInfoHash()
+        val magnetHash = EztvTorrent(
+            magnetUrl = "magnet:?xt=urn:btih:4F1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A"
+        ).downloadInfoHash()
+
+        assertThat(torrentHash).isEqualTo("abcdef0123456789")
+        assertThat(magnetHash).isEqualTo("4f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a")
     }
 }
