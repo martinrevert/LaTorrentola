@@ -216,6 +216,7 @@ class LocalPlayerActivity : ComponentActivity() {
         this.playerView = playerView
         playerView.controllerShowTimeoutMs = PLAYER_CONTROLLER_SHOW_TIMEOUT_MS
         playerView.controllerHideOnTouch = true
+        playerView.controllerAutoShow = false
         addControllerOptions(playerView)
         val trackSelector = DefaultTrackSelector(this).apply {
             setParameters(
