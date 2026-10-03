@@ -25,9 +25,12 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
 import com.google.android.gms.cast.framework.CastContext
 import androidx.mediarouter.R as MediaRouterR
 import androidx.mediarouter.app.MediaRouteButton
@@ -140,6 +143,9 @@ class LocalPlayerActivity : ComponentActivity() {
     /** Whether a Cast receiver is currently using this activity's stream servers. */
     private var castSessionActive = false
 
+    /** Text size fraction currently applied to local subtitle cues. */
+    private var subtitleTextSizeFraction = SubtitleView.DEFAULT_TEXT_SIZE_FRACTION
+
     /** User-visible title used for subtitle search and playback metadata. */
     private var mediaTitle = ""
 
@@ -176,6 +182,13 @@ class LocalPlayerActivity : ComponentActivity() {
         val playerView = PlayerView(this)
         this.playerView = playerView
         addControllerOptions(playerView)
+        val trackSelector = DefaultTrackSelector(this).apply {
+            setParameters(
+                buildUponParameters()
+                    .setPreferredTextLanguages("es", "en")
+                    .build()
+            )
+        }
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 20_000,
@@ -187,11 +200,14 @@ class LocalPlayerActivity : ComponentActivity() {
             .setPrioritizeTimeOverSizeThresholds(false)
             .build()
         val local = ExoPlayer.Builder(this)
+            .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
             .build()
         localPlayer = local
         activePlayer = local
         playerView.player = local
+        playerView.setShowSubtitleButton(true)
+        keepSubtitleOptionsAvailable(playerView)
         local.setMediaItem(mediaItem)
         local.prepare()
         local.playWhenReady = true
@@ -238,11 +254,36 @@ class LocalPlayerActivity : ComponentActivity() {
         subtitleButton.setOnClickListener { showSubtitleOptions() }
         subtitleButton.isFocusable = true
         val buttonStyle = androidx.media3.ui.R.style.ExoStyledControls_Button_Bottom
+        val subtitleButtonIndex = controls.indexOfChild(subtitleButton)
+        listOf(
+            Triple(
+                R.drawable.ic_subtitle_style,
+                R.string.player_subtitle_style,
+                ::showSubtitleStyleOptions
+            ),
+            Triple(
+                R.drawable.ic_subtitles_search,
+                R.string.opensubtitles_search,
+                ::searchSubtitles
+            )
+        ).forEachIndexed { index, (icon, description, action) ->
+            controls.addView(
+                ImageButton(this, null, 0, buttonStyle).apply {
+                    setImageResource(icon)
+                    contentDescription = getString(description)
+                    setOnClickListener { action() }
+                    isFocusable = true
+                    isFocusableInTouchMode = true
+                    id = View.generateViewId()
+                },
+                subtitleButtonIndex + index + 1
+            )
+        }
         listOf(
             Triple(
                 androidx.media3.ui.R.drawable.exo_ic_audiotrack,
                 R.string.player_audio_tracks
-            ) { showTrackOptions(PlaybackTrackType.AUDIO) },
+            ) { showTrackOptions(PlaybackTrackType.AUDIO) }
         ).forEach { (icon, description, action) ->
             controls.addView(
                 ImageButton(this, null, 0, buttonStyle).apply {
@@ -255,6 +296,25 @@ class LocalPlayerActivity : ComponentActivity() {
                 }
             )
         }
+    }
+
+    /**
+     * Keeps the native CC control available even when a file has no embedded subtitles.
+     *
+     * @param view Media3 view whose controller hosts the subtitle actions.
+     */
+    private fun keepSubtitleOptionsAvailable(view: PlayerView) {
+        val button = requireNotNull(
+            view.findViewById<ImageButton>(androidx.media3.ui.R.id.exo_subtitle)
+        ) { "Media3 subtitle controller button is unavailable" }
+        button.visibility = View.VISIBLE
+        localPlayer?.addListener(
+            object : Player.Listener {
+                override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                    button.visibility = View.VISIBLE
+                }
+            }
+        )
     }
 
     /**
@@ -310,31 +370,67 @@ class LocalPlayerActivity : ComponentActivity() {
         showAdaptiveDialog(dialog)
     }
 
-    /** Shows internal subtitle tracks and OpenSubtitles search in the native CC control menu. */
+    /** Shows embedded subtitle tracks from the native CC control. */
     private fun showSubtitleOptions() {
         val options = availableTrackOptions(PlaybackTrackType.SUBTITLE)
         val labels = buildList {
             add(getString(R.string.player_subtitles_off))
             addAll(options.map(PlaybackTrackOption::label))
-            add(getString(R.string.player_search_opensubtitles))
         }
         val selectedTrackIndex = options.indexOfFirst(PlaybackTrackOption::isSelected)
         val selectedIndex = if (selectedTrackIndex < 0) 0 else selectedTrackIndex + 1
         val dialog = AlertDialog.Builder(this)
             .setTitle(R.string.player_subtitle_tracks)
             .setSingleChoiceItems(labels.toTypedArray(), selectedIndex) { choice, index ->
-                when {
-                    index == labels.lastIndex -> searchSubtitles()
-                    castSessionActive -> {
-                        selectCastTrack(
-                            PlaybackTrackType.SUBTITLE,
-                            options.getOrNull(index - 1)?.castTrackId
-                        )
-                    }
-                    else -> selectLocalTrack(
+                if (castSessionActive) {
+                    selectCastTrack(
+                        PlaybackTrackType.SUBTITLE,
+                        options.getOrNull(index - 1)?.castTrackId
+                    )
+                } else {
+                    selectLocalTrack(
                         PlaybackTrackType.SUBTITLE,
                         options.getOrNull(index - 1)
                     )
+                }
+                choice.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        showAdaptiveDialog(dialog)
+    }
+
+    /** Presents text-size and system-caption styling options for local playback. */
+    private fun showSubtitleStyleOptions() {
+        val labels = arrayOf(
+            getString(R.string.player_subtitle_style_system),
+            getString(R.string.player_subtitle_style_small),
+            getString(R.string.player_subtitle_style_medium),
+            getString(R.string.player_subtitle_style_large),
+            getString(R.string.player_subtitle_style_extra_large)
+        )
+        val fractions = listOf(
+            SubtitleView.DEFAULT_TEXT_SIZE_FRACTION,
+            0.04f,
+            SubtitleView.DEFAULT_TEXT_SIZE_FRACTION,
+            0.067f,
+            0.08f
+        )
+        val selectedIndex = fractions.indexOf(subtitleTextSizeFraction).coerceAtLeast(0)
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.player_subtitle_style)
+            .setSingleChoiceItems(labels, selectedIndex) { choice, index ->
+                val subtitleView = playerView?.subtitleView
+                if (index == 0) {
+                    subtitleTextSizeFraction = SubtitleView.DEFAULT_TEXT_SIZE_FRACTION
+                    subtitleView?.setUserDefaultStyle()
+                    subtitleView?.setUserDefaultTextSize()
+                    subtitleView?.setApplyEmbeddedStyles(true)
+                } else {
+                    subtitleTextSizeFraction = fractions[index]
+                    subtitleView?.setUserDefaultStyle()
+                    subtitleView?.setApplyEmbeddedStyles(false)
+                    subtitleView?.setFractionalTextSize(subtitleTextSizeFraction)
                 }
                 choice.dismiss()
             }

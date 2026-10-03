@@ -73,6 +73,12 @@
     <string name="player_audio_tracks">Audio</string>
     <string name="player_subtitle_tracks">Subtítulos</string>
     <string name="player_search_opensubtitles">Buscar en OpenSubtitles</string>
+    <string name="player_subtitle_style">Apariencia de subtítulos</string>
+    <string name="player_subtitle_style_system">Predeterminada del sistema</string>
+    <string name="player_subtitle_style_small">Pequeña</string>
+    <string name="player_subtitle_style_medium">Mediana</string>
+    <string name="player_subtitle_style_large">Grande</string>
+    <string name="player_subtitle_style_extra_large">Muy grande</string>
     <string name="player_audio_auto">Automático</string>
     <string name="player_subtitles_off">Desactivados</string>
     <string name="player_no_audio_tracks">No hay pistas de audio seleccionables.</string>
