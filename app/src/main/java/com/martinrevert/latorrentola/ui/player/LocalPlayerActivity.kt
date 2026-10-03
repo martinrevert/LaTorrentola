@@ -7,6 +7,7 @@ import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
@@ -121,6 +122,12 @@ class LocalPlayerActivity : ComponentActivity() {
     /** Player currently presenting local or Cast playback. */
     private var activePlayer: Player? = null
 
+    /** Player listener controlling the TV screen-awake flag for the active playback target. */
+    private var screenAwakeListener: Player.Listener? = null
+
+    /** Player currently observed for TV screen-awake behavior. */
+    private var screenAwakePlayer: Player? = null
+
     /** View whose controller follows the active local or remote player. */
     private var playerView: PlayerView? = null
 
@@ -218,6 +225,7 @@ class LocalPlayerActivity : ComponentActivity() {
         localPlayer = local
         activePlayer = local
         playerView.player = local
+        observePlaybackForScreenAwake(local)
         playerView.setShowSubtitleButton(true)
         keepSubtitleOptionsAvailable(playerView)
         local.setMediaItem(mediaItem)
@@ -811,6 +819,7 @@ class LocalPlayerActivity : ComponentActivity() {
         activePlayer = remote
         view.player = remote
         castSessionActive = true
+        observePlaybackForScreenAwake(remote)
     }
 
     /** Returns playback to the local player when the receiver session ends. */
@@ -827,6 +836,53 @@ class LocalPlayerActivity : ComponentActivity() {
         activePlayer = local
         view.player = local
         castSessionActive = false
+        observePlaybackForScreenAwake(local)
+    }
+
+    /**
+     * Keeps Android TV out of Ambient mode while playback is active, including buffering.
+     *
+     * @param player Current local or Cast playback target.
+     */
+    private fun observePlaybackForScreenAwake(player: Player) {
+        screenAwakePlayer?.let { observed ->
+            screenAwakeListener?.let(observed::removeListener)
+        }
+        screenAwakePlayer = player
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                updateScreenAwakeState(player)
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                updateScreenAwakeState(player)
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                updateScreenAwakeState(player)
+            }
+        }
+        screenAwakeListener = listener
+        player.addListener(listener)
+        updateScreenAwakeState(player)
+    }
+
+    /**
+     * Applies the TV keep-screen-on flag only while the current playback target is active.
+     *
+     * @param player Player whose state determines whether the screen should stay awake.
+     */
+    private fun updateScreenAwakeState(player: Player) {
+        if (!isTvDevice() || player !== activePlayer || player !== screenAwakePlayer) return
+        val shouldKeepScreenAwake =
+            player.playWhenReady &&
+                player.playbackState != Player.STATE_IDLE &&
+                player.playbackState != Player.STATE_ENDED
+        if (shouldKeepScreenAwake) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
     }
 
     /**
@@ -908,6 +964,12 @@ class LocalPlayerActivity : ComponentActivity() {
 
     /** Releases decoder and subtitle streaming resources when this activity is destroyed. */
     override fun onDestroy() {
+        screenAwakePlayer?.let { player ->
+            screenAwakeListener?.let(player::removeListener)
+        }
+        screenAwakeListener = null
+        screenAwakePlayer = null
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         castPlayer?.release()
         localPlayer?.release()
         if (!castSessionActive) SubtitleServerRegistry.stopAll()
