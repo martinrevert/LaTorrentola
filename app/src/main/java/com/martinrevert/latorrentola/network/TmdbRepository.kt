@@ -7,6 +7,7 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvPage
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.model.YTS.Cast
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -86,6 +87,37 @@ class TmdbRepository @Inject constructor(
             if (imdbId.isNullOrEmpty()) null else imdbId
         } catch (e: Exception) {
             null
+        }
+    }
+
+    /**
+     * Fetches full movie cast from TMDB using the movie's IMDb identifier.
+     *
+     * @param imdbId IMDb title identifier (e.g. "tt0137523").
+     * @return List of [Cast] members populated with names, character names, and TMDB profile image URLs.
+     */
+    suspend fun getMovieCastByImdbId(imdbId: String): List<Cast> {
+        if (apiKey.isEmpty() || imdbId.isBlank()) return emptyList()
+        val formattedImdbId = if (imdbId.startsWith("tt")) imdbId else "tt$imdbId"
+        return try {
+            val findResponse = tmdbService.findByExternalId(
+                externalId = formattedImdbId,
+                apiKey = apiKey
+            )
+            val tmdbMovieId = findResponse.movieResults?.firstOrNull()?.id ?: return emptyList()
+            val creditsResponse = tmdbService.getMovieCredits(
+                movieId = tmdbMovieId,
+                apiKey = apiKey
+            )
+            creditsResponse.cast.orEmpty().map { tmdbCast ->
+                Cast(
+                    name = tmdbCast.name,
+                    characterName = tmdbCast.character,
+                    urlSmallImage = tmdbCast.fullProfileUrl
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
         }
     }
 

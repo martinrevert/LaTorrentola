@@ -1,6 +1,8 @@
 package com.martinrevert.latorrentola.network
 
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
+import com.martinrevert.latorrentola.model.TMDB.TmdbFindResponse
+import com.martinrevert.latorrentola.model.TMDB.TmdbMovieCreditsResponse
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieExternalIds
 import com.martinrevert.latorrentola.model.TMDB.TmdbSearchPersonResponse
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvExternalIds
@@ -46,6 +48,23 @@ interface TmdbService {
         @Path("movie_id") movieId: Int,
         @Query("api_key") apiKey: String
     ): TmdbMovieExternalIds
+
+    /** Finds TMDB objects matching an external ID (such as an IMDb title ID). */
+    @GET("find/{external_id}")
+    suspend fun findByExternalId(
+        @Path("external_id") externalId: String,
+        @Query("api_key") apiKey: String,
+        @Query("external_source") externalSource: String = "imdb_id",
+        @Query("language") language: String = TmdbLanguage.current()
+    ): TmdbFindResponse
+
+    /** Retrieves cast and crew credits for a TMDB movie. */
+    @GET("movie/{movie_id}/credits")
+    suspend fun getMovieCredits(
+        @Path("movie_id") movieId: Int,
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String = TmdbLanguage.current()
+    ): TmdbMovieCreditsResponse
 
     /** Retrieves a page of TV series airing during the next seven days. */
     @GET("tv/on_the_air")

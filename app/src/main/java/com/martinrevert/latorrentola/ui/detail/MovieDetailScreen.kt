@@ -683,7 +683,11 @@ fun CastSection(
 @OptIn(ExperimentalTvMaterial3Api::class)
 /** Displays an interactive cast member portrait and name. */
 @Composable
-fun CastItem(cast: Cast, onCastClick: (String) -> Unit) {
+fun CastItem(
+    cast: Cast,
+    onCastClick: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
 
@@ -700,7 +704,7 @@ fun CastItem(cast: Cast, onCastClick: (String) -> Unit) {
                 focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
             ),
             interactionSource = interactionSource,
-            modifier = Modifier
+            modifier = modifier
                 .width(90.dp)
                 .padding(4.dp)
                 .border(
@@ -722,7 +726,12 @@ fun CastItem(cast: Cast, onCastClick: (String) -> Unit) {
                     modifier = Modifier
                         .size(60.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .border(
+                            width = if (isFocused) 2.dp else 0.dp,
+                            color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            shape = CircleShape
+                        ),
                     contentScale = ContentScale.Crop
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -738,7 +747,7 @@ fun CastItem(cast: Cast, onCastClick: (String) -> Unit) {
         }
     } else {
         Column(
-            modifier = Modifier
+            modifier = modifier
                 .width(80.dp)
                 .clip(MaterialTheme.shapes.small)
                 .clickable { cast.name?.let { onCastClick(it) } },

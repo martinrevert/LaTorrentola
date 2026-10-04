@@ -2,12 +2,14 @@ package com.martinrevert.latorrentola.ui.detail
 
 import android.content.Intent
 import android.os.Build
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,8 +31,6 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -47,69 +47,63 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.platform.LocalResources
-import dev.chrisbanes.haze.rememberHazeState
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.HazeInput
-import dev.chrisbanes.haze.glass.hazeGlass
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
+import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface as TvSurface
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeason
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
-import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
 import com.martinrevert.latorrentola.model.user.DownloadedEpisode
-import com.martinrevert.latorrentola.ui.components.AdaptiveChip
 import com.martinrevert.latorrentola.ui.components.ActorDetailBottomSheet
+import com.martinrevert.latorrentola.ui.components.AdaptiveChip
 import com.martinrevert.latorrentola.ui.components.MovieDetailPlaceholder
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.isTvDevice
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.glass.hazeGlass
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 /**
@@ -150,14 +144,19 @@ fun TvDetailScreen(
         Color.Transparent
     }
 
+    val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
+
     val detailContentFocusRequester = remember { FocusRequester() }
-    val seriesInformationFocusRequester = remember { FocusRequester() }
     val firstCastFocusRequester = remember { FocusRequester() }
     var showActorSheet by remember { mutableStateOf(false) }
     val actorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val favoriteSnackbarHostState = remember { SnackbarHostState() }
-    val firstContentFocusRequester =
-        if (uiState is TvDetailUiState.Success) seriesInformationFocusRequester else null
+
+    val hasCast = (uiState as? TvDetailUiState.Success)?.series?.aggregateCredits?.cast.orEmpty().isNotEmpty()
+    val firstContentFocusRequester = if (uiState is TvDetailUiState.Success) {
+        if (hasCast) firstCastFocusRequester else detailContentFocusRequester
+    } else null
 
     LaunchedEffect(seriesId) { viewModel.load(seriesId) }
     LaunchedEffect(favoriteActionError) {
@@ -181,22 +180,15 @@ fun TvDetailScreen(
                     IconButton(
                         onClick = onBackClick,
                         modifier = Modifier
-                            .then(if (!isTv) Modifier.focusHighlight(shape = CircleShape) else Modifier)
+                            .focusHighlight(shape = CircleShape)
+                            .onFocusChanged { focusState ->
+                                if (focusState.isFocused) {
+                                    coroutineScope.launch { scrollState.animateScrollTo(0) }
+                                }
+                            }
                             .then(
                                 if (isTv && firstContentFocusRequester != null) {
-                                    Modifier
-                                        .focusProperties { down = firstContentFocusRequester }
-                                        .onPreviewKeyEvent { event ->
-                                            if (
-                                                event.type == KeyEventType.KeyDown &&
-                                                event.key == Key.DirectionDown
-                                            ) {
-                                                firstContentFocusRequester.requestFocus()
-                                                true
-                                            } else {
-                                                false
-                                            }
-                                        }
+                                    Modifier.focusProperties { down = firstContentFocusRequester }
                                 } else {
                                     Modifier
                                 }
@@ -214,7 +206,12 @@ fun TvDetailScreen(
                         IconButton(
                             onClick = { viewModel.toggleFavorite(state.series) },
                             modifier = Modifier
-                                .then(if (!isTv) Modifier.focusHighlight(shape = CircleShape) else Modifier)
+                                .focusHighlight(shape = CircleShape)
+                                .onFocusChanged { focusState ->
+                                    if (focusState.isFocused) {
+                                        coroutineScope.launch { scrollState.animateScrollTo(0) }
+                                    }
+                                }
                                 .then(
                                     if (isTv && firstContentFocusRequester != null) {
                                         Modifier.focusProperties { down = firstContentFocusRequester }
@@ -262,7 +259,12 @@ fun TvDetailScreen(
                                 context.startActivity(Intent.createChooser(shareIntent, resources.getString(R.string.share_movie_chooser)))
                             },
                             modifier = Modifier
-                                .then(if (!isTv) Modifier.focusHighlight(shape = CircleShape) else Modifier)
+                                .focusHighlight(shape = CircleShape)
+                                .onFocusChanged { focusState ->
+                                    if (focusState.isFocused) {
+                                        coroutineScope.launch { scrollState.animateScrollTo(0) }
+                                    }
+                                }
                                 .then(
                                     if (isTv && firstContentFocusRequester != null) {
                                         Modifier.focusProperties { down = firstContentFocusRequester }
@@ -317,13 +319,14 @@ fun TvDetailScreen(
                     onSeasonSelected = viewModel::selectSeason,
                     onEpisodeClick = { episode -> onEpisodeClick(state.series.name.orEmpty(), episode) },
                     contentFocusRequester = detailContentFocusRequester,
-                    seriesInformationFocusRequester = seriesInformationFocusRequester.takeIf { isTv },
                     firstCastFocusRequester = firstCastFocusRequester,
+                    firstContentFocusRequester = firstContentFocusRequester.takeIf { isTv },
                     onCastClick = { personId ->
                         showActorSheet = true
                         viewModel.fetchActorDetails(personId)
                     },
-                    topPadding = topContentPadding
+                    topPadding = topContentPadding,
+                    scrollState = scrollState
                 )
             }
         }
@@ -357,11 +360,13 @@ fun TvDetailScreen(
  * @param onSeasonSelected Loads episodes for a selected season.
  * @param onEpisodeClick Navigates to episode detail view when tapped.
  * @param contentFocusRequester First focusable control in the detail content.
- * @param seriesInformationFocusRequester Series title and summary focus target.
  * @param firstCastFocusRequester First cast member focus target, when cast is available.
+ * @param firstContentFocusRequester Top bar focus requester for up navigation.
  * @param onCastClick Opens the shared actor detail sheet for the selected TMDB person.
  * @param topPadding Space reserved for the app bar and system insets.
+ * @param scrollState Scroll state for managing vertical scroll offset during focus changes.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun TvDetailContent(
     series: TmdbTvSummary,
@@ -371,10 +376,11 @@ private fun TvDetailContent(
     onSeasonSelected: (TmdbTvSeason) -> Unit,
     onEpisodeClick: (TmdbTvEpisode) -> Unit,
     contentFocusRequester: FocusRequester,
-    seriesInformationFocusRequester: FocusRequester?,
     firstCastFocusRequester: FocusRequester,
+    firstContentFocusRequester: FocusRequester?,
     onCastClick: (Int) -> Unit,
-    topPadding: Dp
+    topPadding: Dp,
+    scrollState: ScrollState
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
@@ -398,7 +404,7 @@ private fun TvDetailContent(
         modifier = Modifier
             .fillMaxSize()
             .focusGroup()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .padding(
                 top = topPadding + 16.dp,
                 start = 16.dp,
@@ -413,23 +419,13 @@ private fun TvDetailContent(
                 horizontalArrangement = Arrangement.spacedBy(24.dp)
             ) {
                 TvSeriesHero(series, Modifier.weight(0.6f))
-                TvSeriesInformation(
-                    series,
-                    Modifier.weight(0.4f),
-                    informationFocusRequester = seriesInformationFocusRequester.takeIf { isTv },
-                    nextFocusRequester = firstCastFocusRequester.takeIf { isTv && cast.isNotEmpty() }
-                )
+                TvSeriesInformation(series, Modifier.weight(0.4f))
             }
         } else {
             Column {
                 TvSeriesHero(series, Modifier.fillMaxWidth())
                 Spacer(Modifier.height(16.dp))
-                TvSeriesInformation(
-                    series,
-                    Modifier.fillMaxWidth(),
-                    informationFocusRequester = seriesInformationFocusRequester.takeIf { isTv },
-                    nextFocusRequester = firstCastFocusRequester.takeIf { isTv && cast.isNotEmpty() }
-                )
+                TvSeriesInformation(series, Modifier.fillMaxWidth())
             }
         }
         if (cast.isNotEmpty()) {
@@ -439,7 +435,9 @@ private fun TvDetailContent(
                 color = MaterialTheme.colorScheme.onSurface
             )
             LazyRow(
-                modifier = Modifier.focusGroup(),
+                modifier = Modifier
+                    .focusRestorer()
+                    .focusGroup(),
                 contentPadding = PaddingValues(vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -457,7 +455,9 @@ private fun TvDetailContent(
                             )
                             .focusProperties {
                                 down = contentFocusRequester
-                                if (isTv) seriesInformationFocusRequester?.let { up = it }
+                                if (isTv && firstContentFocusRequester != null) {
+                                    up = firstContentFocusRequester
+                                }
                             }
                     )
                 }
@@ -623,12 +623,18 @@ private fun TvCastMember(
                 modifier = Modifier
                     .size(60.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .border(
+                        width = if (isFocused) 2.dp else 0.dp,
+                        color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                        shape = CircleShape
+                    ),
                 placeholder = painterResource(R.drawable.ic_launcher_foreground),
                 error = painterResource(R.drawable.ic_launcher_foreground),
                 fallback = painterResource(R.drawable.ic_launcher_foreground),
                 contentScale = ContentScale.Crop
             )
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 name,
                 style = MaterialTheme.typography.labelSmall,
@@ -664,6 +670,11 @@ private fun TvCastMember(
             modifier = modifier
                 .width(90.dp)
                 .padding(4.dp)
+                .border(
+                    width = if (isFocused) 2.dp else 0.dp,
+                    color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    shape = MaterialTheme.shapes.small
+                )
         ) {
             content()
         }
@@ -732,32 +743,18 @@ private fun TvSeriesHero(series: TmdbTvSummary, modifier: Modifier) {
  *
  * @param series TV series metadata.
  * @param modifier Layout constraints for the metadata.
- * @param informationFocusRequester Optional focus target for the title and summary.
- * @param nextFocusRequester Optional next focus target below the series information.
  */
 @Composable
 private fun TvSeriesInformation(
     series: TmdbTvSummary,
-    modifier: Modifier,
-    informationFocusRequester: FocusRequester? = null,
-    nextFocusRequester: FocusRequester? = null
+    modifier: Modifier
 ) {
     Column(modifier = modifier) {
         Text(
             series.name.orEmpty(),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = informationFocusRequester?.let { requester ->
-                Modifier
-                    .focusRequester(requester)
-                    .focusable()
-                    .then(
-                        nextFocusRequester?.let { next ->
-                            Modifier.focusProperties { down = next }
-                        } ?: Modifier
-                    )
-            } ?: Modifier
+            color = MaterialTheme.colorScheme.onSurface
         )
         Spacer(Modifier.height(8.dp))
         Text(

@@ -104,7 +104,17 @@ class DetailViewModel @Inject constructor(
             try {
                 // Fetch full details (cast, images, etc.) in the background
                 val fullDetailsResponse = ytsRepository.getMovieFullDetails(movie.id)
-                val fullMovie = fullDetailsResponse.data?.movie ?: movie
+                var fullMovie = fullDetailsResponse.data?.movie ?: movie
+
+                // Fetch richer TMDB cast if IMDb code is available
+                val imdbId = fullMovie.imdbCode ?: movie.imdbCode
+                if (!imdbId.isNullOrBlank()) {
+                    val tmdbCast = tmdbRepository.getMovieCastByImdbId(imdbId)
+                    if (tmdbCast.isNotEmpty()) {
+                        fullMovie = fullMovie.copy(cast = tmdbCast)
+                    }
+                }
+
                 _uiState.value = DetailUiState.Success(fullMovie, isFavorite)
                 
                 // Clear any existing voice job before starting a new one
@@ -118,12 +128,18 @@ class DetailViewModel @Inject constructor(
                     ytsRepository.recordGenreVisit(genre)
                 }
             } catch (e: Exception) {
+                val imdbId = movie.imdbCode
+                val movieWithCast = if (!imdbId.isNullOrBlank()) {
+                    val tmdbCast = tmdbRepository.getMovieCastByImdbId(imdbId)
+                    if (tmdbCast.isNotEmpty()) movie.copy(cast = tmdbCast) else movie
+                } else movie
+
                 val isFavorite = ytsRepository.isFavorite(movie.id)
-                _uiState.value = DetailUiState.Success(movie, isFavorite)
+                _uiState.value = DetailUiState.Success(movieWithCast, isFavorite)
                 
                 voiceJob?.cancel()
                 voiceJob = viewModelScope.launch {
-                    handleVoice(movie)
+                    handleVoice(movieWithCast)
                 }
             }
         }
@@ -137,14 +153,23 @@ class DetailViewModel @Inject constructor(
                 val isFavorite = ytsRepository.isFavorite(movieId)
                 val fullDetailsResponse = ytsRepository.getMovieFullDetails(movieId)
                 fullDetailsResponse.data?.movie?.let { movie ->
-                    _uiState.value = DetailUiState.Success(movie, isFavorite)
+                    var fullMovie = movie
+                    val imdbId = fullMovie.imdbCode
+                    if (!imdbId.isNullOrBlank()) {
+                        val tmdbCast = tmdbRepository.getMovieCastByImdbId(imdbId)
+                        if (tmdbCast.isNotEmpty()) {
+                            fullMovie = fullMovie.copy(cast = tmdbCast)
+                        }
+                    }
+
+                    _uiState.value = DetailUiState.Success(fullMovie, isFavorite)
                     
                     voiceJob?.cancel()
                     voiceJob = viewModelScope.launch {
-                        handleVoice(movie)
+                        handleVoice(fullMovie)
                     }
                     
-                    movie.genres?.forEach { genre ->
+                    fullMovie.genres?.forEach { genre ->
                         ytsRepository.recordGenreVisit(genre)
                     }
                 } ?: run {
