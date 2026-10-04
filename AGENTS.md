@@ -25,6 +25,8 @@ This document provides mandatory guidance, architecture standards, and developme
 * ❌ **CARD FOCUS HIGHLIGHTS**: Preserve each card type's established focus treatment. Movie poster cards on TV use 1.1x zoom scale (`focusedScale = 1.1f`) and do NOT draw an extra `.border()` outline. Other card-like controls (for example cast items) must match their own movie counterpart's focus treatment; do not generalize the poster-card rule to every TV surface.
 * ❌ **DETERMINISTIC FOCUS LINKS**: Action icons in `TopAppBar` MUST define explicit `focusProperties { down = nextFocusRequester }` to point directly to chips/lists below and prevent focus search dead zones.
 * ❌ **YOUTUBE PLAYER FOCUS ISOLATION**: `YouTubePlayerView` WebViews trap D-pad focus. Always set `isFocusable = false`, `isFocusableInTouchMode = false`, and `descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS`, and overlay a native `androidx.tv.material3.IconButton` for play/pause control.
+* ✅ **FOCUS HIGHLIGHTERS**: Use `focusHighlight()` modifier for all interactive elements in TV mode. For circular elements (cast member portraits): Apply 2.dp border with `MaterialTheme.colorScheme.primary` when focused. Maintain homogeneous focus indicator shapes, colors, scale, and behavior across all screens. Do NOT use hardcoded colors/styles - always use semantic tokens from `MaterialTheme`.
+* ✅ **SCROLL BEHAVIOR ON FOCUS**: When top bar gains focus, smoothly scroll to top (`scrollState.animateScrollTo(0)`) to show full hero image. Share `scrollState` between components when synchronized scrolling is needed. Add `focusRestorer()` to lists/grids to maintain focus position when items change.
 
 ### 3. Glass Blur Header (Haze 2.0)
 * **Header Scope**: Apply `Modifier.hazeGlass(input = HazeInput.Sources(hazeState))` to the ENTIRE top header container (`TopAppBar` + filter chips), not `TopAppBar` alone.
@@ -46,6 +48,10 @@ This document provides mandatory guidance, architecture standards, and developme
 * **Episode Torrent Matching**: EZTV lookup uses the TV series IMDb ID from TMDB external IDs with the `tt` prefix removed, then matches the exact season and episode numbers. Preserve this identity chain; TMDB series IDs are not IMDb IDs.
 * **Episode Downloads**: TV episode history is a `DownloadedEpisode` in the signed-in user's Firestore `tv_downloads` subcollection, keyed by torrent hash. Do not save episode records to the movie `downloads` collection or model them as `DownloadedMovie`.
 * **TV Magnet Launch**: Episode release buttons launch the supplied magnet URI (or a hash-derived magnet URI) directly with `ACTION_VIEW` and `CATEGORY_BROWSABLE`, without an intent chooser.
+* ✅ **TMDB DATA INTEGRATION FOR MOVIES**: 
+  - **Data Sourcing Priority**: Prefer TMDB for cast/crew details, character names, high-quality profile images; use YTS as primary movie source with TMDB as enrichment via IMDb ID.
+  - **Implementation Pattern**: When movie loads, check if `imdbCode` is available; call TMDB `find/{external_id}` with IMDb ID to get TMDB movie ID; call TMDB `/movie/{movie_id}/credits` to get full cast/crew; map TMDB responses to app's `Cast` model (name → cast member name, characterName → character portrayed, urlSmallImage → `https://image.tmdb.org/t/p/w185{profile_path}`).
+  - **Critical Handling**: Always handle API failures/network issues - never crash on missing TMDB data; show appropriate loading states during TMDB data fetching; preserve existing data model structure when enhancing with TMDB data; use TMDB's standard image URL patterns (w185 for cast profiles).
 
 ### 6. Layout & Content Standards
 * **Placeholder Alignment**: `MovieListPlaceholder` and `MovieDetailPlaceholder` skeleton states MUST use identical `contentPadding` values as loaded content states to prevent vertical layout jumps.
