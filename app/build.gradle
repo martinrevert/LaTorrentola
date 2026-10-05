@@ -81,6 +81,19 @@ def getGitVersionCount(providers) {
 
 def gitVersionCount = getGitVersionCount(providers)
 
+def getGitBranch(providers) {
+    try {
+        def output = providers.exec {
+            commandLine 'git', 'rev-parse', '--abbrev-ref', 'HEAD'
+            ignoreExitValue = true
+        }.standardOutput.asText.getOrNull()?.trim()
+        if (output && !output.isEmpty()) return output
+    } catch (Exception ignored) {}
+    return "unknown"
+}
+
+def gitBranch = getGitBranch(providers)
+
 android {
     namespace = 'com.martinrevert.latorrentola'
     compileSdk = 37
@@ -177,7 +190,8 @@ android {
 
 // Global base name for all generated archives (APKs, AABs, etc.)
 base {
-    archivesName.set("LaTorrentola-v3.0.$gitVersionCount")
+    def safeBranch = gitBranch.replaceAll(/[^A-Za-z0-9.-]/, "-")
+    archivesName.set("${safeBranch}-LaTorrentola-v3.0.$gitVersionCount")
 }
 
 dependencies {
