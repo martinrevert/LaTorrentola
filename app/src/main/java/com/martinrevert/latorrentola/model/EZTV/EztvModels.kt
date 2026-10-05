@@ -130,6 +130,34 @@ fun EztvTorrent.downloadInfoHash(): String? {
     return (directHash ?: magnetHash)?.lowercase()
 }
 
+/**
+ * Checks whether this release matches a specific target season and episode number,
+ * using JSON fields or title/filename regex patterns as fallback.
+ */
+fun EztvTorrent.matchesEpisode(targetSeason: Int, targetEpisode: Int): Boolean {
+    if (seasonNumberInt == targetSeason && episodeNumberInt == targetEpisode) {
+        return true
+    }
+
+    val textToSearch = "${title} ${filename.orEmpty()}"
+
+    val sEPattern = Regex("""[sS](\d{1,2})[eE](\d{1,2})""", RegexOption.IGNORE_CASE)
+    sEPattern.find(textToSearch)?.let { match ->
+        val s = match.groupValues[1].toIntOrNull()
+        val e = match.groupValues[2].toIntOrNull()
+        if (s == targetSeason && e == targetEpisode) return true
+    }
+
+    val xPattern = Regex("""\b(\d{1,2})x(\d{1,2})\b""", RegexOption.IGNORE_CASE)
+    xPattern.find(textToSearch)?.let { match ->
+        val s = match.groupValues[1].toIntOrNull()
+        val e = match.groupValues[2].toIntOrNull()
+        if (s == targetSeason && e == targetEpisode) return true
+    }
+
+    return false
+}
+
 /** Pattern for extracting a BitTorrent v1 info hash from a magnet URI. */
 private val MAGNET_INFO_HASH_PATTERN =
     Regex("""xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})""", RegexOption.IGNORE_CASE)

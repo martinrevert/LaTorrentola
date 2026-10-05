@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.network
 
 import android.util.Log
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
+import com.martinrevert.latorrentola.model.EZTV.matchesEpisode
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -40,7 +41,7 @@ class EztvRepository @Inject constructor(
             )
 
             response.torrents.filter { torrent ->
-                torrent.seasonNumberInt == seasonNumber && torrent.episodeNumberInt == episodeNumber
+                torrent.matchesEpisode(seasonNumber, episodeNumber)
             }.sortedByDescending { it.seeds }
         } catch (e: Exception) {
             Log.e("EztvRepository", "Error fetching EZTV torrents for IMDb ID $cleanImdbId: ${e.message}")

@@ -340,6 +340,10 @@ private fun SettingsScreenContent(
                     selectedMode = uiState.torrentHandlingMode,
                     onModeSelected = onSetTorrentHandlingMode
                 )
+                AutoPlayQualitySetting(
+                    selectedMethod = uiState.autoPlayQualitySelectionMethod,
+                    onMethodSelected = onSetAutoPlayQualitySelectionMethod
+                )
                 OpenSubtitlesCredentialsSetting(
                     uiState = uiState,
                     isTv = isTv,
