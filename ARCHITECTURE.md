@@ -10,30 +10,33 @@ The application follows **Android Clean Architecture** principles paired with re
 
 ```mermaid
 graph TD
-    subgraph UI_Layer [UI Layer - Jetpack Compose & TV Material3]
+    subgraph UI_Layer [UI Layer - Jetpack Compose and TV Material 3]
         MA[MainActivity]
         NV[AppNavigation - Nav3]
         LS[LoginScreen]
         HS[HomeScreen]
-        DS[DetailScreen]
+        DS[MovieDetailScreen]
         SS[SearchScreen]
         STS[SettingsScreen]
         TVGR[TvGenreResultsScreen]
         TVDS[TvDetailScreen]
         TVES[TvEpisodeDetailScreen]
-        
+        TDS[TorrentDownloadsScreen]
+        LPA[LocalPlayerActivity]
+
         subgraph Modular_Components [Reusable Components - ui/components]
             ML[MovieList]
             MI[MovieItem]
-            AC[AdaptiveChip / Chips]
-            TVC[TV catalog components / TvSeriesGrid]
+            AC[AdaptiveChip/Chips]
+            TVC[TvCatalogComponents/TvSeriesGrid]
             GB[GenreBottomSheet]
             AB[ActorDetailBottomSheet]
             PL[Placeholders]
+            QD[QualityChoiceDialog]
         end
     end
 
-    subgraph Presentation_Layer [Presentation Layer]
+    subgraph Presentation_Layer [Presentation Layer - ViewModels]
         AVM[AuthViewModel]
         HVM[HomeViewModel]
         DVM[DetailViewModel]
@@ -43,56 +46,90 @@ graph TD
         TVGVM[TvGenreResultsViewModel]
         TVDVM[TvDetailViewModel]
         TVEVM[TvEpisodeDetailViewModel]
+        TDVM[TorrentDownloadsViewModel]
+        TPVM[TvPlayerViewModel]
     end
 
     subgraph Data_Layer [Data Layer]
         AREP[AuthRepository]
         UREP[UserLibraryRepository - Firestore]
         REP[YtsRepository]
-        RS[YtsService - Retrofit 3]
+        RS[YtsService - Retrofit]
         TR[TmdbRepository / TmdbService]
         ER[EztvRepository / EztvService]
+        OSR[OpenSubtitlesRepository / Service]
+        FCMR[FcmRepository / FcmService]
         DB[AppDatabase - Room]
+        GENDAO[GenreDao]
         TVGDAO[TvGenreDao]
+        TDAO[TorrentDownloadDao]
+        DATEDAO[DateDao]
         MLK[ML Kit Translator]
         PM[PreferenceManager]
+        TDS_SVC[TorrentDownloadService - Foreground]
+        HTTP[VerifiedTorrentHttpServer]
+    end
+
+    subgraph External [External APIs and Services]
+        YTS[YTS API]
+        TMDB[TMDB API]
+        EZTV[EZTV API]
+        OSAPI[OpenSubtitles API]
+        FCMBE[App FCM Backend]
+        FIREBASE[Firebase Auth and Firestore]
+        CAST[Chromecast / Cast SDK]
     end
 
     MA --> NV
-    NV --> LS & HS & DS & SS & STS
+    NV --> LS & HS & DS & SS & STS & TDS
     NV --> TVGR & TVDS & TVES
+    MA --> LPA
+
     HS & SS --> ML & AC & PL
     TVGR & TVDS & TVES --> TVC & PL
-    DS --> MI & PL
-    
+    DS --> MI & PL & QD & AB
+    TVES --> QD
+    STS --> TDS
+
     LS --> AVM
-    HS --> HVM
+    HS --> HVM & TVHVM
     DS --> DVM
     SS --> SVM
     STS --> STVM
-    HS --> TVHVM
     TVGR --> TVGVM
     TVDS --> TVDVM
     TVES --> TVEVM
-    
+    TDS --> TDVM
+    LPA --> TPVM
+
     AVM --> AREP
-    AREP -->|Firebase Auth| FAN[Firebase]
+    AREP -->|Firebase Auth| FIREBASE
     HVM & DVM & SVM & STVM & TVDVM & TVEVM --> UREP
+    UREP -->|Firestore| FIREBASE
     HVM & DVM & SVM --> REP
-    STVM --> PM
-    REP --> RS
-    REP --> DB
-    REP --> MLK
-    REP --> UREP
+    STVM --> PM & FCMR
+    REP --> RS & DB & MLK & UREP
+    RS -->|YTS API| YTS
     TVHVM & TVGVM & TVDVM & TVEVM --> TR
     TVEVM --> ER
     TR --> TVGDAO
-    TR -->|TMDB API| TMDB[The Movie Database]
-    ER -->|EZTV API| EZTV[EZTV]
+    TR -->|TMDB API| TMDB
+    ER -->|EZTV API| EZTV
     TVGDAO --> DB
+    GENDAO --> DB
+    TDAO --> DB
+    DATEDAO --> DB
+    DVM & TVEVM --> OSR
+    OSR -->|OpenSubtitles API| OSAPI
+    STVM --> UREP
+    FCMR -->|FCM backend| FCMBE
+    TDVM --> TDAO
+    TDS_SVC --> TDAO & HTTP
+    LPA --> TDS_SVC & HTTP & OSR & UREP
+    LPA -->|Cast SDK| CAST
 ```
 
-**TV series catalog path:** Home deliberately hosts two separate feeds. The movie path uses YTS and `Movie`; the TV path uses TMDB and `TmdbTvSummary`/`TmdbTvEpisode`. Series IDs remain TMDB IDs throughout navigation. EZTV lookup is keyed by the linked IMDb ID, not the TMDB ID.
+**Dual catalog design:** Home hosts two independent feeds. The movie path sources from YTS using the `Movie` model; the TV path sources from TMDB using `TmdbTvSummary`/`TmdbTvEpisode`. Series IDs remain TMDB IDs throughout navigation. EZTV lookup is keyed by the linked IMDb ID (numeric part only, `tt` prefix stripped).
 
 ### TV Subsystem Entry Points
 
@@ -106,13 +143,25 @@ graph TD
 | Local genre usage and cloud episode history | `database/TvGenreDao.kt`, `model/stats/TvGenreStats.kt`, `model/user/DownloadedEpisode.kt`, `network/UserLibraryRepository.kt` |
 | Typed route definitions and screen transitions | `ui/navigation/AppNavigation.kt` |
 
+### In-App Torrent & Playback Subsystem
+
+| Concern | Main implementation |
+|---|---|
+| Download orchestration (libtorrent4j), piece verification, and queue | `service/TorrentDownloadService.kt` |
+| Verified HTTP byte-range server for local & Cast playback | `service/VerifiedTorrentHttpServer.kt` |
+| Local ExoPlayer + Cast player activity | `ui/player/LocalPlayerActivity.kt`, `ui/player/TvPlayerViewModel.kt` |
+| In-app download management screen | `ui/downloads/TorrentDownloadsScreen.kt`, `TorrentDownloadsViewModel.kt` |
+| Torrent mode setting (`EXTERNAL_CLIENT` / `LOCAL_PLAYBACK` / `CHROMECAST`) | `model/torrent/TorrentHandlingMode.kt` |
+| Subtitle search and download | `network/OpenSubtitlesRepository.kt`, `OpenSubtitlesService.kt` |
+| Persistent in-app transfer records | `database/TorrentDownloadDao.kt`, `model/torrent/TorrentDownload.kt` |
+
 ---
 
 ## 🎨 UI Architecture & Visual System
 
 ### 1. Haze 2.0 Visual Blur System
 * **Platform Requirements**: Hardware-accelerated real-time blur (`RenderEffect`) requires Android 12+ (API 31+).
-* **Pre-Android 12 Fallback**: On devices running API < 31 and during Android Studio Compose Previews, the app gracefully falls back to a semi-opaque surface container (`surface.copy(alpha = 0.9f)`) to prevent invisible or overlapping content.
+* **Pre-Android 12 Fallback**: On devices running API < 31 and during Android Studio Compose Previews, the app falls back to a semi-opaque surface container (`surface.copy(alpha = 0.9f)`) to prevent invisible or overlapping content.
 * **Animated Interpolation (`EaseInOutCubic`)**: Translucent opacity (`hazeAlpha`) is calculated dynamically based on grid scroll state (`gridState`). It interpolates smoothly between `1.0f` (at rest at the top) and `0.15f` (when scrolled) over 600 ms using `EaseInOutCubic`.
 * **Full-Screen `hazeSource`**: The scrollable list container fills the entire screen (`fillMaxSize()`) behind the top header and bottom system navigation bar, delivering a true edge-to-edge frosted glass experience.
 
@@ -125,56 +174,141 @@ graph TD
 
 ## 📦 Data Layer & Hybrid Persistence
 
-1. **Retrofit 3.0 + Gson**: Fetches movie catalog data from the YTS API.
-2. **TMDB Retrofit service**: Supplies TV feeds, genres, genre discovery, TV details, seasons/episodes, and series external IDs. `TMDB_API_KEY` is injected via `BuildConfig` from local build configuration; it must not be hardcoded.
-3. **EZTV Retrofit service**: Supplies torrent releases for a numeric IMDb ID. `EztvRepository` filters the series results by exact season and episode number and sorts matches by seeds.
-4. **Cloud Firestore (Cloud-First Sync)**: Synchronizes user favorites and movie downloads separately from TV episode downloads. Episode records use `DownloadedEpisode` in `users/{uid}/tv_downloads/{hash}`.
-5. **Room Database (Local Metadata)**: Stores session metadata and separate movie/TV genre usage. `TvGenreDao` persists `tv_genre_stats`; TV genres are ordered by usage and then name.
-6. **Google ML Kit Translate**: Performs local, on-device AI translation of movie summaries from English to Spanish without network latency or cloud API fees.
+1. **Retrofit + Gson**: Fetches movie catalog data from the YTS API.
+2. **TMDB Retrofit service**: Supplies TV feeds, genres, genre discovery, TV details, seasons/episodes, cast/crew enrichment for movies via IMDb ID, and series external IDs. `TMDB_API_KEY` is injected via `BuildConfig`; it must not be hardcoded.
+3. **EZTV Retrofit service**: Supplies torrent releases for a numeric IMDb ID. `EztvRepository` filters by exact season/episode and sorts matches by seed count.
+4. **OpenSubtitles Retrofit service**: Searches and downloads subtitle tracks. Credentials (username/password) are stored encrypted via Android Keystore; the API key is injected via `BuildConfig`.
+5. **libtorrent4j (`TorrentDownloadService`)**: Foreground service managing a native libtorrent session. Downloads are queued, pieces are hash-verified, and byte ranges are served via `VerifiedTorrentHttpServer` only after verification. Raises `minSdk` to Android 9 (API 28).
+6. **Media3 ExoPlayer + Cast SDK (`LocalPlayerActivity`)**: Plays media from the local HTTP server. Switches between `ExoPlayer` (local) and `CastPlayer` (Chromecast) when a Cast session becomes available on the same LAN.
+7. **Cloud Firestore (Cloud-First Sync)**: Synchronizes user favorites and movie downloads (`users/{uid}/downloads/{hash}`) separately from TV episode downloads (`users/{uid}/tv_downloads/{hash}`). Also stores per-user cloud preferences (language filter, minimum rating).
+8. **Room Database (Local Metadata)**: Stores in-app transfer records (`TorrentDownloadDao`), movie genre usage (`GenreDao`), TV genre usage (`TvGenreDao`), and session date metadata (`DateDao`).
+9. **Google ML Kit Translate**: On-device AI translation of movie summaries from English to Spanish.
+10. **Firebase Cloud Messaging**: Push notifications managed by `FcmRepository`/`FcmService`. Token is registered with the app backend on sign-in and removed on sign-out.
 
 ---
 
 ## 🔄 Sequence & Flow Diagrams
 
-### 1. Movie Discovery & Pagination Flow
+### 1. Movie Discovery & Pagination
 ```mermaid
 sequenceDiagram
     participant U as User
     participant HS as HomeScreen
     participant VM as HomeViewModel
     participant R as YtsRepository
-    participant N as YtsService (Retrofit)
+    participant N as YtsService
 
-    U->>HS: Open App
+    U->>HS: Open App / Select Movie mode
     HS->>VM: Observe uiState (StateFlow)
     VM->>R: getMovies(page, filters)
     R->>N: listMovies(page)
     N-->>R: List<Movie>
-    R->>R: Apply Language Exclusion Filter (MovieFilter)
+    R->>R: Apply language and rating filters (MovieFilter)
     R-->>VM: Flow<List<Movie>>
     VM-->>HS: Update UI State
-    HS-->>U: Render Grid with Haze Glass Blur
-    U->>HS: Scroll to Bottom
+    HS-->>U: Render grid with Haze glass blur
+    U->>HS: Scroll to bottom
     HS->>VM: loadMore()
+    VM->>R: getMovies(nextPage, filters)
 ```
 
-### 2. TV Series Discovery, Episode Releases & Downloads
+### 2. Movie Details, TMDB Cast Enrichment & Torrent Mode Selection
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant DS as MovieDetailScreen
+    participant VM as DetailViewModel
+    participant TR as TmdbRepository
+    participant TMDB as TMDB API
+    participant MLK as ML Kit Translator
+    participant UREP as UserLibraryRepository
+
+    U->>DS: Select movie poster
+    DS->>VM: Initialize(Movie)
+    VM->>MLK: translate(summary EN to ES)
+    MLK-->>VM: Spanish summary
+    VM->>TR: findByImdbId(imdbCode)
+    TR->>TMDB: find/imdb_id external_source=imdb_id
+    TMDB-->>TR: TMDB movie ID
+    TR->>TMDB: /movie/tmdb_id/credits
+    TMDB-->>TR: Cast and crew list
+    TR-->>VM: List of Cast (name, character, w185 profile image)
+    VM-->>DS: Full details, translated summary, cast, quality options
+    U->>DS: Tap quality badge (2160p / 1080p / 720p)
+    DS->>DS: Show QualityChoiceDialog
+    alt EXTERNAL_CLIENT mode
+        DS->>DS: Build magnet URI
+        DS-->>U: startActivity ACTION_VIEW magnet CATEGORY_BROWSABLE
+        DS->>UREP: markAsDownloaded(DownloadedMovie)
+    else LOCAL_PLAYBACK or CHROMECAST mode
+        DS->>DS: Build magnet URI
+        DS-->>U: Start TorrentDownloadService and open LocalPlayerActivity
+        DS->>UREP: markAsDownloaded(DownloadedMovie)
+    end
+    U->>DS: Tap favorite icon
+    DS->>UREP: toggleFavorite(movie)
+    UREP->>UREP: users/uid/favorites/movieId
+```
+
+### 3. In-App Torrent Download, Playback & Cast
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant LPA as LocalPlayerActivity
+    participant TDS as TorrentDownloadService
+    participant LT as libtorrent4j
+    participant HTTP as VerifiedTorrentHttpServer
+    participant EXO as ExoPlayer
+    participant CAST as CastPlayer
+    participant OSR as OpenSubtitlesRepository
+    participant TDAO as TorrentDownloadDao
+
+    LPA->>TDS: Start (magnet URI, expected file)
+    TDS->>TDAO: Insert TorrentDownload record (queued)
+    TDS->>LT: Add torrent, set sequential piece priority
+    LT-->>TDS: Piece hash verified events
+    TDS->>HTTP: Register verified byte ranges
+    TDS->>TDAO: Update progress and status
+    TDS-->>LPA: Broadcast startup buffer ready
+    LPA->>HTTP: GET http://127.0.0.1:port/file (range request)
+    HTTP-->>LPA: Verified byte range
+    LPA->>EXO: setMediaItem(local HTTP URL)
+    EXO-->>U: Playback begins
+    opt Cast session available on LAN
+        LPA->>CAST: Load media item (local HTTP URL)
+        CAST-->>U: Chromecast plays stream
+    end
+    opt Subtitle search
+        U->>LPA: Request subtitles
+        LPA->>OSR: searchSubtitles(title, language)
+        OSR-->>LPA: List of SubtitleResult
+        U->>LPA: Select subtitle
+        LPA->>OSR: downloadSubtitle(fileId)
+        OSR-->>LPA: SRT/VTT file path
+        LPA->>EXO: addSubtitleTrack(file)
+    end
+    LT-->>TDS: Download complete
+    TDS->>TDAO: Mark status COMPLETE
+    TDS-->>LPA: Broadcast complete
+```
+
+### 4. TV Series Discovery, Episode Releases & Downloads
 ```mermaid
 sequenceDiagram
     participant U as User
     participant HS as HomeScreen
-    participant TVVM as TvHomeViewModel / TvGenreResultsViewModel
-    participant TD as TmdbRepository / TmdbService
-    participant TMDB as TMDB
-    participant DB as TvGenreDao / Room
+    participant TVVM as TvHomeViewModel and TvGenreResultsViewModel
+    participant TD as TmdbRepository
+    participant TMDB as TMDB API
+    participant DB as TvGenreDao/Room
     participant NAV as AppNavigation
-    participant SD as TvDetailScreen / TvDetailViewModel
-    participant ED as TvEpisodeDetailScreen / TvEpisodeDetailViewModel
-    participant EZ as EztvRepository / EZTV
-    participant UL as UserLibraryRepository / Firestore
-    participant EXT as Torrent Client
+    participant SD as TvDetailScreen/TvDetailViewModel
+    participant ED as TvEpisodeDetailScreen/TvEpisodeDetailViewModel
+    participant EZ as EztvRepository/EZTV
+    participant UL as UserLibraryRepository/Firestore
+    participant EXT as OS Torrent Client
 
-    U->>HS: Select TV mode or genre
+    U->>HS: Select TV mode or genre chip
     HS->>TVVM: Activate feed / record genre visit
     TVVM->>TD: Request feed or discover by genre (paged)
     TD->>TMDB: TV API request with configured API key
@@ -182,29 +316,26 @@ sequenceDiagram
     TD-->>TVVM: Series data
     TD->>DB: Observe/update local TV genre usage
     TVVM-->>HS: Render sorted genre chips and series grid
-    U->>HS: Select a series
-    HS->>NAV: Route.TvDetail(seriesId)
+    U->>HS: Select a series poster
+    HS->>NAV: Route.TvDetail(tmdbSeriesId)
     NAV->>SD: Open series details
-    SD->>TD: Fetch series and selected season episodes
-    TD->>TMDB: TV details / season requests
+    SD->>TD: Fetch series metadata and first non-special season
+    TD->>TMDB: /tv/id and /tv/id/season/n
     TMDB-->>SD: Series metadata and episodes
     U->>SD: Select episode
     SD->>NAV: Route.TvEpisodeDetail(seriesId, season, episode, metadata)
     NAV->>ED: Open episode details
     ED->>TD: Resolve series IMDb external ID
-    TD->>TMDB: TV external_ids request
-    TMDB-->>ED: IMDb ID
-    ED->>EZ: Get releases by IMDb ID; match season/episode
+    TD->>TMDB: /tv/id/external_ids
+    TMDB-->>ED: IMDb ID (tt prefix stripped for EZTV)
+    ED->>EZ: Get releases by numeric IMDb ID; match S/E exactly
     EZ-->>ED: Matching EZTV torrents, seed-sorted
     U->>ED: Select release
-    ED->>UL: Save DownloadedEpisode by hash
-    UL->>UL: users/{uid}/tv_downloads/{hash}
-    ED->>EXT: ACTION_VIEW magnet (CATEGORY_BROWSABLE)
+    ED->>UL: Save DownloadedEpisode (users/uid/tv_downloads/hash)
+    ED-->>EXT: ACTION_VIEW magnet URI (CATEGORY_BROWSABLE, no chooser)
 ```
 
-**Ownership and identifiers:** TV catalog, genre discovery, and details are TMDB-backed; torrent release metadata is EZTV-backed. Navigation carries the TMDB series ID plus season/episode identity. The TMDB external-ID endpoint bridges to IMDb, and EZTV expects the IMDb numeric part without `tt`. Room stores only local TV genre visit statistics; Firestore stores per-user TV episode download history in its own `tv_downloads` subcollection.
-
-### 3. Search & Cloud Favorites Sync
+### 5. Search & Cloud Library
 ```mermaid
 sequenceDiagram
     participant U as User
@@ -214,41 +345,27 @@ sequenceDiagram
     participant UR as UserLibraryRepository
     participant FS as Cloud Firestore
 
-    U->>SS: Enter Query / Select Favorites
-    SS->>VM: onSearch(query)
-    alt Remote Search
+    U->>SS: Enter query / select tab
+    alt Remote YTS search
+        SS->>VM: onSearch(query)
         VM->>R: searchMovies(query)
-        R-->>VM: YTS Results
-    else Cloud Favorites
-        VM->>R: getFavoriteMovies()
-        R->>UR: getFavoriteMovies()
-        UR->>FS: Query by UID
-        FS-->>UR: List<Movie>
-        UR-->>R: List<Movie>
-        R-->>VM: Results
+        R-->>VM: YTS results (language-filtered)
+    else Favorites tab
+        VM->>UR: getFavoriteMovies()
+        UR->>FS: users/uid/favorites (no rating filter)
+        FS-->>UR: List of Movie
+        UR-->>VM: Favorites list
+    else Downloaded movies tab
+        VM->>UR: getDownloadedMovies()
+        UR->>FS: users/uid/downloads (no rating filter)
+        FS-->>UR: List of DownloadedMovie
+        UR-->>VM: Downloads list
     end
     VM-->>SS: Update UI State
+    SS-->>U: Render results grid
 ```
 
-### 4. Movie Details, On-Device Translation & Magnet Links
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant DS as DetailScreen
-    participant VM as DetailViewModel
-    participant MLK as ML Kit Translator
-    participant EXT as Torrent Client / NAS
-
-    U->>DS: Select Movie
-    DS->>VM: Initialize(Movie)
-    VM->>MLK: translate(Summary)
-    MLK-->>VM: Spanish Summary
-    VM-->>DS: Display Details & Quality Options
-    U->>DS: Tap Torrent Quality Option (2160p / 1080p)
-    DS->>EXT: Emit Intent with Magnet Link (or Transdrone / Synology)
-```
-
-### 5. Google Credential Manager Authentication
+### 6. Google Credential Manager Authentication
 ```mermaid
 sequenceDiagram
     participant U as User
@@ -256,18 +373,46 @@ sequenceDiagram
     participant VM as AuthViewModel
     participant R as AuthRepository
     participant CM as Credential Manager
-    participant F as Firebase Auth
+    participant FA as Firebase Auth
+    participant FS as Cloud Firestore
+    participant FCM as FcmRepository
 
-    U->>LS: Tap "Sign in with Google"
+    U->>LS: Tap Sign in with Google
     LS->>VM: signInWithGoogle()
     VM->>R: signInWithGoogle()
     R->>CM: getCredential()
-    CM-->>U: Show Native Google Account Picker
-    U->>CM: Select Account
+    CM-->>U: Show native Google account picker
+    U->>CM: Select account
     CM-->>R: ID Token
-    R->>F: signInWithCredential(ID Token)
-    F-->>R: FirebaseUser
-    R-->>VM: Success (UID)
-    VM-->>LS: AuthState.Success
-    LS->>U: Navigate to HomeScreen & Sync Library
+    R->>FA: signInWithCredential(ID Token)
+    FA-->>R: FirebaseUser (UID)
+    R-->>VM: AuthState.Success(UID)
+    VM->>FCM: syncToken(token, subscribe=true)
+    FCM-->>VM: Token registered with backend
+    VM-->>LS: Navigate to HomeScreen
+    LS->>FS: Start observing users/uid (favorites, downloads, preferences)
 ```
+
+### 7. Push Notifications (FCM)
+```mermaid
+sequenceDiagram
+    participant FCMBE as App FCM Backend
+    participant GCM as Google FCM
+    participant MFMS as MyFirebaseMessagingService
+    participant MA as MainActivity
+    participant U as User
+
+    FCMBE->>GCM: Send push notification
+    GCM-->>MFMS: onMessageReceived(RemoteMessage)
+    MFMS->>MFMS: Build NotificationCompat (channel, intent)
+    MFMS-->>U: System notification displayed
+    U->>MA: Tap notification
+    MA->>MA: Handle intent extras (PELI movie deep-link)
+    MA-->>U: Navigate to relevant screen
+    note over MFMS: Token refresh: onNewToken() calls FcmRepository.subscribe(newToken)
+```
+
+**Identity and ownership notes:**
+- TV catalog, genre discovery, and details are TMDB-backed. Torrent release metadata is EZTV-backed. Navigation carries the TMDB series ID plus season/episode identity. The TMDB external-ID endpoint bridges to IMDb; EZTV expects the numeric part without `tt`.
+- Room stores local TV genre visit statistics and in-app transfer records. Firestore stores per-user movie favorites, movie download history, and TV episode download history in separate subcollections. These stores are intentionally independent.
+- User collections (favorites, downloaded movies) are never filtered by the minimum-rating preference.

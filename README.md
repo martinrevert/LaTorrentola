@@ -19,6 +19,7 @@ Built for phones, tablets, foldables, and **Android TV / Chromecast**, the app f
 * **100% Android TV & Remote Ready**: Smooth navigation engineered for TV remotes with responsive card scaling, high-contrast focus indicators, and D-pad shortcuts.
 * **Torrent handling**: Choose external-client handoff, in-app download with local playback, or in-app download with Chromecast from Settings. In-app playback starts after a contiguous startup buffer has been verified by libtorrent4j; later HTTP byte ranges are served only after every overlapping torrent piece passes its hash check. Completed downloads remain in the app's download manager until deleted.
 * **Subtitles**: Local playback and Cast playback can search and load subtitles through OpenSubtitles when an API key is configured and the user has saved their account credentials in Settings.
+* **Push Notifications**: Receive alerts about new releases and updates via Firebase Cloud Messaging. Notifications deep-link directly to the relevant movie or screen inside the app.
 
 ---
 
@@ -28,7 +29,7 @@ Built for phones, tablets, foldables, and **Android TV / Chromecast**, the app f
 2. **Browse TV Series**: Select **TV** on Home, choose a feed or genre, then open a series to select a season and episode.
 3. **Find an Episode Release**: Open an episode to see matching EZTV releases and available quality/seed information.
 4. **Start Downloads**: Select a movie quality or TV episode release. Settings choose whether the magnet is sent to an external torrent app, downloaded and streamed locally, or downloaded and offered to a Chromecast-compatible receiver. In-app transfers can be paused, resumed, played, or deleted from **In-app downloads** in Settings.
-5. **Search and Details**: Search movie titles or cast, or open a movie poster for summaries, cast, IMDb ratings, and trailers.
+5. **Search and Details**: Search movie titles, or open a movie poster for summaries, full cast (enriched via TMDB), IMDb ratings, and trailers.
 6. **Sync Your Library**: Sign in and save favorites or select downloads; movie and TV download histories are stored separately in your account.
 
 ---
@@ -42,9 +43,12 @@ This app has been refactored to leverage the latest Jetpack Compose libraries an
 * **Visual Effects**: [Haze 2.0](https://github.com/chrisbanes/haze) for frosted glass blur on app bars and headers, featuring scroll-driven `EaseInOutCubic` alpha interpolation.
 * **Dependency Injection**: [Hilt](https://developer.android.com/training/dependency-injection/hilt-android).
 * **Auth & Cloud Persistence**: [Firebase Auth](https://firebase.google.com/docs/auth) via **Google Credential Manager** and [Cloud Firestore](https://firebase.google.com/docs/firestore) for remote synchronization.
+* **Push Notifications**: [Firebase Cloud Messaging](https://firebase.google.com/docs/cloud-messaging) with token sync to the app backend; notification taps deep-link into the app.
 * **Navigation**: [AndroidX Navigation 3](https://developer.android.com/jetpack/androidx/releases/navigation) Compose-first runtime.
 * **Networking**: [Retrofit 3.0](https://square.github.io/retrofit/) with OkHttp 5 and Coroutines Flow.
-* **TV Catalog & Episode Releases**: TMDB provides series/season/episode metadata; EZTV provides episode torrent releases matched through each series' IMDb identifier.
+* **TV Catalog & Episode Releases**: TMDB provides series/season/episode metadata and movie cast enrichment via IMDb ID; EZTV provides episode torrent releases matched through each series' IMDb identifier.
+* **In-App Torrent & Playback**: [libtorrent4j](https://github.com/aldenml/libtorrent4j) foreground service with piece-verified HTTP streaming (`VerifiedTorrentHttpServer`); [Media3 ExoPlayer](https://developer.android.com/media/media3/exoplayer) for local playback and [Cast SDK](https://developers.google.com/cast) for Chromecast handoff over LAN.
+* **Local Persistence**: [Room](https://developer.android.com/training/data-storage/room) for genre usage statistics, in-app transfer records, and session metadata.
 * **On-Device AI Translation**: [Google ML Kit Translate](https://developers.google.com/ml-kit/language/translation) for local summary translation.
 
 > [!NOTE]
