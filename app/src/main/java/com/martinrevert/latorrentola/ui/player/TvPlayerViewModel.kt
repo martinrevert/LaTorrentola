@@ -59,6 +59,38 @@ class TvPlayerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Resolves the next episode dynamically from current series/season/episode and fetches its torrents.
+     */
+    fun fetchNextEpisodeAndReleases(seriesId: Int, currentSeasonNumber: Int, currentEpisodeNumber: Int) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+            _nextEpisodeReleases.value = emptyList()
+
+            try {
+                val nextInfo = getNextEpisodeInfo(seriesId, "", currentSeasonNumber, currentEpisodeNumber)
+                if (nextInfo != null && nextInfo.size >= 4) {
+                    val nextSeason = nextInfo[2].toInt()
+                    val nextEp = nextInfo[3].toInt()
+
+                    val imdbId = tmdbRepository.getTvImdbId(seriesId)
+                    if (!imdbId.isNullOrEmpty()) {
+                        val releases = eztvRepository.getTorrentsForEpisode(imdbId, nextSeason, nextEp)
+                        _nextEpisodeReleases.value = releases
+                    } else {
+                        _error.value = "Unable to find IMDb ID for series"
+                    }
+                } else {
+                    _error.value = "No next episode available"
+                }
+            } catch (e: Exception) {
+                _error.value = e.localizedMessage ?: "Unknown error"
+            }
+            _isLoading.value = false
+        }
+    }
+
     fun downloadEpisode(
         context: Context,
         release: EztvTorrent,

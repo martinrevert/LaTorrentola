@@ -211,6 +211,9 @@ class LocalPlayerActivity : ComponentActivity() {
     private var nextEpisodeEpisodeName: String = ""
     private var hasNextEpisodeInfo: Boolean = false
     private var nextEpisodeTriggered: Boolean = false
+    private var currentSeriesId: Int = 0
+    private var currentSeasonNumber: Int = 0
+    private var currentEpisodeNumber: Int = 0
 
     /**
      * Creates the player, using early-start extraction for incomplete torrents, and adds
@@ -232,6 +235,9 @@ class LocalPlayerActivity : ComponentActivity() {
 
         mediaTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty()
         torrentInfoHash = intent.getStringExtra(EXTRA_INFO_HASH).orEmpty()
+        currentSeriesId = intent.getIntExtra(EXTRA_SERIES_ID, 0)
+        currentSeasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
+        currentEpisodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
 
         val nextEpisodeInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
         if (nextEpisodeInfo != null && nextEpisodeInfo.size >= 5) {
@@ -340,15 +346,62 @@ class LocalPlayerActivity : ComponentActivity() {
     private fun setupPlaybackCompletionListener() {
         val completionListener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED && hasNextEpisodeInfo && !nextEpisodeTriggered) {
+                if (playbackState == Player.STATE_ENDED && !nextEpisodeTriggered) {
                     nextEpisodeTriggered = true
-                    Log.d(TAG, "Playback ended; fetching next episode qualities for S${nextEpisodeSeasonNumber}E${nextEpisodeEpisodeNumber}")
-                    fetchAndShowNextEpisodeQualities()
+                    if (hasNextEpisodeInfo) {
+                        Log.d(TAG, "Playback ended; fetching next episode qualities for S${nextEpisodeSeasonNumber}E${nextEpisodeEpisodeNumber}")
+                        fetchAndShowNextEpisodeQualities()
+                    } else if (currentSeriesId > 0 && currentSeasonNumber > 0 && currentEpisodeNumber > 0) {
+                        Log.d(TAG, "Playback ended without pre-passed next info; resolving next episode dynamically for series $currentSeriesId S${currentSeasonNumber}E${currentEpisodeNumber}")
+                        fetchAndShowNextEpisodeDynamically()
+                    }
                 }
             }
         }
         localPlayer?.addListener(completionListener)
         castPlayer?.addListener(completionListener)
+    }
+
+    private fun fetchAndShowNextEpisodeDynamically() {
+        tvPlayerViewModel.fetchNextEpisodeAndReleases(
+            currentSeriesId,
+            currentSeasonNumber,
+            currentEpisodeNumber
+        )
+
+        val autoPlayMode = preferenceManager.getAutoPlayQualitySelectionMethod()
+        if (autoPlayMode == AutoPlayQualitySelectionMethod.OFF) {
+            showQualityChoiceDialog()
+        } else {
+            lifecycleScope.launch {
+                while (tvPlayerViewModel.isLoading.value) {
+                    kotlinx.coroutines.delay(200)
+                }
+
+                val releases = tvPlayerViewModel.nextEpisodeReleases.value
+                if (releases.isEmpty()) {
+                    Toast.makeText(
+                        this@LocalPlayerActivity,
+                        "No torrents found for next episode",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    finish()
+                    return@launch
+                }
+
+                val selectedRelease = when (autoPlayMode) {
+                    AutoPlayQualitySelectionMethod.BY_SEED_PEERS -> {
+                        releases.maxByOrNull { it.seeds + it.peers } ?: releases.first()
+                    }
+                    AutoPlayQualitySelectionMethod.BY_QUALITY -> {
+                        releases.maxByOrNull { qualityRank(it.title) } ?: releases.first()
+                    }
+                    AutoPlayQualitySelectionMethod.OFF -> releases.first()
+                }
+
+                checkDiskSpaceAndDownload(selectedRelease)
+            }
+        }
     }
 
     /**
@@ -1463,6 +1516,15 @@ class LocalPlayerActivity : ComponentActivity() {
 
         /** Intent extra containing the user-visible media title. */
         const val EXTRA_TITLE = "torrent_media_title"
+
+        /** Intent extra containing series ID. */
+        const val EXTRA_SERIES_ID = "extra_series_id"
+
+        /** Intent extra containing season number. */
+        const val EXTRA_SEASON_NUMBER = "extra_season_number"
+
+        /** Intent extra containing episode number. */
+        const val EXTRA_EPISODE_NUMBER = "extra_episode_number"
 
         /** Identifies the season/episode naming used by the TV release-selection screen. */
         val EPISODE_PATTERN = Regex("""\bS\d{2}E\d{2}\b""", RegexOption.IGNORE_CASE)

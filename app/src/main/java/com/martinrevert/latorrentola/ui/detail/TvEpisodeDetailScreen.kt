@@ -190,7 +190,10 @@ fun TvEpisodeDetailScreen(
                                     torrentHandlingMode,
                                     magnetUri,
                                     title,
-                                    nextEpisodeInfo
+                                    nextEpisodeInfo,
+                                    seriesId = seriesId,
+                                    seasonNumber = state.episode.seasonNumber,
+                                    episodeNumber = state.episode.episodeNumber
                                 )
                             ) {
                                 TorrentLaunchResult.Started -> {

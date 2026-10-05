@@ -259,6 +259,9 @@ class TorrentDownloadService : Service() {
             stopSelf(startId)
             return START_NOT_STICKY
         }
+        val seriesId = intent.getIntExtra(EXTRA_SERIES_ID, 0)
+        val seasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
+        val episodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
         val magnetUri = intent.getStringExtra(EXTRA_MAGNET_URI).orEmpty()
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank {
             getString(R.string.torrent_download_title)
@@ -276,10 +279,15 @@ class TorrentDownloadService : Service() {
         openWhenReadyHashes.add(infoHash)
         startForegroundForDownload(buildProgressNotification(title, 0))
         serviceScope.launch {
-            if (readyPlayerIntents.containsKey(infoHash)) {
+            val existingIntent = readyPlayerIntents[infoHash]
+            val existingTitle = existingIntent?.getStringExtra(LocalPlayerActivity.EXTRA_TITLE).orEmpty()
+            if (existingIntent != null && existingTitle == title) {
                 openWhenReadyHashes.remove(infoHash)
                 openReadyPlayer(infoHash)
                 return@launch
+            } else {
+                readyPlayerIntents.remove(infoHash)
+                streamServers.remove(infoHash)?.stop()
             }
             val existing = torrentDownloadDao.get(infoHash)
             val completedFile = existing
@@ -291,7 +299,7 @@ class TorrentDownloadService : Service() {
             if (completedFile != null) {
                 openWhenReadyHashes.remove(infoHash)
                 val castWhenReady = intent?.getBooleanExtra(EXTRA_CAST_WHEN_READY, false) ?: false
-                startCompletedPlayback(infoHash, title, completedFile, castWhenReady, nextEpisodeInfo)
+                startCompletedPlayback(infoHash, title, completedFile, castWhenReady, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber)
                 return@launch
             }
             torrentDownloadDao.upsert(
@@ -314,7 +322,10 @@ class TorrentDownloadService : Service() {
                             magnetUri,
                             title,
                             intent?.getBooleanExtra(EXTRA_CAST_WHEN_READY, false) ?: false,
-                            nextEpisodeInfo
+                            nextEpisodeInfo,
+                            seriesId,
+                            seasonNumber,
+                            episodeNumber
                         )
                     )
                 }
@@ -338,7 +349,10 @@ class TorrentDownloadService : Service() {
         title: String,
         file: File,
         castWhenReady: Boolean,
-        nextEpisodeInfo: ArrayList<String>? = null
+        nextEpisodeInfo: ArrayList<String>? = null,
+        seriesId: Int = 0,
+        seasonNumber: Int = 0,
+        episodeNumber: Int = 0
     ) {
         streamServers.remove(infoHash)?.stop()
         val server = VerifiedTorrentHttpServer(file, file.length()) { _, _ -> true }
@@ -360,6 +374,9 @@ class TorrentDownloadService : Service() {
             .putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, castWhenReady)
             .putExtra(LocalPlayerActivity.EXTRA_MIME_TYPE, file.mediaMimeType())
             .putExtra(LocalPlayerActivity.EXTRA_TITLE, title)
+            .putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, seriesId)
+            .putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, seasonNumber)
+            .putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, episodeNumber)
             .apply {
                 if (nextEpisodeInfo != null) {
                     putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
@@ -548,7 +565,7 @@ class TorrentDownloadService : Service() {
                         ?.also { handle ->
                             if (pausedInfoHash == infoHash) handle.pause()
                             if (mediaTarget == null) {
-                                mediaTarget = findMediaTarget(handle, downloadDirectory)
+                                mediaTarget = findMediaTarget(handle, downloadDirectory, request.title)
                                 mediaTarget?.let { target ->
                                     for (index in 0 until target.fileCount) {
                                         handle.filePriority(
@@ -627,6 +644,9 @@ class TorrentDownloadService : Service() {
                         .putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, request.castWhenReady)
                         .putExtra(LocalPlayerActivity.EXTRA_MIME_TYPE, target.file.mediaMimeType())
                         .putExtra(LocalPlayerActivity.EXTRA_TITLE, request.title)
+                        .putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, request.seriesId)
+                        .putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, request.seasonNumber)
+                        .putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, request.episodeNumber)
                         .apply {
                             if (request.nextEpisodeInfo != null) {
                                 putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, request.nextEpisodeInfo)
@@ -709,23 +729,31 @@ class TorrentDownloadService : Service() {
     }
 
     /**
-     * Selects the largest supported video file from resolved torrent metadata.
+     * Selects the supported video file matching the requested episode title from resolved torrent metadata.
      *
      * @param handle Active libtorrent handle.
      * @param directory Private torrent payload directory.
+     * @param title User-visible media title containing season and episode info.
      * @return Selected video file and its piece geometry, or `null` until metadata is available.
      */
     private fun findMediaTarget(
         handle: org.libtorrent4j.TorrentHandle,
-        directory: File
+        directory: File,
+        title: String = ""
     ): MediaTarget? {
         val torrentInfo = handle.torrentFile()?.takeIf { it.isValid() } ?: return null
         val files = torrentInfo.files()
         val videoExtensions = setOf("mkv", "mp4", "m4v", "avi", "mov", "webm", "ts")
-        val index = (0 until files.numFiles())
+        val videoIndices = (0 until files.numFiles())
             .filter { files.fileName(it).substringAfterLast('.', "").lowercase() in videoExtensions }
-            .maxByOrNull(files::fileSize)
-            ?: return null
+
+        if (videoIndices.isEmpty()) return null
+
+        val targetIndex = videoIndices.firstOrNull { index ->
+            matchesTitleEpisode(files.fileName(index), title)
+        } ?: videoIndices.maxByOrNull(files::fileSize) ?: return null
+
+        val index = targetIndex
         val path = File(files.filePath(index, directory.absolutePath))
         val firstPiece = files.pieceIndexAtFile(index)
         val lastPiece = files.lastPieceIndexAtFile(index)
@@ -739,6 +767,35 @@ class TorrentDownloadService : Service() {
             firstPiece = firstPiece,
             lastPiece = lastPiece
         )
+    }
+
+    private fun matchesTitleEpisode(fileName: String, title: String): Boolean {
+        if (title.isBlank()) return false
+        val sEPattern = Regex("""[sS](\d{1,2})[eE](\d{1,2})""", RegexOption.IGNORE_CASE)
+        val titleMatch = sEPattern.find(title)
+        if (titleMatch != null) {
+            val ts = titleMatch.groupValues[1]
+            val te = titleMatch.groupValues[2]
+            val fileMatch = sEPattern.find(fileName)
+            if (fileMatch != null) {
+                val fs = fileMatch.groupValues[1]
+                val fe = fileMatch.groupValues[2]
+                if (ts.toInt() == fs.toInt() && te.toInt() == fe.toInt()) return true
+            }
+        }
+
+        val epNumRegex = Regex("""[eE](\d{1,2})""", RegexOption.IGNORE_CASE)
+        val titleEpMatch = epNumRegex.find(title)
+        if (titleEpMatch != null) {
+            val te = titleEpMatch.groupValues[1].toInt()
+            val fileEpMatch = epNumRegex.find(fileName)
+            if (fileEpMatch != null) {
+                val fe = fileEpMatch.groupValues[1].toInt()
+                if (te == fe) return true
+            }
+        }
+
+        return false
     }
 
     /**
@@ -1014,7 +1071,10 @@ class TorrentDownloadService : Service() {
         val magnetUri: String,
         val title: String,
         val castWhenReady: Boolean,
-        val nextEpisodeInfo: ArrayList<String>? = null
+        val nextEpisodeInfo: ArrayList<String>? = null,
+        val seriesId: Int = 0,
+        val seasonNumber: Int = 0,
+        val episodeNumber: Int = 0
     )
 
     /**
@@ -1090,6 +1150,12 @@ class TorrentDownloadService : Service() {
         const val EXTRA_MIME_TYPE = "torrent_media_mime_type"
         /** Info-hash extra used by job control commands. */
         const val EXTRA_INFO_HASH = "torrent_info_hash"
+        /** Series ID extra. */
+        const val EXTRA_SERIES_ID = "torrent_series_id"
+        /** Season number extra. */
+        const val EXTRA_SEASON_NUMBER = "torrent_season_number"
+        /** Episode number extra. */
+        const val EXTRA_EPISODE_NUMBER = "torrent_episode_number"
         /** Next episode information passed along for quality selection upon completion. */
         const val EXTRA_NEXT_EPISODE_INFO = "extra_next_episode_info"
         /** Stop serving a torrent after the player closes. */
