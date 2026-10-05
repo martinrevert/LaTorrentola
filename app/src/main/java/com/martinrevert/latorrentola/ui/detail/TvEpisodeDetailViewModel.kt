@@ -51,6 +51,7 @@ class TvEpisodeDetailViewModel @Inject constructor(
     private var activeSeriesName: String = ""
     private var currentEpisode: TmdbTvEpisode? = null
     private var currentSeasonDetails: TmdbTvSeasonDetails? = null
+    private var cachedNextEpisodeInfo: List<Any>? = null
 
     /** Observes downloaded episode history and dynamically reflects download status. */
     val uiState: StateFlow<TvEpisodeDetailUiState> = combine(
@@ -153,7 +154,10 @@ class TvEpisodeDetailViewModel @Inject constructor(
                 }
                 activeSeriesName = resolvedSeriesName
 
-                // 4. Resolve IMDb ID and fetch torrents
+                // 4. Resolve next episode info (same season or next season)
+                cachedNextEpisodeInfo = resolveNextEpisodeInfo(seriesId, resolvedSeriesName, seasonNumber, episode, seasonDetails)
+
+                // 5. Resolve IMDb ID and fetch torrents
                 val imdbId = tmdbRepository.getTvImdbId(seriesId)
                 val torrents = if (!imdbId.isNullOrBlank()) {
                     eztvRepository.getTorrentsForEpisode(imdbId, seasonNumber, episodeNumber)
@@ -167,6 +171,59 @@ class TvEpisodeDetailViewModel @Inject constructor(
             } catch (e: Exception) {
                 // Error handling is intentional - we show the error in the UI
             }
+        }
+    }
+
+    /**
+     * Resolves metadata for the next episode in the same season or the first episode of the next season.
+     */
+    private suspend fun resolveNextEpisodeInfo(
+        seriesId: Int,
+        seriesName: String,
+        seasonNumber: Int,
+        currentEp: TmdbTvEpisode,
+        seasonDetails: TmdbTvSeasonDetails
+    ): List<Any>? {
+        val episodesList = seasonDetails.episodes.orEmpty()
+        val currentIndex = episodesList.indexOfFirst { it.episodeNumber == currentEp.episodeNumber }
+
+        if (currentIndex >= 0 && currentIndex < episodesList.size - 1) {
+            val nextEpisode = episodesList[currentIndex + 1]
+            if (isReleased(nextEpisode.airDate)) {
+                return listOf(
+                    seriesId,
+                    seriesName,
+                    nextEpisode.seasonNumber,
+                    nextEpisode.episodeNumber,
+                    nextEpisode.name.orEmpty()
+                )
+            }
+        } else {
+            // Check next season for S(seasonNumber + 1)E01
+            try {
+                val nextSeasonDetails = tmdbRepository.getTvSeasonDetails(seriesId, seasonNumber + 1)
+                val firstEp = nextSeasonDetails.episodes.orEmpty().firstOrNull { it.episodeNumber == 1 }
+                if (firstEp != null && isReleased(firstEp.airDate)) {
+                    return listOf(
+                        seriesId,
+                        seriesName,
+                        firstEp.seasonNumber,
+                        firstEp.episodeNumber,
+                        firstEp.name.orEmpty()
+                    )
+                }
+            } catch (_: Exception) { }
+        }
+        return null
+    }
+
+    private fun isReleased(airDate: String?): Boolean {
+        if (airDate.isNullOrBlank()) return true
+        return try {
+            val parsedDate = java.time.LocalDate.parse(airDate)
+            !parsedDate.isAfter(java.time.LocalDate.now())
+        } catch (_: Exception) {
+            true
         }
     }
 
@@ -205,50 +262,7 @@ class TvEpisodeDetailViewModel @Inject constructor(
      * @return A list containing [seriesId, seriesName, seasonNumber, episodeNumber, episodeName] for the next episode,
      *         or null if there is no next episode or if information is unavailable.
      */
-    fun getNextEpisodeInfo(): List<Any>? {
-        return if (currentEpisode != null && currentSeasonDetails != null) {
-            val currentEp = currentEpisode!!
-            val seasonDetails = currentSeasonDetails!!
-            
-            // Find the index of the current episode in the season by episode number
-            val episodesList = seasonDetails.episodes.orEmpty()
-            val currentIndex = episodesList.indexOfFirst { it.episodeNumber == currentEp.episodeNumber }
-            
-            if (currentIndex >= 0 && currentIndex < episodesList.size - 1) {
-                // There is a next episode in the same season (not season finale)
-                val nextEpisode = episodesList[currentIndex + 1]
-                
-                // Check if air date is not in the future
-                val airDate = nextEpisode.airDate
-                val isReleased = if (airDate.isNullOrBlank()) {
-                    true
-                } else {
-                    try {
-                        val parsedDate = java.time.LocalDate.parse(airDate)
-                        !parsedDate.isAfter(java.time.LocalDate.now())
-                    } catch (e: Exception) {
-                        true
-                    }
-                }
-                
-                if (isReleased) {
-                    listOf(
-                        activeSeriesId,
-                        activeSeriesName,
-                        nextEpisode.seasonNumber,
-                        nextEpisode.episodeNumber,
-                        nextEpisode.name.orEmpty()
-                    )
-                } else {
-                    null
-                }
-            } else {
-                null
-            }
-        } else {
-            null
-        }
-    }
+    fun getNextEpisodeInfo(): List<Any>? = cachedNextEpisodeInfo
 
     /** Helper to extract a short quality label (e.g. "1080p", "720p", "2160p") from release title. */
     private fun extractQuality(title: String): String {

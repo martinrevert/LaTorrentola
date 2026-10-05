@@ -210,6 +210,7 @@ class LocalPlayerActivity : ComponentActivity() {
     private var nextEpisodeEpisodeNumber: Int = 0
     private var nextEpisodeEpisodeName: String = ""
     private var hasNextEpisodeInfo: Boolean = false
+    private var nextEpisodeTriggered: Boolean = false
 
     /**
      * Creates the player, using early-start extraction for incomplete torrents, and adds
@@ -339,8 +340,9 @@ class LocalPlayerActivity : ComponentActivity() {
     private fun setupPlaybackCompletionListener() {
         val completionListener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED && hasNextEpisodeInfo) {
-                    Log.d(TAG, "Playback ended; fetching next episode qualities")
+                if (playbackState == Player.STATE_ENDED && hasNextEpisodeInfo && !nextEpisodeTriggered) {
+                    nextEpisodeTriggered = true
+                    Log.d(TAG, "Playback ended; fetching next episode qualities for S${nextEpisodeSeasonNumber}E${nextEpisodeEpisodeNumber}")
                     fetchAndShowNextEpisodeQualities()
                 }
             }
@@ -365,16 +367,18 @@ class LocalPlayerActivity : ComponentActivity() {
             showQualityChoiceDialog()
         } else {
             lifecycleScope.launch {
-                var releases = tvPlayerViewModel.nextEpisodeReleases.value
-                var attempts = 0
-                while (releases.isEmpty() && attempts < 10) {
-                    kotlinx.coroutines.delay(500)
-                    releases = tvPlayerViewModel.nextEpisodeReleases.value
-                    attempts++
+                while (tvPlayerViewModel.isLoading.value) {
+                    kotlinx.coroutines.delay(200)
                 }
 
+                val releases = tvPlayerViewModel.nextEpisodeReleases.value
                 if (releases.isEmpty()) {
-                    Toast.makeText(this@LocalPlayerActivity, "No torrents found for next episode", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        this@LocalPlayerActivity,
+                        "No torrents found for next episode S${nextEpisodeSeasonNumber}E${nextEpisodeEpisodeNumber}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    finish()
                     return@launch
                 }
 
@@ -407,12 +411,18 @@ class LocalPlayerActivity : ComponentActivity() {
                             dialog.dismiss()
                             val selectedRelease = releases.firstOrNull { release ->
                                 extractQualityLabel(release.title) == selectedQuality
-                            }
-                            selectedRelease?.let { release ->
-                                checkDiskSpaceAndDownload(release)
+                            } ?: releases.firstOrNull()
+
+                            if (selectedRelease != null) {
+                                checkDiskSpaceAndDownload(selectedRelease)
+                            } else {
+                                finish()
                             }
                         },
-                        onDismiss = { dialog.dismiss() },
+                        onDismiss = {
+                            dialog.dismiss()
+                            finish()
+                        },
                         releases = releases,
                         isLoading = isLoading,
                         error = error
@@ -421,6 +431,7 @@ class LocalPlayerActivity : ComponentActivity() {
             }
         }
         dialog.setContentView(composeView)
+        dialog.setOnCancelListener { finish() }
         dialog.show()
     }
 
@@ -487,6 +498,7 @@ class LocalPlayerActivity : ComponentActivity() {
             getString(R.string.tv_episode_downloaded),
             Toast.LENGTH_SHORT
         ).show()
+        finish()
     }
 
     private fun extractQualityLabel(title: String): String {

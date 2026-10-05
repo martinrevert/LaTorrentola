@@ -28,13 +28,14 @@ fun QualityChoiceDialog(
             .map { extractQuality(it) }
             .filterNotNull()
             .distinct()
-            .sortedBy { it.replace("p", "").toIntOrNull() ?: Int.MAX_VALUE }
+            .sortedByDescending { qualityRank(it) }
     }
 
     var selectedQuality by remember(qualities) { mutableStateOf<String?>(qualities.firstOrNull()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         title = {
             Text(
                 text = "Select Quality for Next Episode",
@@ -145,5 +146,15 @@ private fun extractQuality(title: String): String? {
         lower.contains("720p") -> "720p"
         lower.contains("hdtv") -> "HDTV"
         else -> null
+    }
+}
+
+private fun qualityRank(quality: String): Int {
+    return when (quality.lowercase()) {
+        "2160p", "4k" -> 4000
+        "1080p" -> 1080
+        "720p" -> 720
+        "hdtv" -> 480
+        else -> 0
     }
 }

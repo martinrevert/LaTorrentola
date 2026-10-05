@@ -5,20 +5,21 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
+import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
+import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.network.EztvRepository
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
-import com.martinrevert.latorrentola.model.user.DownloadedEpisode
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
 import com.martinrevert.latorrentola.utils.TorrentLaunchResult
-import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
-import com.martinrevert.latorrentola.utils.PreferenceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import javax.inject.Inject
 
 @HiltViewModel
 class TvPlayerViewModel @Inject constructor(
@@ -41,10 +42,10 @@ class TvPlayerViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
-            // First, get the IMDb ID from TMDB
+            _nextEpisodeReleases.value = emptyList()
+
             val imdbId = tmdbRepository.getTvImdbId(seriesId)
             if (!imdbId.isNullOrEmpty()) {
-                // Then fetch torrents for the specific episode
                 try {
                     val releases = eztvRepository.getTorrentsForEpisode(imdbId, seasonNumber, episodeNumber)
                     _nextEpisodeReleases.value = releases
@@ -58,26 +59,34 @@ class TvPlayerViewModel @Inject constructor(
         }
     }
 
-    fun downloadEpisode(context: Context, release: EztvTorrent, seriesId: Int, seriesName: String, seasonNumber: Int, episodeNumber: Int, episodeName: String) {
+    fun downloadEpisode(
+        context: Context,
+        release: EztvTorrent,
+        seriesId: Int,
+        seriesName: String,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        episodeName: String
+    ) {
         viewModelScope.launch {
             try {
-                // Build magnet URL if not present in the release
+                val nextEpisodeInfo = getNextEpisodeInfo(seriesId, seriesName, seasonNumber, episodeNumber)
+
                 val magnetUrl = release.magnetUrl.takeIf { it.isNotEmpty() }
                     ?: TorrentLaunchHelper.buildMagnetUri(
                         release.downloadInfoHash() ?: "",
                         "%s S%02dE%02d %s".format(seriesName, seasonNumber, episodeNumber, release.title)
                     )
 
-                // Launch the download using the user's preferred torrent handling mode
                 val result = TorrentLaunchHelper.launch(
                     context,
                     preferenceManager.getTorrentHandlingMode(),
                     magnetUrl,
-                    "%s S%02dE%02d %s".format(seriesName, seasonNumber, episodeNumber, release.title)
+                    "%s S%02dE%02d %s".format(seriesName, seasonNumber, episodeNumber, release.title),
+                    nextEpisodeInfo
                 )
 
                 if (result == TorrentLaunchResult.Started) {
-                    // Save download record to Firestore
                     userLibraryRepository.markEpisodeAsDownloaded(
                         DownloadedEpisode(
                             seriesId = seriesId,
@@ -99,6 +108,61 @@ class TvPlayerViewModel @Inject constructor(
             } catch (e: Exception) {
                 _error.value = e.localizedMessage ?: "Failed to download episode"
             }
+        }
+    }
+
+    suspend fun getNextEpisodeInfo(
+        seriesId: Int,
+        seriesName: String,
+        seasonNumber: Int,
+        episodeNumber: Int
+    ): ArrayList<String>? {
+        if (seriesId <= 0 || seasonNumber <= 0 || episodeNumber <= 0) return null
+        return try {
+            val seasonDetails = tmdbRepository.getTvSeasonDetails(seriesId, seasonNumber)
+            val episodesList = seasonDetails.episodes.orEmpty()
+            val currentIndex = episodesList.indexOfFirst { it.episodeNumber == episodeNumber }
+
+            if (currentIndex >= 0 && currentIndex < episodesList.size - 1) {
+                val nextEp = episodesList[currentIndex + 1]
+                if (isReleased(nextEp.airDate)) {
+                    arrayListOf(
+                        seriesId.toString(),
+                        seriesName,
+                        nextEp.seasonNumber.toString(),
+                        nextEp.episodeNumber.toString(),
+                        nextEp.name.orEmpty()
+                    )
+                } else null
+            } else {
+                try {
+                    val nextSeasonDetails = tmdbRepository.getTvSeasonDetails(seriesId, seasonNumber + 1)
+                    val firstEp = nextSeasonDetails.episodes.orEmpty().firstOrNull { it.episodeNumber == 1 }
+                    if (firstEp != null && isReleased(firstEp.airDate)) {
+                        arrayListOf(
+                            seriesId.toString(),
+                            seriesName,
+                            firstEp.seasonNumber.toString(),
+                            firstEp.episodeNumber.toString(),
+                            firstEp.name.orEmpty()
+                        )
+                    } else null
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun isReleased(airDate: String?): Boolean {
+        if (airDate.isNullOrBlank()) return true
+        return try {
+            val parsedDate = LocalDate.parse(airDate)
+            !parsedDate.isAfter(LocalDate.now())
+        } catch (_: Exception) {
+            true
         }
     }
 
