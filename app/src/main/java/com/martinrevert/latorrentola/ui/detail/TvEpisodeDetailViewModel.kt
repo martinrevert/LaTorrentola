@@ -189,25 +189,25 @@ class TvEpisodeDetailViewModel @Inject constructor(
 
         if (currentIndex >= 0 && currentIndex < episodesList.size - 1) {
             val nextEpisode = episodesList[currentIndex + 1]
-            if (isReleased(nextEpisode.airDate)) {
-                return listOf(
-                    seriesId,
-                    seriesName,
-                    nextEpisode.seasonNumber,
-                    nextEpisode.episodeNumber,
-                    nextEpisode.name.orEmpty()
-                )
-            }
+            val nextSeason = nextEpisode.seasonNumber.takeIf { it > 0 } ?: seasonNumber
+            return listOf(
+                seriesId,
+                seriesName,
+                nextSeason,
+                nextEpisode.episodeNumber,
+                nextEpisode.name.orEmpty()
+            )
         } else {
             // Check next season for S(seasonNumber + 1)E01
             try {
                 val nextSeasonDetails = tmdbRepository.getTvSeasonDetails(seriesId, seasonNumber + 1)
                 val firstEp = nextSeasonDetails.episodes.orEmpty().firstOrNull { it.episodeNumber == 1 }
-                if (firstEp != null && isReleased(firstEp.airDate)) {
+                if (firstEp != null) {
+                    val nextSeason = firstEp.seasonNumber.takeIf { it > 0 } ?: (seasonNumber + 1)
                     return listOf(
                         seriesId,
                         seriesName,
-                        firstEp.seasonNumber,
+                        nextSeason,
                         firstEp.episodeNumber,
                         firstEp.name.orEmpty()
                     )
@@ -215,16 +215,6 @@ class TvEpisodeDetailViewModel @Inject constructor(
             } catch (_: Exception) { }
         }
         return null
-    }
-
-    private fun isReleased(airDate: String?): Boolean {
-        if (airDate.isNullOrBlank()) return true
-        return try {
-            val parsedDate = java.time.LocalDate.parse(airDate)
-            !parsedDate.isAfter(java.time.LocalDate.now())
-        } catch (_: Exception) {
-            true
-        }
     }
 
     /**

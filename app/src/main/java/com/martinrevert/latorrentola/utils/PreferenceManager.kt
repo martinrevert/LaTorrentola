@@ -243,5 +243,7 @@ enum class AutoPlayQualitySelectionMethod {
     /** Select the release with the most seeds/peers automatically. */
     BY_SEED_PEERS,
     /** Select the release with the highest quality (resolution) automatically. */
-    BY_QUALITY
+    BY_QUALITY,
+    /** Do nothing when episode ends; completely manual (like movies). */
+    DO_NOTHING
 }

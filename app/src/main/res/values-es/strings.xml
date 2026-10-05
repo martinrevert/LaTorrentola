@@ -209,4 +209,19 @@
     <string name="genre_thriller">Suspenso</string>
     <string name="genre_war">Bélica</string>
     <string name="genre_western">Western</string>
+ 
+    <string name="next_episode_autoplay_title">Reproducción automática del siguiente capítulo</string>
+    <string name="autoplay_method_off">Desactivado (Mostrar lista de torrents)</string>
+    <string name="autoplay_method_off_desc">Muestra siempre los torrents disponibles en EZTV para el siguiente capítulo</string>
+    <string name="autoplay_method_seeds">Auto-Play: Más semillas y pares</string>
+    <string name="autoplay_method_seeds_desc">Descarga automáticamente el siguiente capítulo con más semillas y pares</string>
+    <string name="autoplay_method_quality">Auto-Play: Mejor calidad</string>
+    <string name="autoplay_method_quality_desc">Descarga automáticamente el siguiente capítulo con mayor resolución (4K/1080p)</string>
+    <string name="autoplay_method_do_nothing">No hacer nada (Manual, como películas)</string>
+    <string name="autoplay_method_do_nothing_desc">No preguntar ni reproducir automáticamente; manual como en películas</string>
+    <string name="next_episode_dialog_title">Siguiente capítulo</string>
+    <string name="next_episode_searching">Buscando torrents disponibles en EZTV&#8230;</string>
+    <string name="next_episode_no_torrents">No se encontraron torrents en EZTV para este capítulo.</string>
+    <string name="next_episode_end_of_season">Fin de temporada. No hay más capítulos disponibles.</string>
+    <string name="next_episode_autoplay_toast">Reproduciendo siguiente capítulo automáticamente: S%1$02dE%2$02d&#8230;</string>
 </resources>

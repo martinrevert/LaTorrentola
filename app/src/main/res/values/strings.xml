@@ -210,5 +210,20 @@
     <string name="genre_war">War</string>
     <string name="genre_western">Western</string>
 
+    <string name="next_episode_autoplay_title">Next Episode Auto-Play</string>
+    <string name="autoplay_method_off">Off (Offer Episode List Dialog)</string>
+    <string name="autoplay_method_off_desc">Always show available torrent releases for the next episode</string>
+    <string name="autoplay_method_seeds">Auto-Play: Most Seeds &amp; Peers</string>
+    <string name="autoplay_method_seeds_desc">Automatically download the next episode with the highest seed/peer count</string>
+    <string name="autoplay_method_quality">Auto-Play: Best Quality</string>
+    <string name="autoplay_method_quality_desc">Automatically download the next episode with the highest resolution (4K/1080p)</string>
+    <string name="autoplay_method_do_nothing">Do Nothing (Manual, like movies)</string>
+    <string name="autoplay_method_do_nothing_desc">Do not prompt or auto-play; manual playback like movies</string>
+    <string name="next_episode_dialog_title">Next Episode</string>
+    <string name="next_episode_searching">Searching available torrents on EZTV&#8230;</string>
+    <string name="next_episode_no_torrents">No torrents found on EZTV for this episode.</string>
+    <string name="next_episode_end_of_season">End of season. No further episodes available.</string>
+    <string name="next_episode_autoplay_toast">Auto-playing next episode: S%1$02dE%2$02d&#8230;</string>
+
     <string name="asset_statements" translatable="false">[]</string>
 </resources>

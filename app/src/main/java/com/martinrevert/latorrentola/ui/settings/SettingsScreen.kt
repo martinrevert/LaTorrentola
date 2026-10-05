@@ -860,9 +860,26 @@ private fun AutoPlayQualitySetting(
     onMethodSelected: (AutoPlayQualitySelectionMethod) -> Unit
 ) {
     val options = listOf(
-        Triple(AutoPlayQualitySelectionMethod.OFF, "Off (Offer Episode List Dialog)", "Always show available quality options when an episode ends"),
-        Triple(AutoPlayQualitySelectionMethod.BY_SEED_PEERS, "Auto-Play: Most Seeds & Peers", "Automatically download the next episode with the highest seed/peer count"),
-        Triple(AutoPlayQualitySelectionMethod.BY_QUALITY, "Auto-Play: Best Quality", "Automatically download the next episode with the highest resolution (4K/1080p)")
+        Triple(
+            AutoPlayQualitySelectionMethod.OFF,
+            stringResource(R.string.autoplay_method_off),
+            stringResource(R.string.autoplay_method_off_desc)
+        ),
+        Triple(
+            AutoPlayQualitySelectionMethod.BY_SEED_PEERS,
+            stringResource(R.string.autoplay_method_seeds),
+            stringResource(R.string.autoplay_method_seeds_desc)
+        ),
+        Triple(
+            AutoPlayQualitySelectionMethod.BY_QUALITY,
+            stringResource(R.string.autoplay_method_quality),
+            stringResource(R.string.autoplay_method_quality_desc)
+        ),
+        Triple(
+            AutoPlayQualitySelectionMethod.DO_NOTHING,
+            stringResource(R.string.autoplay_method_do_nothing),
+            stringResource(R.string.autoplay_method_do_nothing_desc)
+        )
     )
 
     Column(
@@ -871,7 +888,7 @@ private fun AutoPlayQualitySetting(
             .selectableGroup()
     ) {
         Text(
-            text = "Next Episode Auto-Play",
+            text = stringResource(R.string.next_episode_autoplay_title),
             style = MaterialTheme.typography.titleMedium
         )
         options.forEach { (method, title, support) ->
