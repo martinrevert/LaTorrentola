@@ -287,10 +287,11 @@ class TorrentDownloadService : Service() {
                 ?.mediaPath
                 ?.let(::File)
                 ?.takeIf { it.isFile && it.canRead() }
+            val nextEpisodeInfo = intent?.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
             if (completedFile != null) {
                 openWhenReadyHashes.remove(infoHash)
                 val castWhenReady = intent?.getBooleanExtra(EXTRA_CAST_WHEN_READY, false) ?: false
-                startCompletedPlayback(infoHash, title, completedFile, castWhenReady)
+                startCompletedPlayback(infoHash, title, completedFile, castWhenReady, nextEpisodeInfo)
                 return@launch
             }
             torrentDownloadDao.upsert(
@@ -312,7 +313,8 @@ class TorrentDownloadService : Service() {
                             infoHash,
                             magnetUri,
                             title,
-                            intent?.getBooleanExtra(EXTRA_CAST_WHEN_READY, false) ?: false
+                            intent?.getBooleanExtra(EXTRA_CAST_WHEN_READY, false) ?: false,
+                            nextEpisodeInfo
                         )
                     )
                 }
@@ -329,12 +331,14 @@ class TorrentDownloadService : Service() {
      * @param title User-visible media title.
      * @param file Existing file whose complete torrent was hash verified.
      * @param castWhenReady Whether to expose a LAN URL for Cast.
+     * @param nextEpisodeInfo Optional next episode information for quality selection after playback.
      */
     private suspend fun startCompletedPlayback(
         infoHash: String,
         title: String,
         file: File,
-        castWhenReady: Boolean
+        castWhenReady: Boolean,
+        nextEpisodeInfo: ArrayList<String>? = null
     ) {
         streamServers.remove(infoHash)?.stop()
         val server = VerifiedTorrentHttpServer(file, file.length()) { _, _ -> true }
@@ -356,6 +360,11 @@ class TorrentDownloadService : Service() {
             .putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, castWhenReady)
             .putExtra(LocalPlayerActivity.EXTRA_MIME_TYPE, file.mediaMimeType())
             .putExtra(LocalPlayerActivity.EXTRA_TITLE, title)
+            .apply {
+                if (nextEpisodeInfo != null) {
+                    putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
+                }
+            }
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         readyPlayerIntents[infoHash] = playerIntent
         withContext(Dispatchers.Main) {
@@ -618,6 +627,11 @@ class TorrentDownloadService : Service() {
                         .putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, request.castWhenReady)
                         .putExtra(LocalPlayerActivity.EXTRA_MIME_TYPE, target.file.mediaMimeType())
                         .putExtra(LocalPlayerActivity.EXTRA_TITLE, request.title)
+                        .apply {
+                            if (request.nextEpisodeInfo != null) {
+                                putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, request.nextEpisodeInfo)
+                            }
+                        }
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     readyPlayerIntent = playerIntent
                     readyPlayerIntents[infoHash] = playerIntent
@@ -999,7 +1013,8 @@ class TorrentDownloadService : Service() {
         val infoHash: String,
         val magnetUri: String,
         val title: String,
-        val castWhenReady: Boolean
+        val castWhenReady: Boolean,
+        val nextEpisodeInfo: ArrayList<String>? = null
     )
 
     /**
@@ -1075,6 +1090,8 @@ class TorrentDownloadService : Service() {
         const val EXTRA_MIME_TYPE = "torrent_media_mime_type"
         /** Info-hash extra used by job control commands. */
         const val EXTRA_INFO_HASH = "torrent_info_hash"
+        /** Next episode information passed along for quality selection upon completion. */
+        const val EXTRA_NEXT_EPISODE_INFO = "extra_next_episode_info"
         /** Stop serving a torrent after the player closes. */
         const val ACTION_STOP_STREAM = "com.martinrevert.latorrentola.action.STOP_STREAM"
         /** Private application files subdirectory for completed and partial transfers. */

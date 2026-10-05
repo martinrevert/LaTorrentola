@@ -40,6 +40,7 @@ import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
+import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import androidx.compose.ui.tooling.preview.Preview
@@ -86,6 +87,7 @@ fun SettingsScreen(
         onSetFilteredLanguages = { viewModel.setFilteredLanguages(it) },
         onSetMinimumRating = { viewModel.setMinimumRating(it) },
         onSetTorrentHandlingMode = { viewModel.setTorrentHandlingMode(it) },
+        onSetAutoPlayQualitySelectionMethod = { viewModel.setAutoPlayQualitySelectionMethod(it) },
         onSaveOpenSubtitlesCredentials = { username, password ->
             viewModel.saveOpenSubtitlesCredentials(username, password)
         },
@@ -114,6 +116,7 @@ private fun SettingsScreenContent(
     onSetFilteredLanguages: (String) -> Unit,
     onSetMinimumRating: (Float) -> Unit,
     onSetTorrentHandlingMode: (TorrentHandlingMode) -> Unit,
+    onSetAutoPlayQualitySelectionMethod: (AutoPlayQualitySelectionMethod) -> Unit,
     onSaveOpenSubtitlesCredentials: (String, String) -> Unit,
     onClearOpenSubtitlesCredentials: () -> Unit
 ) {
@@ -236,6 +239,10 @@ private fun SettingsScreenContent(
                     TorrentModeSetting(
                         selectedMode = uiState.torrentHandlingMode,
                         onModeSelected = onSetTorrentHandlingMode
+                    )
+                    AutoPlayQualitySetting(
+                        selectedMethod = uiState.autoPlayQualitySelectionMethod,
+                        onMethodSelected = onSetAutoPlayQualitySelectionMethod
                     )
                     OpenSubtitlesCredentialsSetting(
                         uiState = uiState,
@@ -837,6 +844,70 @@ fun SettingsToggle(
     }
 }
 
+/**
+ * Presents the auto-play quality/seed selection behavior when an episode ends.
+ *
+ * @param selectedMethod Currently configured auto-play method.
+ * @param onMethodSelected Persists a user-selected method.
+ */
+@Composable
+private fun AutoPlayQualitySetting(
+    selectedMethod: AutoPlayQualitySelectionMethod,
+    onMethodSelected: (AutoPlayQualitySelectionMethod) -> Unit
+) {
+    val options = listOf(
+        Triple(AutoPlayQualitySelectionMethod.OFF, "Off (Offer Episode List Dialog)", "Always show available quality options when an episode ends"),
+        Triple(AutoPlayQualitySelectionMethod.BY_SEED_PEERS, "Auto-Play: Most Seeds & Peers", "Automatically download the next episode with the highest seed/peer count"),
+        Triple(AutoPlayQualitySelectionMethod.BY_QUALITY, "Auto-Play: Best Quality", "Automatically download the next episode with the highest resolution (4K/1080p)")
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectableGroup()
+    ) {
+        Text(
+            text = "Next Episode Auto-Play",
+            style = MaterialTheme.typography.titleMedium
+        )
+        options.forEach { (method, title, support) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusHighlight(shape = MaterialTheme.shapes.small)
+                    .selectable(
+                        selected = selectedMethod == method,
+                        enabled = true,
+                        onClick = { onMethodSelected(method) },
+                        role = Role.RadioButton
+                    )
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = selectedMethod == method,
+                    onClick = null,
+                    colors = RadioButtonDefaults.colors(
+                        selectedColor = MaterialTheme.colorScheme.primary
+                    )
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = support,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
 /** TV preview of the settings screen. */
@@ -866,6 +937,7 @@ fun SettingsScreenTvPreview() {
             onSetFilteredLanguages = {},
             onSetMinimumRating = {},
             onSetTorrentHandlingMode = {},
+            onSetAutoPlayQualitySelectionMethod = {},
             onSaveOpenSubtitlesCredentials = { _, _ -> },
             onClearOpenSubtitlesCredentials = {}
         )
@@ -900,6 +972,7 @@ fun SettingsScreenPreview() {
             onSetFilteredLanguages = {},
             onSetMinimumRating = {},
             onSetTorrentHandlingMode = {},
+            onSetAutoPlayQualitySelectionMethod = {},
             onSaveOpenSubtitlesCredentials = { _, _ -> },
             onClearOpenSubtitlesCredentials = {}
         )

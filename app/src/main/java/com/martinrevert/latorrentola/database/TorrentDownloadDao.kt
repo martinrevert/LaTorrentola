@@ -23,6 +23,10 @@ interface TorrentDownloadDao {
     @Query("SELECT * FROM torrent_downloads WHERE infoHash = :infoHash LIMIT 1")
     suspend fun get(infoHash: String): TorrentDownload?
 
+    /** Returns all stored torrent downloads. */
+    @Query("SELECT * FROM torrent_downloads")
+    suspend fun getAll(): List<TorrentDownload>
+
     /** Inserts or replaces a locally managed torrent job. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(download: TorrentDownload)

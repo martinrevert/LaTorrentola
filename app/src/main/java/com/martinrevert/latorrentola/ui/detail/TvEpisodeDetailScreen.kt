@@ -183,12 +183,14 @@ fun TvEpisodeDetailScreen(
                                 Toast.LENGTH_SHORT
                             ).show()
                         } else {
+                            val nextEpisodeInfo = viewModel.getNextEpisodeInfo()?.let { ArrayList(it.map { item -> item.toString() }) }
                             when (
                                 TorrentLaunchHelper.launch(
                                     context,
                                     torrentHandlingMode,
                                     magnetUri,
-                                    title
+                                    title,
+                                    nextEpisodeInfo
                                 )
                             ) {
                                 TorrentLaunchResult.Started -> {

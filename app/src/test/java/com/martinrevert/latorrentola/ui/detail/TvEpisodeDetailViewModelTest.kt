@@ -205,4 +205,43 @@ class TvEpisodeDetailViewModelTest {
         assertThat(torrentHash).isEqualTo("abcdef0123456789")
         assertThat(magnetHash).isEqualTo("4f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a")
     }
+
+    @Test
+    fun `getNextEpisodeInfo returns next episode when available and valid`() = runTest {
+        val seriesId = 10
+        val seasonNum = 1
+        val episodeNum = 5
+
+        val mockSeasonDetails = com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
+            id = 100,
+            seasonNumber = 1,
+            episodes = listOf(
+                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(id = 1, episodeNumber = 5, seasonNumber = 1, name = "Episode 5", airDate = "2023-01-01"),
+                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(id = 2, episodeNumber = 6, seasonNumber = 1, name = "Episode 6", airDate = "2023-01-08")
+            )
+        )
+
+        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, seasonNum) } returns mockSeasonDetails
+        coEvery { tmdbRepository.getTvImdbId(seriesId) } returns "123456"
+
+        val job = backgroundScope.launch {
+            viewModel.uiState.collect {}
+        }
+
+        viewModel.loadEpisode(
+            seriesId = seriesId,
+            seasonNumber = seasonNum,
+            episodeNumber = episodeNum,
+            seriesName = "Breaking Bad"
+        )
+        testScheduler.advanceUntilIdle()
+
+        val nextInfo = viewModel.getNextEpisodeInfo()
+        assertThat(nextInfo).isNotNull()
+        assertThat(nextInfo!![2]).isEqualTo(1)
+        assertThat(nextInfo[3]).isEqualTo(6)
+        assertThat(nextInfo[4]).isEqualTo("Episode 6")
+
+        job.cancel()
+    }
 }

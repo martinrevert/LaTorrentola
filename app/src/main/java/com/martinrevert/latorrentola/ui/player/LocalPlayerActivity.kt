@@ -47,13 +47,25 @@ import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaMetadata as CastMetadata
 import com.google.android.gms.cast.MediaQueueItem
 import com.google.android.gms.cast.MediaTrack
+import android.app.Dialog
+import androidx.activity.viewModels
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.ComposeView
 import com.google.android.gms.cast.framework.CastButtonFactory
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
+import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
 import com.martinrevert.latorrentola.network.DownloadedSubtitle
 import com.martinrevert.latorrentola.network.OpenSubtitlesException
 import com.martinrevert.latorrentola.network.OpenSubtitleRepository
 import com.martinrevert.latorrentola.network.OpenSubtitleResult
 import com.martinrevert.latorrentola.service.VerifiedTorrentHttpServer
+import com.martinrevert.latorrentola.ui.components.QualityChoiceDialog
+import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
+import com.martinrevert.latorrentola.database.TorrentDownloadDao
+import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.mediaMimeType
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dagger.hilt.android.AndroidEntryPoint
@@ -116,7 +128,7 @@ private object SubtitleServerRegistry {
  * Plays verified torrent content locally or on Cast and supports OpenSubtitles tracks.
  */
 @AndroidEntryPoint
-@OptIn(UnstableApi::class)
+@OptIn(androidx.media3.common.util.UnstableApi::class)
 class LocalPlayerActivity : ComponentActivity() {
 
     /** Media3 player used when no Cast session is active. */
@@ -140,6 +152,14 @@ class LocalPlayerActivity : ComponentActivity() {
     /** OpenSubtitles search and download integration. */
     @Inject
     lateinit var openSubtitlesRepository: OpenSubtitleRepository
+
+    /** Preference manager for user settings. */
+    @Inject
+    lateinit var preferenceManager: PreferenceManager
+
+    /** DAO for managing torrent downloads and cleanup. */
+    @Inject
+    lateinit var torrentDownloadDao: TorrentDownloadDao
 
     /** Maps local subtitle URIs to matching receiver-accessible URLs. */
     private val castSubtitleUrls = mutableMapOf<String, String>()
@@ -180,6 +200,17 @@ class LocalPlayerActivity : ComponentActivity() {
     /** Rotation animation communicating that OpenSubtitles is still being contacted. */
     private var subtitleSearchAnimator: ObjectAnimator? = null
 
+    /** ViewModel managing next episode releases and downloads. */
+    private val tvPlayerViewModel: TvPlayerViewModel by viewModels()
+
+    /** Next episode tracking fields. */
+    private var nextEpisodeSeriesId: Int = 0
+    private var nextEpisodeSeriesName: String = ""
+    private var nextEpisodeSeasonNumber: Int = 0
+    private var nextEpisodeEpisodeNumber: Int = 0
+    private var nextEpisodeEpisodeName: String = ""
+    private var hasNextEpisodeInfo: Boolean = false
+
     /**
      * Creates the player, using early-start extraction for incomplete torrents, and adds
      * playback actions to the native Media3 controller.
@@ -200,6 +231,22 @@ class LocalPlayerActivity : ComponentActivity() {
 
         mediaTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty()
         torrentInfoHash = intent.getStringExtra(EXTRA_INFO_HASH).orEmpty()
+
+        val nextEpisodeInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
+        if (nextEpisodeInfo != null && nextEpisodeInfo.size >= 5) {
+            try {
+                nextEpisodeSeriesId = nextEpisodeInfo[0].toInt()
+                nextEpisodeSeriesName = nextEpisodeInfo[1]
+                nextEpisodeSeasonNumber = nextEpisodeInfo[2].toInt()
+                nextEpisodeEpisodeNumber = nextEpisodeInfo[3].toInt()
+                nextEpisodeEpisodeName = nextEpisodeInfo[4]
+                hasNextEpisodeInfo = true
+                Log.d(TAG, "Next episode info: $nextEpisodeSeriesName S${nextEpisodeSeasonNumber}E${nextEpisodeEpisodeNumber}")
+            } catch (e: NumberFormatException) {
+                Log.e(TAG, "Error parsing next episode info", e)
+                hasNextEpisodeInfo = false
+            }
+        }
         val castRequested = intent.getBooleanExtra(EXTRA_CAST_ENABLED, false)
         castEnabled = castRequested && castStreamUrl.isNotBlank()
         if (castRequested && !castEnabled) {
@@ -283,6 +330,174 @@ class LocalPlayerActivity : ComponentActivity() {
         }
         setContentView(root)
         playerView.showController()
+        setupPlaybackCompletionListener()
+    }
+
+    /**
+     * Listens for playback completion and triggers next episode quality selection.
+     */
+    private fun setupPlaybackCompletionListener() {
+        val completionListener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED && hasNextEpisodeInfo) {
+                    Log.d(TAG, "Playback ended; fetching next episode qualities")
+                    fetchAndShowNextEpisodeQualities()
+                }
+            }
+        }
+        localPlayer?.addListener(completionListener)
+        castPlayer?.addListener(completionListener)
+    }
+
+    /**
+     * Fetches available releases for the next episode and presents the quality selection dialog
+     * or auto-plays based on user settings.
+     */
+    private fun fetchAndShowNextEpisodeQualities() {
+        tvPlayerViewModel.fetchReleasesForNextEpisode(
+            nextEpisodeSeriesId,
+            nextEpisodeSeasonNumber,
+            nextEpisodeEpisodeNumber
+        )
+
+        val autoPlayMode = preferenceManager.getAutoPlayQualitySelectionMethod()
+        if (autoPlayMode == AutoPlayQualitySelectionMethod.OFF) {
+            showQualityChoiceDialog()
+        } else {
+            lifecycleScope.launch {
+                var releases = tvPlayerViewModel.nextEpisodeReleases.value
+                var attempts = 0
+                while (releases.isEmpty() && attempts < 10) {
+                    kotlinx.coroutines.delay(500)
+                    releases = tvPlayerViewModel.nextEpisodeReleases.value
+                    attempts++
+                }
+
+                if (releases.isEmpty()) {
+                    Toast.makeText(this@LocalPlayerActivity, "No torrents found for next episode", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                val selectedRelease = when (autoPlayMode) {
+                    AutoPlayQualitySelectionMethod.BY_SEED_PEERS -> {
+                        releases.maxByOrNull { it.seeds + it.peers } ?: releases.first()
+                    }
+                    AutoPlayQualitySelectionMethod.BY_QUALITY -> {
+                        releases.maxByOrNull { qualityRank(it.title) } ?: releases.first()
+                    }
+                    AutoPlayQualitySelectionMethod.OFF -> releases.first()
+                }
+
+                checkDiskSpaceAndDownload(selectedRelease)
+            }
+        }
+    }
+
+    private fun showQualityChoiceDialog() {
+        val dialog = Dialog(this)
+        val composeView = ComposeView(this).apply {
+            setContent {
+                LaTorrentolaTheme {
+                    val releases by tvPlayerViewModel.nextEpisodeReleases.collectAsState()
+                    val isLoading by tvPlayerViewModel.isLoading.collectAsState()
+                    val error by tvPlayerViewModel.error.collectAsState()
+
+                    QualityChoiceDialog(
+                        onQualitySelected = { selectedQuality ->
+                            dialog.dismiss()
+                            val selectedRelease = releases.firstOrNull { release ->
+                                extractQualityLabel(release.title) == selectedQuality
+                            }
+                            selectedRelease?.let { release ->
+                                checkDiskSpaceAndDownload(release)
+                            }
+                        },
+                        onDismiss = { dialog.dismiss() },
+                        releases = releases,
+                        isLoading = isLoading,
+                        error = error
+                    )
+                }
+            }
+        }
+        dialog.setContentView(composeView)
+        dialog.show()
+    }
+
+    private fun qualityRank(title: String): Int {
+        val lower = title.lowercase()
+        return when {
+            lower.contains("2160p") || lower.contains("4k") -> 4
+            lower.contains("1080p") -> 3
+            lower.contains("720p") -> 2
+            lower.contains("hdtv") -> 1
+            else -> 0
+        }
+    }
+
+    private fun checkDiskSpaceAndDownload(release: EztvTorrent) {
+        val stat = android.os.StatFs(filesDir.absolutePath)
+        val availableBytes = stat.availableBytes
+        val requiredBytes = 500L * 1024 * 1024 // 500 MB threshold
+
+        if (availableBytes < requiredBytes) {
+            AlertDialog.Builder(this)
+                .setTitle("Insufficient Disk Space")
+                .setMessage("Not enough disk space available. Would you like to erase all saved torrents on disk to free up space?")
+                .setPositiveButton("Erase") { _, _ ->
+                    lifecycleScope.launch {
+                        try {
+                            val downloads = torrentDownloadDao.getAll()
+                            downloads.forEach { download ->
+                                File(filesDir, "torrent_downloads/${download.infoHash}").deleteRecursively()
+                                torrentDownloadDao.delete(download.infoHash)
+                            }
+                            val newStat = android.os.StatFs(filesDir.absolutePath)
+                            if (newStat.availableBytes >= requiredBytes) {
+                                executeDownload(release)
+                            } else {
+                                Toast.makeText(this@LocalPlayerActivity, "Not enough space available even after clearing saved torrents.", Toast.LENGTH_LONG).show()
+                            }
+                        } catch (e: Exception) {
+                            Toast.makeText(this@LocalPlayerActivity, "Failed to clear saved torrents: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+                .setNegativeButton("Cancel") { _, _ ->
+                    Toast.makeText(this@LocalPlayerActivity, "Download cancelled due to insufficient disk space.", Toast.LENGTH_SHORT).show()
+                }
+                .show()
+        } else {
+            executeDownload(release)
+        }
+    }
+
+    private fun executeDownload(release: EztvTorrent) {
+        tvPlayerViewModel.downloadEpisode(
+            this@LocalPlayerActivity,
+            release,
+            nextEpisodeSeriesId,
+            nextEpisodeSeriesName,
+            nextEpisodeSeasonNumber,
+            nextEpisodeEpisodeNumber,
+            nextEpisodeEpisodeName
+        )
+        Toast.makeText(
+            this@LocalPlayerActivity,
+            getString(R.string.tv_episode_downloaded),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    private fun extractQualityLabel(title: String): String {
+        val lower = title.lowercase()
+        return when {
+            lower.contains("2160p") || lower.contains("4k") -> "2160p"
+            lower.contains("1080p") -> "1080p"
+            lower.contains("720p") -> "720p"
+            lower.contains("hdtv") -> "HDTV"
+            else -> "SD"
+        }
     }
 
     /**
@@ -1134,6 +1349,7 @@ class LocalPlayerActivity : ComponentActivity() {
      * @param localUrl Loopback URL for local playback when a Cast session ends.
      * @return Media3 converter that maps downloaded subtitle tracks to their LAN URLs.
      */
+    @androidx.annotation.OptIn(UnstableApi::class)
     private fun castUrlConverter(castUrl: String, localUrl: String): MediaItemConverter {
         val delegate = DefaultMediaItemConverter()
         return object : MediaItemConverter {
@@ -1208,6 +1424,9 @@ class LocalPlayerActivity : ComponentActivity() {
 
         /** Initial player control visibility duration before Media3 hides the controls. */
         private const val PLAYER_CONTROLLER_SHOW_TIMEOUT_MS = 5_000
+
+        /** Intent extra containing next episode information for quality selection. */
+        const val EXTRA_NEXT_EPISODE_INFO = "extra_next_episode_info"
 
         /** Intent extra containing an app-private, fully verified media file path. */
         const val EXTRA_FILE_PATH = "verified_media_file_path"

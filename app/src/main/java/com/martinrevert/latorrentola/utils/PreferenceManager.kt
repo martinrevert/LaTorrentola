@@ -41,6 +41,12 @@ class PreferenceManager @Inject constructor(
     val torrentHandlingModeFlow: StateFlow<TorrentHandlingMode> =
         _torrentHandlingModeFlow.asStateFlow()
 
+    /** Mutable backing stream for the auto-play quality selection method. */
+    private val _autoPlayQualitySelectionFlow = MutableStateFlow(getAutoPlayQualitySelectionMethod())
+    /** Observable auto-play quality selection method. */
+    val autoPlayQualitySelectionFlow: StateFlow<AutoPlayQualitySelectionMethod> =
+        _autoPlayQualitySelectionFlow.asStateFlow()
+
     /** Persists whether voice guidance is enabled. */
     fun setVoiceSystem(enabled: Boolean) {
         sharedPreferences.edit { putBoolean(KEY_VOICE_SYSTEM, enabled) }
@@ -170,6 +176,19 @@ class PreferenceManager @Inject constructor(
             ?: TorrentHandlingMode.EXTERNAL_CLIENT
     }
 
+    /** Persists and publishes the auto-play quality selection method. */
+    fun setAutoPlayQualitySelectionMethod(method: AutoPlayQualitySelectionMethod) {
+        sharedPreferences.edit { putString(KEY_AUTO_PLAY_QUALITY_SELECTION_METHOD, method.name) }
+        _autoPlayQualitySelectionFlow.value = method
+    }
+
+    /** Returns the configured auto-play quality selection method, defaulting to OFF. */
+    fun getAutoPlayQualitySelectionMethod(): AutoPlayQualitySelectionMethod {
+        val storedMethod = sharedPreferences.getString(KEY_AUTO_PLAY_QUALITY_SELECTION_METHOD, null)
+        return AutoPlayQualitySelectionMethod.values().firstOrNull { it.name == storedMethod }
+            ?: AutoPlayQualitySelectionMethod.OFF
+    }
+
     companion object {
         /** Preference key controlling general voice guidance. */
         private const val KEY_VOICE_SYSTEM = "voice_system"
@@ -197,6 +216,8 @@ class PreferenceManager @Inject constructor(
         private const val KEY_MINIMUM_RATING = "minimum_rating"
         /** Preference key for the selected torrent handling mode. */
         private const val KEY_TORRENT_HANDLING_MODE = "torrent_handling_mode"
+        /** Preference key for the auto-play quality selection method. */
+        private const val KEY_AUTO_PLAY_QUALITY_SELECTION_METHOD = "auto_play_quality_selection_method"
 
         /** Follow the system theme. */
         const val THEME_SYSTEM = 0
@@ -213,4 +234,14 @@ class PreferenceManager @Inject constructor(
         /** Step increment for adjusting minimum rating. */
         const val MINIMUM_RATING_STEP = 0.1f
     }
+}
+
+/** Method for selecting quality when auto-playing the next episode. */
+enum class AutoPlayQualitySelectionMethod {
+    /** Auto-play is disabled; default action is showing the EZTV episode list dialog. */
+    OFF,
+    /** Select the release with the most seeds/peers automatically. */
+    BY_SEED_PEERS,
+    /** Select the release with the highest quality (resolution) automatically. */
+    BY_QUALITY
 }

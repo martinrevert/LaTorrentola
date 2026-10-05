@@ -52,18 +52,23 @@ object TorrentLaunchHelper {
      * @param magnetUri Valid hexadecimal-BTIH magnet URI.
      * @param title User-visible media title.
      * @param castWhenReady Whether to expose verified media ranges to a Cast receiver.
+     * @param nextEpisodeInfo Optional next episode metadata passed to the player upon completion.
      */
     fun downloadLocally(
         context: Context,
         magnetUri: String,
         title: String,
-        castWhenReady: Boolean
+        castWhenReady: Boolean,
+        nextEpisodeInfo: ArrayList<String>? = null
     ) {
         val intent = Intent(context, TorrentDownloadService::class.java).apply {
             action = TorrentDownloadService.ACTION_DOWNLOAD
             putExtra(TorrentDownloadService.EXTRA_MAGNET_URI, magnetUri)
             putExtra(TorrentDownloadService.EXTRA_TITLE, title)
             putExtra(TorrentDownloadService.EXTRA_CAST_WHEN_READY, castWhenReady)
+            if (nextEpisodeInfo != null) {
+                putStringArrayListExtra(TorrentDownloadService.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
+            }
         }
         ContextCompat.startForegroundService(context, intent)
     }
@@ -75,23 +80,25 @@ object TorrentLaunchHelper {
      * @param mode User-selected torrent handling behavior.
      * @param magnetUri Magnet URI for the release.
      * @param title User-visible media title.
+     * @param nextEpisodeInfo Optional next episode metadata passed to the player upon completion.
      * @return Result describing whether the request started or why it was rejected.
      */
     fun launch(
         context: Context,
         mode: TorrentHandlingMode,
         magnetUri: String,
-        title: String
+        title: String,
+        nextEpisodeInfo: ArrayList<String>? = null
     ): TorrentLaunchResult = when (mode) {
         TorrentHandlingMode.EXTERNAL_CLIENT ->
             if (openExternal(context, magnetUri)) TorrentLaunchResult.Started
             else TorrentLaunchResult.NoExternalClient
         TorrentHandlingMode.LOCAL_PLAYBACK -> {
-            downloadLocally(context, magnetUri, title, false)
+            downloadLocally(context, magnetUri, title, false, nextEpisodeInfo)
             TorrentLaunchResult.Started
         }
         TorrentHandlingMode.CHROMECAST -> {
-            downloadLocally(context, magnetUri, title, true)
+            downloadLocally(context, magnetUri, title, true, nextEpisodeInfo)
             TorrentLaunchResult.Started
         }
     }

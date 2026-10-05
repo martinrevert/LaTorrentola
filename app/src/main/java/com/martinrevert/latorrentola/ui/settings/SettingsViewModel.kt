@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.network.FirebaseMessagingInitializer
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
+import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
 import com.martinrevert.latorrentola.utils.OpenSubtitlesCredentialStore
 import com.martinrevert.latorrentola.utils.OpenSubtitlesCredentials
 import com.martinrevert.latorrentola.utils.PreferenceManager
@@ -56,6 +57,7 @@ class SettingsViewModel @Inject constructor(
             filteredLanguages = localFiltered,
             minimumRating = preferenceManager.getMinimumRating(),
             torrentHandlingMode = preferenceManager.getTorrentHandlingMode(),
+            autoPlayQualitySelectionMethod = preferenceManager.getAutoPlayQualitySelectionMethod(),
             openSubtitlesUsername = openSubtitlesCredentials?.username.orEmpty(),
             openSubtitlesCredentialsConfigured = openSubtitlesCredentials != null
         )
@@ -76,6 +78,13 @@ class SettingsViewModel @Inject constructor(
             preferenceManager.minimumRatingFlow.collect { rating ->
                 if (_uiState.value.minimumRating != rating) {
                     _uiState.value = _uiState.value.copy(minimumRating = rating)
+                }
+            }
+        }
+        viewModelScope.launch {
+            preferenceManager.autoPlayQualitySelectionFlow.collect { method ->
+                if (_uiState.value.autoPlayQualitySelectionMethod != method) {
+                    _uiState.value = _uiState.value.copy(autoPlayQualitySelectionMethod = method)
                 }
             }
         }
@@ -182,6 +191,16 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
+     * Updates and persists the auto-play quality selection method.
+     *
+     * @param method Selected method for choosing quality when auto-playing next episode.
+     */
+    fun setAutoPlayQualitySelectionMethod(method: AutoPlayQualitySelectionMethod) {
+        preferenceManager.setAutoPlayQualitySelectionMethod(method)
+        _uiState.value = _uiState.value.copy(autoPlayQualitySelectionMethod = method)
+    }
+
+    /**
      * Encrypts and stores the user's OpenSubtitles login.
      *
      * @param username Account username.
@@ -218,6 +237,7 @@ class SettingsViewModel @Inject constructor(
  * @property filteredLanguages Comma-separated language codes excluded from movie lists.
  * @property minimumRating Minimum movie rating used for filtering.
  * @property torrentHandlingMode How selected torrents are handed off or played.
+ * @property autoPlayQualitySelectionMethod How quality is selected when auto-playing next episode.
  * @property openSubtitlesUsername Username stored for OpenSubtitles authentication.
  * @property openSubtitlesCredentialsConfigured Whether both OpenSubtitles credentials are saved.
  */
@@ -231,6 +251,7 @@ data class SettingsUiState(
     val filteredLanguages: String = "",
     val minimumRating: Float = PreferenceManager.DEFAULT_MINIMUM_RATING,
     val torrentHandlingMode: TorrentHandlingMode = TorrentHandlingMode.EXTERNAL_CLIENT,
+    val autoPlayQualitySelectionMethod: AutoPlayQualitySelectionMethod = AutoPlayQualitySelectionMethod.OFF,
     val openSubtitlesUsername: String = "",
     val openSubtitlesCredentialsConfigured: Boolean = false
 )

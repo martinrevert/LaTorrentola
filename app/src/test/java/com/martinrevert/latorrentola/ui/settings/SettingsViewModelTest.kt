@@ -41,8 +41,10 @@ class SettingsViewModelTest {
         every { preferenceManager.getTheme() } returns PreferenceManager.THEME_DARK
         every { preferenceManager.getMinimumRating() } returns PreferenceManager.DEFAULT_MINIMUM_RATING
         every { preferenceManager.getTorrentHandlingMode() } returns TorrentHandlingMode.EXTERNAL_CLIENT
+        every { preferenceManager.getAutoPlayQualitySelectionMethod() } returns com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod.OFF
         every { preferenceManager.filteredLanguagesFlow } returns MutableStateFlow("es")
         every { preferenceManager.minimumRatingFlow } returns MutableStateFlow(PreferenceManager.DEFAULT_MINIMUM_RATING)
+        every { preferenceManager.autoPlayQualitySelectionFlow } returns MutableStateFlow(com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod.OFF)
         every { authRepository.authStateFlow } returns MutableStateFlow(null)
         
         viewModel = SettingsViewModel(
