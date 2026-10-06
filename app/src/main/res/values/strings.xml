@@ -223,7 +223,7 @@
     <string name="next_episode_searching">Searching available torrents on EZTV&#8230;</string>
     <string name="next_episode_no_torrents">No torrents found on EZTV for this episode.</string>
     <string name="next_episode_end_of_season">End of season. No further episodes available.</string>
-    <string name="next_episode_autoplay_toast">Auto-playing next episode: S%1$02dE%2$02d&#8230;</string>
+    <string name="next_episode_autoplay_toast">Auto-playing next episode: S%1$02dE%2$02d (%3$s)&#8230;</string>
 
     <string name="asset_statements" translatable="false">[]</string>
 </resources>

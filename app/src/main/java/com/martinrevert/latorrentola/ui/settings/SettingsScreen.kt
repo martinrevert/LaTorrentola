@@ -49,11 +49,12 @@ import dev.chrisbanes.haze.rememberHazeState
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.glass.hazeGlass
+import dev.chrisbanes.haze.ExperimentalHazeApi
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.tv.material3.Button
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class, ExperimentalHazeApi::class)
 /** Collects settings state and presents the adaptive settings screen. */
 @Composable
 fun SettingsScreen(

@@ -133,7 +133,7 @@ private object SubtitleServerRegistry {
  * Plays verified torrent content locally or on Cast and supports OpenSubtitles tracks.
  */
 @AndroidEntryPoint
-@OptIn(androidx.media3.common.util.UnstableApi::class)
+@androidx.annotation.OptIn(UnstableApi::class)
 class LocalPlayerActivity : ComponentActivity() {
 
     /** Media3 player used when no Cast session is active. */
@@ -1408,6 +1408,7 @@ class LocalPlayerActivity : ComponentActivity() {
      * @return Configured Cast player, or `null` if Cast services are unavailable.
      */
     @androidx.annotation.OptIn(UnstableApi::class)
+    @Suppress("DEPRECATION")
     private fun buildCastPlayer(): CastPlayer? {
         return try {
             val remotePlayer = CastPlayer(

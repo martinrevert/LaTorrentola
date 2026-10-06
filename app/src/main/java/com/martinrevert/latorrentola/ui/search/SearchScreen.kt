@@ -65,9 +65,10 @@ import dev.chrisbanes.haze.rememberHazeState
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.glass.hazeGlass
+import dev.chrisbanes.haze.ExperimentalHazeApi
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalHazeApi::class)
 /**
  * Connects search fields, collection modes, and result actions to the search view model.
  *
@@ -226,7 +227,7 @@ fun SearchScreen(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalHazeApi::class)
 /**
  * Renders the adaptive search interface and its current result collection.
  *

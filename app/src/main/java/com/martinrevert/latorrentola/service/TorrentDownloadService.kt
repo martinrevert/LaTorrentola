@@ -295,10 +295,10 @@ class TorrentDownloadService : Service() {
                 ?.mediaPath
                 ?.let(::File)
                 ?.takeIf { it.isFile && it.canRead() }
-            val nextEpisodeInfo = intent?.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
+            val nextEpisodeInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
             if (completedFile != null) {
                 openWhenReadyHashes.remove(infoHash)
-                val castWhenReady = intent?.getBooleanExtra(EXTRA_CAST_WHEN_READY, false) ?: false
+                val castWhenReady = intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false)
                 startCompletedPlayback(infoHash, title, completedFile, castWhenReady, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber)
                 return@launch
             }
@@ -310,7 +310,7 @@ class TorrentDownloadService : Service() {
                     state = STATE_QUEUED,
                     progressPercent = existing?.progressPercent ?: 0,
                     mediaPath = existing?.mediaPath,
-                    castWhenReady = intent?.getBooleanExtra(EXTRA_CAST_WHEN_READY, false) ?: false,
+                    castWhenReady = intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false),
                     updatedAtMillis = System.currentTimeMillis()
                 )
             )
@@ -321,7 +321,7 @@ class TorrentDownloadService : Service() {
                             infoHash,
                             magnetUri,
                             title,
-                            intent?.getBooleanExtra(EXTRA_CAST_WHEN_READY, false) ?: false,
+                            intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false),
                             nextEpisodeInfo,
                             seriesId,
                             seasonNumber,
