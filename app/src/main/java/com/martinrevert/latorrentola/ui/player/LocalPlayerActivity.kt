@@ -846,8 +846,7 @@ class LocalPlayerActivity : ComponentActivity() {
     }
 
     /**
-     * Loads the latest torrent-cached subtitle, or warms the OpenSubtitles session, when playback
-     * has no supported embedded text track.
+     * Loads the latest torrent-cached subtitle, or warms the OpenSubtitles session.
      *
      * @param tracks Current available playback tracks, or `null` before they are initialized.
      */
@@ -856,13 +855,9 @@ class LocalPlayerActivity : ComponentActivity() {
         if (subtitleStartupCheckStarted || player.playbackState != Player.STATE_READY || tracks == null) {
             return
         }
-        val hasSupportedEmbeddedSubtitles = tracks.groups
-            .filter { it.type == C.TRACK_TYPE_TEXT }
-            .any { group -> (0 until group.length).any(group::isTrackSupported) }
-        if (hasSupportedEmbeddedSubtitles) return
 
         subtitleStartupCheckStarted = true
-        Log.i(TAG, "No supported embedded subtitles; checking torrent subtitle cache")
+        Log.i(TAG, "Checking torrent subtitle cache for available subtitles")
         lifecycleScope.launch {
             try {
                 val cachedSubtitle = openSubtitlesRepository.findLatestDownloaded(
@@ -1667,20 +1662,23 @@ class LocalPlayerActivity : ComponentActivity() {
         if (mediaId.isBlank()) return
         lifecycleScope.launch {
             try {
-                val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
-                val doc = db.collection("users").document(uid).collection("watch_history").document(mediaId).get().await()
-                val saved = doc.toObject(PlaybackProgress::class.java)
+                val saved = userLibraryRepository.getPlaybackProgress(mediaId)
                 if (saved != null && saved.positionMs > 5000L && !saved.isCompleted) {
-                    player.addListener(object : Player.Listener {
-                        override fun onPlaybackStateChanged(playbackState: Int) {
-                            if (playbackState == Player.STATE_READY && !initialSeekPerformed) {
-                                initialSeekPerformed = true
-                                player.seekTo(saved.positionMs)
-                                player.removeListener(this)
+                    val targetPosition = saved.positionMs
+                    if (player.playbackState == Player.STATE_READY && !initialSeekPerformed) {
+                        initialSeekPerformed = true
+                        player.seekTo(targetPosition)
+                    } else if (!initialSeekPerformed) {
+                        player.addListener(object : Player.Listener {
+                            override fun onPlaybackStateChanged(playbackState: Int) {
+                                if (playbackState == Player.STATE_READY && !initialSeekPerformed) {
+                                    initialSeekPerformed = true
+                                    player.seekTo(targetPosition)
+                                    player.removeListener(this)
+                                }
                             }
-                        }
-                    })
+                        })
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error fetching watch history recovery", e)

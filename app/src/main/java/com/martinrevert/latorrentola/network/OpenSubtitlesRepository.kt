@@ -151,38 +151,42 @@ class OpenSubtitlesRepository @Inject constructor(
     ): DownloadedSubtitle? = withContext(Dispatchers.IO) {
         val normalizedHash = torrentInfoHash?.trim()?.lowercase(Locale.ROOT)
             ?.takeIf(String::isNotBlank)
-            ?: return@withContext null
-        if (!TORRENT_INFO_HASH_PATTERN.matches(normalizedHash)) {
-            throw OpenSubtitlesException(
-                OpenSubtitlesErrorCode.INVALID_SUBTITLE,
-                "The torrent identifier for subtitle lookup is invalid"
-            )
+
+        val candidateDirectories = mutableListOf<File>()
+
+        if (normalizedHash != null && TORRENT_INFO_HASH_PATTERN.matches(normalizedHash)) {
+            val torrentDirectory = File(context.filesDir, "$TORRENT_DIRECTORY/$normalizedHash").canonicalFile
+            if (torrentDirectory.parentFile == File(context.filesDir, TORRENT_DIRECTORY).canonicalFile) {
+                val subtitleDirectory = File(torrentDirectory, SUBTITLE_DIRECTORY).canonicalFile
+                if (subtitleDirectory.parentFile == torrentDirectory && subtitleDirectory.isDirectory) {
+                    candidateDirectories.add(subtitleDirectory)
+                }
+            }
         }
-        val torrentDirectory = File(context.filesDir, "$TORRENT_DIRECTORY/$normalizedHash")
-            .canonicalFile
-        if (torrentDirectory.parentFile != File(context.filesDir, TORRENT_DIRECTORY).canonicalFile) {
-            throw OpenSubtitlesException(
-                OpenSubtitlesErrorCode.INVALID_SUBTITLE,
-                "The torrent subtitle directory is outside private app storage"
-            )
+
+        val cacheSubDir = File(context.cacheDir, SUBTITLE_DIRECTORY).canonicalFile
+        if (cacheSubDir.isDirectory) {
+            candidateDirectories.add(cacheSubDir)
         }
-        val subtitleDirectory = File(torrentDirectory, SUBTITLE_DIRECTORY).canonicalFile
-        if (subtitleDirectory.parentFile != torrentDirectory || !subtitleDirectory.isDirectory) {
-            return@withContext null
-        }
-        val subtitleFile = subtitleDirectory.listFiles()
-            .orEmpty()
+
+        val subtitleFile = candidateDirectories
+            .flatMap { dir -> dir.listFiles().orEmpty().toList() }
             .asSequence()
             .filter { it.isFile && it.extension.equals(SUBTITLE_EXTENSION, ignoreCase = true) }
             .map { it.canonicalFile }
-            .filter { it.parentFile == subtitleDirectory }
             .maxByOrNull { it.lastModified() }
             ?: return@withContext null
+
+        val displayLabel = if (subtitleFile.nameWithoutExtension.all { it.isDigit() }) {
+            "OpenSubtitles"
+        } else {
+            subtitleFile.nameWithoutExtension
+        }
 
         DownloadedSubtitle(
             file = subtitleFile,
             language = UNKNOWN_LANGUAGE,
-            label = subtitleFile.nameWithoutExtension
+            label = displayLabel
         )
     }
 

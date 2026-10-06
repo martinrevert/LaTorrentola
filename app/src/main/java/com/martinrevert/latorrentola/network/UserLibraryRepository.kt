@@ -414,6 +414,40 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
+    /** Retrieves saved playback progress locally from Room DB first, falling back to Firestore when signed in. */
+    suspend fun getPlaybackProgress(mediaId: String): PlaybackProgress? {
+        if (mediaId.isBlank()) return null
+        try {
+            val localEntity = watchHistoryDao.get(mediaId)
+            if (localEntity != null) {
+                return PlaybackProgress(
+                    mediaId = localEntity.mediaId,
+                    title = localEntity.title,
+                    positionMs = localEntity.positionMs,
+                    durationMs = localEntity.durationMs,
+                    timestamp = localEntity.timestamp,
+                    isEpisode = localEntity.isEpisode
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("UserLibraryRepository", "Error fetching local watch history: ${e.message}")
+        }
+
+        val uid = userId ?: return null
+        return try {
+            val doc = firestore.collection("users")
+                .document(uid)
+                .collection("watch_history")
+                .document(mediaId)
+                .get()
+                .await()
+            doc.toObject(PlaybackProgress::class.java)
+        } catch (e: Exception) {
+            Log.e("UserLibraryRepository", "Error fetching remote watch history: ${e.message}")
+            null
+        }
+    }
+
     /** Observes the user's watch history from local Room cache, combining with Firestore when signed in. */
     fun getWatchHistory(): Flow<List<PlaybackProgress>> {
         return watchHistoryDao.observeAll()
