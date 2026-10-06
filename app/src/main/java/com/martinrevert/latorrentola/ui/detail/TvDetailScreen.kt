@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.ui.detail
 
 import android.content.Intent
 import android.os.Build
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -48,6 +49,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -129,6 +131,7 @@ fun TvDetailScreen(
     val selectedSeason by viewModel.selectedSeason.collectAsState()
     val seasonState by viewModel.seasonState.collectAsState()
     val downloadedEpisodes by viewModel.downloadedEpisodes.collectAsState()
+    val watchHistoryMap by viewModel.watchHistoryMap.collectAsState()
     val favoriteTvSeriesIds by viewModel.favoriteTvSeriesIds.collectAsState()
     val favoriteActionError by viewModel.favoriteActionError.collectAsState()
     val selectedActorDetail by viewModel.selectedActorDetail.collectAsState()
@@ -317,6 +320,7 @@ fun TvDetailScreen(
                     selectedSeasonNumber = selectedSeason?.seasonNumber,
                     seasonState = seasonState,
                     downloadedEpisodes = downloadedEpisodes,
+                    watchHistoryMap = watchHistoryMap,
                     onSeasonSelected = viewModel::selectSeason,
                     onEpisodeClick = { episode -> onEpisodeClick(state.series.name.orEmpty(), episode) },
                     contentFocusRequester = detailContentFocusRequester,
@@ -374,6 +378,7 @@ private fun TvDetailContent(
     selectedSeasonNumber: Int?,
     seasonState: TvSeasonUiState,
     downloadedEpisodes: List<DownloadedEpisode>,
+    watchHistoryMap: Map<String, PlaybackProgress>,
     onSeasonSelected: (TmdbTvSeason) -> Unit,
     onEpisodeClick: (TmdbTvEpisode) -> Unit,
     contentFocusRequester: FocusRequester,
@@ -567,9 +572,13 @@ private fun TvDetailContent(
                             it.seasonNumber == (selectedSeasonNumber ?: episode.seasonNumber) &&
                                     it.episodeNumber == episode.episodeNumber
                         }
+                        val mediaId = "media_${series.id}_s${episode.seasonNumber}_e${episode.episodeNumber}"
+                        val progress = watchHistoryMap[mediaId]
+                        val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
                         TvEpisodeCard(
                             episode = episode,
                             isDownloaded = isDownloaded,
+                            progressPercent = progressPercent,
                             onClick = { onEpisodeClick(episode) },
                             modifier = Modifier
                                 .focusRequester(episodeFocusRequesters[index])
@@ -808,6 +817,7 @@ private fun TvSeriesInformation(
 private fun TvEpisodeCard(
     episode: TmdbTvEpisode,
     isDownloaded: Boolean = false,
+    progressPercent: Int? = null,
     onClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -822,14 +832,29 @@ private fun TvEpisodeCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (episode.fullStillUrl != null) {
-                AsyncImage(
-                    model = episode.fullStillUrl,
-                    contentDescription = episode.name,
+                Box(
                     modifier = Modifier
                         .width(180.dp)
-                        .aspectRatio(16 / 9f),
-                    contentScale = ContentScale.Crop
-                )
+                        .aspectRatio(16 / 9f)
+                ) {
+                    AsyncImage(
+                        model = episode.fullStillUrl,
+                        contentDescription = episode.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                    if (progressPercent != null && progressPercent > 0) {
+                        LinearProgressIndicator(
+                            progress = { progressPercent / 100f },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .align(Alignment.BottomCenter),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        )
+                    }
+                }
             }
             Column(modifier = Modifier.weight(1f)) {
                 Row(

@@ -5,6 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,10 +32,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -52,6 +55,7 @@ import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.isTvDevice
+import kotlinx.coroutines.delay
 
 /**
  * Dialog displaying available EZTV torrent releases for the next episode.
@@ -86,6 +90,20 @@ fun NextEpisodeTorrentDialog(
 
     BackHandler(onBack = onDismiss)
 
+    // Ensure deterministic TV D-pad focus in all scenarios (Loading, Error, Empty, or Populated)
+    if (isTv) {
+        LaunchedEffect(isLoading, error, releases) {
+            delay(100)
+            try {
+                if (!isLoading && releases.isNotEmpty()) {
+                    firstItemFocusRequester.requestFocus()
+                } else {
+                    closeButtonFocusRequester.requestFocus()
+                }
+            } catch (_: Exception) { }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -110,7 +128,7 @@ fun NextEpisodeTorrentDialog(
                     onClick = {}
                 ),
             shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 6.dp,
             shadowElevation = 8.dp
         ) {
@@ -126,7 +144,7 @@ fun NextEpisodeTorrentDialog(
                         Text(
                             text = seriesName,
                             style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
@@ -150,7 +168,7 @@ fun NextEpisodeTorrentDialog(
                         text = episodeTitleFormatted,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface
                     )
 
                     Spacer(Modifier.height(2.dp))
@@ -158,7 +176,7 @@ fun NextEpisodeTorrentDialog(
                     Text(
                         text = stringResource(R.string.tv_available_torrents),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
@@ -176,13 +194,13 @@ fun NextEpisodeTorrentDialog(
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 CircularProgressIndicator(
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(36.dp)
                                 )
                                 Text(
                                     text = stringResource(R.string.next_episode_searching),
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center
                                 )
                             }
@@ -191,7 +209,7 @@ fun NextEpisodeTorrentDialog(
                             Text(
                                 text = error,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.error,
+                                color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.error,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.padding(16.dp)
                             )
@@ -200,7 +218,7 @@ fun NextEpisodeTorrentDialog(
                             Text(
                                 text = stringResource(R.string.next_episode_no_torrents),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.padding(16.dp)
                             )
@@ -211,11 +229,9 @@ fun NextEpisodeTorrentDialog(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 itemsIndexed(releases) { index, torrent ->
-                                    val itemModifier = if (index == 0) {
-                                        Modifier.focusRequester(firstItemFocusRequester)
-                                    } else {
-                                        Modifier
-                                    }
+                                    val itemModifier = Modifier
+                                        .then(if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
+                                        .then(if (isTv && index == releases.lastIndex) Modifier.focusProperties { down = closeButtonFocusRequester } else Modifier)
 
                                     TorrentOptionItem(
                                         torrent = torrent,
@@ -223,16 +239,6 @@ fun NextEpisodeTorrentDialog(
                                         onClick = { onTorrentSelected(torrent) },
                                         modifier = itemModifier
                                     )
-                                }
-                            }
-
-                            if (isTv) {
-                                LaunchedEffect(releases) {
-                                    if (releases.isNotEmpty()) {
-                                        try {
-                                            firstItemFocusRequester.requestFocus()
-                                        } catch (_: Exception) { }
-                                    }
                                 }
                             }
                         }
@@ -254,7 +260,7 @@ fun NextEpisodeTorrentDialog(
                         Text(
                             text = stringResource(android.R.string.cancel),
                             style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary
+                            color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary
                         )
                     }
                 }
@@ -274,7 +280,7 @@ private fun TorrentOptionItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val cardContent: @Composable () -> Unit = {
+    val cardContent: @Composable (Color, Color, Color) -> Unit = { textColor, variantColor, primaryColor ->
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -292,7 +298,7 @@ private fun TorrentOptionItem(
                     text = torrent.title,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface,
+                    color = textColor,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -304,7 +310,7 @@ private fun TorrentOptionItem(
                         Text(
                             text = torrent.formattedSize,
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = variantColor
                         )
                     }
                     Text(
@@ -314,14 +320,14 @@ private fun TorrentOptionItem(
                             torrent.peers
                         ),
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary
+                        color = primaryColor
                     )
                 }
             }
             Icon(
                 imageVector = Icons.Default.Download,
                 contentDescription = stringResource(R.string.tv_download_torrent_desc),
-                tint = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
+                tint = primaryColor,
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -329,12 +335,32 @@ private fun TorrentOptionItem(
 
     if (isTv) {
         val interactionSource = remember { MutableInteractionSource() }
+        val isFocused by interactionSource.collectIsFocusedAsState()
+
         val tvColors = ClickableSurfaceDefaults.colors(
             containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant,
             focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.primaryContainer,
-            contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
+            contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
         )
+
+        val textColor = if (isFocused) {
+            androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            androidx.tv.material3.MaterialTheme.colorScheme.onSurface
+        }
+
+        val variantColor = if (isFocused) {
+            androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+        } else {
+            androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant
+        }
+
+        val primaryColor = if (isFocused) {
+            androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            androidx.tv.material3.MaterialTheme.colorScheme.primary
+        }
 
         TvSurface(
             onClick = onClick,
@@ -344,7 +370,7 @@ private fun TorrentOptionItem(
             interactionSource = interactionSource,
             modifier = modifier.fillMaxWidth()
         ) {
-            cardContent()
+            cardContent(textColor, variantColor, primaryColor)
         }
     } else {
         Card(
@@ -358,7 +384,11 @@ private fun TorrentOptionItem(
                 contentColor = MaterialTheme.colorScheme.onSurface
             )
         ) {
-            cardContent()
+            cardContent(
+                MaterialTheme.colorScheme.onSurface,
+                MaterialTheme.colorScheme.onSurfaceVariant,
+                MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

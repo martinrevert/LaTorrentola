@@ -46,6 +46,7 @@ import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.QualityChips
 import com.martinrevert.latorrentola.ui.components.GenreChips
@@ -102,6 +103,7 @@ fun HomeScreen(
     val selectedQuality by viewModel.selectedQuality.collectAsState()
     val lastClickedMovieId by viewModel.lastClickedMovieId.collectAsState()
     val downloadedMovieIds by viewModel.downloadedMovieIds.collectAsState()
+    val watchHistoryMap by viewModel.watchHistoryMap.collectAsState()
     val qualityOptions = viewModel.qualityOptions
     val allGenres = viewModel.allGenres
     val context = LocalContext.current
@@ -118,6 +120,7 @@ fun HomeScreen(
         selectedQuality = selectedQuality,
         lastClickedMovieId = lastClickedMovieId,
         downloadedMovieIds = downloadedMovieIds,
+        watchHistoryMap = watchHistoryMap,
         qualityOptions = qualityOptions,
         userPhotoUrl = userPhotoUrl,
         isTv = isTv,
@@ -153,6 +156,7 @@ private fun HomeScreenContent(
     selectedQuality: String?,
     lastClickedMovieId: Int?,
     downloadedMovieIds: Set<Int>,
+    watchHistoryMap: Map<String, PlaybackProgress>,
     qualityOptions: List<String>,
     userPhotoUrl: String?,
     isTv: Boolean,
@@ -342,6 +346,7 @@ private fun HomeScreenContent(
                             gridState = gridState,
                             lastVisitDate = lastVisitDate,
                             downloadedMovieIds = downloadedMovieIds,
+                            watchHistoryMap = watchHistoryMap,
                             isLoadingMore = isLoadingMore,
                             onMovieClick = {
                                 onSetLastClickedMovieId(it.id)
@@ -405,6 +410,7 @@ private fun HomeScreenContent(
                             gridState = gridState,
                             lastVisitDate = lastVisitDate,
                             downloadedMovieIds = downloadedMovieIds,
+                            watchHistoryMap = watchHistoryMap,
                             isLoadingMore = isLoadingMore,
                             onMovieClick = {
                                 onSetLastClickedMovieId(it.id)
@@ -703,6 +709,7 @@ private fun HomeContent(
     gridState: LazyGridState,
     lastVisitDate: Long?,
     downloadedMovieIds: Set<Int>,
+    watchHistoryMap: Map<String, PlaybackProgress>,
     isLoadingMore: Boolean = false,
     onMovieClick: (Movie) -> Unit,
     onLoadMore: () -> Unit,
@@ -721,6 +728,7 @@ private fun HomeContent(
                 state = gridState,
                 lastVisitDate = lastVisitDate,
                 downloadedMovieIds = downloadedMovieIds,
+                watchHistoryMap = watchHistoryMap,
                 isLoadingMore = isLoadingMore,
                 onMovieClick = onMovieClick,
                 onLoadMore = onLoadMore,
@@ -775,6 +783,7 @@ fun HomeScreenTvPreview() {
             selectedQuality = "All",
             lastClickedMovieId = null,
             downloadedMovieIds = setOf(1),
+            watchHistoryMap = emptyMap(),
             qualityOptions = listOf("All", "2160p", "1080p", "720p"),
             userPhotoUrl = null,
             isTv = true,
@@ -834,6 +843,7 @@ fun HomeScreenPreview() {
             selectedQuality = "All",
             lastClickedMovieId = null,
             downloadedMovieIds = setOf(1),
+            watchHistoryMap = emptyMap(),
             qualityOptions = listOf("All", "2160p", "1080p", "720p"),
             userPhotoUrl = null,
             isTv = false,

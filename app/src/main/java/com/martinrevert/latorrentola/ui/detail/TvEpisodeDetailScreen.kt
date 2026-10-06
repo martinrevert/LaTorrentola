@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.ui.detail
 
 import android.widget.Toast
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -92,6 +94,7 @@ fun TvEpisodeDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val torrentHandlingMode by viewModel.torrentHandlingMode.collectAsState()
+    val watchHistoryMap by viewModel.watchHistoryMap.collectAsState()
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
     val episodeSummaryFocusRequester = remember { FocusRequester() }
@@ -155,11 +158,15 @@ fun TvEpisodeDetailScreen(
 
             is TvEpisodeDetailUiState.Success -> {
                 val downloadedText = stringResource(R.string.tv_episode_downloaded)
+                val mediaId = "media_${seriesId}_s${seasonNumber}_e${episodeNumber}"
+                val progress = watchHistoryMap[mediaId]
+                val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
                 EpisodeDetailContent(
                     seriesName = state.seriesName,
                     episode = state.episode,
                     torrents = state.torrents,
                     isDownloaded = state.isDownloaded,
+                    progressPercent = progressPercent,
                     downloadedHashes = state.downloadedHashes,
                     topPadding = padding.calculateTopPadding(),
                     episodeSummaryFocusRequester = if (isTv) episodeSummaryFocusRequester else null,
@@ -179,7 +186,7 @@ fun TvEpisodeDetailScreen(
                         if (magnetUri.isBlank()) {
                             Toast.makeText(
                                 context,
-                                context.getString(R.string.toast_magnet_error),
+                                context.resources.getString(R.string.toast_magnet_error),
                                 Toast.LENGTH_SHORT
                             ).show()
                         } else {
@@ -207,19 +214,19 @@ fun TvEpisodeDetailScreen(
                                     } else {
                                         Toast.makeText(
                                             context,
-                                            context.getString(R.string.torrent_download_queued),
+                                            context.resources.getString(R.string.torrent_download_queued),
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     }
                                 }
                                 TorrentLaunchResult.NoExternalClient -> Toast.makeText(
                                     context,
-                                    context.getString(R.string.toast_no_torrent_client),
+                                    context.resources.getString(R.string.toast_no_torrent_client),
                                     Toast.LENGTH_LONG
                                 ).show()
                                 TorrentLaunchResult.CastUnavailable -> Toast.makeText(
                                     context,
-                                    context.getString(R.string.torrent_cast_unavailable),
+                                    context.resources.getString(R.string.torrent_cast_unavailable),
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
@@ -250,6 +257,7 @@ private fun EpisodeDetailContent(
     episode: TmdbTvEpisode,
     torrents: List<EztvTorrent>,
     isDownloaded: Boolean = false,
+    progressPercent: Int? = null,
     downloadedHashes: Set<String> = emptySet(),
     topPadding: Dp,
     episodeSummaryFocusRequester: FocusRequester?,
@@ -276,6 +284,7 @@ private fun EpisodeDetailContent(
             seriesName = seriesName,
             episode = episode,
             isDownloaded = isDownloaded,
+            progressPercent = progressPercent,
             modifier = Modifier.fillMaxWidth(),
             summaryFocusRequester = episodeSummaryFocusRequester,
             nextFocusRequester = firstTorrentFocusRequester.takeIf { torrents.isNotEmpty() }
@@ -338,20 +347,36 @@ private fun EpisodeHeader(
     seriesName: String,
     episode: TmdbTvEpisode,
     isDownloaded: Boolean = false,
+    progressPercent: Int? = null,
     modifier: Modifier = Modifier,
     summaryFocusRequester: FocusRequester? = null,
     nextFocusRequester: FocusRequester? = null
 ) {
     Column(modifier = modifier) {
         if (episode.fullStillUrl != null) {
-            AsyncImage(
-                model = episode.fullStillUrl,
-                contentDescription = episode.name,
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(16 / 9f),
-                contentScale = ContentScale.Crop
-            )
+                    .aspectRatio(16 / 9f)
+            ) {
+                AsyncImage(
+                    model = episode.fullStillUrl,
+                    contentDescription = episode.name,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+                if (progressPercent != null && progressPercent > 0) {
+                    LinearProgressIndicator(
+                        progress = { progressPercent / 100f },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .align(Alignment.BottomCenter),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                }
+            }
             Spacer(Modifier.height(16.dp))
         }
 

@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.utils.isTvDevice
 import kotlinx.coroutines.flow.first
 
@@ -25,6 +26,7 @@ fun MovieList(
     modifier: Modifier = Modifier,
     lastVisitDate: Long? = null,
     downloadedMovieIds: Set<Int> = emptySet(),
+    watchHistoryMap: Map<String, PlaybackProgress> = emptyMap(),
     selectedIds: Set<Int> = emptySet(),
     isLoadingMore: Boolean = false,
     onMovieClick: (Movie) -> Unit,
@@ -59,11 +61,14 @@ fun MovieList(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(movies, key = { it.id }) { movie ->
+            val progress = watchHistoryMap[movie.id.toString()] ?: watchHistoryMap[movie.title]
+            val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
             MovieItem(
                 movie = movie,
                 lastVisitDate = lastVisitDate,
                 isDownloaded = downloadedMovieIds.contains(movie.id),
                 isSelected = selectedIds.contains(movie.id),
+                progressPercent = progressPercent,
                 onClick = { onMovieClick(movie) },
                 onLongClick = onLongClick?.let { { it(movie.id) } },
                 onToggleSelection = onToggleSelection?.let { { it(movie.id) } },

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.date.DateLastVisit
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.network.AuthRepository
@@ -80,6 +81,16 @@ class HomeViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptySet()
+        )
+
+    /** User's in-progress watch history items mapped by media identifier or title. */
+    val watchHistoryMap: StateFlow<Map<String, PlaybackProgress>> = userLibraryRepository.getWatchHistory()
+        .map { list -> list.associateBy { it.mediaId } }
+        .catch { emit(emptyMap()) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyMap()
         )
 
     /** Quality labels offered in the home filter. */

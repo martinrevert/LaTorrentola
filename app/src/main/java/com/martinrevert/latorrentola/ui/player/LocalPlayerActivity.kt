@@ -241,8 +241,13 @@ class LocalPlayerActivity : ComponentActivity() {
         localStreamUrl = intent.getStringExtra(EXTRA_STREAM_URL).orEmpty()
         castStreamUrl = intent.getStringExtra(EXTRA_CAST_URL).orEmpty()
         val file = intent.getStringExtra(EXTRA_FILE_PATH)?.let(::File)
-        val mediaUri = localStreamUrl.takeIf(String::isNotBlank)?.let(Uri::parse)
-            ?: file?.takeIf { it.isFile && it.canRead() }?.let { Uri.fromFile(it) }
+        val isPartialStream = intent.getBooleanExtra(EXTRA_PARTIAL_TORRENT_STREAM, false)
+        val mediaUri = if (file != null && file.isFile && file.canRead() && !isPartialStream) {
+            Uri.fromFile(file)
+        } else {
+            localStreamUrl.takeIf(String::isNotBlank)?.let(Uri::parse)
+                ?: file?.takeIf { it.isFile && it.canRead() }?.let { Uri.fromFile(it) }
+        }
         if (mediaUri == null) {
             finish()
             return
@@ -321,6 +326,8 @@ class LocalPlayerActivity : ComponentActivity() {
         playerView.player = local
         observePlaybackForScreenAwake(local)
         playerView.setShowSubtitleButton(true)
+        playerView.setShowRewindButton(true)
+        playerView.setShowFastForwardButton(true)
         keepSubtitleOptionsAvailable(playerView)
         local.setMediaItem(mediaItem)
         local.prepare()

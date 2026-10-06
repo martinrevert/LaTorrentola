@@ -11,12 +11,15 @@ import com.martinrevert.latorrentola.model.user.FavoriteTvSeries
 import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.model.user.DownloadedMovie
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
+import com.martinrevert.latorrentola.database.WatchHistoryDao
+import com.martinrevert.latorrentola.database.WatchHistoryEntity
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -26,11 +29,13 @@ import javax.inject.Singleton
  *
  * @property firestore Firestore client used for cloud library operations.
  * @property auth Firebase authentication client used to scope data by user.
+ * @property watchHistoryDao Local database access for watch progress caching.
  */
 @Singleton
 class UserLibraryRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
-    private val auth: FirebaseAuth
+    private val auth: FirebaseAuth,
+    private val watchHistoryDao: WatchHistoryDao
 ) {
     /** Authenticated Firebase UID used to scope cloud library documents. */
     private val userId: String? get() = auth.currentUser?.uid
@@ -379,8 +384,23 @@ class UserLibraryRepository @Inject constructor(
         awaitClose { subscription.remove() }
     }
 
-    /** Saves or updates watch history playback progress for a media item. */
+    /** Saves or updates watch history playback progress locally in Room and in Firestore when signed in. */
     suspend fun savePlaybackProgress(progress: PlaybackProgress) {
+        try {
+            watchHistoryDao.upsert(
+                WatchHistoryEntity(
+                    mediaId = progress.mediaId,
+                    title = progress.title,
+                    positionMs = progress.positionMs,
+                    durationMs = progress.durationMs,
+                    timestamp = progress.timestamp,
+                    isEpisode = progress.isEpisode
+                )
+            )
+        } catch (e: Exception) {
+            Log.e("UserLibraryRepository", "Error saving watch history locally: ${e.message}")
+        }
+
         val uid = userId ?: return
         try {
             firestore.collection("users")
@@ -394,31 +414,20 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
-    /** Observes the signed-in user's watch history / continue watching items. */
-    fun getWatchHistory(): Flow<List<PlaybackProgress>> = callbackFlow {
-        val uid = userId
-        if (uid == null) {
-            trySend(emptyList())
-            return@callbackFlow
-        }
-
-        val subscription = firestore.collection("users")
-            .document(uid)
-            .collection("watch_history")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e("Firestore", "Error fetching watch history: ${error.message}")
-                    trySend(emptyList())
-                    return@addSnapshotListener
-                }
-
-                val history = snapshot?.documents?.mapNotNull {
-                    it.toObject(PlaybackProgress::class.java)
-                }?.filterNot { it.isCompleted }?.sortedByDescending { it.timestamp } ?: emptyList()
-
-                trySend(history)
+    /** Observes the user's watch history from local Room cache, combining with Firestore when signed in. */
+    fun getWatchHistory(): Flow<List<PlaybackProgress>> {
+        return watchHistoryDao.observeAll()
+            .map { entities ->
+                entities.map {
+                    PlaybackProgress(
+                        mediaId = it.mediaId,
+                        title = it.title,
+                        positionMs = it.positionMs,
+                        durationMs = it.durationMs,
+                        timestamp = it.timestamp,
+                        isEpisode = it.isEpisode
+                    )
+                }.sortedByDescending { it.timestamp }
             }
-
-        awaitClose { subscription.remove() }
     }
 }
