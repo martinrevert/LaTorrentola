@@ -6,6 +6,7 @@ import com.martinrevert.latorrentola.database.DateDao
 import com.martinrevert.latorrentola.database.GenreDao
 import com.martinrevert.latorrentola.database.TvGenreDao
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
+import com.martinrevert.latorrentola.database.WatchHistoryDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -47,5 +48,11 @@ object DatabaseModule {
     @Provides
     fun provideTorrentDownloadDao(appDatabase: AppDatabase): TorrentDownloadDao {
         return appDatabase.torrentDownloadDao()
+    }
+
+    /** Provides the local watch history DAO. */
+    @Provides
+    fun provideWatchHistoryDao(appDatabase: AppDatabase): WatchHistoryDao {
+        return appDatabase.watchHistoryDao()
     }
 }

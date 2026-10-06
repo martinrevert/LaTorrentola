@@ -59,6 +59,7 @@ fun MovieItem(
     lastVisitDate: Long? = null,
     isDownloaded: Boolean = false,
     isSelected: Boolean = false,
+    progressPercent: Int? = null,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     onToggleSelection: (() -> Unit)? = null,
@@ -145,6 +146,18 @@ fun MovieItem(
                                         CircleShape
                                     )
                                     .padding(2.dp)
+                            )
+                        }
+
+                        if (progressPercent != null && progressPercent > 0) {
+                            LinearProgressIndicator(
+                                progress = { progressPercent / 100f },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .align(Alignment.BottomCenter),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                             )
                         }
                     }

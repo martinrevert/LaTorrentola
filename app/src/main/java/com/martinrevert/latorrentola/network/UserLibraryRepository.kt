@@ -10,6 +10,7 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.user.FavoriteTvSeries
 import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.model.user.DownloadedMovie
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -373,6 +374,49 @@ class UserLibraryRepository @Inject constructor(
                     PreferenceManager.MINIMUM_RATING_MAX
                 )
                 trySend(boundedRating)
+            }
+
+        awaitClose { subscription.remove() }
+    }
+
+    /** Saves or updates watch history playback progress for a media item. */
+    suspend fun savePlaybackProgress(progress: PlaybackProgress) {
+        val uid = userId ?: return
+        try {
+            firestore.collection("users")
+                .document(uid)
+                .collection("watch_history")
+                .document(progress.mediaId)
+                .set(progress, SetOptions.merge())
+                .await()
+        } catch (e: Exception) {
+            Log.e("Firestore", "Error saving playback progress: ${e.message}")
+        }
+    }
+
+    /** Observes the signed-in user's watch history / continue watching items. */
+    fun getWatchHistory(): Flow<List<PlaybackProgress>> = callbackFlow {
+        val uid = userId
+        if (uid == null) {
+            trySend(emptyList())
+            return@callbackFlow
+        }
+
+        val subscription = firestore.collection("users")
+            .document(uid)
+            .collection("watch_history")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e("Firestore", "Error fetching watch history: ${error.message}")
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+
+                val history = snapshot?.documents?.mapNotNull {
+                    it.toObject(PlaybackProgress::class.java)
+                }?.filterNot { it.isCompleted }?.sortedByDescending { it.timestamp } ?: emptyList()
+
+                trySend(history)
             }
 
         awaitClose { subscription.remove() }

@@ -12,10 +12,10 @@ import com.martinrevert.latorrentola.model.stats.GenreStats
 import com.martinrevert.latorrentola.model.stats.TvGenreStats
 import com.martinrevert.latorrentola.model.torrent.TorrentDownload
 
-/** Room database for local visit dates and media genre statistics. */
+/** Room database for local visit dates, genre statistics, torrent downloads, and watch history. */
 @Database(
-    entities = [DateLastVisit::class, GenreStats::class, TvGenreStats::class, TorrentDownload::class],
-    version = 8,
+    entities = [DateLastVisit::class, GenreStats::class, TvGenreStats::class, TorrentDownload::class, WatchHistoryEntity::class],
+    version = 9,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -29,6 +29,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun tvGenreDao(): TvGenreDao
     /** Provides database access to app-managed torrent downloads. */
     abstract fun torrentDownloadDao(): TorrentDownloadDao
+    /** Provides database access to local watch history and playback progress. */
+    abstract fun watchHistoryDao(): WatchHistoryDao
 
     companion object {
         /** Lazily initialized process-wide database instance. */
@@ -50,11 +52,26 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_4_5,
                         MIGRATION_5_6,
                         MIGRATION_6_7,
-                        MIGRATION_7_8
+                        MIGRATION_7_8,
+                        MIGRATION_8_9
                     )
                     .build()
                 INSTANCE = instance
                 instance
+            }
+        }
+
+        /** Adds watch history table for local playback progress caching. */
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            /** Applies the watch history table schema change to [db]. */
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `watch_history` (" +
+                        "`mediaId` TEXT NOT NULL, `title` TEXT NOT NULL, " +
+                        "`positionMs` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, " +
+                        "`timestamp` INTEGER NOT NULL, `isEpisode` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`mediaId`))"
+                )
             }
         }
 

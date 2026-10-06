@@ -1,5 +1,6 @@
 package com.martinrevert.latorrentola.ui.components
 
+import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -48,8 +49,10 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface as TvSurface
+import androidx.compose.ui.tooling.preview.Preview
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
+import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.isTvDevice
 
@@ -393,4 +396,121 @@ fun QualityChoiceDialog(
         },
         onDismiss = onDismiss
     )
+}
+
+@Preview(name = "Light Theme", uiMode = Configuration.UI_MODE_NIGHT_NO, showBackground = true)
+@Preview(name = "Dark Theme", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+private annotation class LightDarkPreviews
+
+@LightDarkPreviews
+@Composable
+private fun NextEpisodeTorrentDialogPreviewLoading() {
+    LaTorrentolaTheme {
+        NextEpisodeTorrentDialog(
+            seriesName = "Breaking Bad",
+            seasonNumber = 1,
+            episodeNumber = 1,
+            episodeName = "Pilot",
+            releases = emptyList(),
+            isLoading = true,
+            error = null,
+            onTorrentSelected = {},
+            onDismiss = {}
+        )
+    }
+}
+
+@LightDarkPreviews
+@Composable
+private fun NextEpisodeTorrentDialogPreviewReleases() {
+    LaTorrentolaTheme {
+        NextEpisodeTorrentDialog(
+            seriesName = "Breaking Bad",
+            seasonNumber = 1,
+            episodeNumber = 1,
+            episodeName = "Pilot",
+            releases = listOf(
+                EztvTorrent(title = "Breaking.Bad.S01E01.1080p.WEB-DL.x264", seeds = 150, peers = 12, sizeBytes = "1258291200"),
+                EztvTorrent(title = "Breaking.Bad.S01E01.720p.HDTV.x264", seeds = 45, peers = 5, sizeBytes = "524288000")
+            ),
+            isLoading = false,
+            error = null,
+            onTorrentSelected = {},
+            onDismiss = {}
+        )
+    }
+}
+
+@LightDarkPreviews
+@Composable
+private fun NextEpisodeTorrentDialogPreviewError() {
+    LaTorrentolaTheme {
+        NextEpisodeTorrentDialog(
+            seriesName = "Breaking Bad",
+            seasonNumber = 1,
+            episodeNumber = 1,
+            episodeName = "Pilot",
+            releases = emptyList(),
+            isLoading = false,
+            error = "Failed to fetch torrent releases from EZTV.",
+            onTorrentSelected = {},
+            onDismiss = {}
+        )
+    }
+}
+
+@LightDarkPreviews
+@Composable
+private fun NextEpisodeTorrentDialogPreviewEmpty() {
+    LaTorrentolaTheme {
+        NextEpisodeTorrentDialog(
+            seriesName = "Breaking Bad",
+            seasonNumber = 1,
+            episodeNumber = 1,
+            episodeName = "Pilot",
+            releases = emptyList(),
+            isLoading = false,
+            error = null,
+            onTorrentSelected = {},
+            onDismiss = {}
+        )
+    }
+}
+
+@LightDarkPreviews
+@Composable
+private fun TorrentOptionItemPreviewHandheld() {
+    LaTorrentolaTheme {
+        Surface(modifier = Modifier.padding(16.dp)) {
+            TorrentOptionItem(
+                torrent = EztvTorrent(
+                    title = "Breaking.Bad.S01E01.1080p.WEB-DL.x264",
+                    seeds = 150,
+                    peers = 12,
+                    sizeBytes = "1258291200"
+                ),
+                isTv = false,
+                onClick = {}
+            )
+        }
+    }
+}
+
+@LightDarkPreviews
+@Composable
+private fun TorrentOptionItemPreviewTv() {
+    LaTorrentolaTheme {
+        Surface(modifier = Modifier.padding(16.dp)) {
+            TorrentOptionItem(
+                torrent = EztvTorrent(
+                    title = "Breaking.Bad.S01E01.1080p.WEB-DL.x264",
+                    seeds = 150,
+                    peers = 12,
+                    sizeBytes = "1258291200"
+                ),
+                isTv = true,
+                onClick = {}
+            )
+        }
+    }
 }

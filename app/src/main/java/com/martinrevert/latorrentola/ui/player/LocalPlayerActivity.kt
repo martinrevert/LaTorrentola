@@ -65,6 +65,8 @@ import com.martinrevert.latorrentola.service.VerifiedTorrentHttpServer
 import com.martinrevert.latorrentola.ui.components.NextEpisodeTorrentDialog
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
+import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TorrentLaunchResult
@@ -73,6 +75,7 @@ import com.martinrevert.latorrentola.utils.isTvDevice
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.io.File
 import java.io.IOException
 import java.util.Locale
@@ -162,6 +165,10 @@ class LocalPlayerActivity : ComponentActivity() {
     /** DAO for managing torrent downloads and cleanup. */
     @Inject
     lateinit var torrentDownloadDao: TorrentDownloadDao
+
+    /** User library repository for cloud sync of watch history and playback progress. */
+    @Inject
+    lateinit var userLibraryRepository: UserLibraryRepository
 
     /** Maps local subtitle URIs to matching receiver-accessible URLs. */
     private val castSubtitleUrls = mutableMapOf<String, String>()
@@ -318,6 +325,8 @@ class LocalPlayerActivity : ComponentActivity() {
         local.setMediaItem(mediaItem)
         local.prepare()
         local.playWhenReady = true
+        setupWatchHistoryRecovery(local)
+        startProgressReporting(local)
         if (castEnabled && buildCastPlayer() == null) castEnabled = false
 
         val root = FrameLayout(this)
@@ -1589,8 +1598,86 @@ class LocalPlayerActivity : ComponentActivity() {
         }
     }
 
+    override fun onPause() {
+        saveCurrentProgress(activePlayer)
+        super.onPause()
+    }
+
+    private var progressReportingJob: kotlinx.coroutines.Job? = null
+    private var initialSeekPerformed = false
+
+    private fun getMediaId(): String {
+        return torrentInfoHash.ifBlank {
+            mediaTitle.ifBlank { "media_${currentSeriesId}_s${currentSeasonNumber}_e${currentEpisodeNumber}" }
+        }
+    }
+
+    private fun saveCurrentProgress(player: Player?) {
+        val p = player ?: return
+        val pos = p.currentPosition
+        val dur = p.duration
+        if (dur <= 0L) return
+        val mediaId = getMediaId()
+        if (mediaId.isBlank()) return
+        val progress = PlaybackProgress(
+            mediaId = mediaId,
+            title = mediaTitle.ifBlank { "Media Item" },
+            positionMs = pos,
+            durationMs = dur,
+            timestamp = System.currentTimeMillis(),
+            isEpisode = currentSeriesId > 0
+        )
+        lifecycleScope.launch {
+            try {
+                userLibraryRepository.savePlaybackProgress(progress)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving playback progress", e)
+            }
+        }
+    }
+
+    private fun startProgressReporting(player: Player) {
+        progressReportingJob?.cancel()
+        progressReportingJob = lifecycleScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(10_000L)
+                if (player.isPlaying) {
+                    saveCurrentProgress(player)
+                }
+            }
+        }
+    }
+
+    private fun setupWatchHistoryRecovery(player: ExoPlayer) {
+        val mediaId = getMediaId()
+        if (mediaId.isBlank()) return
+        lifecycleScope.launch {
+            try {
+                val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
+                val doc = db.collection("users").document(uid).collection("watch_history").document(mediaId).get().await()
+                val saved = doc.toObject(PlaybackProgress::class.java)
+                if (saved != null && saved.positionMs > 5000L && !saved.isCompleted) {
+                    player.addListener(object : Player.Listener {
+                        override fun onPlaybackStateChanged(playbackState: Int) {
+                            if (playbackState == Player.STATE_READY && !initialSeekPerformed) {
+                                initialSeekPerformed = true
+                                player.seekTo(saved.positionMs)
+                                player.removeListener(this)
+                            }
+                        }
+                    })
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error fetching watch history recovery", e)
+            }
+        }
+    }
+
     /** Releases decoder and subtitle streaming resources when this activity is destroyed. */
     override fun onDestroy() {
+        progressReportingJob?.cancel()
+        saveCurrentProgress(activePlayer)
         subtitleSearchAnimator?.cancel()
         subtitleSearchAnimator = null
         screenAwakePlayer?.let { player ->

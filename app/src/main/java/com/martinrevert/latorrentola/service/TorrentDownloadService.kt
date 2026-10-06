@@ -577,10 +577,18 @@ class TorrentDownloadService : Service() {
                                             }
                                         )
                                     }
-                                    handle.setSequentialRange(
-                                        target.firstPiece,
-                                        target.lastPiece
-                                    )
+                                    val resumePiece = if (request.resumePositionMs > 0L && request.durationMs > 0L) {
+                                        val fileBytes = target.length
+                                        val estimatedOffset = ((request.resumePositionMs.toDouble() / request.durationMs.toDouble()) * fileBytes).toLong()
+                                        val offsetInFile = estimatedOffset.coerceIn(0L, fileBytes)
+                                        ((target.fileOffset + offsetInFile) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
+                                    } else {
+                                        target.firstPiece
+                                    }
+                                    handle.setSequentialRange(resumePiece, target.lastPiece)
+                                    for (p in resumePiece..minOf(resumePiece + 64, target.lastPiece)) {
+                                        handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                    }
                                 }
                             }
                         }
@@ -1074,7 +1082,9 @@ class TorrentDownloadService : Service() {
         val nextEpisodeInfo: ArrayList<String>? = null,
         val seriesId: Int = 0,
         val seasonNumber: Int = 0,
-        val episodeNumber: Int = 0
+        val episodeNumber: Int = 0,
+        val resumePositionMs: Long = 0L,
+        val durationMs: Long = 0L
     )
 
     /**
