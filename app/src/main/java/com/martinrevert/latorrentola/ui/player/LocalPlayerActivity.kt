@@ -296,12 +296,12 @@ class LocalPlayerActivity : ComponentActivity() {
         }
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                20_000,
-                60_000,
+                30_000,
+                120_000,
                 5_000,
-                10_000
+                15_000
             )
-            .setTargetBufferBytes(32 * 1024 * 1024)
+            .setTargetBufferBytes(64 * 1024 * 1024)
             .setPrioritizeTimeOverSizeThresholds(false)
             .build()
         val extractorsFactory = DefaultExtractorsFactory()
@@ -1604,6 +1604,12 @@ class LocalPlayerActivity : ComponentActivity() {
         super.onPause()
     }
 
+    override fun onStop() {
+        saveCurrentProgress(activePlayer)
+        activePlayer?.pause()
+        super.onStop()
+    }
+
     private var progressReportingJob: kotlinx.coroutines.Job? = null
     private var initialSeekPerformed = false
 
@@ -1687,6 +1693,7 @@ class LocalPlayerActivity : ComponentActivity() {
         screenAwakeListener = null
         screenAwakePlayer = null
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        playerView?.player = null
         castPlayer?.release()
         localPlayer?.release()
         if (!castSessionActive) SubtitleServerRegistry.stopAll()
