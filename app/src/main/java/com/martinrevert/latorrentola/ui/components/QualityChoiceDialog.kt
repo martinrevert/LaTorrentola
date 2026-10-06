@@ -5,7 +5,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -33,7 +31,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -92,7 +89,7 @@ fun NextEpisodeTorrentDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.7f))
+            .background(Color.Black.copy(alpha = 0.75f))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -102,10 +99,10 @@ fun NextEpisodeTorrentDialog(
     ) {
         Surface(
             modifier = Modifier
-                .padding(16.dp)
+                .padding(24.dp)
                 .then(
-                    if (isTv) Modifier.widthIn(min = 480.dp, max = 640.dp)
-                    else Modifier.fillMaxWidth(0.92f)
+                    if (isTv) Modifier.widthIn(min = 520.dp, max = 680.dp)
+                    else Modifier.widthIn(min = 320.dp, max = 560.dp).fillMaxWidth(0.92f)
                 )
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -120,142 +117,133 @@ fun NextEpisodeTorrentDialog(
             Column(
                 modifier = Modifier
                     .padding(24.dp)
-                    .fillMaxWidth()
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                if (seriesName.isNotBlank()) {
+                // Header section
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (seriesName.isNotBlank()) {
+                        Text(
+                            text = seriesName,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    val episodeTitleFormatted = if (episodeName.isNotBlank()) {
+                        "%s S%02dE%02d · %s".format(
+                            stringResource(R.string.next_episode_dialog_title),
+                            seasonNumber,
+                            episodeNumber,
+                            episodeName
+                        )
+                    } else {
+                        "%s S%02dE%02d".format(
+                            stringResource(R.string.next_episode_dialog_title),
+                            seasonNumber,
+                            episodeNumber
+                        )
+                    }
+
                     Text(
-                        text = seriesName,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold
+                        text = episodeTitleFormatted,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                    Spacer(Modifier.height(4.dp))
-                }
 
-                val episodeTitleFormatted = if (episodeName.isNotBlank()) {
-                    "%s S%02dE%02d · %s".format(
-                        stringResource(R.string.next_episode_dialog_title),
-                        seasonNumber,
-                        episodeNumber,
-                        episodeName
-                    )
-                } else {
-                    "%s S%02dE%02d".format(
-                        stringResource(R.string.next_episode_dialog_title),
-                        seasonNumber,
-                        episodeNumber
+                    Spacer(Modifier.height(2.dp))
+
+                    Text(
+                        text = stringResource(R.string.tv_available_torrents),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                Text(
-                    text = episodeTitleFormatted,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                Spacer(Modifier.height(4.dp))
-
-                Text(
-                    text = stringResource(R.string.tv_available_torrents),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(Modifier.height(16.dp))
-
-                if (isLoading) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(160.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            CircularProgressIndicator(
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(36.dp)
-                            )
+                // Content area
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 120.dp, max = if (isTv) 360.dp else 280.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    when {
+                        isLoading -> {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.next_episode_searching),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                        !error.isNullOrBlank() -> {
                             Text(
-                                text = stringResource(R.string.next_episode_searching),
+                                text = error,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+                        releases.isEmpty() -> {
+                            Text(
+                                text = stringResource(R.string.next_episode_no_torrents),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(16.dp)
                             )
                         }
-                    }
-                } else if (!error.isNullOrBlank()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 100.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = error,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(16.dp)
-                        )
-                    }
-                } else if (releases.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 100.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = stringResource(R.string.next_episode_no_torrents),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(16.dp)
-                        )
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = if (isTv) 380.dp else 300.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        itemsIndexed(releases) { index, torrent ->
-                            val itemModifier = if (index == 0) {
-                                Modifier.focusRequester(firstItemFocusRequester)
-                            } else {
-                                Modifier
+                        else -> {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                itemsIndexed(releases) { index, torrent ->
+                                    val itemModifier = if (index == 0) {
+                                        Modifier.focusRequester(firstItemFocusRequester)
+                                    } else {
+                                        Modifier
+                                    }
+
+                                    TorrentOptionItem(
+                                        torrent = torrent,
+                                        isTv = isTv,
+                                        onClick = { onTorrentSelected(torrent) },
+                                        modifier = itemModifier
+                                    )
+                                }
                             }
 
-                            TorrentOptionItem(
-                                torrent = torrent,
-                                isTv = isTv,
-                                onClick = { onTorrentSelected(torrent) },
-                                modifier = itemModifier
-                            )
-                        }
-                    }
-
-                    if (isTv) {
-                        LaunchedEffect(releases) {
-                            if (releases.isNotEmpty()) {
-                                try {
-                                    firstItemFocusRequester.requestFocus()
-                                } catch (_: Exception) { }
+                            if (isTv) {
+                                LaunchedEffect(releases) {
+                                    if (releases.isNotEmpty()) {
+                                        try {
+                                            firstItemFocusRequester.requestFocus()
+                                        } catch (_: Exception) { }
+                                    }
+                                }
                             }
                         }
                     }
                 }
 
-                Spacer(Modifier.height(16.dp))
-
+                // Bottom action row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(
                         onClick = onDismiss,
@@ -294,16 +282,20 @@ private fun TorrentOptionItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(
                     text = torrent.title,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(Modifier.height(4.dp))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -312,7 +304,7 @@ private fun TorrentOptionItem(
                         Text(
                             text = torrent.formattedSize,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Text(
@@ -322,15 +314,14 @@ private fun TorrentOptionItem(
                             torrent.peers
                         ),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
+                        color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary
                     )
                 }
             }
-            Spacer(Modifier.width(10.dp))
             Icon(
                 imageVector = Icons.Default.Download,
                 contentDescription = stringResource(R.string.tv_download_torrent_desc),
-                tint = MaterialTheme.colorScheme.primary,
+                tint = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -338,18 +329,18 @@ private fun TorrentOptionItem(
 
     if (isTv) {
         val interactionSource = remember { MutableInteractionSource() }
-        val isFocused by interactionSource.collectIsFocusedAsState()
+        val tvColors = ClickableSurfaceDefaults.colors(
+            containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant,
+            focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.primaryContainer,
+            contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
+            focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
+        )
 
         TvSurface(
             onClick = onClick,
-            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
             shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
-            colors = ClickableSurfaceDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                focusedContentColor = MaterialTheme.colorScheme.onSurface
-            ),
+            colors = tvColors,
             interactionSource = interactionSource,
             modifier = modifier.fillMaxWidth()
         ) {
