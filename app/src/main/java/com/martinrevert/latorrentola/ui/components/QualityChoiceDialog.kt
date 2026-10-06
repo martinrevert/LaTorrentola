@@ -398,8 +398,12 @@ fun QualityChoiceDialog(
     )
 }
 
-@Preview(name = "Light Theme", uiMode = Configuration.UI_MODE_NIGHT_NO, showBackground = true)
-@Preview(name = "Dark Theme", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "Light Phone", uiMode = Configuration.UI_MODE_NIGHT_NO, showBackground = true, widthDp = 360, heightDp = 640)
+@Preview(name = "Dark Phone", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, widthDp = 360, heightDp = 640)
+@Preview(name = "Light Tablet", uiMode = Configuration.UI_MODE_NIGHT_NO, showBackground = true, widthDp = 600, heightDp = 800)
+@Preview(name = "Dark Tablet", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, widthDp = 600, heightDp = 800)
+@Preview(name = "Light TV", uiMode = Configuration.UI_MODE_NIGHT_NO, showBackground = true, widthDp = 960, heightDp = 540)
+@Preview(name = "Dark TV", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, widthDp = 960, heightDp = 540)
 private annotation class LightDarkPreviews
 
 @LightDarkPreviews
