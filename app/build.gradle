@@ -82,9 +82,50 @@ def getGitVersionCount(providers) {
 def gitVersionCount = getGitVersionCount(providers)
 
 def getGitBranch(providers) {
+    def gitPath = null
+    try {
+        if (System.getProperty("os.name").toLowerCase().contains("windows")) {
+            def where = providers.exec {
+                commandLine 'cmd', '/c', 'where git'
+                ignoreExitValue = true
+            }.standardOutput.asText.getOrNull()?.trim()
+            if (where) {
+                gitPath = where.split("[\r\n]+")[0].trim()
+            }
+        }
+    } catch (Exception e) {}
+
+    if (!gitPath) {
+        def searchDirs = []
+        def path = System.getenv("PATH")
+        if (path != null) {
+            def sep = System.getProperty("path.separator") ?: ";"
+            searchDirs.addAll(path.split(sep))
+        }
+        if (System.getProperty("os.name").toLowerCase().contains("windows")) {
+            searchDirs.add("C:\\Program Files\\Git\\bin")
+            searchDirs.add("C:\\Program Files\\Git\\cmd")
+            searchDirs.add("C:\\Program Files (x86)\\Git\\bin")
+        }
+        for (def dir : searchDirs) {
+            if (!dir) continue
+            def d = new File(dir.trim())
+            if (d.isDirectory()) {
+                def ge = new File(d, "git.exe")
+                def gc = new File(d, "git.cmd")
+                def g = new File(d, "git")
+                if (ge.isFile()) { gitPath = ge.absolutePath; break }
+                if (gc.isFile()) { gitPath = gc.absolutePath; break }
+                if (g.isFile()) { gitPath = g.absolutePath; break }
+            }
+        }
+    }
+
+    if (!gitPath) gitPath = "git"
+
     try {
         def output = providers.exec {
-            commandLine 'git', 'rev-parse', '--abbrev-ref', 'HEAD'
+            commandLine gitPath, 'rev-parse', '--abbrev-ref', 'HEAD'
             ignoreExitValue = true
         }.standardOutput.asText.getOrNull()?.trim()
         if (output && !output.isEmpty()) return output

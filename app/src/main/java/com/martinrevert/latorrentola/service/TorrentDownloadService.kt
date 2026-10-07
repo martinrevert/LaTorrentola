@@ -13,6 +13,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
+import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.ui.player.LocalPlayerActivity
 import com.martinrevert.latorrentola.model.torrent.TorrentDownload
 import dagger.hilt.android.AndroidEntryPoint
@@ -46,6 +47,10 @@ class TorrentDownloadService : Service() {
     /** Persists app-local transfer jobs and progress. */
     @Inject
     lateinit var torrentDownloadDao: TorrentDownloadDao
+
+    /** Repository managing user favorites, downloads, and watch history sync. */
+    @Inject
+    lateinit var userLibraryRepository: UserLibraryRepository
 
     /** Background work scope owned by this service instance. */
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -262,6 +267,7 @@ class TorrentDownloadService : Service() {
         val seriesId = intent.getIntExtra(EXTRA_SERIES_ID, 0)
         val seasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
         val episodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
+        val movieId = intent.getIntExtra(EXTRA_MOVIE_ID, 0)
         val magnetUri = intent.getStringExtra(EXTRA_MAGNET_URI).orEmpty()
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank {
             getString(R.string.torrent_download_title)
@@ -296,10 +302,23 @@ class TorrentDownloadService : Service() {
                 ?.let(::File)
                 ?.takeIf { it.isFile && it.canRead() }
             val nextEpisodeInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
+
+            val mediaId = when {
+                seriesId > 0 && seasonNumber > 0 && episodeNumber > 0 ->
+                    "media_${seriesId}_s${seasonNumber}_e${episodeNumber}"
+                movieId > 0 ->
+                    movieId.toString()
+                else ->
+                    infoHash
+            }
+            val playbackProgress = userLibraryRepository.getPlaybackProgress(mediaId)
+            val resumePos = if (playbackProgress != null && playbackProgress.positionMs > 5000L && !playbackProgress.isCompleted) playbackProgress.positionMs else 0L
+            val dur = if (playbackProgress != null && playbackProgress.positionMs > 5000L && !playbackProgress.isCompleted) playbackProgress.durationMs else 0L
+
             if (completedFile != null) {
                 openWhenReadyHashes.remove(infoHash)
                 val castWhenReady = intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false)
-                startCompletedPlayback(infoHash, title, completedFile, castWhenReady, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber)
+                startCompletedPlayback(infoHash, title, completedFile, castWhenReady, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId)
                 return@launch
             }
             torrentDownloadDao.upsert(
@@ -318,14 +337,17 @@ class TorrentDownloadService : Service() {
                 if (infoHash != activeInfoHash && downloadQueue.none { it.infoHash == infoHash }) {
                     downloadQueue.addLast(
                         DownloadRequest(
-                            infoHash,
-                            magnetUri,
-                            title,
-                            intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false),
-                            nextEpisodeInfo,
-                            seriesId,
-                            seasonNumber,
-                            episodeNumber
+                            infoHash = infoHash,
+                            magnetUri = magnetUri,
+                            title = title,
+                            castWhenReady = intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false),
+                            nextEpisodeInfo = nextEpisodeInfo,
+                            seriesId = seriesId,
+                            seasonNumber = seasonNumber,
+                            episodeNumber = episodeNumber,
+                            movieId = movieId,
+                            resumePositionMs = resumePos,
+                            durationMs = dur
                         )
                     )
                 }
@@ -352,7 +374,8 @@ class TorrentDownloadService : Service() {
         nextEpisodeInfo: ArrayList<String>? = null,
         seriesId: Int = 0,
         seasonNumber: Int = 0,
-        episodeNumber: Int = 0
+        episodeNumber: Int = 0,
+        movieId: Int = 0
     ) {
         streamServers.remove(infoHash)?.stop()
         val server = VerifiedTorrentHttpServer(file, file.length()) { _, _ -> true }
@@ -377,6 +400,7 @@ class TorrentDownloadService : Service() {
             .putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, seriesId)
             .putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, seasonNumber)
             .putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, episodeNumber)
+            .putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, movieId)
             .apply {
                 if (nextEpisodeInfo != null) {
                     putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
@@ -585,9 +609,14 @@ class TorrentDownloadService : Service() {
                                     } else {
                                         target.firstPiece
                                     }
-                                    handle.setSequentialRange(resumePiece, target.lastPiece)
-                                    for (p in resumePiece..minOf(resumePiece + 64, target.lastPiece)) {
+                                    for (p in target.firstPiece..minOf(target.firstPiece + 4, target.lastPiece)) {
                                         handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                    }
+                                    handle.setSequentialRange(resumePiece, target.lastPiece)
+                                    if (resumePiece > target.firstPiece) {
+                                        for (p in resumePiece..minOf(resumePiece + 64, target.lastPiece)) {
+                                            handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                        }
                                     }
                                 }
                             }
@@ -655,6 +684,7 @@ class TorrentDownloadService : Service() {
                         .putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, request.seriesId)
                         .putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, request.seasonNumber)
                         .putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, request.episodeNumber)
+                        .putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, request.movieId)
                         .apply {
                             if (request.nextEpisodeInfo != null) {
                                 putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, request.nextEpisodeInfo)
@@ -1083,6 +1113,7 @@ class TorrentDownloadService : Service() {
         val seriesId: Int = 0,
         val seasonNumber: Int = 0,
         val episodeNumber: Int = 0,
+        val movieId: Int = 0,
         val resumePositionMs: Long = 0L,
         val durationMs: Long = 0L
     )
@@ -1166,6 +1197,8 @@ class TorrentDownloadService : Service() {
         const val EXTRA_SEASON_NUMBER = "torrent_season_number"
         /** Episode number extra. */
         const val EXTRA_EPISODE_NUMBER = "torrent_episode_number"
+        /** Movie ID extra. */
+        const val EXTRA_MOVIE_ID = "torrent_movie_id"
         /** Next episode information passed along for quality selection upon completion. */
         const val EXTRA_NEXT_EPISODE_INFO = "extra_next_episode_info"
         /** Stop serving a torrent after the player closes. */

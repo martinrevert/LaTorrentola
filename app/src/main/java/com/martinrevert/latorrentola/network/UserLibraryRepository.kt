@@ -15,11 +15,14 @@ import com.martinrevert.latorrentola.database.WatchHistoryDao
 import com.martinrevert.latorrentola.database.WatchHistoryEntity
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -414,45 +417,111 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
-    /** Retrieves saved playback progress locally from Room DB first, falling back to Firestore when signed in. */
+    /** Retrieves saved playback progress locally from Room DB, falling back to or syncing with Firestore when signed in. */
     suspend fun getPlaybackProgress(mediaId: String): PlaybackProgress? {
         if (mediaId.isBlank()) return null
-        try {
-            val localEntity = watchHistoryDao.get(mediaId)
-            if (localEntity != null) {
-                return PlaybackProgress(
-                    mediaId = localEntity.mediaId,
-                    title = localEntity.title,
-                    positionMs = localEntity.positionMs,
-                    durationMs = localEntity.durationMs,
-                    timestamp = localEntity.timestamp,
-                    isEpisode = localEntity.isEpisode
-                )
+        val uid = userId
+        var remoteProgress: PlaybackProgress? = null
+        if (uid != null) {
+            try {
+                val doc = firestore.collection("users")
+                    .document(uid)
+                    .collection("watch_history")
+                    .document(mediaId)
+                    .get()
+                    .await()
+                remoteProgress = doc.toObject(PlaybackProgress::class.java)
+            } catch (e: Exception) {
+                Log.e("UserLibraryRepository", "Error fetching remote watch history: ${e.message}")
             }
+        }
+
+        var localEntity: WatchHistoryEntity? = null
+        try {
+            localEntity = watchHistoryDao.get(mediaId)
         } catch (e: Exception) {
             Log.e("UserLibraryRepository", "Error fetching local watch history: ${e.message}")
         }
 
-        val uid = userId ?: return null
-        return try {
-            val doc = firestore.collection("users")
-                .document(uid)
-                .collection("watch_history")
-                .document(mediaId)
-                .get()
-                .await()
-            doc.toObject(PlaybackProgress::class.java)
-        } catch (e: Exception) {
-            Log.e("UserLibraryRepository", "Error fetching remote watch history: ${e.message}")
-            null
+        if (remoteProgress != null && (localEntity == null || remoteProgress.timestamp > localEntity.timestamp)) {
+            try {
+                watchHistoryDao.upsert(
+                    WatchHistoryEntity(
+                        mediaId = remoteProgress.mediaId,
+                        title = remoteProgress.title,
+                        positionMs = remoteProgress.positionMs,
+                        durationMs = remoteProgress.durationMs,
+                        timestamp = remoteProgress.timestamp,
+                        isEpisode = remoteProgress.isEpisode
+                    )
+                )
+            } catch (e: Exception) {
+                Log.e("UserLibraryRepository", "Error saving remote progress to Room: ${e.message}")
+            }
+            return remoteProgress
         }
+
+        if (localEntity != null) {
+            return PlaybackProgress(
+                mediaId = localEntity.mediaId,
+                title = localEntity.title,
+                positionMs = localEntity.positionMs,
+                durationMs = localEntity.durationMs,
+                timestamp = localEntity.timestamp,
+                isEpisode = localEntity.isEpisode
+            )
+        }
+
+        return remoteProgress
     }
 
-    /** Observes the user's watch history from local Room cache, combining with Firestore when signed in. */
-    fun getWatchHistory(): Flow<List<PlaybackProgress>> {
-        return watchHistoryDao.observeAll()
-            .map { entities ->
-                entities.map {
+    /** Observes the user's watch history from local Room cache, syncing with Firestore when signed in. */
+    fun getWatchHistory(): Flow<List<PlaybackProgress>> = callbackFlow {
+        val uid = userId
+        var firestoreListener: com.google.firebase.firestore.ListenerRegistration? = null
+
+        if (uid != null) {
+            firestoreListener = firestore.collection("users")
+                .document(uid)
+                .collection("watch_history")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e("UserLibraryRepository", "Error observing remote watch history: ${error.message}")
+                        return@addSnapshotListener
+                    }
+                    val remoteItems = snapshot?.documents?.mapNotNull {
+                        it.toObject(PlaybackProgress::class.java)
+                    } ?: emptyList()
+
+                    if (remoteItems.isNotEmpty()) {
+                        launch(Dispatchers.IO) {
+                            for (item in remoteItems) {
+                                try {
+                                    val local = watchHistoryDao.get(item.mediaId)
+                                    if (local == null || item.timestamp > local.timestamp) {
+                                        watchHistoryDao.upsert(
+                                            WatchHistoryEntity(
+                                                mediaId = item.mediaId,
+                                                title = item.title,
+                                                positionMs = item.positionMs,
+                                                durationMs = item.durationMs,
+                                                timestamp = item.timestamp,
+                                                isEpisode = item.isEpisode
+                                            )
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("UserLibraryRepository", "Error syncing item: ${e.message}")
+                                }
+                            }
+                        }
+                    }
+                }
+        }
+
+        val job = launch(Dispatchers.IO) {
+            watchHistoryDao.observeAll().collect { entities ->
+                val list = entities.map {
                     PlaybackProgress(
                         mediaId = it.mediaId,
                         title = it.title,
@@ -462,6 +531,13 @@ class UserLibraryRepository @Inject constructor(
                         isEpisode = it.isEpisode
                     )
                 }.sortedByDescending { it.timestamp }
+                trySend(list)
             }
+        }
+
+        awaitClose {
+            firestoreListener?.remove()
+            job.cancel()
+        }
     }
 }

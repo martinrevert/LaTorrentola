@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.ui.player
 
 import android.animation.ObjectAnimator
 import android.app.AlertDialog
+import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -17,7 +18,8 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.Toast
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.cast.CastPlayer
 import androidx.media3.cast.DefaultMediaItemConverter
@@ -134,7 +136,7 @@ private object SubtitleServerRegistry {
  */
 @AndroidEntryPoint
 @androidx.annotation.OptIn(UnstableApi::class)
-class LocalPlayerActivity : ComponentActivity() {
+class LocalPlayerActivity : AppCompatActivity() {
 
     /** Media3 player used when no Cast session is active. */
     private var localPlayer: ExoPlayer? = null
@@ -223,6 +225,7 @@ class LocalPlayerActivity : ComponentActivity() {
     private var currentSeriesId: Int = 0
     private var currentSeasonNumber: Int = 0
     private var currentEpisodeNumber: Int = 0
+    private var currentMovieId: Int = 0
 
     /** Controls visibility of the next episode torrent selection overlay. */
     private var showNextEpisodeDialog by mutableStateOf(false)
@@ -258,6 +261,7 @@ class LocalPlayerActivity : ComponentActivity() {
         currentSeriesId = intent.getIntExtra(EXTRA_SERIES_ID, 0)
         currentSeasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
         currentEpisodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
+        currentMovieId = intent.getIntExtra(EXTRA_MOVIE_ID, 0)
 
         val nextEpisodeInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
         if (nextEpisodeInfo != null && nextEpisodeInfo.size >= 5) {
@@ -275,10 +279,8 @@ class LocalPlayerActivity : ComponentActivity() {
             }
         }
         val castRequested = intent.getBooleanExtra(EXTRA_CAST_ENABLED, false)
-        castEnabled = castRequested && castStreamUrl.isNotBlank()
-        if (castRequested && !castEnabled) {
-            Toast.makeText(this, R.string.torrent_cast_unavailable, Toast.LENGTH_LONG).show()
-        }
+        castEnabled = castRequested
+        Log.d(TAG, "DEBUG CAST: castRequested=$castRequested, castStreamUrl=$castStreamUrl, localStreamUrl=$localStreamUrl")
         val mediaItem = MediaItem.Builder()
             .setUri(mediaUri)
             .setMimeType(intent.getStringExtra(EXTRA_MIME_TYPE) ?: file?.mediaMimeType())
@@ -334,7 +336,9 @@ class LocalPlayerActivity : ComponentActivity() {
         local.playWhenReady = true
         setupWatchHistoryRecovery(local)
         startProgressReporting(local)
-        if (castEnabled && buildCastPlayer() == null) castEnabled = false
+        if (castEnabled) {
+            setupCastAsync()
+        }
 
         val root = FrameLayout(this)
         root.addView(
@@ -344,21 +348,6 @@ class LocalPlayerActivity : ComponentActivity() {
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
         )
-        if (castEnabled) {
-            val routeButton = MediaRouteButton(
-                ContextThemeWrapper(this, MediaRouterR.style.Theme_MediaRouter)
-            )
-            routeButton.id = View.generateViewId()
-            CastButtonFactory.setUpMediaRouteButton(applicationContext, routeButton)
-            root.addView(
-                routeButton,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    Gravity.TOP or Gravity.END
-                )
-            )
-        }
         val nextEpisodeOverlay = ComposeView(this).apply {
             visibility = View.GONE
             setContent {
@@ -724,6 +713,29 @@ class LocalPlayerActivity : ComponentActivity() {
         subtitleButton.isFocusable = true
         val buttonStyle = androidx.media3.ui.R.style.ExoStyledControls_Button_Bottom
         val subtitleButtonIndex = controls.indexOfChild(subtitleButton)
+
+        if (castEnabled) {
+            try {
+                val routeButton = MediaRouteButton(
+                    ContextThemeWrapper(this@LocalPlayerActivity, R.style.Theme_LaTorrentola_Cast)
+                ).apply {
+                    id = View.generateViewId()
+                    CastButtonFactory.setUpMediaRouteButton(this@LocalPlayerActivity, this)
+                }
+                val params = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.MATCH_PARENT
+                ).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    marginStart = (16 * resources.displayMetrics.density).toInt()
+                    marginEnd = (16 * resources.displayMetrics.density).toInt()
+                }
+                controls.addView(routeButton, subtitleButtonIndex + 1, params)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to attach MediaRouteButton in controls", e)
+            }
+        }
+
         listOf(
             Triple(
                 R.drawable.ic_subtitle_style,
@@ -1052,7 +1064,12 @@ class LocalPlayerActivity : ComponentActivity() {
             PlaybackTrackType.AUDIO -> GoogleMediaTrack.TYPE_AUDIO
             PlaybackTrackType.SUBTITLE -> GoogleMediaTrack.TYPE_TEXT
         }
-        return CastContext.getSharedInstance(this)
+        val castContext = try {
+            CastContext.getSharedInstance(this)
+        } catch (_: Throwable) {
+            null
+        } ?: return emptyList()
+        return castContext
             .sessionManager
             .currentCastSession
             ?.remoteMediaClient
@@ -1104,7 +1121,12 @@ class LocalPlayerActivity : ComponentActivity() {
      * @param selectedTrackId Receiver track to activate, or `null` for auto/off.
      */
     private fun selectCastTrack(type: PlaybackTrackType, selectedTrackId: Long?) {
-        val remoteClient = CastContext.getSharedInstance(this)
+        val castContext = try {
+            CastContext.getSharedInstance(this)
+        } catch (_: Throwable) {
+            null
+        } ?: return
+        val remoteClient = castContext
             .sessionManager
             .currentCastSession
             ?.remoteMediaClient
@@ -1125,8 +1147,13 @@ class LocalPlayerActivity : ComponentActivity() {
     }
 
     /** Returns active receiver track identifiers, if a Cast media status is available. */
-    private fun castActiveTrackIds(): List<Long> =
-        CastContext.getSharedInstance(this)
+    private fun castActiveTrackIds(): List<Long> {
+        val castContext = try {
+            CastContext.getSharedInstance(this)
+        } catch (_: Throwable) {
+            null
+        } ?: return emptyList()
+        return castContext
             .sessionManager
             .currentCastSession
             ?.remoteMediaClient
@@ -1134,6 +1161,7 @@ class LocalPlayerActivity : ComponentActivity() {
             ?.activeTrackIds
             ?.toList()
             .orEmpty()
+    }
 
     /**
      * Creates a readable language/format label for an audio or subtitle format.
@@ -1409,36 +1437,45 @@ class LocalPlayerActivity : ComponentActivity() {
      * @param local Local ExoPlayer used when no receiver session is active.
      * @return Configured Cast player, or `null` if Cast services are unavailable.
      */
-    @androidx.annotation.OptIn(UnstableApi::class)
     @Suppress("DEPRECATION")
-    private fun buildCastPlayer(): CastPlayer? {
-        return try {
-            val remotePlayer = CastPlayer(
-                CastContext.getSharedInstance(this),
-                castUrlConverter(castStreamUrl, localStreamUrl)
-            )
-            castPlayer = remotePlayer
-            remotePlayer.setSessionAvailabilityListener(
-                object : SessionAvailabilityListener {
-                    override fun onCastSessionAvailable() {
-                        switchToCastPlayer()
-                    }
+    private fun setupCastAsync() {
+        if (isTvDevice() || isFinishing || isDestroyed) return
+        Log.d(TAG, "DEBUG CAST: setupCastAsync called")
+        try {
+            val mainExecutor = ContextCompat.getMainExecutor(this)
+            CastContext.getSharedInstance(applicationContext, mainExecutor)
+                .addOnSuccessListener { castContext ->
+                    Log.d(TAG, "DEBUG CAST: CastContext onSuccess listener triggered, castContext=$castContext")
+                    if (isFinishing || isDestroyed) return@addOnSuccessListener
+                    try {
+                        val remotePlayer = CastPlayer(
+                            castContext,
+                            castUrlConverter(castStreamUrl, localStreamUrl)
+                        )
+                        castPlayer = remotePlayer
+                        remotePlayer.setSessionAvailabilityListener(
+                            object : SessionAvailabilityListener {
+                                override fun onCastSessionAvailable() {
+                                    switchToCastPlayer()
+                                }
 
-                    override fun onCastSessionUnavailable() {
-                        switchToLocalPlayer()
+                                override fun onCastSessionUnavailable() {
+                                    switchToLocalPlayer()
+                                }
+                            }
+                        )
+                        if (remotePlayer.isCastSessionAvailable()) {
+                            switchToCastPlayer()
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "DEBUG CAST: CastPlayer setup failed: ${e.javaClass.simpleName} - ${e.message}", e)
                     }
                 }
-            )
-            if (remotePlayer.isCastSessionAvailable()) switchToCastPlayer()
-            remotePlayer
-        } catch (_: IllegalStateException) {
-            Toast.makeText(this, R.string.torrent_cast_framework_unavailable, Toast.LENGTH_LONG)
-                .show()
-            null
-        } catch (_: SecurityException) {
-            Toast.makeText(this, R.string.torrent_cast_framework_unavailable, Toast.LENGTH_LONG)
-                .show()
-            null
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "DEBUG CAST: CastContext initialization failed asynchronously: ${e.javaClass.simpleName} - ${e.message}", e)
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "CastContext.getSharedInstance call failed", e)
         }
     }
 
@@ -1616,8 +1653,15 @@ class LocalPlayerActivity : ComponentActivity() {
     private var initialSeekPerformed = false
 
     private fun getMediaId(): String {
-        return torrentInfoHash.ifBlank {
-            mediaTitle.ifBlank { "media_${currentSeriesId}_s${currentSeasonNumber}_e${currentEpisodeNumber}" }
+        return when {
+            currentSeriesId > 0 && currentSeasonNumber > 0 && currentEpisodeNumber > 0 ->
+                "media_${currentSeriesId}_s${currentSeasonNumber}_e${currentEpisodeNumber}"
+            currentMovieId > 0 ->
+                currentMovieId.toString()
+            torrentInfoHash.isNotBlank() ->
+                torrentInfoHash
+            else ->
+                mediaTitle
         }
     }
 
@@ -1752,6 +1796,9 @@ class LocalPlayerActivity : ComponentActivity() {
 
         /** Intent extra containing episode number. */
         const val EXTRA_EPISODE_NUMBER = "extra_episode_number"
+
+        /** Intent extra containing movie ID. */
+        const val EXTRA_MOVIE_ID = "extra_movie_id"
 
         /** Identifies the season/episode naming used by the TV release-selection screen. */
         val EPISODE_PATTERN = Regex("""\bS\d{2}E\d{2}\b""", RegexOption.IGNORE_CASE)

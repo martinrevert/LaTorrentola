@@ -812,7 +812,7 @@ fun TorrentItem(
             try {
                 val title = movie.title ?: resources.getString(R.string.torrent_download_title)
                 val magnetUri = TorrentLaunchHelper.buildMagnetUri(hash, title)
-                when (TorrentLaunchHelper.launch(context, handlingMode, magnetUri, title)) {
+                when (TorrentLaunchHelper.launch(context, handlingMode, magnetUri, title, movieId = movie.id)) {
                     TorrentLaunchResult.Started -> {
                         onTorrentClick(torrent)
                         if (handlingMode != TorrentHandlingMode.EXTERNAL_CLIENT) {

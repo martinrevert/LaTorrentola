@@ -62,7 +62,8 @@ object TorrentLaunchHelper {
         nextEpisodeInfo: ArrayList<String>? = null,
         seriesId: Int = 0,
         seasonNumber: Int = 0,
-        episodeNumber: Int = 0
+        episodeNumber: Int = 0,
+        movieId: Int = 0
     ) {
         val intent = Intent(context, TorrentDownloadService::class.java).apply {
             action = TorrentDownloadService.ACTION_DOWNLOAD
@@ -72,6 +73,7 @@ object TorrentLaunchHelper {
             putExtra(TorrentDownloadService.EXTRA_SERIES_ID, seriesId)
             putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, seasonNumber)
             putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, episodeNumber)
+            putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, movieId)
             if (nextEpisodeInfo != null) {
                 putStringArrayListExtra(TorrentDownloadService.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
             }
@@ -90,6 +92,7 @@ object TorrentLaunchHelper {
      * @param seriesId TV series ID.
      * @param seasonNumber Current season number.
      * @param episodeNumber Current episode number.
+     * @param movieId Movie ID.
      * @return Result describing whether the request started or why it was rejected.
      */
     fun launch(
@@ -100,17 +103,18 @@ object TorrentLaunchHelper {
         nextEpisodeInfo: ArrayList<String>? = null,
         seriesId: Int = 0,
         seasonNumber: Int = 0,
-        episodeNumber: Int = 0
+        episodeNumber: Int = 0,
+        movieId: Int = 0
     ): TorrentLaunchResult = when (mode) {
         TorrentHandlingMode.EXTERNAL_CLIENT ->
             if (openExternal(context, magnetUri)) TorrentLaunchResult.Started
             else TorrentLaunchResult.NoExternalClient
         TorrentHandlingMode.LOCAL_PLAYBACK -> {
-            downloadLocally(context, magnetUri, title, false, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber)
+            downloadLocally(context, magnetUri, title, false, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId)
             TorrentLaunchResult.Started
         }
         TorrentHandlingMode.CHROMECAST -> {
-            downloadLocally(context, magnetUri, title, true, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber)
+            downloadLocally(context, magnetUri, title, true, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId)
             TorrentLaunchResult.Started
         }
     }
