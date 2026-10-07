@@ -367,3 +367,5 @@ keystore.properties
 /.kotlin/
 
 /.idea/kotlinc.xml
+/.idea/deviceHardwareInput.xml
+/.artifacts/f735289c-7689-4a76-a580-57e6dd5fe0ca/implementation_plan.artifact.md
