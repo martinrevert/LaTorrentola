@@ -110,7 +110,7 @@ android {
         applicationId = "com.martinrevert.latorrentola"
         versionCode = 30000 + gitVersionCode
         versionName = "3.0.$gitVersionCode"
-        minSdk = 28
+        minSdk = 29
         targetSdk = 37
         testInstrumentationRunner = "com.martinrevert.latorrentola.HiltTestRunner"
         ndk {
