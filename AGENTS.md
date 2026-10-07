@@ -11,7 +11,7 @@ This document provides mandatory guidance, architecture standards, and developme
 * ❌ **NO DARK TEXT ON DARK SURFACES**: In Dark Mode (static and Android 12+ dynamic), `onSurface` and `onSurfaceVariant` must be light grey/white (`#F4EFF4`, `#E6E1E5`). Chips (`AdaptiveChip`) must wrap text in `CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface)`.
 * ❌ **OPAQUE MODALS & BOTTOM SHEETS**: All `ModalBottomSheet` and `Dialog` containers containing text MUST use solid, 100% opaque surface container colors (`MaterialTheme.colorScheme.surfaceContainerHigh` or `surface`, alpha >= 0.95f). Never use semi-transparent backgrounds that let underlying screen text bleed through.
 * ❌ **STRICT VISUAL & THEME HOMOGENEITY**: All sections (Movies, TV Series, Search, Details, Settings, etc.) across both Handheld and TV MUST strictly respect the same app theme tokens, component patterns, card designs (`surfaceVariant` text container, rating star format "⭐ 8.5", download badges), glass blur effects (`hazeGlass` on handheld), and skeleton placeholders.
-* ❌ **ONE APP THEME SOURCE OF TRUTH**: `LaTorrentolaTheme` and `TvLaTorrentolaTheme` provide the app's theme; composables must consume it through `MaterialTheme` semantic color and typography tokens. Do not introduce screen-local palettes, hard-coded styles, or rely on platform/component defaults to create a different look. `androidx.tv.material3` components may have different defaults from Material 3, so explicitly configure their colors, shapes, typography, and focused states to match the app's established design.
+* ❌ **ONE APP THEME SOURCE OF TRUTH**: `LaTorrentolaTheme` and `TvLaTorrentolaTheme` in `Theme.kt` and `TvTheme.kt` provide the app's theme in pure Kotlin/Compose code. Do NOT create XML theme files (`themes.xml`, `colors.xml`, or `styles.xml`). The application theme in `AndroidManifest.xml` points directly to system `@android:style/Theme.DeviceDefault.NoActionBar`, and all UI styling, colors, and typography MUST be consumed exclusively from Compose `MaterialTheme` tokens.
 * ❌ **MANDATORY DUAL-THEME CONTRAST & D-PAD DETERMINISM ON TV**:
   - `androidx.tv.material3.MaterialTheme` and `androidx.compose.material3.MaterialTheme` are distinct Compose CompositionLocals. `TvLaTorrentolaTheme` provides BOTH theme scopes.
   - On Android TV (`isTv == true`), focusable surfaces (`TvSurface`) MUST dynamically update child text/icon colors on focus (`isFocused`). Never pass static `onSurface` colors into child text inside focusable surfaces whose focused container background changes (e.g. `primaryContainer`), as doing so breaks dark/light theme contrast.
@@ -151,16 +151,18 @@ For every UI change, including changes requested for only one screen:
 ## 🛠️ Development & Testing Workflows
 
 ### PowerShell Commands
-#### Gradle and Java in this Windows environment
+#### Gradle and Java in this Windows environment (Android Studio setup)
 - Run Gradle from the repository root (`D:\AndroidProjects\LaTorrentola`) using the checked-in wrapper: `.\gradlew.bat`. Do not rely on a separately installed Gradle.
-- Gradle must use Android Studio's bundled JBR at `C:\Program Files\Android\Android Studio\jbr`. The `java` found on the default system path is Oracle GraalVM 25; it fails Android's `androidJdkImage`/`jlink` transform for this project's Android SDK. Set `JAVA_HOME` and put its `bin` first on `Path` in the same PowerShell process before invoking the wrapper:
-  ```powershell
-  $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
-  $env:Path = "$env:JAVA_HOME\bin;$env:Path"
-  .\gradlew.bat :app:testDebugUnitTest --tests "com.martinrevert.latorrentola.ui.detail.TvEpisodeDetailViewModelTest" --no-configuration-cache
+- **Android Studio JBR requirement**: Gradle must use Android Studio's bundled JBR at `C:\Program Files\Android\Android Studio\jbr`. The `java` found on the default system path is often an incompatible JDK (like Oracle GraalVM 25), which fails Android's `androidJdkImage`/`jlink` transform for this project's Android SDK. Set `JAVA_HOME` and put its `bin` first on `Path` in the same command before invoking the wrapper.
+- **Conflicting Environment Variables (CRITICAL BUILD FAILURE HINT)**: On Windows machines running Android Studio, conflicting environment variables like `ANDROID_PREFS_ROOT` and `ANDROID_USER_HOME` pointing to different or invalid user directories will cause the Android Gradle plugin service (`AndroidLocationsBuildService`) to fail with `com.android.prefs.AndroidLocationsException` ("Several environment variables and/or system properties contain different paths..."). To prevent this build crash, **always clear or unify these environment variables** in your command session:
+  ```cmd
+  set JAVA_HOME=C:\Program Files\Android\Android Studio\jbr
+  set PATH=%JAVA_HOME%\bin;C:\Program Files\Git\bin;%PATH%
+  set ANDROID_PREFS_ROOT=
+  set ANDROID_SDK_HOME=
+  gradlew.bat app:assembleDebug --no-configuration-cache
   ```
-- Each agent PowerShell command starts in a fresh process, so set these environment variables again for every Gradle invocation. Keep the `--no-configuration-cache` flag for test runs in this environment; it avoids the wrapper's configuration-cache serialization failure.
-- For any other Gradle task below, apply the same JDK setup in that command before running `.\gradlew.bat`; add `--no-configuration-cache` when running tests.
+- Each agent PowerShell/CMD command starts in a fresh process, so set these environment variables (and clear conflicting preference variables) for every Gradle invocation. Keep the `--no-configuration-cache` flag for test runs in this environment to avoid configuration-cache serialization failures.
 
 ```powershell
 # Clean & build debug APK
@@ -186,8 +188,10 @@ adb shell am start -n com.martinrevert.latorrentola/.MainActivity
 
 ### Testing Infrastructure
 - **Unit Tests**: Located in `app/src/test/java`. Built with MockK, Turbine, and Truth. Use `MainDispatcherRule` to mock `Dispatchers.Main`.
+- **Fast Verification Rule (PERFORMANCE HINT)**: Avoid running full `assembleDebug` / `assembleRelease` APK builds unless explicitly required for UI deployment or packaging validation, as full APK builds add significant latency. For code changes, running unit tests (`.\gradlew.bat testDebugUnitTest`) or compilation checks is sufficient to verify logic and syntax correctness.
 - **Instrumented Tests**: Located in `app/src/androidTest/java`. Uses `createComposeRule()`, Hilt, and custom test runner `com.martinrevert.latorrentola.HiltTestRunner`.
 - **Versioning**: `app/build.gradle` calculates `versionCode` via `git rev-list --count HEAD`. Git must be available in the execution environment.
+- **Git Execution Tip**: When running `git` commands via PowerShell or shell tools, use `cmd /c "git ..."` or ensure proper PTY invocation if PowerShell interactive shell fails with PTY errors.
 
 ---
 
