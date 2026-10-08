@@ -20,6 +20,7 @@ This document provides mandatory guidance, architecture standards, and developme
 * **🔒 NATIVE TV COMPONENTS**: Use `androidx.tv.material3` components (`TvChip`, `TvSurface`, etc.) **exclusively** for TV UI. Never use phone M3 touch components (`FilterChip`, etc.) on TV.
 * **🔒 DETERMINISTIC FOCUS LINKS**: All action icons in `TopAppBar` **MUST** define `focusProperties { down = nextFocusRequester }` to prevent focus dead zones.
 * **🔒 BIDIRECTIONAL LIST FOCUS**: Navigation **up** and **down** between lists/grids and companion action buttons (such as bottom-right "Cancel" buttons) **MUST** go to and return from the immediate adjacent element (e.g., navigating **up** from a Cancel button returns to the **last item** of the list, not the first item), maintaining sequential adjacency. Exceptions apply only when explicitly requested (such as YouTube trailer isolation).
+* **🔒 FOCUS TRAPPING / BOUNDARY PREVENTION**: D-pad navigation **MUST NEVER** lose focus or escape container bounds when reaching the first (`up`) or last (`down`/`right`/`left`) item in a list, grid, or dialog. Focus edges must either wrap or explicitly intercept and constrain navigation to valid elements within the component.
 * **🔒 YOUTUBE ISOLATION**: `YouTubePlayerView` **MUST** have `isFocusable = false`, `isFocusableInTouchMode = false`, and `descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS`. Overlay with native `IconButton` for controls.
 
 ### 🖼️ Visual Consistency

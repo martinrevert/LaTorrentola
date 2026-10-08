@@ -209,13 +209,24 @@ fun NextEpisodeTorrentDialog(
                         }
                         else -> {
                             LazyColumn(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 120.dp, max = if (isTv) 280.dp else 220.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 itemsIndexed(releases) { index, torrent ->
                                     val itemModifier = Modifier
                                         .then(if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
-                                        .then(if (isTv && index == releases.lastIndex) Modifier.focusProperties { down = closeButtonFocusRequester } else Modifier)
+                                        .then(
+                                            if (isTv) {
+                                                Modifier.focusProperties {
+                                                    if (index == releases.lastIndex) down = closeButtonFocusRequester
+                                                    if (index == 0) up = closeButtonFocusRequester
+                                                }
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
 
                                     TorrentOptionItem(
                                         torrent = torrent,
@@ -239,6 +250,15 @@ fun NextEpisodeTorrentDialog(
                         onClick = onDismiss,
                         modifier = Modifier
                             .focusRequester(closeButtonFocusRequester)
+                            .then(
+                                if (isTv && releases.isNotEmpty()) {
+                                    Modifier.focusProperties {
+                                        up = firstItemFocusRequester
+                                    }
+                                } else {
+                                    Modifier
+                                }
+                            )
                             .focusHighlight(shape = MaterialTheme.shapes.small)
                     ) {
                         Text(

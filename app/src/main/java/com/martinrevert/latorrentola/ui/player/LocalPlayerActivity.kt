@@ -271,7 +271,16 @@ fun PlayerDialogContent(
                                 val itemModifier = Modifier
                                     .fillMaxWidth()
                                     .then(if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
-                                    .then(if (isTv && index == state.options.lastIndex) Modifier.focusProperties { down = cancelButtonFocusRequester } else Modifier)
+                                    .then(
+                                        if (isTv) {
+                                            Modifier.focusProperties {
+                                                if (index == state.options.lastIndex) down = cancelButtonFocusRequester
+                                                if (index == 0) up = cancelButtonFocusRequester
+                                            }
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
                                     .focusHighlight(shape = MaterialTheme.shapes.small)
 
                                 Surface(
@@ -306,6 +315,15 @@ fun PlayerDialogContent(
                                 onClick = onDismiss,
                                 modifier = Modifier
                                     .focusRequester(cancelButtonFocusRequester)
+                                    .then(
+                                        if (isTv && state.options.isNotEmpty()) {
+                                            Modifier.focusProperties {
+                                                up = firstItemFocusRequester
+                                            }
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
                                     .focusHighlight(shape = MaterialTheme.shapes.small)
                             ) {
                                 Text(
@@ -341,7 +359,16 @@ fun PlayerDialogContent(
                                 val itemModifier = Modifier
                                     .fillMaxWidth()
                                     .then(if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
-                                    .then(if (isTv && index == labels.lastIndex) Modifier.focusProperties { down = cancelButtonFocusRequester } else Modifier)
+                                    .then(
+                                        if (isTv) {
+                                            Modifier.focusProperties {
+                                                if (index == labels.lastIndex) down = cancelButtonFocusRequester
+                                                if (index == 0) up = cancelButtonFocusRequester
+                                            }
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
                                     .focusHighlight(shape = MaterialTheme.shapes.small)
 
                                 Surface(
@@ -386,6 +413,15 @@ fun PlayerDialogContent(
                                 onClick = onDismiss,
                                 modifier = Modifier
                                     .focusRequester(cancelButtonFocusRequester)
+                                    .then(
+                                        if (isTv && labels.isNotEmpty()) {
+                                            Modifier.focusProperties {
+                                                up = firstItemFocusRequester
+                                            }
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
                                     .focusHighlight(shape = MaterialTheme.shapes.small)
                             ) {
                                 Text(
@@ -419,7 +455,16 @@ fun PlayerDialogContent(
                                 val itemModifier = Modifier
                                     .fillMaxWidth()
                                     .then(if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
-                                    .then(if (isTv && index == state.results.lastIndex) Modifier.focusProperties { down = cancelButtonFocusRequester } else Modifier)
+                                    .then(
+                                        if (isTv) {
+                                            Modifier.focusProperties {
+                                                if (index == state.results.lastIndex) down = cancelButtonFocusRequester
+                                                if (index == 0) up = cancelButtonFocusRequester
+                                            }
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
                                     .focusHighlight(shape = MaterialTheme.shapes.small)
 
                                 Surface(
@@ -453,6 +498,15 @@ fun PlayerDialogContent(
                                 onClick = onDismiss,
                                 modifier = Modifier
                                     .focusRequester(cancelButtonFocusRequester)
+                                    .then(
+                                        if (isTv && state.results.isNotEmpty()) {
+                                            Modifier.focusProperties {
+                                                up = firstItemFocusRequester
+                                            }
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
                                     .focusHighlight(shape = MaterialTheme.shapes.small)
                             ) {
                                 Text(
