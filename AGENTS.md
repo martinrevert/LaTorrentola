@@ -9,7 +9,7 @@ This document provides mandatory guidance, architecture standards, and developme
 
 ### 🎨 Color & Typography
 * **🔒 NO HARDCODED COLORS**: Never use `Color.Black`, `Color.White`, `Color(0xFF...)`, or explicit hex values in composables/Android Views. **Always** derive colors from `MaterialTheme.colorScheme` or `MaterialTheme.typography`.
-* **🔒 THEME PROPAGATION**: Every `setContent`, `ComposeView`, dialog, sheet, or preview **MUST** explicitly pass `themeMode = preferenceManager.getTheme()` to `LaTorrentolaTheme(themeMode = themeMode)`. Omitting `themeMode` breaks dark/light theme resolution.
+* **🔒 THEME PROPAGATION**: Every `setContent`, `ComposeView`, dialog, sheet, or preview **MUST** explicitly pass `themeMode = preferenceManager.getTheme()` to `LaTorrentolaTheme(themeMode = themeMode)`. Note that `LaTorrentolaTheme` automatically delegates to `TvLaTorrentolaTheme` when `context.isTvDevice()` is true. Omitting `themeMode` breaks dark/light theme resolution.
 * **🔒 PURE COMPOSE DIALOGS**: Never use `AlertDialog.Builder`. All dialogs/modals **MUST** be Compose overlays wrapped in proper theming:
   - Handheld: `LaTorrentolaTheme(themeMode = preferenceManager.getTheme())`
   - TV: `TvLaTorrentolaTheme` (provides both Material3 & TV Material3 scopes)
@@ -19,6 +19,7 @@ This document provides mandatory guidance, architecture standards, and developme
 * **🔒 SINGLE VERTICAL LAYOUT (TV)**: On `isTv == true`, `TopAppBar`, filter chips, and content lists **MUST** be direct siblings in a single `Column`. No floating overlays (breaks D-pad focus).
 * **🔒 NATIVE TV COMPONENTS**: Use `androidx.tv.material3` components (`TvChip`, `TvSurface`, etc.) **exclusively** for TV UI. Never use phone M3 touch components (`FilterChip`, etc.) on TV.
 * **🔒 DETERMINISTIC FOCUS LINKS**: All action icons in `TopAppBar` **MUST** define `focusProperties { down = nextFocusRequester }` to prevent focus dead zones.
+* **🔒 BIDIRECTIONAL LIST FOCUS**: Navigation **up** and **down** between lists/grids and companion action buttons (such as bottom-right "Cancel" buttons) **MUST** go to and return from the immediate adjacent element (e.g., navigating **up** from a Cancel button returns to the **last item** of the list, not the first item), maintaining sequential adjacency. Exceptions apply only when explicitly requested (such as YouTube trailer isolation).
 * **🔒 YOUTUBE ISOLATION**: `YouTubePlayerView` **MUST** have `isFocusable = false`, `isFocusableInTouchMode = false`, and `descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS`. Overlay with native `IconButton` for controls.
 
 ### 🖼️ Visual Consistency

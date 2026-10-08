@@ -229,7 +229,7 @@ fun NextEpisodeTorrentDialog(
                     }
                 }
 
-                // Bottom action row
+                // Bottom action row - clean, right-aligned Cancel button for TV & Mobile
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,

@@ -100,6 +100,11 @@ import com.martinrevert.latorrentola.network.OpenSubtitleRepository
 import com.martinrevert.latorrentola.network.OpenSubtitleResult
 import com.martinrevert.latorrentola.service.VerifiedTorrentHttpServer
 import com.martinrevert.latorrentola.ui.components.NextEpisodeTorrentDialog
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
@@ -217,6 +222,17 @@ fun PlayerDialogContent(
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
+    val firstItemFocusRequester = remember(state) { FocusRequester() }
+    val cancelButtonFocusRequester = remember(state) { FocusRequester() }
+
+    if (isTv) {
+        LaunchedEffect(state) {
+            delay(100)
+            try {
+                firstItemFocusRequester.requestFocus()
+            } catch (_: Exception) {}
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -252,14 +268,18 @@ fun PlayerDialogContent(
                         ) {
                             itemsIndexed(state.options) { index, option ->
                                 val isSelected = index == state.selectedIndex
+                                val itemModifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
+                                    .then(if (isTv && index == state.options.lastIndex) Modifier.focusProperties { down = cancelButtonFocusRequester } else Modifier)
+                                    .focusHighlight(shape = MaterialTheme.shapes.small)
+
                                 Surface(
                                     onClick = {
                                         state.onSelected(option)
                                         onDismiss()
                                     },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .focusHighlight(shape = MaterialTheme.shapes.small),
+                                    modifier = itemModifier,
                                     shape = MaterialTheme.shapes.small,
                                     color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
                                 ) {
@@ -275,6 +295,24 @@ fun PlayerDialogContent(
                                         )
                                     }
                                 }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = onDismiss,
+                                modifier = Modifier
+                                    .focusRequester(cancelButtonFocusRequester)
+                                    .focusHighlight(shape = MaterialTheme.shapes.small)
+                            ) {
+                                Text(
+                                    text = stringResource(android.R.string.cancel),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary
+                                )
                             }
                         }
                     }
@@ -300,6 +338,12 @@ fun PlayerDialogContent(
                         ) {
                             itemsIndexed(labels) { index, label ->
                                 val isSelected = index == state.selectedIndex
+                                val itemModifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
+                                    .then(if (isTv && index == labels.lastIndex) Modifier.focusProperties { down = cancelButtonFocusRequester } else Modifier)
+                                    .focusHighlight(shape = MaterialTheme.shapes.small)
+
                                 Surface(
                                     onClick = {
                                         val fractions = listOf(
@@ -316,9 +360,7 @@ fun PlayerDialogContent(
                                         }
                                         onDismiss()
                                     },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .focusHighlight(shape = MaterialTheme.shapes.small),
+                                    modifier = itemModifier,
                                     shape = MaterialTheme.shapes.small,
                                     color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
                                 ) {
@@ -335,6 +377,24 @@ fun PlayerDialogContent(
                                 }
                             }
                         }
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = onDismiss,
+                                modifier = Modifier
+                                    .focusRequester(cancelButtonFocusRequester)
+                                    .focusHighlight(shape = MaterialTheme.shapes.small)
+                            ) {
+                                Text(
+                                    text = stringResource(android.R.string.cancel),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
                     is PlayerDialogState.SubtitleResults -> {
                         Text(
@@ -349,21 +409,25 @@ fun PlayerDialogContent(
                                 .heightIn(min = 120.dp, max = 320.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            itemsIndexed(state.results) { _, result ->
+                            itemsIndexed(state.results) { index, result ->
                                 val feature = result.featureTitle?.takeIf(String::isNotBlank)
                                 val label = listOfNotNull(
                                     result.language.uppercase(Locale.ROOT),
                                     result.release.takeIf(String::isNotBlank),
                                     feature
                                 ).joinToString(" · ")
+                                val itemModifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
+                                    .then(if (isTv && index == state.results.lastIndex) Modifier.focusProperties { down = cancelButtonFocusRequester } else Modifier)
+                                    .focusHighlight(shape = MaterialTheme.shapes.small)
+
                                 Surface(
                                     onClick = {
                                         state.onSelected(result)
                                         onDismiss()
                                     },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .focusHighlight(shape = MaterialTheme.shapes.small),
+                                    modifier = itemModifier,
                                     shape = MaterialTheme.shapes.small,
                                     color = MaterialTheme.colorScheme.surfaceContainer
                                 ) {
@@ -378,6 +442,24 @@ fun PlayerDialogContent(
                                         )
                                     }
                                 }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = onDismiss,
+                                modifier = Modifier
+                                    .focusRequester(cancelButtonFocusRequester)
+                                    .focusHighlight(shape = MaterialTheme.shapes.small)
+                            ) {
+                                Text(
+                                    text = stringResource(android.R.string.cancel),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary
+                                )
                             }
                         }
                     }
