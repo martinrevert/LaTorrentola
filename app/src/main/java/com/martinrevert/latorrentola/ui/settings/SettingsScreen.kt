@@ -239,7 +239,8 @@ private fun SettingsScreenContent(
 
                     TorrentModeSetting(
                         selectedMode = uiState.torrentHandlingMode,
-                        onModeSelected = onSetTorrentHandlingMode
+                        onModeSelected = onSetTorrentHandlingMode,
+                        isTv = isTv
                     )
                     AutoPlayQualitySetting(
                         selectedMethod = uiState.autoPlayQualitySelectionMethod,
@@ -339,7 +340,8 @@ private fun SettingsScreenContent(
 
                 TorrentModeSetting(
                     selectedMode = uiState.torrentHandlingMode,
-                    onModeSelected = onSetTorrentHandlingMode
+                    onModeSelected = onSetTorrentHandlingMode,
+                    isTv = isTv
                 )
                 AutoPlayQualitySetting(
                     selectedMethod = uiState.autoPlayQualitySelectionMethod,
@@ -423,13 +425,19 @@ private fun DownloadsManagerButton(isTv: Boolean, onClick: () -> Unit) {
  *
  * @param selectedMode Currently stored handling mode.
  * @param onModeSelected Persists a user-selected mode.
+ * @param isTv Whether this device is a television.
  */
 @Composable
 private fun TorrentModeSetting(
     selectedMode: TorrentHandlingMode,
-    onModeSelected: (TorrentHandlingMode) -> Unit
+    onModeSelected: (TorrentHandlingMode) -> Unit,
+    isTv: Boolean
 ) {
-    val options = listOf(
+    // On TV devices, Chromecast mode is not shown since TV devices use dedicated Cast functionality
+    val options = if (isTv) listOf(
+        Triple(TorrentHandlingMode.EXTERNAL_CLIENT, R.string.torrent_mode_external, R.string.torrent_mode_external_support),
+        Triple(TorrentHandlingMode.LOCAL_PLAYBACK, R.string.torrent_mode_local, R.string.torrent_mode_local_support)
+    ) else listOf(
         Triple(TorrentHandlingMode.EXTERNAL_CLIENT, R.string.torrent_mode_external, R.string.torrent_mode_external_support),
         Triple(TorrentHandlingMode.LOCAL_PLAYBACK, R.string.torrent_mode_local, R.string.torrent_mode_local_support),
         Triple(TorrentHandlingMode.CHROMECAST, R.string.torrent_mode_cast, R.string.torrent_mode_cast_support)
