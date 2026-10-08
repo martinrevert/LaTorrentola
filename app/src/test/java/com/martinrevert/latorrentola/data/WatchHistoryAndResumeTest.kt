@@ -1,4 +1,4 @@
-package com.martinrevert.latorrentola
+package com.martinrevert.latorrentola.data
 
 import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.model.user.PlaybackProgress

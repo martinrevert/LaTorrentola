@@ -52,6 +52,7 @@ import com.google.android.gms.cast.MediaTrack
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -242,7 +243,8 @@ fun PlayerDialogContent(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = {}
-            ),
+            )
+            .focusable(),
         contentAlignment = Alignment.Center
     ) {
         val dialogBody: @Composable () -> Unit = {
