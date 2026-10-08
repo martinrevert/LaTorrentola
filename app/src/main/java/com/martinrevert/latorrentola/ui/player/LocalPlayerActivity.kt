@@ -241,7 +241,7 @@ fun PlayerDialogContent(
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = onDismiss
+                onClick = {}
             ),
         contentAlignment = Alignment.Center
     ) {
@@ -585,12 +585,20 @@ fun PlayerDialogContent(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
                         ) {
+                            val cancelBtnReq = remember { FocusRequester() }
+                            val eraseBtnReq = remember { FocusRequester() }
+                            LaunchedEffect(Unit) {
+                                try { cancelBtnReq.requestFocus() } catch (_: Exception) {}
+                            }
                             TextButton(
                                 onClick = {
                                     state.onDismiss()
                                     onDismiss()
                                 },
-                                modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
+                                modifier = Modifier
+                                    .focusRequester(cancelBtnReq)
+                                    .focusProperties { right = eraseBtnReq; left = eraseBtnReq }
+                                    .focusHighlight(shape = MaterialTheme.shapes.small)
                             ) {
                                 Text(stringResource(android.R.string.cancel))
                             }
@@ -599,7 +607,10 @@ fun PlayerDialogContent(
                                     state.onErase()
                                     onDismiss()
                                 },
-                                modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
+                                modifier = Modifier
+                                    .focusRequester(eraseBtnReq)
+                                    .focusProperties { right = cancelBtnReq; left = cancelBtnReq }
+                                    .focusHighlight(shape = MaterialTheme.shapes.small)
                             ) {
                                 Text("Erase", color = MaterialTheme.colorScheme.error)
                             }

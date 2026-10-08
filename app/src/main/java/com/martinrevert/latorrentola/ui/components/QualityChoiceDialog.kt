@@ -111,7 +111,7 @@ fun NextEpisodeTorrentDialog(
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = onDismiss
+                onClick = {}
             ),
         contentAlignment = Alignment.Center
     ) {
