@@ -115,23 +115,7 @@ fun NextEpisodeTorrentDialog(
             ),
         contentAlignment = Alignment.Center
     ) {
-        Surface(
-            modifier = Modifier
-                .padding(24.dp)
-                .then(
-                    if (isTv) Modifier.widthIn(min = 520.dp, max = 680.dp)
-                    else Modifier.widthIn(min = 320.dp, max = 560.dp).fillMaxWidth(0.92f)
-                )
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {}
-                ),
-            shape = MaterialTheme.shapes.extraLarge,
-            color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 6.dp,
-            shadowElevation = 8.dp
-        ) {
+        val dialogContent: @Composable () -> Unit = {
             Column(
                 modifier = Modifier
                     .padding(24.dp)
@@ -264,6 +248,47 @@ fun NextEpisodeTorrentDialog(
                         )
                     }
                 }
+            }
+        }
+
+        if (isTv) {
+            TvSurface(
+                onClick = {},
+                shape = ClickableSurfaceDefaults.shape(androidx.tv.material3.MaterialTheme.shapes.extraLarge),
+                colors = ClickableSurfaceDefaults.colors(
+                    containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
+                    contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
+                    focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
+                    focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface
+                ),
+                modifier = Modifier
+                    .padding(24.dp)
+                    .widthIn(min = 520.dp, max = 680.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {}
+                    )
+            ) {
+                dialogContent()
+            }
+        } else {
+            Surface(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .widthIn(min = 320.dp, max = 560.dp)
+                    .fillMaxWidth(0.92f)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {}
+                    ),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                tonalElevation = 6.dp,
+                shadowElevation = 8.dp
+            ) {
+                dialogContent()
             }
         }
     }
@@ -404,19 +429,21 @@ fun QualityChoiceDialog(
     isLoading: Boolean,
     error: String?
 ) {
-    NextEpisodeTorrentDialog(
-        seriesName = "",
-        seasonNumber = 0,
-        episodeNumber = 0,
-        episodeName = "",
-        releases = releases,
-        isLoading = isLoading,
-        error = error,
-        onTorrentSelected = { torrent ->
-            onQualitySelected(torrent.title)
-        },
-        onDismiss = onDismiss
-    )
+    LaTorrentolaTheme {
+        NextEpisodeTorrentDialog(
+            seriesName = "",
+            seasonNumber = 0,
+            episodeNumber = 0,
+            episodeName = "",
+            releases = releases,
+            isLoading = isLoading,
+            error = error,
+            onTorrentSelected = { torrent ->
+                onQualitySelected(torrent.title)
+            },
+            onDismiss = onDismiss
+        )
+    }
 }
 
 @Preview(name = "Light Phone", uiMode = Configuration.UI_MODE_NIGHT_NO, showBackground = true, widthDp = 360, heightDp = 640)

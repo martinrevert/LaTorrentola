@@ -50,11 +50,46 @@ import com.google.android.gms.cast.MediaMetadata as CastMetadata
 import com.google.android.gms.cast.MediaQueueItem
 import com.google.android.gms.cast.MediaTrack
 import androidx.activity.viewModels
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Surface as TvSurface
+import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.google.android.gms.cast.framework.CastButtonFactory
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
@@ -85,7 +120,7 @@ import javax.inject.Inject
 import com.google.android.gms.cast.MediaTrack as GoogleMediaTrack
 
 /** Track type exposed by the in-player audio and subtitle selectors. */
-private enum class PlaybackTrackType {
+enum class PlaybackTrackType {
     /** Audio tracks in the media file or Cast receiver. */
     AUDIO,
 
@@ -102,7 +137,7 @@ private enum class PlaybackTrackType {
  * @property castTrackId Cast receiver track identifier, or `null` for local Media3 tracks.
  * @property isSelected Whether the option is currently active on its playback target.
  */
-private data class PlaybackTrackOption(
+data class PlaybackTrackOption(
     val label: String,
     val group: TrackGroup?,
     val trackIndex: Int?,
@@ -127,6 +162,346 @@ private object SubtitleServerRegistry {
         synchronized(servers) {
             servers.forEach(VerifiedTorrentHttpServer::stop)
             servers.clear()
+        }
+    }
+}
+
+sealed class PlayerDialogState {
+    data class Tracks(
+        val type: PlaybackTrackType,
+        val title: String,
+        val options: List<PlaybackTrackOption>,
+        val selectedIndex: Int,
+        val onSelected: (PlaybackTrackOption?) -> Unit
+    ) : PlayerDialogState()
+
+    data class SubtitleStyle(
+        val selectedIndex: Int,
+        val onSelected: (Float, Boolean) -> Unit
+    ) : PlayerDialogState()
+
+    data class SubtitleResults(
+        val results: List<OpenSubtitleResult>,
+        val onSelected: (OpenSubtitleResult) -> Unit
+    ) : PlayerDialogState()
+
+    data class Message(
+        val title: String,
+        val message: String,
+        val onDismiss: () -> Unit = {}
+    ) : PlayerDialogState()
+
+    data class Progress(
+        val title: String,
+        val message: String
+    ) : PlayerDialogState()
+
+    data class InsufficientSpace(
+        val release: EztvTorrent,
+        val seriesId: Int,
+        val seriesName: String,
+        val seasonNumber: Int,
+        val episodeNumber: Int,
+        val episodeName: String,
+        val onErase: () -> Unit,
+        val onDismiss: () -> Unit
+    ) : PlayerDialogState()
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@androidx.annotation.OptIn(UnstableApi::class)
+@Composable
+fun PlayerDialogContent(
+    state: PlayerDialogState,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.75f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onDismiss
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        val dialogBody: @Composable () -> Unit = {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                when (state) {
+                    is PlayerDialogState.Tracks -> {
+                        Text(
+                            text = state.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 120.dp, max = 320.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            itemsIndexed(state.options) { index, option ->
+                                val isSelected = index == state.selectedIndex
+                                Surface(
+                                    onClick = {
+                                        state.onSelected(option)
+                                        onDismiss()
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .focusHighlight(shape = MaterialTheme.shapes.small),
+                                    shape = MaterialTheme.shapes.small,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(14.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = option.label,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    is PlayerDialogState.SubtitleStyle -> {
+                        val labels = listOf(
+                            stringResource(R.string.player_subtitle_style_system),
+                            stringResource(R.string.player_subtitle_style_small),
+                            stringResource(R.string.player_subtitle_style_medium),
+                            stringResource(R.string.player_subtitle_style_large),
+                            stringResource(R.string.player_subtitle_style_extra_large)
+                        )
+                        Text(
+                            text = stringResource(R.string.player_subtitle_style),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 120.dp, max = 280.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            itemsIndexed(labels) { index, label ->
+                                val isSelected = index == state.selectedIndex
+                                Surface(
+                                    onClick = {
+                                        val fractions = listOf(
+                                            SubtitleView.DEFAULT_TEXT_SIZE_FRACTION,
+                                            0.04f,
+                                            SubtitleView.DEFAULT_TEXT_SIZE_FRACTION,
+                                            0.067f,
+                                            0.08f
+                                        )
+                                        if (index == 0) {
+                                            state.onSelected(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION, true)
+                                        } else {
+                                            state.onSelected(fractions[index], false)
+                                        }
+                                        onDismiss()
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .focusHighlight(shape = MaterialTheme.shapes.small),
+                                    shape = MaterialTheme.shapes.small,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    is PlayerDialogState.SubtitleResults -> {
+                        Text(
+                            text = stringResource(R.string.opensubtitles_results_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 120.dp, max = 320.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            itemsIndexed(state.results) { _, result ->
+                                val feature = result.featureTitle?.takeIf(String::isNotBlank)
+                                val label = listOfNotNull(
+                                    result.language.uppercase(Locale.ROOT),
+                                    result.release.takeIf(String::isNotBlank),
+                                    feature
+                                ).joinToString(" · ")
+                                Surface(
+                                    onClick = {
+                                        state.onSelected(result)
+                                        onDismiss()
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .focusHighlight(shape = MaterialTheme.shapes.small),
+                                    shape = MaterialTheme.shapes.small,
+                                    color = MaterialTheme.colorScheme.surfaceContainer
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    is PlayerDialogState.Message -> {
+                        Text(
+                            text = state.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = state.message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    state.onDismiss()
+                                    onDismiss()
+                                },
+                                modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
+                            ) {
+                                Text(stringResource(android.R.string.ok))
+                            }
+                        }
+                    }
+                    is PlayerDialogState.Progress -> {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Text(
+                                text = state.title,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            CircularProgressIndicator()
+                            Text(
+                                text = state.message,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                    is PlayerDialogState.InsufficientSpace -> {
+                        Text(
+                            text = "Insufficient Disk Space",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Not enough disk space available. Would you like to erase all saved torrents on disk to free up space?",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    state.onDismiss()
+                                    onDismiss()
+                                },
+                                modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
+                            ) {
+                                Text(stringResource(android.R.string.cancel))
+                            }
+                            TextButton(
+                                onClick = {
+                                    state.onErase()
+                                    onDismiss()
+                                },
+                                modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
+                            ) {
+                                Text("Erase", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (isTv) {
+            TvSurface(
+                onClick = {},
+                shape = ClickableSurfaceDefaults.shape(androidx.tv.material3.MaterialTheme.shapes.extraLarge),
+                colors = ClickableSurfaceDefaults.colors(
+                    containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
+                    contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
+                    focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
+                    focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface
+                ),
+                modifier = Modifier
+                    .padding(24.dp)
+                    .widthIn(min = 520.dp, max = 680.dp)
+            ) {
+                dialogBody()
+            }
+        } else {
+            Surface(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .widthIn(min = 320.dp, max = 560.dp)
+                    .fillMaxWidth(0.92f),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                tonalElevation = 6.dp,
+                shadowElevation = 8.dp
+            ) {
+                dialogBody()
+            }
         }
     }
 }
@@ -233,6 +608,12 @@ class LocalPlayerActivity : AppCompatActivity() {
     /** Overlay hosting the next episode selection composable. */
     private var nextEpisodeOverlay: ComposeView? = null
 
+    /** Current state for player dialog overlays (track selection, subtitle style, errors, progress). */
+    private var playerDialogState: PlayerDialogState? by mutableStateOf(null)
+
+    /** Overlay hosting player dialog composables. */
+    private var playerDialogOverlay: ComposeView? = null
+
     /**
      * Creates the player, using early-start extraction for incomplete torrents, and adds
      * playback actions to the native Media3 controller.
@@ -288,7 +669,11 @@ class LocalPlayerActivity : AppCompatActivity() {
             .build()
         currentMediaItem = mediaItem
 
-        val playerView = PlayerView(this)
+        val playerView = PlayerView(this).apply {
+            isFocusable = true
+            isFocusableInTouchMode = true
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+        }
         this.playerView = playerView
         playerView.controllerShowTimeoutMs = PLAYER_CONTROLLER_SHOW_TIMEOUT_MS
         playerView.controllerHideOnTouch = true
@@ -397,6 +782,31 @@ class LocalPlayerActivity : AppCompatActivity() {
         this.nextEpisodeOverlay = nextEpisodeOverlay
         root.addView(
             nextEpisodeOverlay,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        val playerDialogOverlay = ComposeView(this).apply {
+            visibility = View.GONE
+            setContent {
+                LaTorrentolaTheme {
+                    val state = playerDialogState
+                    if (state != null) {
+                        PlayerDialogContent(
+                            state = state,
+                            onDismiss = {
+                                playerDialogState = null
+                                visibility = View.GONE
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        this.playerDialogOverlay = playerDialogOverlay
+        root.addView(
+            playerDialogOverlay,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -711,6 +1121,7 @@ class LocalPlayerActivity : AppCompatActivity() {
         ) { "Media3 subtitle controller button is unavailable" }
         subtitleButton.setOnClickListener { showSubtitleOptions() }
         subtitleButton.isFocusable = true
+        applyTvFocusHighlight(subtitleButton)
         val buttonStyle = androidx.media3.ui.R.style.ExoStyledControls_Button_Bottom
         val subtitleButtonIndex = controls.indexOfChild(subtitleButton)
 
@@ -759,6 +1170,7 @@ class LocalPlayerActivity : AppCompatActivity() {
                 isFocusableInTouchMode = true
                 id = View.generateViewId()
             }
+            applyTvFocusHighlight(button)
             if (icon == R.drawable.ic_subtitles_search) {
                 installDirectTouchActivation(button, description)
                 subtitleSearchButton = button
@@ -774,16 +1186,16 @@ class LocalPlayerActivity : AppCompatActivity() {
                 R.string.player_audio_tracks
             ) { showTrackOptions(PlaybackTrackType.AUDIO) }
         ).forEach { (icon, description, action) ->
-            controls.addView(
-                ImageButton(this, null, 0, buttonStyle).apply {
-                    setImageResource(icon)
-                    contentDescription = getString(description)
-                    setOnClickListener { action() }
-                    isFocusable = true
-                    isFocusableInTouchMode = true
-                    id = View.generateViewId()
-                }
-            )
+            val audioBtn = ImageButton(this, null, 0, buttonStyle).apply {
+                setImageResource(icon)
+                contentDescription = getString(description)
+                setOnClickListener { action() }
+                isFocusable = true
+                isFocusableInTouchMode = true
+                id = View.generateViewId()
+            }
+            applyTvFocusHighlight(audioBtn)
+            controls.addView(audioBtn)
         }
     }
 
@@ -1638,6 +2050,39 @@ class LocalPlayerActivity : AppCompatActivity() {
         }
     }
 
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        val playerView = playerView ?: return super.onKeyDown(keyCode, event)
+        when (keyCode) {
+            android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+            android.view.KeyEvent.KEYCODE_ENTER,
+            android.view.KeyEvent.KEYCODE_SPACE,
+            android.view.KeyEvent.KEYCODE_NUMPAD_ENTER,
+            android.view.KeyEvent.KEYCODE_DPAD_UP,
+            android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+            android.view.KeyEvent.KEYCODE_DPAD_LEFT,
+            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                val controllerView = playerView.findViewById<View>(androidx.media3.ui.R.id.exo_controller)
+                val isVisible = controllerView?.visibility == View.VISIBLE
+                if (!isVisible) {
+                    playerView.showController()
+                    val playButton = playerView.findViewById<View>(androidx.media3.ui.R.id.exo_play)
+                        ?: playerView.findViewById<View>(androidx.media3.ui.R.id.exo_pause)
+                    playButton?.requestFocus()
+                    return true
+                }
+            }
+            android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            android.view.KeyEvent.KEYCODE_MEDIA_PLAY,
+            android.view.KeyEvent.KEYCODE_MEDIA_PAUSE,
+            android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+            android.view.KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                playerView.showController()
+                return true
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     override fun onPause() {
         saveCurrentProgress(activePlayer)
         super.onPause()
@@ -1752,6 +2197,23 @@ class LocalPlayerActivity : AppCompatActivity() {
         castPlayer = null
         localPlayer = null
         super.onDestroy()
+    }
+
+    private fun applyTvFocusHighlight(view: View) {
+        if (!isTvDevice()) return
+        val context = view.context
+        val normalBg = android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+        val focusedBg = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+            cornerRadius = 8f * context.resources.displayMetrics.density
+            setColor(android.graphics.Color.parseColor("#336200EE"))
+            setStroke((3 * context.resources.displayMetrics.density).toInt(), android.graphics.Color.parseColor("#6200EE"))
+        }
+        val stateList = android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), focusedBg)
+            addState(intArrayOf(), normalBg)
+        }
+        view.background = stateList
     }
 
     companion object {
