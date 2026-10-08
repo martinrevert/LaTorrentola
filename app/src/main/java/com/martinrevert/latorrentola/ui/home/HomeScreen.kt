@@ -801,8 +801,8 @@ fun HomeScreenTvPreview() {
     }
 }
 
-@PreviewLightDark
-/** Light and dark previews of the home movie feed. */
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+/** Light and dark previews of the home movie feed across form factors. */
 @Composable
 fun HomeScreenPreview() {
     val sampleMovies = listOf(

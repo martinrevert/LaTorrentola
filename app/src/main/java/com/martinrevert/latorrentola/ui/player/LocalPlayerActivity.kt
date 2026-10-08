@@ -736,7 +736,8 @@ class LocalPlayerActivity : AppCompatActivity() {
         val nextEpisodeOverlay = ComposeView(this).apply {
             visibility = View.GONE
             setContent {
-                LaTorrentolaTheme {
+                val themeMode = preferenceManager.getTheme()
+                LaTorrentolaTheme(themeMode = themeMode) {
                     if (showNextEpisodeDialog) {
                         val nextData by tvPlayerViewModel.nextEpisodeData.collectAsState()
                         val releases by tvPlayerViewModel.nextEpisodeReleases.collectAsState()
@@ -790,7 +791,8 @@ class LocalPlayerActivity : AppCompatActivity() {
         val playerDialogOverlay = ComposeView(this).apply {
             visibility = View.GONE
             setContent {
-                LaTorrentolaTheme {
+                val themeMode = preferenceManager.getTheme()
+                LaTorrentolaTheme(themeMode = themeMode) {
                     val state = playerDialogState
                     if (state != null) {
                         PlayerDialogContent(
@@ -992,7 +994,7 @@ class LocalPlayerActivity : AppCompatActivity() {
         val requiredBytes = 500L * 1024 * 1024 // 500 MB threshold
 
         if (availableBytes < requiredBytes) {
-            AlertDialog.Builder(this)
+            AlertDialog.Builder(this, R.style.Theme_LaTorrentola_Cast_Dialog)
                 .setTitle("Insufficient Disk Space")
                 .setMessage("Not enough disk space available. Would you like to erase all saved torrents on disk to free up space?")
                 .setPositiveButton("Erase") { _, _ ->
@@ -1319,22 +1321,16 @@ class LocalPlayerActivity : AppCompatActivity() {
             if (isSubtitle) R.string.player_subtitles_off else R.string.player_audio_auto
         )
         if (options.isEmpty()) {
-            val dialog = AlertDialog.Builder(this)
-                .setTitle(
-                    if (isSubtitle) R.string.player_subtitle_tracks
-                    else R.string.player_audio_tracks
-                )
-                .setMessage(
-                    if (isSubtitle) R.string.player_no_subtitle_tracks
-                    else R.string.player_no_audio_tracks
-                )
-                .setPositiveButton(android.R.string.ok, null)
-                .create()
-            showAdaptiveDialog(dialog)
+            playerDialogState = PlayerDialogState.Message(
+                title = getString(if (isSubtitle) R.string.player_subtitle_tracks else R.string.player_audio_tracks),
+                message = getString(if (isSubtitle) R.string.player_no_subtitle_tracks else R.string.player_no_audio_tracks),
+                onDismiss = { playerDialogState = null }
+            )
+            playerDialogOverlay?.visibility = View.VISIBLE
+            playerDialogOverlay?.requestFocus()
             return
         }
 
-        val labels = listOf(defaultLabel) + options.map(PlaybackTrackOption::label)
         val selectedIndex = options.indexOfFirst { option ->
             if (option.castTrackId != null) {
                 castActiveTrackIds().contains(option.castTrackId)
@@ -1342,91 +1338,78 @@ class LocalPlayerActivity : AppCompatActivity() {
                 option.isSelected
             }
         }.let { if (it < 0) 0 else it + 1 }
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(
-                if (isSubtitle) R.string.player_subtitle_tracks
-                else R.string.player_audio_tracks
-            )
-            .setSingleChoiceItems(labels.toTypedArray(), selectedIndex) { choice, index ->
+        playerDialogState = PlayerDialogState.Tracks(
+            type = type,
+            title = getString(if (isSubtitle) R.string.player_subtitle_tracks else R.string.player_audio_tracks),
+            options = options,
+            selectedIndex = selectedIndex - 1,
+            onSelected = { option ->
                 if (castSessionActive) {
-                    selectCastTrack(type, options.getOrNull(index - 1)?.castTrackId)
+                    selectCastTrack(type, option?.castTrackId)
                 } else {
-                    selectLocalTrack(type, options.getOrNull(index - 1))
+                    selectLocalTrack(type, option)
                 }
-                choice.dismiss()
+                playerDialogState = null
+                playerDialogOverlay?.visibility = View.GONE
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .create()
-        showAdaptiveDialog(dialog)
+        )
+        playerDialogOverlay?.visibility = View.VISIBLE
+        playerDialogOverlay?.requestFocus()
     }
 
     /** Shows embedded subtitle tracks from the native CC control. */
     private fun showSubtitleOptions() {
         val options = availableTrackOptions(PlaybackTrackType.SUBTITLE)
-        val labels = buildList {
-            add(getString(R.string.player_subtitles_off))
-            addAll(options.map(PlaybackTrackOption::label))
-        }
         val selectedTrackIndex = options.indexOfFirst(PlaybackTrackOption::isSelected)
         val selectedIndex = if (selectedTrackIndex < 0) 0 else selectedTrackIndex + 1
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(R.string.player_subtitle_tracks)
-            .setSingleChoiceItems(labels.toTypedArray(), selectedIndex) { choice, index ->
+        playerDialogState = PlayerDialogState.Tracks(
+            type = PlaybackTrackType.SUBTITLE,
+            title = getString(R.string.player_subtitle_tracks),
+            options = options,
+            selectedIndex = selectedIndex - 1,
+            onSelected = { option ->
                 if (castSessionActive) {
-                    selectCastTrack(
-                        PlaybackTrackType.SUBTITLE,
-                        options.getOrNull(index - 1)?.castTrackId
-                    )
+                    selectCastTrack(PlaybackTrackType.SUBTITLE, option?.castTrackId)
                 } else {
-                    selectLocalTrack(
-                        PlaybackTrackType.SUBTITLE,
-                        options.getOrNull(index - 1)
-                    )
+                    selectLocalTrack(PlaybackTrackType.SUBTITLE, option)
                 }
-                choice.dismiss()
+                playerDialogState = null
+                playerDialogOverlay?.visibility = View.GONE
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .create()
-        showAdaptiveDialog(dialog)
+        )
+        playerDialogOverlay?.visibility = View.VISIBLE
+        playerDialogOverlay?.requestFocus()
     }
 
     /** Presents text-size and system-caption styling options for local playback. */
     private fun showSubtitleStyleOptions() {
-        val labels = arrayOf(
-            getString(R.string.player_subtitle_style_system),
-            getString(R.string.player_subtitle_style_small),
-            getString(R.string.player_subtitle_style_medium),
-            getString(R.string.player_subtitle_style_large),
-            getString(R.string.player_subtitle_style_extra_large)
-        )
-        val fractions = listOf(
-            SubtitleView.DEFAULT_TEXT_SIZE_FRACTION,
-            0.04f,
-            SubtitleView.DEFAULT_TEXT_SIZE_FRACTION,
-            0.067f,
-            0.08f
-        )
-        val selectedIndex = fractions.indexOf(subtitleTextSizeFraction).coerceAtLeast(0)
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(R.string.player_subtitle_style)
-            .setSingleChoiceItems(labels, selectedIndex) { choice, index ->
+        val selectedIndex = when (subtitleTextSizeFraction) {
+            0.04f -> 1
+            0.067f -> 3
+            0.08f -> 4
+            else -> 0
+        }
+        playerDialogState = PlayerDialogState.SubtitleStyle(
+            selectedIndex = selectedIndex,
+            onSelected = { fraction, applySystem ->
                 val subtitleView = playerView?.subtitleView
-                if (index == 0) {
+                if (applySystem) {
                     subtitleTextSizeFraction = SubtitleView.DEFAULT_TEXT_SIZE_FRACTION
                     subtitleView?.setUserDefaultStyle()
                     subtitleView?.setUserDefaultTextSize()
                     subtitleView?.setApplyEmbeddedStyles(true)
                 } else {
-                    subtitleTextSizeFraction = fractions[index]
+                    subtitleTextSizeFraction = fraction
                     subtitleView?.setUserDefaultStyle()
                     subtitleView?.setApplyEmbeddedStyles(false)
                     subtitleView?.setFractionalTextSize(subtitleTextSizeFraction)
                 }
-                choice.dismiss()
+                playerDialogState = null
+                playerDialogOverlay?.visibility = View.GONE
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .create()
-        showAdaptiveDialog(dialog)
+        )
+        playerDialogOverlay?.visibility = View.VISIBLE
+        playerDialogOverlay?.requestFocus()
     }
 
     /**
@@ -1677,8 +1660,10 @@ class LocalPlayerActivity : AppCompatActivity() {
                 Log.e(TAG, "Unexpected OpenSubtitles search failure: ${error.javaClass.simpleName}")
                 message = getString(R.string.opensubtitles_request_failed)
             } finally {
-                progressDialog.dismiss()
+                progressDialog?.dismiss()
                 updateSubtitleSearchButton(inProgress = false)
+                playerDialogState = null
+                playerDialogOverlay?.visibility = View.GONE
             }
             results?.takeIf { it.isNotEmpty() }?.let(::showSubtitleResults)
             message?.let(::showSubtitleMessage)
@@ -1691,21 +1676,15 @@ class LocalPlayerActivity : AppCompatActivity() {
      * @param results OpenSubtitles results for this media title.
      */
     private fun showSubtitleResults(results: List<OpenSubtitleResult>) {
-        val labels = results.map { result ->
-            val feature = result.featureTitle?.takeIf(String::isNotBlank)
-            listOfNotNull(
-                result.language.uppercase(Locale.ROOT),
-                result.release.takeIf(String::isNotBlank),
-                feature
-            ).joinToString(" · ")
-        }.toTypedArray()
         Log.i(TAG, "Showing OpenSubtitles list: resultCount=${results.size}")
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(R.string.opensubtitles_results_title)
-            .setItems(labels) { _, index -> downloadSubtitle(results[index]) }
-            .setNegativeButton(android.R.string.cancel, null)
-            .create()
-        showAdaptiveDialog(dialog)
+        playerDialogState = PlayerDialogState.SubtitleResults(
+            results = results,
+            onSelected = { result ->
+                downloadSubtitle(result)
+            }
+        )
+        playerDialogOverlay?.visibility = View.VISIBLE
+        playerDialogOverlay?.requestFocus()
     }
 
     /**
@@ -1751,8 +1730,10 @@ class LocalPlayerActivity : AppCompatActivity() {
                 Log.e(TAG, "Unexpected OpenSubtitles download failure: ${error.javaClass.simpleName}")
                 errorMessage = getString(R.string.opensubtitles_download_failed)
             } finally {
-                progressDialog.dismiss()
+                progressDialog?.dismiss()
                 updateSubtitleSearchButton(inProgress = false)
+                playerDialogState = null
+                playerDialogOverlay?.visibility = View.GONE
             }
             errorMessage?.let(::showSubtitleMessage)
         }
@@ -1806,27 +1787,25 @@ class LocalPlayerActivity : AppCompatActivity() {
      * @param message Resource describing the active subtitle operation.
      * @return Visible progress dialog dismissed when the operation completes.
      */
-    private fun showSubtitleProgressDialog(message: Int): AlertDialog =
-        AlertDialog.Builder(this)
-            .setTitle(R.string.opensubtitles_title)
-            .setMessage(message)
-            .setView(ProgressBar(this).apply { isIndeterminate = true })
-            .setCancelable(false)
-            .create()
-            .also(::showAdaptiveDialog)
+    private fun showSubtitleProgressDialog(message: Int): AlertDialog? {
+        val msgString = getString(message)
+        playerDialogState = PlayerDialogState.Progress(
+            title = getString(R.string.opensubtitles_title),
+            message = msgString
+        )
+        playerDialogOverlay?.visibility = View.VISIBLE
+        playerDialogOverlay?.requestFocus()
+        return null
+    }
 
-    /**
-     * Presents subtitle service or download errors without concealing the actionable message.
-     *
-     * @param message Actionable subtitle service error.
-     */
     private fun showSubtitleMessage(message: String) {
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(R.string.opensubtitles_title)
-            .setMessage(message)
-            .setPositiveButton(android.R.string.ok, null)
-            .create()
-        showAdaptiveDialog(dialog)
+        playerDialogState = PlayerDialogState.Message(
+            title = getString(R.string.opensubtitles_title),
+            message = message,
+            onDismiss = { playerDialogState = null }
+        )
+        playerDialogOverlay?.visibility = View.VISIBLE
+        playerDialogOverlay?.requestFocus()
     }
 
     /**
@@ -2202,12 +2181,15 @@ class LocalPlayerActivity : AppCompatActivity() {
     private fun applyTvFocusHighlight(view: View) {
         if (!isTvDevice()) return
         val context = view.context
+        val typedValue = android.util.TypedValue()
+        context.theme.resolveAttribute(androidx.appcompat.R.attr.colorPrimary, typedValue, true)
+        val primaryColor = if (typedValue.data != 0) typedValue.data else android.graphics.Color.parseColor("#BB86FC")
+
         val normalBg = android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
         val focusedBg = android.graphics.drawable.GradientDrawable().apply {
             shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-            cornerRadius = 8f * context.resources.displayMetrics.density
-            setColor(android.graphics.Color.parseColor("#336200EE"))
-            setStroke((3 * context.resources.displayMetrics.density).toInt(), android.graphics.Color.parseColor("#6200EE"))
+            cornerRadius = 12f * context.resources.displayMetrics.density
+            setColor(android.graphics.Color.argb(76, android.graphics.Color.red(primaryColor), android.graphics.Color.green(primaryColor), android.graphics.Color.blue(primaryColor)))
         }
         val stateList = android.graphics.drawable.StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_focused), focusedBg)

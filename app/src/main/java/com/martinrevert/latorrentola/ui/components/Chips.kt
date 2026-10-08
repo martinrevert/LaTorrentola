@@ -237,3 +237,31 @@ fun GenreChips(
         }
     }
 }
+
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+@Composable
+private fun AdaptiveChipPreview() {
+    com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
+        androidx.compose.material3.Surface {
+            AdaptiveChip(
+                selected = true,
+                onClick = {},
+                label = { Text("Action") }
+            )
+        }
+    }
+}
+
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+@Composable
+private fun QualityChipsPreview() {
+    com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
+        androidx.compose.material3.Surface {
+            QualityChips(
+                options = listOf("All", "2160p", "1080p", "720p"),
+                selectedQuality = "1080p",
+                onQualityClick = {}
+            )
+        }
+    }
+}

@@ -638,3 +638,34 @@ private fun FilmographyMetadata(credit: TmdbCastCredit, isTv: Boolean = false) {
         )
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+@Composable
+private fun ActorDetailBottomSheetPreview() {
+    com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ActorDetailBottomSheet(
+            actorDetailState = Result.success(
+                com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail(
+                    id = 1,
+                    name = "Leonardo DiCaprio",
+                    biography = "Leonardo Wilhelm DiCaprio is an American actor and film producer.",
+                    birthday = "1974-11-11",
+                    placeOfBirth = "Los Angeles, California, USA",
+                    knownForDepartment = "Acting",
+                    combinedCredits = com.martinrevert.latorrentola.model.TMDB.TmdbCreditsResponse(
+                        cast = listOf(
+                            com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit(id = 1, title = "Inception", mediaType = "movie", releaseDate = "2010-07-16"),
+                            com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit(id = 2, title = "Titanic", mediaType = "movie", releaseDate = "1997-12-19")
+                        )
+                    )
+                )
+            ),
+            isLoading = false,
+            onDismiss = {},
+            sheetState = sheetState,
+            onCreditClick = {}
+        )
+    }
+}

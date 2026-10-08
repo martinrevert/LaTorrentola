@@ -806,8 +806,8 @@ fun SearchScreenTvPreview() {
     }
 }
 
-@PreviewLightDark
-/** Light and dark previews of the movie search screen. */
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+/** Light and dark previews of the movie search screen across form factors. */
 @Composable
 fun SearchScreenPreview() {
     val sampleMovies = listOf(

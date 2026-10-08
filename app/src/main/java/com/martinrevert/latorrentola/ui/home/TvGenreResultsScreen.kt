@@ -148,3 +148,25 @@ fun TvGenreResultsScreen(
         }
     }
 }
+
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+@Composable
+private fun TvGenreResultsScreenPreview() {
+    com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
+        androidx.compose.material3.Surface {
+            Box(modifier = Modifier.fillMaxSize()) {
+                TvSeriesGrid(
+                    series = listOf(
+                        TmdbTvSummary(id = 1, name = "Breaking Bad", voteAverage = 9.5),
+                        TmdbTvSummary(id = 2, name = "Better Call Saul", voteAverage = 8.9)
+                    ),
+                    genres = emptyList(),
+                    state = rememberLazyGridState(),
+                    isLoadingMore = false,
+                    onSeriesClick = {},
+                    onLoadMore = {}
+                )
+            }
+        }
+    }
+}

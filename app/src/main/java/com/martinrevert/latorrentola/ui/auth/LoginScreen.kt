@@ -121,21 +121,8 @@ private fun LoginScreenContent(
     }
 }
 
-@Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
-@Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
-/** Preview of the login screen on an Android TV device. */
-@Composable
-fun LoginScreenTvPreview() {
-    LaTorrentolaTheme {
-        LoginScreenContent(
-            authState = AuthState.Idle,
-            onSignInClick = {}
-        )
-    }
-}
-
-@PreviewLightDark
-/** Light and dark previews of the idle login screen. */
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+/** Light and dark previews of the idle login screen across form factors. */
 @Composable
 fun LoginScreenPreview() {
     LaTorrentolaTheme {
@@ -146,8 +133,8 @@ fun LoginScreenPreview() {
     }
 }
 
-@PreviewLightDark
-/** Light and dark previews of the login loading state. */
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+/** Light and dark previews of the login loading state across form factors. */
 @Composable
 fun LoginScreenLoadingPreview() {
     LaTorrentolaTheme {

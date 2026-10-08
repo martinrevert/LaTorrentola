@@ -927,3 +927,23 @@ private fun TvEpisodeCard(
         }
     }
 }
+
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+@Composable
+private fun TvEpisodeCardPreview() {
+    com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
+        androidx.compose.material3.Surface {
+            TvEpisodeCard(
+                episode = com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(
+                    id = 1,
+                    seasonNumber = 1,
+                    episodeNumber = 1,
+                    name = "Pilot",
+                    overview = "A high school chemistry teacher diagnosed with inoperable lung cancer turns to manufacturing methamphetamine.",
+                    voteAverage = 8.9
+                ),
+                onClick = {}
+            )
+        }
+    }
+}

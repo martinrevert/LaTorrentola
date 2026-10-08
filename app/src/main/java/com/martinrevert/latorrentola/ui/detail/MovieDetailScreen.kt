@@ -964,8 +964,8 @@ fun MovieDetailScreenTvPreview() {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@PreviewLightDark
-/** Light and dark previews of the movie detail screen. */
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+/** Light and dark previews of the movie detail screen across form factors. */
 @Composable
 fun MovieDetailScreenPreview() {
     val sampleMovie = Movie(

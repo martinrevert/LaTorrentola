@@ -101,3 +101,21 @@ fun MovieList(
         }
     }
 }
+
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+@Composable
+private fun MovieListPreview() {
+    com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
+        androidx.compose.material3.Surface {
+            MovieList(
+                movies = listOf(
+                    Movie(id = 1, title = "Movie 1", year = 2024, rating = "8.5"),
+                    Movie(id = 2, title = "Movie 2", year = 2023, rating = "7.9")
+                ),
+                state = androidx.compose.foundation.lazy.grid.rememberLazyGridState(),
+                onMovieClick = {},
+                onLoadMore = {}
+            )
+        }
+    }
+}

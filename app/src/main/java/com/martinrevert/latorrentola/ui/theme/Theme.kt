@@ -330,5 +330,17 @@ fun Modifier.focusHighlight(
         )
 }
 
+/**
+ * Multi-preview annotation providing Light and Dark mode previews for Handheld, Tablet, and TV form factors.
+ */
+@androidx.compose.ui.tooling.preview.Preview(name = "Light Phone", uiMode = android.content.res.Configuration.UI_MODE_NIGHT_NO, showBackground = true, widthDp = 360, heightDp = 640)
+@androidx.compose.ui.tooling.preview.Preview(name = "Dark Phone", uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES, showBackground = true, widthDp = 360, heightDp = 640)
+@androidx.compose.ui.tooling.preview.Preview(name = "Light Tablet", uiMode = android.content.res.Configuration.UI_MODE_NIGHT_NO, showBackground = true, widthDp = 600, heightDp = 800)
+@androidx.compose.ui.tooling.preview.Preview(name = "Dark Tablet", uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES, showBackground = true, widthDp = 600, heightDp = 800)
+@androidx.compose.ui.tooling.preview.Preview(name = "Light TV", uiMode = android.content.res.Configuration.UI_MODE_NIGHT_NO, showBackground = true, widthDp = 960, heightDp = 540)
+@androidx.compose.ui.tooling.preview.Preview(name = "Dark TV", uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES, showBackground = true, widthDp = 960, heightDp = 540)
+annotation class LightDarkPreviews
+
+
 
 

@@ -974,8 +974,8 @@ fun SettingsScreenTvPreview() {
     }
 }
 
-@PreviewLightDark
-/** Light and dark previews of the settings screen. */
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+/** Light and dark previews of the settings screen across form factors. */
 @Composable
 fun SettingsScreenPreview() {
     LaTorrentolaTheme {

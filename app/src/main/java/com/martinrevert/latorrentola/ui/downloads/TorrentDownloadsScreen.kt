@@ -293,3 +293,28 @@ private fun TorrentDownloadItem(
         }
     }
 }
+
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+@Composable
+private fun TorrentDownloadItemPreview() {
+    com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
+        androidx.compose.material3.Surface {
+            TorrentDownloadItem(
+                download = com.martinrevert.latorrentola.model.torrent.TorrentDownload(
+                    infoHash = "HASH1",
+                    magnetUri = "magnet:?",
+                    title = "Inception (2010)",
+                    state = "DOWNLOADING",
+                    progressPercent = 50,
+                    mediaPath = null,
+                    castWhenReady = false,
+                    updatedAtMillis = System.currentTimeMillis()
+                ),
+                isTv = false,
+                onPauseResume = {},
+                onDelete = {},
+                onPlay = {}
+            )
+        }
+    }
+}

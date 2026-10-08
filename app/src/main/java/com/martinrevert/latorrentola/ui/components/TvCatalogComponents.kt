@@ -626,3 +626,24 @@ fun TvSeriesCard(
         }
     }
 }
+
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+@Composable
+private fun TvSeriesCardPreview() {
+    com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
+        androidx.compose.material3.Surface {
+            Box(modifier = Modifier.size(160.dp, 240.dp)) {
+                TvSeriesCard(
+                    series = com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary(
+                        id = 1,
+                        name = "Breaking Bad",
+                        firstAirDate = "2008-01-20",
+                        voteAverage = 9.5
+                    ),
+                    genres = listOf("Drama", "Crime"),
+                    onClick = {}
+                )
+            }
+        }
+    }
+}

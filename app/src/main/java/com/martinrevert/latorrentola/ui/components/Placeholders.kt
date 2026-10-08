@@ -248,3 +248,23 @@ fun MovieDetailPlaceholder(
         }
     }
 }
+
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+@Composable
+private fun MovieListPlaceholderPreview() {
+    com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
+        androidx.compose.material3.Surface {
+            MovieListPlaceholder()
+        }
+    }
+}
+
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+@Composable
+private fun MovieDetailPlaceholderPreview() {
+    com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
+        androidx.compose.material3.Surface {
+            MovieDetailPlaceholder()
+        }
+    }
+}

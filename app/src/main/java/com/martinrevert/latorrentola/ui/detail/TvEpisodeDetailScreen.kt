@@ -540,3 +540,21 @@ private fun TorrentReleaseCard(
         }
     }
 }
+
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+@Composable
+private fun TorrentReleaseCardPreview() {
+    com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
+        androidx.compose.material3.Surface {
+            TorrentReleaseCard(
+                torrent = com.martinrevert.latorrentola.model.EZTV.EztvTorrent(
+                    title = "Breaking.Bad.S01E01.1080p.WEB-DL.x264",
+                    seeds = 120,
+                    peers = 15,
+                    sizeBytes = "1258291200"
+                ),
+                onClick = {}
+            )
+        }
+    }
+}

@@ -386,3 +386,25 @@ fun MovieItem(
         }
     }
 }
+
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+@Composable
+private fun MovieItemPreview() {
+    com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
+        androidx.compose.material3.Surface {
+            Box(modifier = Modifier.size(160.dp, 240.dp)) {
+                MovieItem(
+                    movie = com.martinrevert.latorrentola.model.YTS.Movie(
+                        id = 1,
+                        title = "Inception",
+                        year = 2010,
+                        rating = "8.8",
+                        mediumCoverImage = "",
+                        imdbCode = "tt1375666"
+                    ),
+                    onClick = {}
+                )
+            }
+        }
+    }
+}

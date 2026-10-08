@@ -78,3 +78,18 @@ fun GenreBottomSheet(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
+@Composable
+private fun GenreBottomSheetPreview() {
+    com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        GenreBottomSheet(
+            genres = listOf("Action", "Adventure", "Animation", "Biography", "Comedy", "Crime", "Documentary", "Drama"),
+            onGenreClick = {},
+            onDismiss = {},
+            sheetState = sheetState
+        )
+    }
+}
