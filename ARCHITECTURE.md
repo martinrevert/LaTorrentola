@@ -64,6 +64,7 @@ graph TD
         TVGDAO[TvGenreDao]
         TDAO[TorrentDownloadDao]
         DATEDAO[DateDao]
+        WDAO[WatchHistoryDao]
         MLK[ML Kit Translator]
         PM[PreferenceManager]
         TDS_SVC[TorrentDownloadService - Foreground]
@@ -119,13 +120,14 @@ graph TD
     GENDAO --> DB
     TDAO --> DB
     DATEDAO --> DB
+    WDAO --> DB
     DVM & TVEVM --> OSR
     OSR -->|OpenSubtitles API| OSAPI
     STVM --> UREP
     FCMR -->|FCM backend| FCMBE
     TDVM --> TDAO
     TDS_SVC --> TDAO & HTTP
-    LPA --> TDS_SVC & HTTP & OSR & UREP
+    LPA --> TDS_SVC & HTTP & OSR & UREP & WDAO
     LPA -->|Cast SDK| CAST
 ```
 
@@ -150,24 +152,31 @@ graph TD
 | Download orchestration (libtorrent4j), piece verification, and queue | `service/TorrentDownloadService.kt` |
 | Verified HTTP byte-range server for local & Cast playback | `service/VerifiedTorrentHttpServer.kt` |
 | Local ExoPlayer + Cast player activity | `ui/player/LocalPlayerActivity.kt`, `ui/player/TvPlayerViewModel.kt` |
+| Watch History tracking & persistence | `database/WatchHistoryDao.kt`, `network/UserLibraryRepository.kt` |
 | In-app download management screen | `ui/downloads/TorrentDownloadsScreen.kt`, `TorrentDownloadsViewModel.kt` |
 | Torrent mode setting (`EXTERNAL_CLIENT` / `LOCAL_PLAYBACK` / `CHROMECAST`) | `model/torrent/TorrentHandlingMode.kt` |
-| Subtitle search and download | `network/OpenSubtitlesRepository.kt`, `OpenSubtitlesService.kt` |
+| Subtitle search and download | `network/OpenSubtitlesRepository.kt`, `OpenSubtitlesService.kt`, `OpenSubtitlesCredentialStore.kt` |
 | Persistent in-app transfer records | `database/TorrentDownloadDao.kt`, `model/torrent/TorrentDownload.kt` |
 
 ---
 
 ## 🎨 UI Architecture & Visual System
 
-### 1. Haze 2.0 Visual Blur System
+### 1. Adaptive & Responsive UI (`isTvDevice`)
+* **Shared Logic, Split Presentation**: The application logic (ViewModels/Repositories) is shared across mobile and Android TV, but the UI presentation layer completely branches based on `Context.isTvDevice()`.
+* **Theme Injection**: Mobile uses `LaTorrentolaTheme(themeMode = preferenceManager.getTheme())` utilizing `androidx.compose.material3`. TV uses `TvLaTorrentolaTheme` utilizing `androidx.tv.material3`.
+* **Adaptive Breakpoints**: Where TV components aren't explicitly used on mobile/tablet, Compose Window Size Classes determine layout span counts and navigation rail vs bottom bar presence.
+
+### 2. Haze 2.0 Visual Blur System
 * **Platform Requirements**: Hardware-accelerated real-time blur (`RenderEffect`) requires Android 12+ (API 31+).
 * **Pre-Android 12 Fallback**: On devices running API < 31 and during Android Studio Compose Previews, the app falls back to a semi-opaque surface container (`surface.copy(alpha = 0.9f)`) to prevent invisible or overlapping content.
 * **Animated Interpolation (`EaseInOutCubic`)**: Translucent opacity (`hazeAlpha`) is calculated dynamically based on grid scroll state (`gridState`). It interpolates smoothly between `1.0f` (at rest at the top) and `0.15f` (when scrolled) over 600 ms using `EaseInOutCubic`.
 * **Full-Screen `hazeSource`**: The scrollable list container fills the entire screen (`fillMaxSize()`) behind the top header and bottom system navigation bar, delivering a true edge-to-edge frosted glass experience.
 
-### 2. Android TV D-Pad Focus Navigation Engine
+### 3. Android TV D-Pad Focus Navigation Engine
 * **Single Vertical Layout Tree (`isTv`)**: On TVs and Chromecasts (`isTv == true`), headers and grid lists reside in a single vertical `Column` layout tree. This eliminates focus search dead zones between filter chips and grid items.
 * **Native TV Components (`androidx.tv.material3.Surface`)**: All chips and buttons on TV use `tv-material3` components (`TvChip`), providing smooth focus scaling (`focusedScale = 1.1f` or `1.05f`).
+* **Dialog Focus Trapping**: Android TV overlays use `androidx.compose.ui.window.Dialog` to prevent the D-pad focus engine from falling through to the underlying views (crucial for overlapping ExoPlayer surfaces).
 * **YouTube Player Focus Isolation**: Embedded `YouTubePlayerView` instances block D-pad focus stealing via `descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS`, overlaying a native `IconButton` for play/pause control.
 
 ---
@@ -177,13 +186,16 @@ graph TD
 1. **Retrofit + Gson**: Fetches movie catalog data from the YTS API.
 2. **TMDB Retrofit service**: Supplies TV feeds, genres, genre discovery, TV details, seasons/episodes, cast/crew enrichment for movies via IMDb ID, and series external IDs. `TMDB_API_KEY` is injected via `BuildConfig`; it must not be hardcoded.
 3. **EZTV Retrofit service**: Supplies torrent releases for a numeric IMDb ID. `EztvRepository` filters by exact season/episode and sorts matches by seed count.
-4. **OpenSubtitles Retrofit service**: Searches and downloads subtitle tracks. Credentials (username/password) are stored encrypted via Android Keystore; the API key is injected via `BuildConfig`.
+4. **OpenSubtitles Retrofit service**: Searches and downloads subtitle tracks. Credentials (username/password) are securely encrypted inside the Android hardware Keystore via `OpenSubtitlesCredentialStore`; the API key is injected via `BuildConfig`.
 5. **libtorrent4j (`TorrentDownloadService`)**: Foreground service managing a native libtorrent session. Downloads are queued, pieces are hash-verified, and byte ranges are served via `VerifiedTorrentHttpServer` only after verification. Raises `minSdk` to Android 9 (API 28).
 6. **Media3 ExoPlayer + Cast SDK (`LocalPlayerActivity`)**: Plays media from the local HTTP server. Switches between `ExoPlayer` (local) and `CastPlayer` (Chromecast) when a Cast session becomes available on the same LAN.
 7. **Cloud Firestore (Cloud-First Sync)**: Synchronizes user favorites and movie downloads (`users/{uid}/downloads/{hash}`) separately from TV episode downloads (`users/{uid}/tv_downloads/{hash}`). Also stores per-user cloud preferences (language filter, minimum rating).
-8. **Room Database (Local Metadata)**: Stores in-app transfer records (`TorrentDownloadDao`), movie genre usage (`GenreDao`), TV genre usage (`TvGenreDao`), and session date metadata (`DateDao`).
+8. **Room Database (Local Metadata)**: Acts as the Single Source of Truth for rapid UI access. Stores:
+   * **Watch History**: `WatchHistoryDao` (Fast local UI resume, syncs to Firestore in background).
+   * **Transfer Records**: `TorrentDownloadDao`.
+   * **Usage Stats**: `GenreDao`, `TvGenreDao`, `DateDao`.
 9. **Google ML Kit Translate**: On-device AI translation of movie summaries from English to Spanish.
-10. **Firebase Cloud Messaging**: Push notifications managed by `FcmRepository`/`FcmService`. Token is registered with the app backend on sign-in and removed on sign-out.
+10. **Firebase Cloud Messaging**: Push notifications managed by `FcmRepository`/`FcmService`. Token is registered with the app backend on sign-in and removed on sign-out. Deep linking implemented via Notification intents.
 
 ---
 
@@ -250,7 +262,7 @@ sequenceDiagram
     UREP->>UREP: users/uid/favorites/movieId
 ```
 
-### 3. In-App Torrent Download, Playback & Cast
+### 3. In-App Torrent Download, Playback, Watch History & Cast
 ```mermaid
 sequenceDiagram
     participant U as User
@@ -261,19 +273,23 @@ sequenceDiagram
     participant EXO as ExoPlayer
     participant CAST as CastPlayer
     participant OSR as OpenSubtitlesRepository
-    participant TDAO as TorrentDownloadDao
+    participant WDAO as WatchHistoryDao
 
     LPA->>TDS: Start (magnet URI, expected file)
-    TDS->>TDAO: Insert TorrentDownload record (queued)
     TDS->>LT: Add torrent, set sequential piece priority
     LT-->>TDS: Piece hash verified events
     TDS->>HTTP: Register verified byte ranges
-    TDS->>TDAO: Update progress and status
     TDS-->>LPA: Broadcast startup buffer ready
+    LPA->>WDAO: Query saved playback progress
+    WDAO-->>LPA: Resume position (ms)
     LPA->>HTTP: GET http://127.0.0.1:port/file (range request)
     HTTP-->>LPA: Verified byte range
-    LPA->>EXO: setMediaItem(local HTTP URL)
+    LPA->>EXO: setMediaItem(local HTTP URL), seekTo(resume position)
     EXO-->>U: Playback begins
+    opt Playback Tracking
+        EXO-->>LPA: onPositionChanged
+        LPA->>WDAO: Save position to local DB
+    end
     opt Cast session available on LAN
         LPA->>CAST: Load media item (local HTTP URL)
         CAST-->>U: Chromecast plays stream
@@ -287,9 +303,6 @@ sequenceDiagram
         OSR-->>LPA: SRT/VTT file path
         LPA->>EXO: addSubtitleTrack(file)
     end
-    LT-->>TDS: Download complete
-    TDS->>TDAO: Mark status COMPLETE
-    TDS-->>LPA: Broadcast complete
 ```
 
 ### 4. TV Series Discovery, Episode Releases & Downloads
@@ -393,7 +406,7 @@ sequenceDiagram
     LS->>FS: Start observing users/uid (favorites, downloads, preferences)
 ```
 
-### 7. Push Notifications (FCM)
+### 7. Push Notifications & Deep Linking (FCM)
 ```mermaid
 sequenceDiagram
     participant FCMBE as App FCM Backend
@@ -412,7 +425,10 @@ sequenceDiagram
     note over MFMS: Token refresh: onNewToken() calls FcmRepository.subscribe(newToken)
 ```
 
-**Identity and ownership notes:**
-- TV catalog, genre discovery, and details are TMDB-backed. Torrent release metadata is EZTV-backed. Navigation carries the TMDB series ID plus season/episode identity. The TMDB external-ID endpoint bridges to IMDb; EZTV expects the numeric part without `tt`.
-- Room stores local TV genre visit statistics and in-app transfer records. Firestore stores per-user movie favorites, movie download history, and TV episode download history in separate subcollections. These stores are intentionally independent.
-- User collections (favorites, downloaded movies) are never filtered by the minimum-rating preference.
+---
+
+## 🔐 Identity and Ownership Notes
+
+- **TV ID Bridging**: TV catalog, genre discovery, and details are TMDB-backed. Torrent release metadata is EZTV-backed. Navigation carries the TMDB series ID plus season/episode identity. The TMDB external-ID endpoint bridges to IMDb; EZTV expects the numeric part without `tt`.
+- **Hybrid Persistence Paradigm**: Room stores local fast-access metadata (Watch History, transfer records, local usage statistics). Firestore acts as the definitive cloud backup (favorites, downloaded entities, preferences). **Data flow enforces Room as the Single Source of Truth for immediate UI reflection**, syncing to Firestore in the background. User collections (favorites, downloads) bypass runtime threshold filters like minimum rating.
+- **Security Compliance**: Sensitive OpenSubtitles credentials exist only transiently in memory, encrypted at rest via the Android Keystore.
