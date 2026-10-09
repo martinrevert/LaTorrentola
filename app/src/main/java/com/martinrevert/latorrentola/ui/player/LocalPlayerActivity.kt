@@ -110,6 +110,7 @@ import com.martinrevert.latorrentola.network.DownloadedSubtitle
 import com.martinrevert.latorrentola.network.OpenSubtitlesException
 import com.martinrevert.latorrentola.network.OpenSubtitleRepository
 import com.martinrevert.latorrentola.network.OpenSubtitleResult
+import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.service.VerifiedTorrentHttpServer
 import com.martinrevert.latorrentola.ui.components.NextEpisodeTorrentDialog
 import androidx.compose.ui.focus.FocusRequester
@@ -470,7 +471,7 @@ fun PlayerDialogContent(
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 120.dp, max = 320.dp),
+                                .heightIn(max = 280.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             itemsIndexed(state.results) { index, result ->
@@ -502,7 +503,6 @@ fun PlayerDialogContent(
                                             Modifier
                                         }
                                     )
-                                    .focusHighlight(shape = MaterialTheme.shapes.small)
 
                                 val cardContent: @Composable (Color, Color, Color) -> Unit = { textColor, variantColor, primaryColor ->
                                     Row(
@@ -600,7 +600,6 @@ fun PlayerDialogContent(
                                 }
                             }
                         }
-                        Spacer(Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.End
@@ -798,6 +797,10 @@ class LocalPlayerActivity : AppCompatActivity() {
     /** OpenSubtitles search and download integration. */
     @Inject
     lateinit var openSubtitlesRepository: OpenSubtitleRepository
+
+    /** TMDB repository for IMDb ID resolution. */
+    @Inject
+    lateinit var tmdbRepository: TmdbRepository
 
     /** Preference manager for user settings. */
     @Inject
@@ -1905,11 +1908,54 @@ class LocalPlayerActivity : AppCompatActivity() {
             var results: List<OpenSubtitleResult>? = null
             var message: String? = null
             try {
-                val mediaType = if (EPISODE_PATTERN.containsMatchIn(mediaTitle)) "episode" else "movie"
-                val foundResults = openSubtitlesRepository.search(mediaTitle, type = mediaType)
-                results = foundResults
-                Log.i(TAG, "OpenSubtitles search finished: resultCount=${foundResults.size}")
-                if (foundResults.isEmpty()) {
+                val isEpisode = EPISODE_PATTERN.containsMatchIn(mediaTitle) || currentSeasonNumber > 0
+                val mediaType = if (isEpisode) "episode" else "movie"
+
+                // First try searching by IMDb ID for maximum accuracy
+                var imdbResults: List<OpenSubtitleResult>? = null
+                try {
+                    if (currentSeriesId > 0 && isEpisode && currentSeasonNumber > 0 && currentEpisodeNumber > 0) {
+                        val imdbId = tmdbRepository.getTvImdbId(currentSeriesId)
+                        if (!imdbId.isNullOrBlank()) {
+                            imdbResults = openSubtitlesRepository.searchByImdbId(
+                                imdbId = imdbId,
+                                seasonNumber = currentSeasonNumber,
+                                episodeNumber = currentEpisodeNumber
+                            )
+                        }
+                    } else if (currentMovieId > 0 && !isEpisode) {
+                        val imdbId = tmdbRepository.getMovieImdbId(currentMovieId)
+                        if (!imdbId.isNullOrBlank()) {
+                            imdbResults = openSubtitlesRepository.searchByImdbId(imdbId = imdbId)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "OpenSubtitles IMDb ID search failed, falling back to text query: ${e.message}")
+                }
+
+                if (!imdbResults.isNullOrEmpty()) {
+                    results = imdbResults
+                    Log.i(TAG, "OpenSubtitles IMDb search succeeded: resultCount=${imdbResults.size}")
+                } else {
+                    // Fallback to text query search
+                    val cleanTitle = if (isEpisode) {
+                        mediaTitle.replace(EPISODE_PATTERN, "").trim()
+                    } else {
+                        mediaTitle
+                    }
+                    val queryTitle = cleanTitle.ifBlank { mediaTitle }
+
+                    val foundResults = openSubtitlesRepository.search(
+                        query = queryTitle,
+                        seasonNumber = currentSeasonNumber.takeIf { it > 0 },
+                        episodeNumber = currentEpisodeNumber.takeIf { it > 0 },
+                        type = mediaType
+                    )
+                    results = foundResults
+                    Log.i(TAG, "OpenSubtitles query search finished: resultCount=${foundResults.size}")
+                }
+
+                if (results.isNullOrEmpty()) {
                     message = getString(R.string.opensubtitles_no_results)
                 }
             } catch (error: CancellationException) {

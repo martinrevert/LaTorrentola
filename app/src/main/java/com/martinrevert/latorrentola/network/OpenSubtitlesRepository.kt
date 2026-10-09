@@ -191,22 +191,30 @@ class OpenSubtitlesRepository @Inject constructor(
     }
 
     /**
-     * Searches subtitles by title or release query.
+     * Searches subtitles by title, IMDb ID, or release query.
      *
-     * @param query Media title or release name.
+     * @param query Media title or release name (optional if IDs are provided).
+     * @param imdbId Optional IMDb ID for a movie.
+     * @param parentImdbId Optional parent series IMDb ID for an episode.
+     * @param seasonNumber Optional season number.
+     * @param episodeNumber Optional episode number.
      * @param language Optional preferred language; only English and Spanish are returned.
      * @param type Optional `movie` or `episode` type filter.
      * @return Matching subtitles ordered by download count.
      */
     suspend fun search(
-        query: String,
+        query: String? = null,
+        imdbId: String? = null,
+        parentImdbId: String? = null,
+        seasonNumber: Int? = null,
+        episodeNumber: Int? = null,
         language: String? = null,
         type: String? = null
     ): List<OpenSubtitleResult> = withContext(Dispatchers.IO) {
-        if (query.isBlank()) {
+        if (query.isNullOrBlank() && imdbId.isNullOrBlank() && parentImdbId.isNullOrBlank()) {
             throw OpenSubtitlesException(
                 OpenSubtitlesErrorCode.INVALID_SEARCH,
-                "A media title is required to search subtitles"
+                "A media title or IMDb ID is required to search subtitles"
             )
         }
         val credentials = loadCredentials()
@@ -215,7 +223,11 @@ class OpenSubtitlesRepository @Inject constructor(
                 apiKey = apiKey(),
                 userAgent = userAgent(),
                 authorization = authorization,
-                query = query,
+                query = query?.takeIf { it.isNotBlank() },
+                imdbId = imdbId?.takeIf { it.isNotBlank() }?.removePrefix("tt"),
+                parentImdbId = parentImdbId?.takeIf { it.isNotBlank() }?.removePrefix("tt"),
+                seasonNumber = seasonNumber,
+                episodeNumber = episodeNumber,
                 languages = requestedLanguages(language),
                 type = type?.takeIf(String::isNotBlank)
             )
