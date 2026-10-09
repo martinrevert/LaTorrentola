@@ -52,6 +52,7 @@ import com.google.android.gms.cast.MediaTrack
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -244,7 +245,17 @@ fun PlayerDialogContent(
                 indication = null,
                 onClick = {}
             )
-            .focusable(),
+            .then(
+                if (isTv) {
+                    Modifier
+                        .focusGroup()
+                        .focusProperties {
+                            onExit = { cancelFocusChange() }
+                        }
+                } else {
+                    Modifier
+                }
+            ),
         contentAlignment = Alignment.Center
     ) {
         val dialogBody: @Composable () -> Unit = {
@@ -542,7 +553,9 @@ fun PlayerDialogContent(
                                     state.onDismiss()
                                     onDismiss()
                                 },
-                                modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small)
+                                modifier = Modifier
+                                    .focusRequester(firstItemFocusRequester)
+                                    .focusHighlight(shape = MaterialTheme.shapes.small)
                             ) {
                                 Text(stringResource(android.R.string.ok))
                             }
@@ -550,7 +563,10 @@ fun PlayerDialogContent(
                     }
                     is PlayerDialogState.Progress -> {
                         Column(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(firstItemFocusRequester)
+                                .focusable(),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {

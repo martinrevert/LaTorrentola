@@ -4,6 +4,7 @@ import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -112,6 +113,17 @@ fun NextEpisodeTorrentDialog(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = {}
+            )
+            .then(
+                if (isTv) {
+                    Modifier
+                        .focusGroup()
+                        .focusProperties {
+                            onExit = { cancelFocusChange() }
+                        }
+                } else {
+                    Modifier
+                }
             ),
         contentAlignment = Alignment.Center
     ) {
