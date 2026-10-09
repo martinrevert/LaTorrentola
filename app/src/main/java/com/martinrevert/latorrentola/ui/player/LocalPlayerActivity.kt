@@ -84,6 +84,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -236,28 +238,21 @@ fun PlayerDialogContent(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.75f))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {}
-            )
-            .then(
-                if (isTv) {
-                    Modifier
-                        .focusGroup()
-                        .focusProperties {
-                            onExit = { cancelFocusChange() }
-                        }
-                } else {
-                    Modifier
-                }
-            ),
-        contentAlignment = Alignment.Center
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.75f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {}
+                ),
+            contentAlignment = Alignment.Center
+        ) {
         val dialogBody: @Composable () -> Unit = {
             Column(
                 modifier = Modifier
@@ -668,6 +663,7 @@ fun PlayerDialogContent(
                 dialogBody()
             }
         }
+    }
     }
 }
 
@@ -1159,10 +1155,14 @@ class LocalPlayerActivity : AppCompatActivity() {
         val requiredBytes = 500L * 1024 * 1024 // 500 MB threshold
 
         if (availableBytes < requiredBytes) {
-            AlertDialog.Builder(this, R.style.Theme_LaTorrentola_Cast_Dialog)
-                .setTitle("Insufficient Disk Space")
-                .setMessage("Not enough disk space available. Would you like to erase all saved torrents on disk to free up space?")
-                .setPositiveButton("Erase") { _, _ ->
+            playerDialogState = PlayerDialogState.InsufficientSpace(
+                release = release,
+                seriesId = seriesId,
+                seriesName = seriesName,
+                seasonNumber = seasonNumber,
+                episodeNumber = episodeNumber,
+                episodeName = episodeName,
+                onErase = {
                     lifecycleScope.launch {
                         try {
                             val downloads = torrentDownloadDao.getAll()
@@ -1187,11 +1187,14 @@ class LocalPlayerActivity : AppCompatActivity() {
                             Toast.makeText(this@LocalPlayerActivity, "Failed to clear saved torrents: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                         }
                     }
+                },
+                onDismiss = {
+                    playerDialogState = null
+                    playerDialogOverlay?.visibility = View.GONE
                 }
-                .setNegativeButton("Cancel") { _, _ ->
-                    Toast.makeText(this@LocalPlayerActivity, "Download cancelled due to insufficient disk space.", Toast.LENGTH_SHORT).show()
-                }
-                .show()
+            )
+            playerDialogOverlay?.visibility = View.VISIBLE
+            playerDialogOverlay?.requestFocus()
         } else {
             executeDownload(
                 release = release,
