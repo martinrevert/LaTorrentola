@@ -61,6 +61,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -87,12 +88,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material3.Icon
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.compose.ui.text.font.FontWeight
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface as TvSurface
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.google.android.gms.cast.framework.CastButtonFactory
@@ -328,7 +335,7 @@ fun PlayerDialogContent(
                                     .then(
                                         if (isTv && state.options.isNotEmpty()) {
                                             Modifier.focusProperties {
-                                                up = firstItemFocusRequester
+                                                up = FocusRequester.Default
                                             }
                                         } else {
                                             Modifier
@@ -426,7 +433,7 @@ fun PlayerDialogContent(
                                     .then(
                                         if (isTv && labels.isNotEmpty()) {
                                             Modifier.focusProperties {
-                                                up = firstItemFocusRequester
+                                                up = FocusRequester.Default
                                             }
                                         } else {
                                             Modifier
@@ -468,8 +475,17 @@ fun PlayerDialogContent(
                         ) {
                             itemsIndexed(state.results) { index, result ->
                                 val feature = result.featureTitle?.takeIf(String::isNotBlank)
+                                val flag = when (result.language.lowercase(Locale.ROOT)) {
+                                    "en", "eng" -> "🇺🇸"
+                                    "es", "spa" -> "🇦🇷"
+                                    "pt", "por", "pob" -> "🇧🇷"
+                                    "fr", "fre", "fra" -> "🇫🇷"
+                                    "de", "ger", "deu" -> "🇩🇪"
+                                    "it", "ita" -> "🇮🇹"
+                                    else -> result.language.uppercase(Locale.ROOT)
+                                }
                                 val label = listOfNotNull(
-                                    result.language.uppercase(Locale.ROOT),
+                                    flag,
                                     result.release.takeIf(String::isNotBlank),
                                     feature
                                 ).joinToString(" · ")
@@ -488,23 +504,97 @@ fun PlayerDialogContent(
                                     )
                                     .focusHighlight(shape = MaterialTheme.shapes.small)
 
-                                Surface(
-                                    onClick = {
-                                        state.onSelected(result)
-                                        onDismiss()
-                                    },
-                                    modifier = itemModifier,
-                                    shape = MaterialTheme.shapes.small,
-                                    color = MaterialTheme.colorScheme.surfaceContainer
-                                ) {
+                                val cardContent: @Composable (Color, Color, Color) -> Unit = { textColor, variantColor, primaryColor ->
                                     Row(
-                                        modifier = Modifier.padding(14.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = label,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                        Column(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .padding(end = 8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Text(
+                                                text = label,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = textColor,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Icon(
+                                            imageVector = Icons.Default.Download,
+                                            contentDescription = stringResource(R.string.tv_download_torrent_desc),
+                                            tint = primaryColor,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+
+                                if (isTv) {
+                                    val interactionSource = remember { MutableInteractionSource() }
+                                    val isFocused by interactionSource.collectIsFocusedAsState()
+
+                                    val tvColors = ClickableSurfaceDefaults.colors(
+                                        containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant,
+                                        focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.primaryContainer,
+                                        contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                                        focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+
+                                    val textColor = if (isFocused) {
+                                        androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        androidx.tv.material3.MaterialTheme.colorScheme.onSurface
+                                    }
+
+                                    val variantColor = if (isFocused) {
+                                        androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                    } else {
+                                        androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+
+                                    val primaryColor = if (isFocused) {
+                                        androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        androidx.tv.material3.MaterialTheme.colorScheme.primary
+                                    }
+
+                                    TvSurface(
+                                        onClick = {
+                                            state.onSelected(result)
+                                            onDismiss()
+                                        },
+                                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
+                                        shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
+                                        colors = tvColors,
+                                        interactionSource = interactionSource,
+                                        modifier = itemModifier
+                                    ) {
+                                        cardContent(textColor, variantColor, primaryColor)
+                                    }
+                                } else {
+                                    Card(
+                                        onClick = {
+                                            state.onSelected(result)
+                                            onDismiss()
+                                        },
+                                        modifier = itemModifier,
+                                        shape = MaterialTheme.shapes.medium,
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                            contentColor = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    ) {
+                                        cardContent(
+                                            MaterialTheme.colorScheme.onSurface,
+                                            MaterialTheme.colorScheme.onSurfaceVariant,
+                                            MaterialTheme.colorScheme.primary
                                         )
                                     }
                                 }
@@ -1858,10 +1948,20 @@ class LocalPlayerActivity : AppCompatActivity() {
      */
     private fun showSubtitleResults(results: List<OpenSubtitleResult>) {
         Log.i(TAG, "Showing OpenSubtitles list: resultCount=${results.size}")
-        val currentFile = intent.getStringExtra(EXTRA_FILE_PATH)?.let { File(it).name } ?: ""
+        val currentFile = intent.getStringExtra(EXTRA_FILE_PATH)?.let { File(it).name }
+            ?.takeIf { it.isNotBlank() } ?: mediaTitle
+            
+        val deviceLang = java.util.Locale.getDefault().language.lowercase(java.util.Locale.ROOT)
+        val sortedResults = results.sortedByDescending { result ->
+            val lang = result.language.lowercase(java.util.Locale.ROOT)
+            lang == deviceLang || 
+            (deviceLang == "es" && lang == "spa") ||
+            (deviceLang == "en" && lang == "eng") ||
+            (deviceLang == "pt" && (lang == "por" || lang == "pob"))
+        }
 
         playerDialogState = PlayerDialogState.SubtitleResults(
-            results = results,
+            results = sortedResults,
             currentFileName = currentFile,
             onSelected = { result ->
                 downloadSubtitle(result)

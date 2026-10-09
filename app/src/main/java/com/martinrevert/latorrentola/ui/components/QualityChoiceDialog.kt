@@ -260,7 +260,7 @@ fun NextEpisodeTorrentDialog(
                             .then(
                                 if (isTv && releases.isNotEmpty()) {
                                     Modifier.focusProperties {
-                                        up = firstItemFocusRequester
+                                        up = FocusRequester.Default
                                     }
                                 } else {
                                     Modifier
