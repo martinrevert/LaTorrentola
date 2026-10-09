@@ -352,6 +352,8 @@ private fun EpisodeHeader(
     summaryFocusRequester: FocusRequester? = null,
     nextFocusRequester: FocusRequester? = null
 ) {
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
     Column(modifier = modifier) {
         if (episode.fullStillUrl != null) {
             Box(
@@ -372,7 +374,7 @@ private fun EpisodeHeader(
                             .fillMaxWidth()
                             .height(4.dp)
                             .align(Alignment.BottomCenter),
-                        color = MaterialTheme.colorScheme.primary,
+                        color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     )
                 }

@@ -11,6 +11,7 @@ import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.utils.TranslationManager
 import com.martinrevert.latorrentola.utils.UiText
 import com.martinrevert.latorrentola.utils.VoiceManager
@@ -88,6 +89,16 @@ class DetailViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptySet()
+        )
+
+    /** User's in-progress watch history items mapped by media ID. */
+    val watchHistoryMap: StateFlow<Map<String, PlaybackProgress>> = userLibraryRepository.getWatchHistory()
+        .map { list -> list.associateBy { it.mediaId } }
+        .catch { emit(emptyMap()) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyMap()
         )
 
     /** Current speech/summary job, canceled when another movie is selected. */

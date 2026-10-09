@@ -330,7 +330,11 @@ class TorrentDownloadService : Service() {
                     progressPercent = existing?.progressPercent ?: 0,
                     mediaPath = existing?.mediaPath,
                     castWhenReady = intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false),
-                    updatedAtMillis = System.currentTimeMillis()
+                    updatedAtMillis = System.currentTimeMillis(),
+                    seriesId = seriesId,
+                    seasonNumber = seasonNumber,
+                    episodeNumber = episodeNumber,
+                    movieId = movieId
                 )
             )
             synchronized(queueLock) {
@@ -1061,7 +1065,11 @@ class TorrentDownloadService : Service() {
                 progressPercent = progress,
                 mediaPath = mediaPath,
                 castWhenReady = request.castWhenReady,
-                updatedAtMillis = System.currentTimeMillis()
+                updatedAtMillis = System.currentTimeMillis(),
+                seriesId = request.seriesId,
+                seasonNumber = request.seasonNumber,
+                episodeNumber = request.episodeNumber,
+                movieId = request.movieId
             )
         )
     }

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -109,7 +110,7 @@ fun TorrentDownloadsScreen(
                         isTv = isTv,
                         onPauseResume = { viewModel.togglePause(context, download) },
                         onDelete = { viewModel.delete(context, download) },
-                        onPlay = {
+                        onPlay = { cast ->
                             val intent = Intent(context, TorrentDownloadService::class.java).apply {
                                 action = if (download.state == TorrentDownloadService.STATE_READY) {
                                     TorrentDownloadService.ACTION_PLAY_STREAM
@@ -117,13 +118,15 @@ fun TorrentDownloadsScreen(
                                     TorrentDownloadService.ACTION_DOWNLOAD
                                 }
                                 putExtra(TorrentDownloadService.EXTRA_INFO_HASH, download.infoHash)
+                                putExtra(TorrentDownloadService.EXTRA_CAST_WHEN_READY, cast)
+                                if (download.seriesId != null) putExtra(TorrentDownloadService.EXTRA_SERIES_ID, download.seriesId)
+                                if (download.seasonNumber != null) putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, download.seasonNumber)
+                                if (download.episodeNumber != null) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, download.episodeNumber)
+                                if (download.movieId != null) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, download.movieId)
+
                                 if (download.state != TorrentDownloadService.STATE_READY) {
                                     putExtra(TorrentDownloadService.EXTRA_MAGNET_URI, download.magnetUri)
                                     putExtra(TorrentDownloadService.EXTRA_TITLE, download.title)
-                                    putExtra(
-                                        TorrentDownloadService.EXTRA_CAST_WHEN_READY,
-                                        download.castWhenReady
-                                    )
                                 }
                             }
                             ContextCompat.startForegroundService(context, intent)
@@ -150,7 +153,7 @@ private fun TorrentDownloadItem(
     isTv: Boolean,
     onPauseResume: () -> Unit,
     onDelete: () -> Unit,
-    onPlay: () -> Unit
+    onPlay: (Boolean) -> Unit
 ) {
     val completed = download.state == TorrentDownloadService.STATE_COMPLETED
     val playable = completed || download.state == TorrentDownloadService.STATE_READY
@@ -199,7 +202,7 @@ private fun TorrentDownloadItem(
                 if (playable) {
                     if (isTv) {
                         TvIconButton(
-                            onClick = onPlay,
+                            onClick = { onPlay(false) },
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
                             TvIcon(
@@ -207,14 +210,32 @@ private fun TorrentDownloadItem(
                                 contentDescription = stringResource(R.string.play_desc)
                             )
                         }
+                        TvIconButton(
+                            onClick = { onPlay(true) },
+                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                        ) {
+                            TvIcon(
+                                Icons.Default.CastConnected,
+                                contentDescription = "Cast"
+                            )
+                        }
                     } else {
                         IconButton(
-                            onClick = onPlay,
+                            onClick = { onPlay(false) },
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
                             Icon(
                                 Icons.Default.PlayArrow,
                                 contentDescription = stringResource(R.string.play_desc)
+                            )
+                        }
+                        IconButton(
+                            onClick = { onPlay(true) },
+                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                        ) {
+                            Icon(
+                                Icons.Default.CastConnected,
+                                contentDescription = "Cast"
                             )
                         }
                     }

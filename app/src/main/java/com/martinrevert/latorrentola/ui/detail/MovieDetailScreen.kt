@@ -102,6 +102,7 @@ fun MovieDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val downloadedHashes by viewModel.downloadedHashes.collectAsState()
+    val watchHistoryMap by viewModel.watchHistoryMap.collectAsState()
     val torrentHandlingMode by viewModel.torrentHandlingMode.collectAsState()
     val selectedActorDetail by viewModel.selectedActorDetail.collectAsState()
     val isActorLoading by viewModel.isActorLoading.collectAsState()
@@ -123,6 +124,7 @@ fun MovieDetailScreen(
     MovieDetailScreenContent(
         uiState = uiState,
         downloadedHashes = downloadedHashes,
+        watchHistoryMap = watchHistoryMap,
         torrentHandlingMode = torrentHandlingMode,
         isWideScreen = isWideScreen,
         isTv = isTv,
@@ -186,6 +188,7 @@ fun MovieDetailScreen(
 private fun MovieDetailScreenContent(
     uiState: DetailUiState,
     downloadedHashes: Set<String>,
+    watchHistoryMap: Map<String, com.martinrevert.latorrentola.model.user.PlaybackProgress> = emptyMap(),
     torrentHandlingMode: TorrentHandlingMode = TorrentHandlingMode.EXTERNAL_CLIENT,
     isWideScreen: Boolean,
     isTv: Boolean,
@@ -300,9 +303,12 @@ private fun MovieDetailScreenContent(
                     MovieDetailPlaceholder(contentPadding = detailContentPadding)
                 }
                 is DetailUiState.Success -> {
+                    val progress = watchHistoryMap[state.movie.id.toString()] ?: watchHistoryMap[state.movie.title]
+                    val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
                     MovieDetailContent(
                         movie = state.movie,
                         downloadedHashes = downloadedHashes,
+                        progressPercent = progressPercent,
                         torrentHandlingMode = torrentHandlingMode,
                         isWideScreen = isWideScreen,
                         isTv = isTv,
@@ -346,6 +352,7 @@ private fun MovieDetailScreenContent(
 fun MovieDetailContent(
     movie: Movie,
     downloadedHashes: Set<String>,
+    progressPercent: Int? = null,
     torrentHandlingMode: TorrentHandlingMode = TorrentHandlingMode.EXTERNAL_CLIENT,
     isWideScreen: Boolean,
     isTv: Boolean,
@@ -365,6 +372,18 @@ fun MovieDetailContent(
             .verticalScroll(scrollState)
             .padding(contentPadding)
     ) {
+        if (progressPercent != null && progressPercent > 0) {
+            LinearProgressIndicator(
+                progress = { progressPercent / 100f },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .padding(bottom = 8.dp),
+                color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            )
+        }
+
         if (isWideScreen && !movie.ytTrailerCode.isNullOrEmpty()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),

@@ -13,6 +13,7 @@
     <string name="remove_favorite_desc">Remove from favorites</string>
     <string name="pause_desc">Pause</string>
     <string name="play_desc">Play</string>
+    <string name="cast_desc">Cast</string>
     <string name="downloaded_desc">Downloaded</string>
     <string name="search_desc">Search</string>
     <string name="favorites_desc">Favorites</string>

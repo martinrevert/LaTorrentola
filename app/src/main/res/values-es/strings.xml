@@ -13,6 +13,7 @@
     <string name="remove_favorite_desc">Quitar de favoritos</string>
     <string name="pause_desc">Pausar</string>
     <string name="play_desc">Reproducir</string>
+    <string name="cast_desc">Transmitir a pantalla</string>
     <string name="downloaded_desc">Descargado</string>
     <string name="search_desc">Buscar</string>
     <string name="favorites_desc">Favoritos</string>

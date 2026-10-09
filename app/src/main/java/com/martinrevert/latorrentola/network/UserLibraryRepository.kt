@@ -531,7 +531,7 @@ class UserLibraryRepository @Inject constructor(
                         isEpisode = it.isEpisode
                     )
                 }.sortedByDescending { it.timestamp }
-                trySend(list)
+                send(list)
             }
         }
 

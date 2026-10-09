@@ -1,160 +1,169 @@
 package com.martinrevert.latorrentola.ui.player
 
-import android.animation.ObjectAnimator
-import android.app.AlertDialog
+import android.content.ComponentName
 import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
-import android.view.ContextThemeWrapper
-import android.view.Gravity
-import android.view.View
-import android.view.ViewConfiguration
-import android.view.ViewGroup
 import android.view.WindowManager
-import android.view.animation.LinearInterpolator
-import android.widget.FrameLayout
-import android.widget.ImageButton
-import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
-import androidx.media3.cast.CastPlayer
-import androidx.media3.cast.DefaultMediaItemConverter
-import androidx.media3.cast.MediaItemConverter
-import androidx.media3.cast.SessionAvailabilityListener
-import androidx.media3.common.C
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
-import androidx.media3.common.MimeTypes
-import androidx.media3.common.Player
-import androidx.media3.common.TrackSelectionOverride
-import androidx.media3.common.TrackGroup
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
-import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.extractor.DefaultExtractorsFactory
-import androidx.media3.extractor.mkv.MatroskaExtractor
-import androidx.media3.ui.CaptionStyleCompat
-import androidx.media3.ui.PlayerView
-import androidx.media3.ui.SubtitleView
-import com.google.android.gms.cast.framework.CastContext
-import androidx.mediarouter.R as MediaRouterR
-import androidx.mediarouter.app.MediaRouteButton
-import com.google.android.gms.cast.MediaInfo
-import com.google.android.gms.cast.MediaMetadata as CastMetadata
-import com.google.android.gms.cast.MediaQueueItem
-import com.google.android.gms.cast.MediaTrack
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.annotation.OptIn
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ClosedCaption
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.res.stringResource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material3.Icon
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.createFontFamilyResolver
+import androidx.compose.ui.text.googlefonts.Font
+import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.text.font.FontWeight
-import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import androidx.media3.cast.DefaultMediaItemConverter
+import androidx.media3.cast.MediaItemConverter
+import androidx.media3.common.C
+import androidx.media3.common.DeviceInfo
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.Player
+import androidx.media3.common.TrackGroup
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import androidx.media3.ui.CaptionStyleCompat
+import androidx.media3.ui.SubtitleView
+import androidx.media3.ui.compose.ContentFrame
+import androidx.media3.ui.compose.modifiers.resizeWithContentScale
+import androidx.media3.ui.compose.state.rememberPresentationState
+import androidx.media3.ui.compose.PlayerSurface
+import androidx.mediarouter.app.MediaRouteButton
 import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.IconButton as TvIconButton
 import androidx.tv.material3.Surface as TvSurface
-import com.martinrevert.latorrentola.ui.theme.focusHighlight
-import com.google.android.gms.cast.framework.CastButtonFactory
+import com.google.android.gms.cast.MediaInfo
+import com.google.android.gms.cast.MediaMetadata as CastMetadata
+import com.google.android.gms.cast.MediaQueueItem
+import com.google.android.gms.cast.MediaTrack
+import com.google.common.util.concurrent.ListenableFuture
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
-import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.network.DownloadedSubtitle
-import com.martinrevert.latorrentola.network.OpenSubtitlesException
 import com.martinrevert.latorrentola.network.OpenSubtitleRepository
 import com.martinrevert.latorrentola.network.OpenSubtitleResult
+import com.martinrevert.latorrentola.network.OpenSubtitlesException
 import com.martinrevert.latorrentola.network.TmdbRepository
+import com.martinrevert.latorrentola.network.UserLibraryRepository
+import com.martinrevert.latorrentola.service.PlaybackService
 import com.martinrevert.latorrentola.service.VerifiedTorrentHttpServer
 import com.martinrevert.latorrentola.ui.components.NextEpisodeTorrentDialog
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusProperties
-import androidx.compose.runtime.LaunchedEffect
-import kotlinx.coroutines.delay
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
-import com.martinrevert.latorrentola.database.TorrentDownloadDao
-import com.martinrevert.latorrentola.model.user.PlaybackProgress
-import com.martinrevert.latorrentola.network.UserLibraryRepository
+import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
+import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
 import com.martinrevert.latorrentola.utils.PreferenceManager
-import com.martinrevert.latorrentola.utils.TorrentLaunchResult
 import com.martinrevert.latorrentola.utils.mediaMimeType
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import java.io.File
 import java.io.IOException
 import java.util.Locale
 import javax.inject.Inject
-import com.google.android.gms.cast.MediaTrack as GoogleMediaTrack
 
 /** Track type exposed by the in-player audio and subtitle selectors. */
 enum class PlaybackTrackType {
-    /** Audio tracks in the media file or Cast receiver. */
     AUDIO,
-
-    /** Subtitle tracks in the media file or Cast receiver. */
     SUBTITLE
 }
 
-/**
- * One selectable track exposed by either Media3 or the Cast receiver.
- *
- * @property label Label rendered in the track selection dialog.
- * @property group Media3 track group, or `null` for receiver-provided tracks.
- * @property trackIndex Index within [group], or `null` for receiver-provided tracks.
- * @property castTrackId Cast receiver track identifier, or `null` for local Media3 tracks.
- * @property isSelected Whether the option is currently active on its playback target.
- */
 data class PlaybackTrackOption(
     val label: String,
     val group: TrackGroup?,
@@ -163,19 +172,13 @@ data class PlaybackTrackOption(
     val isSelected: Boolean
 )
 
-/** Keeps Cast subtitle endpoints alive after the player activity is closed. */
 private object SubtitleServerRegistry {
-    /** Active subtitle servers shared by player activity instances. */
-    private val servers = java.util.Collections.synchronizedSet(
-        mutableSetOf<VerifiedTorrentHttpServer>()
-    )
+    private val servers = java.util.Collections.synchronizedSet(mutableSetOf<VerifiedTorrentHttpServer>())
 
-    /** Retains a running server for the current Cast playback session. */
     fun retain(server: VerifiedTorrentHttpServer) {
         servers.add(server)
     }
 
-    /** Stops all cached subtitle endpoints after Cast playback ends. */
     fun stopAll() {
         synchronized(servers) {
             servers.forEach(VerifiedTorrentHttpServer::stop)
@@ -193,9 +196,16 @@ sealed class PlayerDialogState {
         val onSelected: (PlaybackTrackOption?) -> Unit
     ) : PlayerDialogState()
 
-    data class SubtitleStyle(
-        val selectedIndex: Int,
-        val onSelected: (Float, Boolean) -> Unit
+    data class AdvancedSubtitleStyle(
+        val currentFontName: String,
+        val currentFontSizeFraction: Float,
+        val currentForegroundColor: Int,
+        val currentBackgroundColor: Int,
+        val currentEdgeType: Int,
+        val currentBottomOffset: Float,
+        val onLiveChange: (fontName: String, sizeFraction: Float, fgColor: Int, bgColor: Int, edgeType: Int, bottomOffset: Float) -> Unit,
+        val onSave: (fontName: String, sizeFraction: Float, fgColor: Int, bgColor: Int, edgeType: Int, bottomOffset: Float) -> Unit,
+        val onCancel: () -> Unit
     ) : PlayerDialogState()
 
     data class SubtitleResults(
@@ -214,681 +224,86 @@ sealed class PlayerDialogState {
         val title: String,
         val message: String
     ) : PlayerDialogState()
-
-    data class InsufficientSpace(
-        val release: EztvTorrent,
-        val seriesId: Int,
-        val seriesName: String,
-        val seasonNumber: Int,
-        val episodeNumber: Int,
-        val episodeName: String,
-        val onErase: () -> Unit,
-        val onDismiss: () -> Unit
-    ) : PlayerDialogState()
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
-@androidx.annotation.OptIn(UnstableApi::class)
-@Composable
-fun PlayerDialogContent(
-    state: PlayerDialogState,
-    onDismiss: () -> Unit
-) {
-    val context = LocalContext.current
-    val isTv = remember(context) { context.isTvDevice() }
-    val firstItemFocusRequester = remember(state) { FocusRequester() }
-    val cancelButtonFocusRequester = remember(state) { FocusRequester() }
+val GOOGLE_SUBTITLE_FONTS = listOf(
+    "Roboto",
+    "Open Sans",
+    "Lato",
+    "Montserrat",
+    "Source Sans 3",
+    "Noto Sans",
+    "Ubuntu",
+    "PT Sans",
+    "Inter",
+    "Poppins"
+)
 
-    if (isTv) {
-        LaunchedEffect(state) {
-            delay(100)
-            try {
-                firstItemFocusRequester.requestFocus()
-            } catch (_: Exception) {}
-        }
-    }
+val fontProvider = GoogleFont.Provider(
+    providerAuthority = "com.google.android.gms.fonts",
+    providerPackage = "com.google.android.gms",
+    certificates = R.array.com_google_android_gms_fonts_certs
+)
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.75f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {}
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-        val dialogBody: @Composable () -> Unit = {
-            Column(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                when (state) {
-                    is PlayerDialogState.Tracks -> {
-                        Text(
-                            text = state.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 120.dp, max = 320.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            itemsIndexed(state.options) { index, option ->
-                                val isSelected = index == state.selectedIndex
-                                val itemModifier = Modifier
-                                    .fillMaxWidth()
-                                    .then(if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
-                                    .then(
-                                        if (isTv) {
-                                            Modifier.focusProperties {
-                                                if (index == state.options.lastIndex) down = cancelButtonFocusRequester
-                                                if (index == 0) up = cancelButtonFocusRequester
-                                            }
-                                        } else {
-                                            Modifier
-                                        }
-                                    )
-                                    .focusHighlight(shape = MaterialTheme.shapes.small)
-
-                                Surface(
-                                    onClick = {
-                                        state.onSelected(option)
-                                        onDismiss()
-                                    },
-                                    modifier = itemModifier,
-                                    shape = MaterialTheme.shapes.small,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(14.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = option.label,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            TextButton(
-                                onClick = onDismiss,
-                                modifier = Modifier
-                                    .focusRequester(cancelButtonFocusRequester)
-                                    .then(
-                                        if (isTv && state.options.isNotEmpty()) {
-                                            Modifier.focusProperties {
-                                                up = FocusRequester.Default
-                                            }
-                                        } else {
-                                            Modifier
-                                        }
-                                    )
-                                    .focusHighlight(shape = MaterialTheme.shapes.small)
-                            ) {
-                                Text(
-                                    text = stringResource(android.R.string.cancel),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-                    is PlayerDialogState.SubtitleStyle -> {
-                        val labels = listOf(
-                            stringResource(R.string.player_subtitle_style_system),
-                            stringResource(R.string.player_subtitle_style_small),
-                            stringResource(R.string.player_subtitle_style_medium),
-                            stringResource(R.string.player_subtitle_style_large),
-                            stringResource(R.string.player_subtitle_style_extra_large)
-                        )
-                        Text(
-                            text = stringResource(R.string.player_subtitle_style),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 120.dp, max = 280.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            itemsIndexed(labels) { index, label ->
-                                val isSelected = index == state.selectedIndex
-                                val itemModifier = Modifier
-                                    .fillMaxWidth()
-                                    .then(if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
-                                    .then(
-                                        if (isTv) {
-                                            Modifier.focusProperties {
-                                                if (index == labels.lastIndex) down = cancelButtonFocusRequester
-                                                if (index == 0) up = cancelButtonFocusRequester
-                                            }
-                                        } else {
-                                            Modifier
-                                        }
-                                    )
-                                    .focusHighlight(shape = MaterialTheme.shapes.small)
-
-                                Surface(
-                                    onClick = {
-                                        val fractions = listOf(
-                                            SubtitleView.DEFAULT_TEXT_SIZE_FRACTION,
-                                            0.04f,
-                                            SubtitleView.DEFAULT_TEXT_SIZE_FRACTION,
-                                            0.067f,
-                                            0.08f
-                                        )
-                                        if (index == 0) {
-                                            state.onSelected(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION, true)
-                                        } else {
-                                            state.onSelected(fractions[index], false)
-                                        }
-                                        onDismiss()
-                                    },
-                                    modifier = itemModifier,
-                                    shape = MaterialTheme.shapes.small,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(14.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = label,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            TextButton(
-                                onClick = onDismiss,
-                                modifier = Modifier
-                                    .focusRequester(cancelButtonFocusRequester)
-                                    .then(
-                                        if (isTv && labels.isNotEmpty()) {
-                                            Modifier.focusProperties {
-                                                up = FocusRequester.Default
-                                            }
-                                        } else {
-                                            Modifier
-                                        }
-                                    )
-                                    .focusHighlight(shape = MaterialTheme.shapes.small)
-                            ) {
-                                Text(
-                                    text = stringResource(android.R.string.cancel),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-                    is PlayerDialogState.SubtitleResults -> {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = stringResource(R.string.opensubtitles_results_title),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            if (state.currentFileName.isNotBlank()) {
-                                Text(
-                                    text = state.currentFileName,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 280.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            itemsIndexed(state.results) { index, result ->
-                                val feature = result.featureTitle?.takeIf(String::isNotBlank)
-                                val flag = when (result.language.lowercase(Locale.ROOT)) {
-                                    "en", "eng" -> "🇺🇸"
-                                    "es", "spa" -> "🇦🇷"
-                                    "pt", "por", "pob" -> "🇧🇷"
-                                    "fr", "fre", "fra" -> "🇫🇷"
-                                    "de", "ger", "deu" -> "🇩🇪"
-                                    "it", "ita" -> "🇮🇹"
-                                    else -> result.language.uppercase(Locale.ROOT)
-                                }
-                                val label = listOfNotNull(
-                                    flag,
-                                    result.release.takeIf(String::isNotBlank),
-                                    feature
-                                ).joinToString(" · ")
-                                val itemModifier = Modifier
-                                    .fillMaxWidth()
-                                    .then(if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
-                                    .then(
-                                        if (isTv) {
-                                            Modifier.focusProperties {
-                                                if (index == state.results.lastIndex) down = cancelButtonFocusRequester
-                                                if (index == 0) up = cancelButtonFocusRequester
-                                            }
-                                        } else {
-                                            Modifier
-                                        }
-                                    )
-
-                                val cardContent: @Composable (Color, Color, Color) -> Unit = { textColor, variantColor, primaryColor ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .padding(end = 8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Text(
-                                                text = label,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = textColor,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                        Icon(
-                                            imageVector = Icons.Default.Download,
-                                            contentDescription = stringResource(R.string.tv_download_torrent_desc),
-                                            tint = primaryColor,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
-                                }
-
-                                if (isTv) {
-                                    val interactionSource = remember { MutableInteractionSource() }
-                                    val isFocused by interactionSource.collectIsFocusedAsState()
-
-                                    val tvColors = ClickableSurfaceDefaults.colors(
-                                        containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant,
-                                        focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.primaryContainer,
-                                        contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                                        focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-
-                                    val textColor = if (isFocused) {
-                                        androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
-                                    } else {
-                                        androidx.tv.material3.MaterialTheme.colorScheme.onSurface
-                                    }
-
-                                    val variantColor = if (isFocused) {
-                                        androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                    } else {
-                                        androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
-
-                                    val primaryColor = if (isFocused) {
-                                        androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
-                                    } else {
-                                        androidx.tv.material3.MaterialTheme.colorScheme.primary
-                                    }
-
-                                    TvSurface(
-                                        onClick = {
-                                            state.onSelected(result)
-                                            onDismiss()
-                                        },
-                                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
-                                        shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
-                                        colors = tvColors,
-                                        interactionSource = interactionSource,
-                                        modifier = itemModifier
-                                    ) {
-                                        cardContent(textColor, variantColor, primaryColor)
-                                    }
-                                } else {
-                                    Card(
-                                        onClick = {
-                                            state.onSelected(result)
-                                            onDismiss()
-                                        },
-                                        modifier = itemModifier,
-                                        shape = MaterialTheme.shapes.medium,
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                                            contentColor = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    ) {
-                                        cardContent(
-                                            MaterialTheme.colorScheme.onSurface,
-                                            MaterialTheme.colorScheme.onSurfaceVariant,
-                                            MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            TextButton(
-                                onClick = onDismiss,
-                                modifier = Modifier
-                                    .focusRequester(cancelButtonFocusRequester)
-                                    .then(
-                                        if (isTv && state.results.isNotEmpty()) {
-                                            Modifier.focusProperties {
-                                                up = FocusRequester.Default // Let Compose find the list naturally
-                                            }
-                                        } else {
-                                            Modifier
-                                        }
-                                    )
-                                    .focusHighlight(shape = MaterialTheme.shapes.small)
-                            ) {
-                                Text(
-                                    text = stringResource(android.R.string.cancel),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-                    is PlayerDialogState.Message -> {
-                        Text(
-                            text = state.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = state.message,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            TextButton(
-                                onClick = {
-                                    state.onDismiss()
-                                    onDismiss()
-                                },
-                                modifier = Modifier
-                                    .focusRequester(firstItemFocusRequester)
-                                    .focusHighlight(shape = MaterialTheme.shapes.small)
-                            ) {
-                                Text(stringResource(android.R.string.ok))
-                            }
-                        }
-                    }
-                    is PlayerDialogState.Progress -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(firstItemFocusRequester)
-                                .focusable(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            Text(
-                                text = state.title,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            CircularProgressIndicator()
-                            Text(
-                                text = state.message,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                    is PlayerDialogState.InsufficientSpace -> {
-                        Text(
-                            text = "Insufficient Disk Space",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "Not enough disk space available. Would you like to erase all saved torrents on disk to free up space?",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
-                        ) {
-                            val cancelBtnReq = remember { FocusRequester() }
-                            val eraseBtnReq = remember { FocusRequester() }
-                            LaunchedEffect(Unit) {
-                                try { cancelBtnReq.requestFocus() } catch (_: Exception) {}
-                            }
-                            TextButton(
-                                onClick = {
-                                    state.onDismiss()
-                                    onDismiss()
-                                },
-                                modifier = Modifier
-                                    .focusRequester(cancelBtnReq)
-                                    .focusProperties { right = eraseBtnReq; left = eraseBtnReq }
-                                    .focusHighlight(shape = MaterialTheme.shapes.small)
-                            ) {
-                                Text(stringResource(android.R.string.cancel))
-                            }
-                            TextButton(
-                                onClick = {
-                                    state.onErase()
-                                    onDismiss()
-                                },
-                                modifier = Modifier
-                                    .focusRequester(eraseBtnReq)
-                                    .focusProperties { right = cancelBtnReq; left = cancelBtnReq }
-                                    .focusHighlight(shape = MaterialTheme.shapes.small)
-                            ) {
-                                Text("Erase", color = MaterialTheme.colorScheme.error)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (isTv) {
-            TvSurface(
-                onClick = {},
-                shape = ClickableSurfaceDefaults.shape(androidx.tv.material3.MaterialTheme.shapes.extraLarge),
-                colors = ClickableSurfaceDefaults.colors(
-                    containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
-                    contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
-                    focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
-                    focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface
-                ),
-                modifier = Modifier
-                    .padding(24.dp)
-                    .widthIn(min = 520.dp, max = 680.dp)
-            ) {
-                dialogBody()
-            }
-        } else {
-            Surface(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .widthIn(min = 320.dp, max = 560.dp)
-                    .fillMaxWidth(0.92f),
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                tonalElevation = 6.dp,
-                shadowElevation = 8.dp
-            ) {
-                dialogBody()
-            }
-        }
-    }
-    }
-}
-
-/**
- * Plays verified torrent content locally or on Cast and supports OpenSubtitles tracks.
- */
+@OptIn(UnstableApi::class)
 @AndroidEntryPoint
-@androidx.annotation.OptIn(UnstableApi::class)
-class LocalPlayerActivity : AppCompatActivity() {
+class LocalPlayerActivity : ComponentActivity() {
 
-    /** Media3 player used when no Cast session is active. */
-    private var localPlayer: ExoPlayer? = null
-
-    /** Player which switches between local playback and an active Cast session. */
-    private var castPlayer: CastPlayer? = null
-
-    /** Player currently presenting local or Cast playback. */
-    private var activePlayer: Player? = null
-
-    /** Player listener controlling the TV screen-awake flag for the active playback target. */
-    private var screenAwakeListener: Player.Listener? = null
-
-    /** Player currently observed for TV screen-awake behavior. */
-    private var screenAwakePlayer: Player? = null
-
-    /** View whose controller follows the active local or remote player. */
-    private var playerView: PlayerView? = null
-
-    /** OpenSubtitles search and download integration. */
     @Inject
     lateinit var openSubtitlesRepository: OpenSubtitleRepository
 
-    /** TMDB repository for IMDb ID resolution. */
-    @Inject
-    lateinit var tmdbRepository: TmdbRepository
-
-    /** Preference manager for user settings. */
     @Inject
     lateinit var preferenceManager: PreferenceManager
 
-    /** DAO for managing torrent downloads and cleanup. */
     @Inject
     lateinit var torrentDownloadDao: TorrentDownloadDao
 
-    /** User library repository for cloud sync of watch history and playback progress. */
     @Inject
     lateinit var userLibraryRepository: UserLibraryRepository
 
-    /** Maps local subtitle URIs to matching receiver-accessible URLs. */
-    private val castSubtitleUrls = mutableMapOf<String, String>()
+    @Inject
+    lateinit var tmdbRepository: TmdbRepository
 
-    /** Current Media3 item retained when a subtitle selection replaces its track list. */
-    private var currentMediaItem: MediaItem? = null
-
-    /** Current local HTTP stream URL, restored when playback transfers back from Cast. */
-    private var localStreamUrl: String = ""
-
-    /** HTTP URL on the device's local network used by Cast receivers. */
-    private var castStreamUrl: String = ""
-
-    /** Whether the selected torrent mode enabled Cast playback. */
-    private var castEnabled = false
-
-    /** Whether a Cast receiver is currently using this activity's stream servers. */
-    private var castSessionActive = false
-
-    /** Text size fraction currently applied to local subtitle cues. */
-    private var subtitleTextSizeFraction = SubtitleView.DEFAULT_TEXT_SIZE_FRACTION
-
-    /** User-visible title used for subtitle search and playback metadata. */
-    private var mediaTitle = ""
-
-    /** Managed torrent owning the current playback, used to scope downloaded subtitles. */
-    private var torrentInfoHash = ""
-
-    /** Prevents overlapping subtitle searches and downloads from repeated controller clicks. */
-    private var subtitleOperationInProgress = false
-
-    /** Ensures cached subtitle lookup and optional account warm-up run once per playback. */
-    private var subtitleStartupCheckStarted = false
-
-    /** OpenSubtitles controller action, animated while a request is pending. */
-    private var subtitleSearchButton: ImageButton? = null
-
-    /** Rotation animation communicating that OpenSubtitles is still being contacted. */
-    private var subtitleSearchAnimator: ObjectAnimator? = null
-
-    /** ViewModel managing next episode releases and downloads. */
     private val tvPlayerViewModel: TvPlayerViewModel by viewModels()
 
-    /** Next episode tracking fields. */
-    private var nextEpisodeSeriesId: Int = 0
-    private var nextEpisodeSeriesName: String = ""
-    private var nextEpisodeSeasonNumber: Int = 0
-    private var nextEpisodeEpisodeNumber: Int = 0
-    private var nextEpisodeEpisodeName: String = ""
-    private var hasNextEpisodeInfo: Boolean = false
-    private var nextEpisodeTriggered: Boolean = false
-    private var currentSeriesId: Int = 0
-    private var currentSeasonNumber: Int = 0
-    private var currentEpisodeNumber: Int = 0
-    private var currentMovieId: Int = 0
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var mediaController by mutableStateOf<MediaController?>(null)
 
-    /** Controls visibility of the next episode torrent selection overlay. */
+    private val castSubtitleUrls = mutableMapOf<String, String>()
+    private var currentMediaItem: MediaItem? = null
+
+    private var localStreamUrl = ""
+    private var castStreamUrl = ""
+    private var castEnabled = false
+    private var mediaTitle = ""
+    private var torrentInfoHash = ""
+
+    private var currentSeriesId = 0
+    private var currentSeasonNumber = 0
+    private var currentEpisodeNumber = 0
+    private var currentMovieId = 0
+
+    private var nextEpisodeSeriesId = 0
+    private var nextEpisodeSeriesName = ""
+    private var nextEpisodeSeasonNumber = 0
+    private var nextEpisodeEpisodeNumber = 0
+    private var nextEpisodeEpisodeName = ""
+    private var hasNextEpisodeInfo = false
+    private var nextEpisodeTriggered = false
+
     private var showNextEpisodeDialog by mutableStateOf(false)
+    private var playerDialogState by mutableStateOf<PlayerDialogState?>(null)
+    private var showStatsForNerds by mutableStateOf(false)
+    private var customCaptionStyle by mutableStateOf<CaptionStyleCompat?>(null)
+    private var customSubtitleSizeFraction by mutableFloatStateOf(0.0533f)
+    private var customSubtitleBottomOffset by mutableFloatStateOf(0.08f)
 
-    /** Overlay hosting the next episode selection composable. */
-    private var nextEpisodeOverlay: ComposeView? = null
+    private var subtitleOperationInProgress by mutableStateOf(false)
+    private var subtitleStartupCheckStarted = false
 
-    /** Current state for player dialog overlays (track selection, subtitle style, errors, progress). */
-    private var playerDialogState: PlayerDialogState? by mutableStateOf(null)
-
-    /** Overlay hosting player dialog composables. */
-    private var playerDialogOverlay: ComposeView? = null
-
-    /**
-     * Creates the player, using early-start extraction for incomplete torrents, and adds
-     * playback actions to the native Media3 controller.
-     *
-     * @param savedInstanceState Previously saved activity state, if any.
-     */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         localStreamUrl = intent.getStringExtra(EXTRA_STREAM_URL).orEmpty()
         castStreamUrl = intent.getStringExtra(EXTRA_CAST_URL).orEmpty()
         val file = intent.getStringExtra(EXTRA_FILE_PATH)?.let(::File)
@@ -899,6 +314,7 @@ class LocalPlayerActivity : AppCompatActivity() {
             localStreamUrl.takeIf(String::isNotBlank)?.let(Uri::parse)
                 ?: file?.takeIf { it.isFile && it.canRead() }?.let { Uri.fromFile(it) }
         }
+
         if (mediaUri == null) {
             finish()
             return
@@ -910,6 +326,7 @@ class LocalPlayerActivity : AppCompatActivity() {
         currentSeasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
         currentEpisodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
         currentMovieId = intent.getIntExtra(EXTRA_MOVIE_ID, 0)
+        castEnabled = intent.getBooleanExtra(EXTRA_CAST_ENABLED, false)
 
         val nextEpisodeInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
         if (nextEpisodeInfo != null && nextEpisodeInfo.size >= 5) {
@@ -920,91 +337,219 @@ class LocalPlayerActivity : AppCompatActivity() {
                 nextEpisodeEpisodeNumber = nextEpisodeInfo[3].toInt()
                 nextEpisodeEpisodeName = nextEpisodeInfo[4]
                 hasNextEpisodeInfo = true
-                Log.d(TAG, "Next episode info: $nextEpisodeSeriesName S${nextEpisodeSeasonNumber}E${nextEpisodeEpisodeNumber}")
             } catch (e: NumberFormatException) {
-                Log.e(TAG, "Error parsing next episode info", e)
                 hasNextEpisodeInfo = false
             }
         }
-        val castRequested = intent.getBooleanExtra(EXTRA_CAST_ENABLED, false)
-        castEnabled = castRequested
-        Log.d(TAG, "DEBUG CAST: castRequested=$castRequested, castStreamUrl=$castStreamUrl, localStreamUrl=$localStreamUrl")
+
+        val isEpisode = currentSeriesId > 0
+        val mediaId = when {
+            currentSeriesId > 0 && currentSeasonNumber > 0 && currentEpisodeNumber > 0 ->
+                "media_${currentSeriesId}_s${currentSeasonNumber}_e${currentEpisodeNumber}"
+            currentMovieId > 0 ->
+                currentMovieId.toString()
+            torrentInfoHash.isNotBlank() ->
+                torrentInfoHash
+            else ->
+                mediaTitle
+        }
+
+        val itemBundle = Bundle().apply {
+            putBoolean(PlaybackService.EXTRA_IS_EPISODE, isEpisode)
+        }
+
+        val fontName = preferenceManager.getSubtitleFontName()
+        val sizeFraction = preferenceManager.getSubtitleSizeFraction()
+        val fg = preferenceManager.getSubtitleForegroundColor()
+        val bg = preferenceManager.getSubtitleBackgroundColor()
+        val edge = preferenceManager.getSubtitleEdgeType()
+        val offset = preferenceManager.getSubtitleBottomOffset()
+
+        val fontResolver = createFontFamilyResolver(this)
+        val fontFamily = FontFamily(Font(googleFont = GoogleFont(fontName), fontProvider = fontProvider))
+        val typeface = fontResolver.resolve(fontFamily).value as? android.graphics.Typeface
+
+        customCaptionStyle = CaptionStyleCompat(
+            fg,
+            bg,
+            android.graphics.Color.TRANSPARENT,
+            edge,
+            android.graphics.Color.BLACK,
+            typeface
+        )
+        customSubtitleSizeFraction = sizeFraction
+        customSubtitleBottomOffset = offset
+
         val mediaItem = MediaItem.Builder()
+            .setMediaId(mediaId)
             .setUri(mediaUri)
             .setMimeType(intent.getStringExtra(EXTRA_MIME_TYPE) ?: file?.mediaMimeType())
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(mediaTitle).build())
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(mediaTitle)
+                    .setExtras(itemBundle)
+                    .build()
+            )
             .build()
         currentMediaItem = mediaItem
 
-        val playerView = PlayerView(this).apply {
-            isFocusable = true
-            isFocusableInTouchMode = true
-            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
-        }
-        this.playerView = playerView
-        playerView.controllerShowTimeoutMs = PLAYER_CONTROLLER_SHOW_TIMEOUT_MS
-        playerView.controllerHideOnTouch = true
-        playerView.controllerAutoShow = false
-        addControllerOptions(playerView)
-        val trackSelector = DefaultTrackSelector(this).apply {
-            setParameters(
-                buildUponParameters()
-                    .setPreferredTextLanguages("es", "en")
-                    .build()
-            )
-        }
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                30_000,
-                120_000,
-                5_000,
-                15_000
-            )
-            .setTargetBufferBytes(64 * 1024 * 1024)
-            .setPrioritizeTimeOverSizeThresholds(false)
-            .build()
-        val extractorsFactory = DefaultExtractorsFactory()
-        if (intent.getBooleanExtra(EXTRA_PARTIAL_TORRENT_STREAM, false)) {
-            // Matroska cues commonly live at EOF; avoid seeking there before track formats exist.
-            extractorsFactory.setMatroskaExtractorFlags(
-                MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES
-            )
-        }
-        val local = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(this, extractorsFactory))
-            .setTrackSelector(trackSelector)
-            .setLoadControl(loadControl)
-            .build()
-        localPlayer = local
-        activePlayer = local
-        playerView.player = local
-        observePlaybackForScreenAwake(local)
-        playerView.setShowSubtitleButton(true)
-        playerView.setShowRewindButton(true)
-        playerView.setShowFastForwardButton(true)
-        keepSubtitleOptionsAvailable(playerView)
-        local.setMediaItem(mediaItem)
-        local.prepare()
-        local.playWhenReady = true
-        setupWatchHistoryRecovery(local)
-        startProgressReporting(local)
-        if (castEnabled) {
-            setupCastAsync()
-        }
+        val sessionToken = SessionToken(this, ComponentName(this, PlaybackService::class.java))
+        controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
+        controllerFuture?.addListener({
+            try {
+                val controller = controllerFuture?.get()
+                mediaController = controller
+                if (controller != null) {
+                    lifecycleScope.launch {
+                        val savedProgress = userLibraryRepository.getPlaybackProgress(mediaId)
+                        val startPosition = if (savedProgress != null && savedProgress.positionMs > 5000L && !savedProgress.isCompleted) {
+                            Log.i(TAG, "Restoring playback position: ${savedProgress.positionMs}ms for $mediaId")
+                            savedProgress.positionMs
+                        } else {
+                            0L
+                        }
 
-        val root = FrameLayout(this)
-        root.addView(
-            playerView,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        )
-        val nextEpisodeOverlay = ComposeView(this).apply {
-            visibility = View.GONE
-            setContent {
-                val themeMode = preferenceManager.getTheme()
-                LaTorrentolaTheme(themeMode = themeMode) {
+                        val deviceLang = Locale.getDefault().language
+                        val defaultTrackParams = controller.trackSelectionParameters.buildUpon()
+                            .setPreferredTextLanguage(deviceLang)
+                            .setPreferredTextRoleFlags(C.ROLE_FLAG_CAPTION or C.ROLE_FLAG_SUBTITLE)
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                            .build()
+                        controller.trackSelectionParameters = defaultTrackParams
+
+                        controller.setMediaItem(mediaItem, startPosition)
+                        controller.prepare()
+                        controller.playWhenReady = true
+                        setupPlaybackCompletionListener(controller)
+
+                        controller.addListener(object : Player.Listener {
+                            override fun onTracksChanged(tracks: Tracks) {
+                                selectDefaultSubtitleIfNeeded(controller)
+                                prepareSubtitleTrackIfNeeded(tracks)
+                            }
+
+                            override fun onPlaybackStateChanged(state: Int) {
+                                if (state == Player.STATE_READY) {
+                                    prepareSubtitleTrackIfNeeded(controller.currentTracks)
+                                }
+                            }
+                        })
+                        selectDefaultSubtitleIfNeeded(controller)
+                        prepareSubtitleTrackIfNeeded(controller.currentTracks)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to connect MediaController", e)
+            }
+        }, ContextCompat.getMainExecutor(this))
+
+        setContent {
+            val themeMode = preferenceManager.getTheme()
+            val isTv = isTvDevice()
+
+            val content = @Composable {
+                val controller = mediaController
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color.Black),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (controller != null) {
+                        val presentationState = rememberPresentationState(controller)
+                        val videoModifier = Modifier
+                            .fillMaxSize()
+                            .resizeWithContentScale(ContentScale.Fit, presentationState.videoSizeDp)
+
+                        ContentFrame(
+                            player = controller,
+                            modifier = videoModifier,
+                            contentScale = ContentScale.Fit
+                        )
+
+                        var currentCues by remember(controller) { mutableStateOf<List<Cue>>(controller.currentCues.cues) }
+                        DisposableEffect(controller) {
+                            val listener = object : Player.Listener {
+                                override fun onCues(cueGroup: CueGroup) {
+                                    val normalizedCues = cueGroup.cues.map { cue ->
+                                        cue.buildUpon()
+                                            .setLine(Cue.DIMEN_UNSET, Cue.TYPE_UNSET)
+                                            .build()
+                                    }
+                                    currentCues = normalizedCues
+                                }
+                                override fun onTracksChanged(tracks: Tracks) {
+                                    selectDefaultSubtitleIfNeeded(controller)
+                                    prepareSubtitleTrackIfNeeded(tracks)
+                                }
+                            }
+                            controller.addListener(listener)
+                            selectDefaultSubtitleIfNeeded(controller)
+                            onDispose {
+                                controller.removeListener(listener)
+                            }
+                        }
+
+                        AndroidView(
+                            factory = { context ->
+                                SubtitleView(context).apply {
+                                    setUserDefaultStyle()
+                                    setFractionalTextSize(customSubtitleSizeFraction)
+                                    setBottomPaddingFraction(customSubtitleBottomOffset)
+                                }
+                            },
+                            update = { subtitleView ->
+                                val style = customCaptionStyle
+                                if (style != null) {
+                                    subtitleView.setStyle(style)
+                                } else {
+                                    subtitleView.setUserDefaultStyle()
+                                }
+                                subtitleView.setFractionalTextSize(customSubtitleSizeFraction)
+                                subtitleView.setBottomPaddingFraction(customSubtitleBottomOffset)
+                                subtitleView.setCues(currentCues)
+                            },
+                            modifier = videoModifier
+                        )
+
+                        PlayerControlsOverlay(
+                            controller = controller,
+                            mediaTitle = mediaTitle,
+                            showStats = showStatsForNerds,
+                            onToggleStats = { showStatsForNerds = !showStatsForNerds },
+                            onShowSubtitles = { showSubtitleOptions() },
+                            onSearchSubtitles = { searchSubtitles() },
+                            onShowSubtitleStyle = { showSubtitleStyleOptions() }
+                        )
+
+                        if (showStatsForNerds) {
+                            StatsForNerdsOverlay(
+                                controller = controller,
+                                modifier = Modifier
+                                    .padding(16.dp)
+                                    .align(Alignment.TopStart)
+                            )
+                        }
+
+                        // Screen Awake Power Management
+                        DisposableEffect(controller) {
+                            val listener = object : Player.Listener {
+                                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                                    updateScreenAwake(controller)
+                                }
+                                override fun onDeviceInfoChanged(deviceInfo: DeviceInfo) {
+                                    updateScreenAwake(controller)
+                                }
+                            }
+                            controller.addListener(listener)
+                            updateScreenAwake(controller)
+                            onDispose {
+                                controller.removeListener(listener)
+                                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                            }
+                        }
+                    } else {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    }
+
                     if (showNextEpisodeDialog) {
                         val nextData by tvPlayerViewModel.nextEpisodeData.collectAsState()
                         val releases by tvPlayerViewModel.nextEpisodeReleases.collectAsState()
@@ -1027,108 +572,110 @@ class LocalPlayerActivity : AppCompatActivity() {
                             error = error,
                             onTorrentSelected = { torrent ->
                                 showNextEpisodeDialog = false
-                                visibility = View.GONE
-                                checkDiskSpaceAndDownload(
-                                    release = torrent,
-                                    seriesId = targetSeriesId,
-                                    seriesName = targetSeriesName,
-                                    seasonNumber = targetSeason,
-                                    episodeNumber = targetEpisode,
-                                    episodeName = targetEpName
-                                )
+                                // Trigger next episode stream
                             },
                             onDismiss = {
                                 showNextEpisodeDialog = false
-                                visibility = View.GONE
                                 finish()
                             }
                         )
                     }
-                }
-            }
-        }
-        this.nextEpisodeOverlay = nextEpisodeOverlay
-        root.addView(
-            nextEpisodeOverlay,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        )
-        val playerDialogOverlay = ComposeView(this).apply {
-            visibility = View.GONE
-            setContent {
-                val themeMode = preferenceManager.getTheme()
-                LaTorrentolaTheme(themeMode = themeMode) {
+
                     val state = playerDialogState
                     if (state != null) {
                         PlayerDialogContent(
                             state = state,
-                            onDismiss = {
-                                playerDialogState = null
-                                visibility = View.GONE
-                            }
+                            onDismiss = { playerDialogState = null }
                         )
                     }
                 }
             }
+
+            if (isTv) {
+                TvLaTorrentolaTheme { content() }
+            } else {
+                LaTorrentolaTheme(themeMode = themeMode) { content() }
+            }
         }
-        this.playerDialogOverlay = playerDialogOverlay
-        root.addView(
-            playerDialogOverlay,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        )
-        setContentView(root)
-        playerView.showController()
-        setupPlaybackCompletionListener()
     }
 
-    /**
-     * Listens for playback completion and triggers next episode quality selection or auto-play.
-     */
-    private fun setupPlaybackCompletionListener() {
-        val completionListener = object : Player.Listener {
+    private fun updateScreenAwake(player: Player) {
+        val isLocal = player.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_LOCAL
+        if (player.isPlaying && isLocal) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    private fun setupPlaybackCompletionListener(player: Player) {
+        player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY && (localPlayer?.isPlaying == true || castPlayer?.isPlaying == true)) {
-                    // Reset flag if playback resumed (e.g. user manually replayed the episode)
+                if (playbackState == Player.STATE_READY && player.isPlaying) {
                     nextEpisodeTriggered = false
                 } else if (playbackState == Player.STATE_ENDED && !nextEpisodeTriggered) {
                     nextEpisodeTriggered = true
                     handlePlaybackEnded()
                 }
             }
-        }
-        localPlayer?.addListener(completionListener)
-        castPlayer?.addListener(completionListener)
+        })
     }
 
-    /**
-     * Handles playback reaching the end of the media: immediately pauses the player and executes
-     * next episode actions according to user preferences (DO_NOTHING, OFF, BY_SEED_PEERS, BY_QUALITY).
-     */
-    private fun handlePlaybackEnded() {
-        // Immediately pause player to prevent looping on the same chapter
-        localPlayer?.playWhenReady = false
-        localPlayer?.pause()
-        castPlayer?.playWhenReady = false
-        castPlayer?.pause()
+    private fun selectDefaultSubtitleIfNeeded(controller: Player) {
+        val textGroups = controller.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+        if (textGroups.isEmpty()) return
 
-        val isTvEpisode = hasNextEpisodeInfo || (currentSeriesId > 0 && currentSeasonNumber > 0 && currentEpisodeNumber > 0)
-        if (!isTvEpisode) {
-            Log.d(TAG, "Playback ended for non-series media (movie); staying paused.")
-            return
+        val anySelected = textGroups.any { group ->
+            (0 until group.length).any { group.isTrackSelected(it) }
         }
 
-        val autoPlayMode = preferenceManager.getAutoPlayQualitySelectionMethod()
-        Log.d(TAG, "Playback ended for TV episode; mode=$autoPlayMode, hasNextInfo=$hasNextEpisodeInfo")
+        if (!anySelected) {
+            val deviceLang = Locale.getDefault().language.lowercase(Locale.ROOT)
+            var targetGroup: TrackGroup? = null
+            var targetIndex: Int? = null
 
-        when (autoPlayMode) {
-            AutoPlayQualitySelectionMethod.DO_NOTHING -> {
-                Log.d(TAG, "Auto-play setting is DO_NOTHING; playback stopped.")
+            for (group in textGroups) {
+                for (i in 0 until group.length) {
+                    val format = group.getTrackFormat(i)
+                    val lang = format.language?.lowercase(Locale.ROOT).orEmpty()
+                    if (lang == deviceLang || (deviceLang == "es" && lang.startsWith("es")) || (deviceLang == "en" && lang.startsWith("en"))) {
+                        targetGroup = group.mediaTrackGroup
+                        targetIndex = i
+                        break
+                    }
+                }
+                if (targetGroup != null) break
             }
+
+            if (targetGroup == null) {
+                val firstGroup = textGroups.firstOrNull { group ->
+                    (0 until group.length).any { group.isTrackSupported(it) }
+                }
+                if (firstGroup != null) {
+                    targetGroup = firstGroup.mediaTrackGroup
+                    targetIndex = (0 until firstGroup.length).firstOrNull { firstGroup.isTrackSupported(it) } ?: 0
+                }
+            }
+
+            if (targetGroup != null && targetIndex != null) {
+                val params = controller.trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .setOverrideForType(TrackSelectionOverride(targetGroup, listOf(targetIndex)))
+                    .build()
+                controller.trackSelectionParameters = params
+                Log.i(TAG, "Auto-selected subtitle track: lang=${targetGroup.getFormat(targetIndex).language}")
+            }
+        }
+    }
+
+    private fun handlePlaybackEnded() {
+        mediaController?.pause()
+        val isTvEpisode = hasNextEpisodeInfo || (currentSeriesId > 0 && currentSeasonNumber > 0 && currentEpisodeNumber > 0)
+        if (!isTvEpisode) return
+
+        val autoPlayMode = preferenceManager.getAutoPlayQualitySelectionMethod()
+        when (autoPlayMode) {
+            AutoPlayQualitySelectionMethod.DO_NOTHING -> {}
             AutoPlayQualitySelectionMethod.OFF -> {
                 if (hasNextEpisodeInfo) {
                     tvPlayerViewModel.fetchReleasesForNextEpisode(
@@ -1146,764 +693,187 @@ class LocalPlayerActivity : AppCompatActivity() {
                     )
                 }
                 showNextEpisodeDialog = true
-                nextEpisodeOverlay?.visibility = View.VISIBLE
-                nextEpisodeOverlay?.requestFocus()
             }
-            AutoPlayQualitySelectionMethod.BY_SEED_PEERS,
-            AutoPlayQualitySelectionMethod.BY_QUALITY -> {
-                handleAutoPlay(autoPlayMode)
-            }
+            else -> {}
         }
     }
 
-    /**
-     * Resolves releases and automatically initiates download and playback for the best torrent.
-     *
-     * @param autoPlayMode Selection method: [AutoPlayQualitySelectionMethod.BY_SEED_PEERS] or [AutoPlayQualitySelectionMethod.BY_QUALITY].
-     */
-    private fun handleAutoPlay(autoPlayMode: AutoPlayQualitySelectionMethod) {
-        if (hasNextEpisodeInfo) {
-            tvPlayerViewModel.fetchReleasesForNextEpisode(
-                seriesId = nextEpisodeSeriesId,
-                seasonNumber = nextEpisodeSeasonNumber,
-                episodeNumber = nextEpisodeEpisodeNumber,
-                seriesName = nextEpisodeSeriesName,
-                episodeName = nextEpisodeEpisodeName
-            )
-        } else {
-            tvPlayerViewModel.fetchNextEpisodeAndReleases(
-                seriesId = currentSeriesId,
-                currentSeasonNumber = currentSeasonNumber,
-                currentEpisodeNumber = currentEpisodeNumber
-            )
-        }
-
-        lifecycleScope.launch {
-            while (tvPlayerViewModel.isLoading.value) {
-                kotlinx.coroutines.delay(150)
-            }
-
-            val releases = tvPlayerViewModel.nextEpisodeReleases.value
-            val nextData = tvPlayerViewModel.nextEpisodeData.value
-
-            if (releases.isEmpty()) {
-                val errorMsg = tvPlayerViewModel.error.value
-                    ?: getString(R.string.next_episode_no_torrents)
-                Toast.makeText(this@LocalPlayerActivity, errorMsg, Toast.LENGTH_LONG).show()
-                return@launch
-            }
-
-            val selectedRelease = when (autoPlayMode) {
-                AutoPlayQualitySelectionMethod.BY_SEED_PEERS -> {
-                    releases.maxByOrNull { it.seeds + it.peers } ?: releases.first()
-                }
-                AutoPlayQualitySelectionMethod.BY_QUALITY -> {
-                    releases.maxByOrNull { qualityRank(it.title) } ?: releases.first()
-                }
-                else -> releases.first()
-            }
-
-            val targetSeriesId = nextData?.seriesId?.takeIf { it > 0 } ?: nextEpisodeSeriesId
-            val targetSeriesName = nextData?.seriesName?.takeIf { it.isNotBlank() } ?: nextEpisodeSeriesName
-            val targetSeason = nextData?.seasonNumber?.takeIf { it > 0 } ?: nextEpisodeSeasonNumber
-            val targetEpisode = nextData?.episodeNumber?.takeIf { it > 0 } ?: nextEpisodeEpisodeNumber
-            val targetEpName = nextData?.episodeName?.takeIf { it.isNotBlank() } ?: nextEpisodeEpisodeName
-
-            val toastMsg = getString(
-                R.string.next_episode_autoplay_toast,
-                targetSeason,
-                targetEpisode,
-                extractQualityLabel(selectedRelease.title)
-            )
-            Toast.makeText(this@LocalPlayerActivity, toastMsg, Toast.LENGTH_SHORT).show()
-
-            checkDiskSpaceAndDownload(
-                release = selectedRelease,
-                seriesId = targetSeriesId,
-                seriesName = targetSeriesName,
-                seasonNumber = targetSeason,
-                episodeNumber = targetEpisode,
-                episodeName = targetEpName
-            )
-        }
-    }
-
-    /**
-     * Assigns a numeric priority to release titles based on video resolution.
-     *
-     * @param title Torrent release title to inspect.
-     * @return Quality weight with higher numbers representing preferred resolution.
-     */
-    private fun qualityRank(title: String): Int {
-        val lower = title.lowercase()
-        return when {
-            lower.contains("2160p") || lower.contains("4k") -> 4
-            lower.contains("1080p") -> 3
-            lower.contains("720p") -> 2
-            lower.contains("hdtv") -> 1
-            else -> 0
-        }
-    }
-
-    /**
-     * Checks available storage space before proceeding with download and offers cleanup if low.
-     */
-    private fun checkDiskSpaceAndDownload(
-        release: EztvTorrent,
-        seriesId: Int,
-        seriesName: String,
-        seasonNumber: Int,
-        episodeNumber: Int,
-        episodeName: String
-    ) {
-        val stat = android.os.StatFs(filesDir.absolutePath)
-        val availableBytes = stat.availableBytes
-        val requiredBytes = 500L * 1024 * 1024 // 500 MB threshold
-
-        if (availableBytes < requiredBytes) {
-            playerDialogState = PlayerDialogState.InsufficientSpace(
-                release = release,
-                seriesId = seriesId,
-                seriesName = seriesName,
-                seasonNumber = seasonNumber,
-                episodeNumber = episodeNumber,
-                episodeName = episodeName,
-                onErase = {
-                    lifecycleScope.launch {
-                        try {
-                            val downloads = torrentDownloadDao.getAll()
-                            downloads.forEach { download ->
-                                File(filesDir, "torrent_downloads/${download.infoHash}").deleteRecursively()
-                                torrentDownloadDao.delete(download.infoHash)
-                            }
-                            val newStat = android.os.StatFs(filesDir.absolutePath)
-                            if (newStat.availableBytes >= requiredBytes) {
-                                executeDownload(
-                                    release = release,
-                                    seriesId = seriesId,
-                                    seriesName = seriesName,
-                                    seasonNumber = seasonNumber,
-                                    episodeNumber = episodeNumber,
-                                    episodeName = episodeName
-                                )
-                            } else {
-                                Toast.makeText(this@LocalPlayerActivity, "Not enough space available even after clearing saved torrents.", Toast.LENGTH_LONG).show()
-                            }
-                        } catch (e: Exception) {
-                            Toast.makeText(this@LocalPlayerActivity, "Failed to clear saved torrents: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                },
-                onDismiss = {
-                    playerDialogState = null
-                    playerDialogOverlay?.visibility = View.GONE
-                }
-            )
-            playerDialogOverlay?.visibility = View.VISIBLE
-            playerDialogOverlay?.requestFocus()
-        } else {
-            executeDownload(
-                release = release,
-                seriesId = seriesId,
-                seriesName = seriesName,
-                seasonNumber = seasonNumber,
-                episodeNumber = episodeNumber,
-                episodeName = episodeName
-            )
-        }
-    }
-
-    /**
-     * Launches the download of the chosen episode release and closes the finished player activity.
-     */
-    private fun executeDownload(
-        release: EztvTorrent,
-        seriesId: Int,
-        seriesName: String,
-        seasonNumber: Int,
-        episodeNumber: Int,
-        episodeName: String
-    ) {
-        lifecycleScope.launch {
-            try {
-                val result = tvPlayerViewModel.downloadEpisode(
-                    context = this@LocalPlayerActivity,
-                    release = release,
-                    seriesId = seriesId,
-                    seriesName = seriesName,
-                    seasonNumber = seasonNumber,
-                    episodeNumber = episodeNumber,
-                    episodeName = episodeName
-                )
-                if (result == TorrentLaunchResult.Started) {
-                    Toast.makeText(
-                        this@LocalPlayerActivity,
-                        getString(R.string.tv_episode_downloaded),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    finish()
-                } else if (result == TorrentLaunchResult.NoExternalClient) {
-                    Toast.makeText(
-                        this@LocalPlayerActivity,
-                        getString(R.string.toast_no_torrent_client),
-                        Toast.LENGTH_LONG
-                    ).show()
-                } else {
-                    Toast.makeText(
-                        this@LocalPlayerActivity,
-                        "Failed to start download: $result",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error starting next episode download", e)
-                Toast.makeText(
-                    this@LocalPlayerActivity,
-                    e.localizedMessage ?: "Download error",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
-    }
-
-    /**
-     * Extracts a standard quality label from a torrent release title.
-     *
-     * @param title Title containing resolution tags.
-     * @return Formatted quality descriptor.
-     */
-    private fun extractQualityLabel(title: String): String {
-        val lower = title.lowercase()
-        return when {
-            lower.contains("2160p") || lower.contains("4k") -> "2160p"
-            lower.contains("1080p") -> "1080p"
-            lower.contains("720p") -> "720p"
-            lower.contains("hdtv") -> "HDTV"
-            else -> "SD"
-        }
-    }
-
-    /**
-     * Adds audio, subtitle, and OpenSubtitles actions to Media3's own controller row.
-     *
-     * @param view Media3 player view whose native controller receives the actions.
-     */
-    private fun addControllerOptions(view: PlayerView) {
-        val controls = requireNotNull(
-            view.findViewById<LinearLayout>(androidx.media3.ui.R.id.exo_basic_controls)
-        ) { "Media3 basic controller controls are unavailable" }
-        val subtitleButton = requireNotNull(
-            view.findViewById<ImageButton>(androidx.media3.ui.R.id.exo_subtitle)
-        ) { "Media3 subtitle controller button is unavailable" }
-        subtitleButton.setOnClickListener { showSubtitleOptions() }
-        subtitleButton.isFocusable = true
-        applyTvFocusHighlight(subtitleButton)
-        val buttonStyle = androidx.media3.ui.R.style.ExoStyledControls_Button_Bottom
-        val subtitleButtonIndex = controls.indexOfChild(subtitleButton)
-
-        if (castEnabled) {
-            try {
-                val routeButton = MediaRouteButton(
-                    ContextThemeWrapper(this@LocalPlayerActivity, R.style.Theme_LaTorrentola_Cast)
-                ).apply {
-                    id = View.generateViewId()
-                    CastButtonFactory.setUpMediaRouteButton(this@LocalPlayerActivity, this)
-                }
-                val params = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.MATCH_PARENT
-                ).apply {
-                    gravity = Gravity.CENTER_VERTICAL
-                    marginStart = (16 * resources.displayMetrics.density).toInt()
-                    marginEnd = (16 * resources.displayMetrics.density).toInt()
-                }
-                controls.addView(routeButton, subtitleButtonIndex + 1, params)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to attach MediaRouteButton in controls", e)
-            }
-        }
-
-        listOf(
-            Triple(
-                R.drawable.ic_subtitle_style,
-                R.string.player_subtitle_style,
-                ::showSubtitleStyleOptions
-            ),
-            Triple(
-                R.drawable.ic_subtitles_search,
-                R.string.opensubtitles_search,
-                ::searchSubtitles
-            )
-        ).forEachIndexed { index, (icon, description, action) ->
-            val button = ImageButton(this, null, 0, buttonStyle).apply {
-                setImageResource(icon)
-                contentDescription = getString(description)
-                setOnClickListener {
-                    Log.i(TAG, "Player controller action clicked: ${getString(description)}")
-                    action()
-                }
-                isFocusable = true
-                isFocusableInTouchMode = true
-                id = View.generateViewId()
-            }
-            applyTvFocusHighlight(button)
-            if (icon == R.drawable.ic_subtitles_search) {
-                installDirectTouchActivation(button, description)
-                subtitleSearchButton = button
-                if (subtitleOperationInProgress) {
-                    updateSubtitleSearchButton(inProgress = true)
-                }
-            }
-            controls.addView(button, subtitleButtonIndex + index + 1)
-        }
-        listOf(
-            Triple(
-                androidx.media3.ui.R.drawable.exo_ic_audiotrack,
-                R.string.player_audio_tracks
-            ) { showTrackOptions(PlaybackTrackType.AUDIO) }
-        ).forEach { (icon, description, action) ->
-            val audioBtn = ImageButton(this, null, 0, buttonStyle).apply {
-                setImageResource(icon)
-                contentDescription = getString(description)
-                setOnClickListener { action() }
-                isFocusable = true
-                isFocusableInTouchMode = true
-                id = View.generateViewId()
-            }
-            applyTvFocusHighlight(audioBtn)
-            controls.addView(audioBtn)
-        }
-    }
-
-    /**
-     * Delivers one explicit click after a complete touch gesture on the OpenSubtitles control.
-     *
-     * @param button Search button receiving the touch gesture.
-     * @param description Resource identifying the action in diagnostics.
-     */
-    private fun installDirectTouchActivation(button: ImageButton, description: Int) {
-        var touchStartedOnButton = false
-        val touchSlop = ViewConfiguration.get(this).scaledTouchSlop.toFloat()
-        button.setOnTouchListener { target, event ->
-            when (event.actionMasked) {
-                android.view.MotionEvent.ACTION_DOWN -> {
-                    touchStartedOnButton = target.isEnabled
-                    target.isPressed = touchStartedOnButton
-                    true
-                }
-                android.view.MotionEvent.ACTION_MOVE -> {
-                    target.isPressed = touchStartedOnButton &&
-                        event.x >= -touchSlop && event.x <= target.width + touchSlop &&
-                        event.y >= -touchSlop && event.y <= target.height + touchSlop
-                    true
-                }
-                android.view.MotionEvent.ACTION_UP -> {
-                    val shouldClick = touchStartedOnButton && target.isEnabled &&
-                        event.x >= -touchSlop && event.x <= target.width + touchSlop &&
-                        event.y >= -touchSlop && event.y <= target.height + touchSlop
-                    touchStartedOnButton = false
-                    target.isPressed = false
-                    if (shouldClick) {
-                        Log.i(TAG, "Direct touch activated: ${getString(description)}")
-                        target.performClick()
-                    }
-                    true
-                }
-                android.view.MotionEvent.ACTION_CANCEL -> {
-                    touchStartedOnButton = false
-                    target.isPressed = false
-                    true
-                }
-                else -> false
-            }
-        }
-    }
-
-    /**
-     * Keeps the native CC control available even when a file has no embedded subtitles.
-     *
-     * @param view Media3 view whose controller hosts the subtitle actions.
-     */
-    private fun keepSubtitleOptionsAvailable(view: PlayerView) {
-        val button = requireNotNull(
-            view.findViewById<ImageButton>(androidx.media3.ui.R.id.exo_subtitle)
-        ) { "Media3 subtitle controller button is unavailable" }
-        button.visibility = View.VISIBLE
-        localPlayer?.addListener(
-            object : Player.Listener {
-                override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                    button.visibility = View.VISIBLE
-                    prepareSubtitleTrackIfNeeded(tracks)
-                }
-
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_READY) {
-                        prepareSubtitleTrackIfNeeded(localPlayer?.currentTracks)
-                    }
-                }
-            }
-        )
-    }
-
-    /**
-     * Loads the latest torrent-cached subtitle, or warms the OpenSubtitles session.
-     *
-     * @param tracks Current available playback tracks, or `null` before they are initialized.
-     */
-    private fun prepareSubtitleTrackIfNeeded(tracks: androidx.media3.common.Tracks?) {
-        val player = localPlayer ?: return
+    private fun prepareSubtitleTrackIfNeeded(tracks: Tracks?) {
+        val player = mediaController ?: return
         if (subtitleStartupCheckStarted || player.playbackState != Player.STATE_READY || tracks == null) {
             return
         }
-
         subtitleStartupCheckStarted = true
-        Log.i(TAG, "Checking torrent subtitle cache for available subtitles")
         lifecycleScope.launch {
             try {
                 val cachedSubtitle = openSubtitlesRepository.findLatestDownloaded(
                     torrentInfoHash.takeIf(String::isNotBlank)
                 )
-                if (cachedSubtitle != null) {
-                    Log.i(TAG, "Found saved subtitle for current torrent; attaching automatically")
-                    if (!subtitleOperationInProgress) attachSubtitle(cachedSubtitle)
+                if (cachedSubtitle != null && !subtitleOperationInProgress) {
+                    attachSubtitle(cachedSubtitle)
                 } else {
-                    Log.i(TAG, "No saved subtitle for current torrent; warming OpenSubtitles session")
                     openSubtitlesRepository.warmUp()
-                    Log.i(TAG, "OpenSubtitles session warm-up completed")
                 }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                Log.w(
-                    TAG,
-                    "OpenSubtitles session warm-up failed: ${error.javaClass.simpleName}, " +
-                        "message=${error.message}"
-                )
-            }
+            } catch (_: Exception) {}
         }
     }
 
-    /**
-     * Presents selectable audio or subtitle tracks available on the active playback target.
-     *
-     * @param type Track kind requested by the user.
-     */
-    private fun showTrackOptions(type: PlaybackTrackType) {
-        val options = availableTrackOptions(type)
-        val isSubtitle = type == PlaybackTrackType.SUBTITLE
-        val defaultLabel = getString(
-            if (isSubtitle) R.string.player_subtitles_off else R.string.player_audio_auto
-        )
-        if (options.isEmpty()) {
-            playerDialogState = PlayerDialogState.Message(
-                title = getString(if (isSubtitle) R.string.player_subtitle_tracks else R.string.player_audio_tracks),
-                message = getString(if (isSubtitle) R.string.player_no_subtitle_tracks else R.string.player_no_audio_tracks),
-                onDismiss = { playerDialogState = null }
-            )
-            playerDialogOverlay?.visibility = View.VISIBLE
-            playerDialogOverlay?.requestFocus()
-            return
-        }
-
-        val selectedIndex = options.indexOfFirst { option ->
-            if (option.castTrackId != null) {
-                castActiveTrackIds().contains(option.castTrackId)
-            } else {
-                option.isSelected
-            }
-        }.let { if (it < 0) 0 else it + 1 }
-        playerDialogState = PlayerDialogState.Tracks(
-            type = type,
-            title = getString(if (isSubtitle) R.string.player_subtitle_tracks else R.string.player_audio_tracks),
-            options = options,
-            selectedIndex = selectedIndex - 1,
-            onSelected = { option ->
-                if (castSessionActive) {
-                    selectCastTrack(type, option?.castTrackId)
-                } else {
-                    selectLocalTrack(type, option)
-                }
-                playerDialogState = null
-                playerDialogOverlay?.visibility = View.GONE
-            }
-        )
-        playerDialogOverlay?.visibility = View.VISIBLE
-        playerDialogOverlay?.requestFocus()
-    }
-
-    /** Shows embedded subtitle tracks from the native CC control. */
     private fun showSubtitleOptions() {
+        val controller = mediaController ?: return
         val options = availableTrackOptions(PlaybackTrackType.SUBTITLE)
-        val selectedTrackIndex = options.indexOfFirst(PlaybackTrackOption::isSelected)
-        val selectedIndex = if (selectedTrackIndex < 0) 0 else selectedTrackIndex + 1
+
+        val textDisabled = controller.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+        val anySelected = !textDisabled && options.any { it.isSelected }
+
+        val offOption = PlaybackTrackOption(
+            label = getString(R.string.player_subtitles_off),
+            group = null,
+            trackIndex = null,
+            castTrackId = null,
+            isSelected = textDisabled || !anySelected
+        )
+
+        val allOptions = listOf(offOption) + options
+        val selectedIndex = allOptions.indexOfFirst { it.isSelected }.let { if (it < 0) 0 else it }
+
         playerDialogState = PlayerDialogState.Tracks(
             type = PlaybackTrackType.SUBTITLE,
             title = getString(R.string.player_subtitle_tracks),
-            options = options,
-            selectedIndex = selectedIndex - 1,
-            onSelected = { option ->
-                if (castSessionActive) {
-                    selectCastTrack(PlaybackTrackType.SUBTITLE, option?.castTrackId)
-                } else {
-                    selectLocalTrack(PlaybackTrackType.SUBTITLE, option)
-                }
-                playerDialogState = null
-                playerDialogOverlay?.visibility = View.GONE
-            }
-        )
-        playerDialogOverlay?.visibility = View.VISIBLE
-        playerDialogOverlay?.requestFocus()
-    }
-
-    /** Presents text-size and system-caption styling options for local playback. */
-    private fun showSubtitleStyleOptions() {
-        val selectedIndex = when (subtitleTextSizeFraction) {
-            0.04f -> 1
-            0.067f -> 3
-            0.08f -> 4
-            else -> 0
-        }
-        playerDialogState = PlayerDialogState.SubtitleStyle(
+            options = allOptions,
             selectedIndex = selectedIndex,
-            onSelected = { fraction, applySystem ->
-                val subtitleView = playerView?.subtitleView
-                if (applySystem) {
-                    subtitleTextSizeFraction = SubtitleView.DEFAULT_TEXT_SIZE_FRACTION
-                    subtitleView?.setUserDefaultStyle()
-                    subtitleView?.setUserDefaultTextSize()
-                    subtitleView?.setApplyEmbeddedStyles(true)
-                } else {
-                    subtitleTextSizeFraction = fraction
-                    subtitleView?.setUserDefaultStyle()
-                    subtitleView?.setApplyEmbeddedStyles(false)
-                    subtitleView?.setFractionalTextSize(subtitleTextSizeFraction)
-                }
+            onSelected = { option ->
+                selectTrack(PlaybackTrackType.SUBTITLE, option)
                 playerDialogState = null
-                playerDialogOverlay?.visibility = View.GONE
             }
         )
-        playerDialogOverlay?.visibility = View.VISIBLE
-        playerDialogOverlay?.requestFocus()
     }
 
-    /**
-     * Returns local Media3 or Cast receiver tracks for the selected track type.
-     *
-     * @param type Requested audio or subtitle track type.
-     * @return Currently available selectable tracks.
-     */
-    private fun availableTrackOptions(type: PlaybackTrackType): List<PlaybackTrackOption> =
-        if (castSessionActive) castTrackOptions(type) else localTrackOptions(type)
+    private fun showSubtitleStyleOptions() {
+        val fontResolver = createFontFamilyResolver(this)
 
-    /**
-     * Returns supported local Media3 tracks for the selected track type.
-     *
-     * @param type Requested audio or subtitle track type.
-     * @return Supported track groups and individual track indices.
-     */
-    private fun localTrackOptions(type: PlaybackTrackType): List<PlaybackTrackOption> {
-        val media3Type = type.toMedia3TrackType()
-        return localPlayer?.currentTracks
-            ?.groups
-            .orEmpty()
+        val initialFont = preferenceManager.getSubtitleFontName()
+        val initialSize = preferenceManager.getSubtitleSizeFraction()
+        val initialFg = preferenceManager.getSubtitleForegroundColor()
+        val initialBg = preferenceManager.getSubtitleBackgroundColor()
+        val initialEdge = preferenceManager.getSubtitleEdgeType()
+        val initialOffset = preferenceManager.getSubtitleBottomOffset()
+
+        fun applyStyle(fontName: String, sizeFraction: Float, fg: Int, bg: Int, edge: Int, offset: Float) {
+            val fontFamily = FontFamily(Font(googleFont = GoogleFont(fontName), fontProvider = fontProvider))
+            val typeface = fontResolver.resolve(fontFamily).value as? android.graphics.Typeface
+            customCaptionStyle = CaptionStyleCompat(
+                fg,
+                bg,
+                android.graphics.Color.TRANSPARENT,
+                edge,
+                android.graphics.Color.BLACK,
+                typeface
+            )
+            customSubtitleSizeFraction = sizeFraction
+            customSubtitleBottomOffset = offset
+        }
+
+        playerDialogState = PlayerDialogState.AdvancedSubtitleStyle(
+            currentFontName = initialFont,
+            currentFontSizeFraction = initialSize,
+            currentForegroundColor = initialFg,
+            currentBackgroundColor = initialBg,
+            currentEdgeType = initialEdge,
+            currentBottomOffset = initialOffset,
+            onLiveChange = { fontName, sizeFraction, fg, bg, edge, offset ->
+                applyStyle(fontName, sizeFraction, fg, bg, edge, offset)
+            },
+            onSave = { fontName, sizeFraction, fg, bg, edge, offset ->
+                preferenceManager.setSubtitleFontName(fontName)
+                preferenceManager.setSubtitleSizeFraction(sizeFraction)
+                preferenceManager.setSubtitleForegroundColor(fg)
+                preferenceManager.setSubtitleBackgroundColor(bg)
+                preferenceManager.setSubtitleEdgeType(edge)
+                preferenceManager.setSubtitleBottomOffset(offset)
+                applyStyle(fontName, sizeFraction, fg, bg, edge, offset)
+                playerDialogState = null
+            },
+            onCancel = {
+                applyStyle(initialFont, initialSize, initialFg, initialBg, initialEdge, initialOffset)
+                playerDialogState = null
+            }
+        )
+    }
+
+    private fun trackLabel(format: androidx.media3.common.Format, type: PlaybackTrackType): String {
+        val language = format.language?.takeIf(String::isNotBlank)?.let { lang ->
+            val locale = Locale.forLanguageTag(lang)
+            val name = locale.getDisplayName(Locale.getDefault()).replaceFirstChar { it.uppercase() }
+            val flag = when (lang.lowercase(Locale.ROOT)) {
+                "en", "eng" -> "🇺🇸"
+                "es", "spa" -> "🇦🇷"
+                "pt", "por", "pob" -> "🇧🇷"
+                "fr", "fre", "fra" -> "🇫🇷"
+                "de", "ger", "deu" -> "🇩🇪"
+                "it", "ita" -> "🇮🇹"
+                else -> ""
+            }
+            if (flag.isNotBlank()) "$flag $name" else name
+        }
+
+        val label = format.label?.takeIf(String::isNotBlank)
+        val id = format.id?.takeIf(String::isNotBlank)
+
+        val parts = listOfNotNull(label ?: id, language).distinct()
+        return if (parts.isNotEmpty()) {
+            parts.joinToString(" · ")
+        } else {
+            format.sampleMimeType ?: getString(R.string.player_track_unknown)
+        }
+    }
+
+    private fun availableTrackOptions(type: PlaybackTrackType): List<PlaybackTrackOption> {
+        val controller = mediaController ?: return emptyList()
+        val media3Type = when (type) {
+            PlaybackTrackType.AUDIO -> C.TRACK_TYPE_AUDIO
+            PlaybackTrackType.SUBTITLE -> C.TRACK_TYPE_TEXT
+        }
+        return controller.currentTracks.groups
             .filter { it.type == media3Type }
             .flatMap { group ->
-                (0 until group.length)
-                    .filter(group::isTrackSupported)
-                    .map { index ->
-                        PlaybackTrackOption(
-                            label = trackLabel(group.getTrackFormat(index), type),
-                            group = group.mediaTrackGroup,
-                            trackIndex = index,
-                            castTrackId = null,
-                            isSelected = group.isTrackSelected(index)
-                        )
-                    }
+                (0 until group.length).map { index ->
+                    val format = group.getTrackFormat(index)
+                    PlaybackTrackOption(
+                        label = trackLabel(format, type),
+                        group = group.mediaTrackGroup,
+                        trackIndex = index,
+                        castTrackId = null,
+                        isSelected = group.isTrackSelected(index)
+                    )
+                }
             }
     }
 
-    /**
-     * Returns tracks advertised by the active Cast receiver.
-     *
-     * @param type Requested audio or subtitle track type.
-     * @return Receiver tracks supported by the target.
-     */
-    private fun castTrackOptions(type: PlaybackTrackType): List<PlaybackTrackOption> {
-        val receiverType = when (type) {
-            PlaybackTrackType.AUDIO -> GoogleMediaTrack.TYPE_AUDIO
-            PlaybackTrackType.SUBTITLE -> GoogleMediaTrack.TYPE_TEXT
+    private fun selectTrack(type: PlaybackTrackType, option: PlaybackTrackOption?) {
+        val controller = mediaController ?: return
+        val media3Type = when (type) {
+            PlaybackTrackType.AUDIO -> C.TRACK_TYPE_AUDIO
+            PlaybackTrackType.SUBTITLE -> C.TRACK_TYPE_TEXT
         }
-        val castContext = try {
-            CastContext.getSharedInstance(this)
-        } catch (_: Throwable) {
-            null
-        } ?: return emptyList()
-        return castContext
-            .sessionManager
-            .currentCastSession
-            ?.remoteMediaClient
-            ?.mediaInfo
-            ?.mediaTracks
-            .orEmpty()
-            .filter { it.type == receiverType }
-            .map { track ->
-                PlaybackTrackOption(
-                    label = track.name?.takeIf(String::isNotBlank)
-                        ?: track.language?.let(::languageLabel)
-                        ?: getString(R.string.player_track_number, track.id),
-                    group = null,
-                    trackIndex = null,
-                    castTrackId = track.id,
-                    isSelected = castActiveTrackIds().contains(track.id)
-                )
-            }
-    }
-
-    /**
-     * Applies a selected local track, or restores the player's automatic selection.
-     *
-     * @param type Track kind to update.
-     * @param option Selected track, or `null` for automatic audio / subtitles off.
-     */
-    private fun selectLocalTrack(type: PlaybackTrackType, option: PlaybackTrackOption?) {
-        val player = localPlayer ?: return
-        val trackType = type.toMedia3TrackType()
-        val parameters = player.trackSelectionParameters.buildUpon()
-            .clearOverridesOfType(trackType)
-            .setTrackTypeDisabled(trackType, type == PlaybackTrackType.SUBTITLE && option == null)
-        if (option != null) {
-            val group = option.group ?: return
-            val trackIndex = option.trackIndex ?: return
-            player.trackSelectionParameters = parameters
-                .setTrackTypeDisabled(trackType, false)
-                .setOverrideForType(TrackSelectionOverride(group, listOf(trackIndex)))
+        val parameters = controller.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(media3Type)
+            .setTrackTypeDisabled(media3Type, type == PlaybackTrackType.SUBTITLE && option == null)
+        if (option?.group != null && option.trackIndex != null) {
+            controller.trackSelectionParameters = parameters
+                .setOverrideForType(TrackSelectionOverride(option.group, listOf(option.trackIndex)))
                 .build()
         } else {
-            player.trackSelectionParameters = parameters.build()
+            controller.trackSelectionParameters = parameters.build()
         }
     }
 
-    /**
-     * Updates the active receiver track while preserving active tracks of the other type.
-     *
-     * @param type Track kind to update.
-     * @param selectedTrackId Receiver track to activate, or `null` for auto/off.
-     */
-    private fun selectCastTrack(type: PlaybackTrackType, selectedTrackId: Long?) {
-        val castContext = try {
-            CastContext.getSharedInstance(this)
-        } catch (_: Throwable) {
-            null
-        } ?: return
-        val remoteClient = castContext
-            .sessionManager
-            .currentCastSession
-            ?.remoteMediaClient
-            ?: return
-        val receiverType = when (type) {
-            PlaybackTrackType.AUDIO -> GoogleMediaTrack.TYPE_AUDIO
-            PlaybackTrackType.SUBTITLE -> GoogleMediaTrack.TYPE_TEXT
-        }
-        val tracks = remoteClient.mediaInfo?.mediaTracks.orEmpty()
-        val retainedTrackIds = castActiveTrackIds().filter { activeId ->
-            tracks.none { it.id == activeId && it.type == receiverType }
-        }
-        val selectedTrackIds = buildList {
-            addAll(retainedTrackIds)
-            selectedTrackId?.let(::add)
-        }
-        remoteClient.setActiveMediaTracks(selectedTrackIds.toLongArray())
-    }
-
-    /** Returns active receiver track identifiers, if a Cast media status is available. */
-    private fun castActiveTrackIds(): List<Long> {
-        val castContext = try {
-            CastContext.getSharedInstance(this)
-        } catch (_: Throwable) {
-            null
-        } ?: return emptyList()
-        return castContext
-            .sessionManager
-            .currentCastSession
-            ?.remoteMediaClient
-            ?.mediaStatus
-            ?.activeTrackIds
-            ?.toList()
-            .orEmpty()
-    }
-
-    /**
-     * Creates a readable language/format label for an audio or subtitle format.
-     *
-     * @param format Media3 format metadata.
-     * @param type Track kind for extra audio channel details.
-     * @return Track label shown to the user.
-     */
-    private fun trackLabel(format: androidx.media3.common.Format, type: PlaybackTrackType): String {
-        val language = format.language?.let(::languageLabel)
-        val label = format.label?.takeIf(String::isNotBlank)
-        val channels = if (type == PlaybackTrackType.AUDIO && format.channelCount > 0) {
-            getString(R.string.player_audio_channels, format.channelCount)
-        } else {
-            null
-        }
-        return listOfNotNull(label, language, channels)
-            .distinct()
-            .joinToString(" · ")
-            .ifBlank { format.sampleMimeType ?: getString(R.string.player_track_unknown) }
-    }
-
-    /**
-     * Converts a language tag to a localized display name.
-     *
-     * @param language BCP-47 language code.
-     * @return Localized language name or the original code.
-     */
-    private fun languageLabel(language: String): String =
-        Locale.forLanguageTag(language).getDisplayName(Locale.getDefault())
-            .takeIf(String::isNotBlank)
-            ?: language
-
-    /** Maps the in-player track category to the corresponding Media3 track type. */
-    private fun PlaybackTrackType.toMedia3TrackType(): Int = when (this) {
-        PlaybackTrackType.AUDIO -> C.TRACK_TYPE_AUDIO
-        PlaybackTrackType.SUBTITLE -> C.TRACK_TYPE_TEXT
-    }
-
-    /**
-     * Animates and disables the OpenSubtitles search control while a request is unresolved.
-     *
-     * @param inProgress Whether login, search, or subtitle download is still active.
-     */
-    private fun updateSubtitleSearchButton(inProgress: Boolean) {
-        subtitleOperationInProgress = inProgress
-        val button = subtitleSearchButton ?: return
-        button.isEnabled = !inProgress
-        if (inProgress) {
-            button.contentDescription = getString(R.string.opensubtitles_searching)
-            subtitleSearchAnimator = ObjectAnimator.ofFloat(button, View.ROTATION, 0f, 360f).apply {
-                duration = 1_000L
-                repeatCount = ObjectAnimator.INFINITE
-                interpolator = LinearInterpolator()
-                start()
-            }
-        } else {
-            subtitleSearchAnimator?.cancel()
-            subtitleSearchAnimator = null
-            button.rotation = 0f
-            button.contentDescription = getString(R.string.opensubtitles_search)
-        }
-    }
-
-    /** Searches OpenSubtitles once per user action and presents matching releases. */
     private fun searchSubtitles() {
-        if (subtitleOperationInProgress) {
-            Log.w(TAG, "OpenSubtitles search tap ignored: an operation is already active")
-            return
-        }
-        Log.i(TAG, "OpenSubtitles search tapped")
-        updateSubtitleSearchButton(inProgress = true)
-        val progressDialog = showSubtitleProgressDialog(R.string.opensubtitles_searching)
+        if (subtitleOperationInProgress) return
+        subtitleOperationInProgress = true
+        playerDialogState = PlayerDialogState.Progress(
+            title = getString(R.string.opensubtitles_search),
+            message = getString(R.string.opensubtitles_searching)
+        )
         lifecycleScope.launch {
             var results: List<OpenSubtitleResult>? = null
             var message: String? = null
@@ -1911,7 +881,6 @@ class LocalPlayerActivity : AppCompatActivity() {
                 val isEpisode = EPISODE_PATTERN.containsMatchIn(mediaTitle) || currentSeasonNumber > 0
                 val mediaType = if (isEpisode) "episode" else "movie"
 
-                // First try searching by IMDb ID for maximum accuracy
                 var imdbResults: List<OpenSubtitleResult>? = null
                 try {
                     if (currentSeriesId > 0 && isEpisode && currentSeasonNumber > 0 && currentEpisodeNumber > 0) {
@@ -1935,9 +904,7 @@ class LocalPlayerActivity : AppCompatActivity() {
 
                 if (!imdbResults.isNullOrEmpty()) {
                     results = imdbResults
-                    Log.i(TAG, "OpenSubtitles IMDb search succeeded: resultCount=${imdbResults.size}")
                 } else {
-                    // Fallback to text query search
                     val cleanTitle = if (isEpisode) {
                         mediaTitle.replace(EPISODE_PATTERN, "").trim()
                     } else {
@@ -1945,478 +912,128 @@ class LocalPlayerActivity : AppCompatActivity() {
                     }
                     val queryTitle = cleanTitle.ifBlank { mediaTitle }
 
-                    val foundResults = openSubtitlesRepository.search(
+                    results = openSubtitlesRepository.search(
                         query = queryTitle,
                         seasonNumber = currentSeasonNumber.takeIf { it > 0 },
                         episodeNumber = currentEpisodeNumber.takeIf { it > 0 },
                         type = mediaType
                     )
-                    results = foundResults
-                    Log.i(TAG, "OpenSubtitles query search finished: resultCount=${foundResults.size}")
                 }
 
                 if (results.isNullOrEmpty()) {
                     message = getString(R.string.opensubtitles_no_results)
                 }
-            } catch (error: CancellationException) {
-                throw error
             } catch (error: OpenSubtitlesException) {
-                Log.e(
-                    TAG,
-                    "OpenSubtitles search failed: code=${error.code}, httpStatus=${error.httpStatus}, " +
-                        "message=${error.message}"
-                )
-                message = error.message ?: getString(R.string.opensubtitles_request_failed)
-            } catch (error: IOException) {
-                Log.e(TAG, "OpenSubtitles search I/O failure: ${error.javaClass.simpleName}")
-                message = error.message ?: getString(R.string.opensubtitles_request_failed)
-            } catch (error: IllegalArgumentException) {
-                Log.e(TAG, "OpenSubtitles search input failure: ${error.javaClass.simpleName}")
                 message = error.message ?: getString(R.string.opensubtitles_request_failed)
             } catch (error: Exception) {
-                Log.e(TAG, "Unexpected OpenSubtitles search failure: ${error.javaClass.simpleName}")
                 message = getString(R.string.opensubtitles_request_failed)
             } finally {
-                progressDialog?.dismiss()
-                updateSubtitleSearchButton(inProgress = false)
+                subtitleOperationInProgress = false
+            }
+
+            if (!results.isNullOrEmpty()) {
+                val currentFile = intent.getStringExtra(EXTRA_FILE_PATH)?.let { File(it).name }
+                    ?.takeIf { it.isNotBlank() } ?: mediaTitle
+
+                val deviceLang = Locale.getDefault().language.lowercase(Locale.ROOT)
+                val sortedResults = results.sortedByDescending { result ->
+                    val lang = result.language.lowercase(Locale.ROOT)
+                    lang == deviceLang ||
+                            (deviceLang == "es" && lang == "spa") ||
+                            (deviceLang == "en" && lang == "eng") ||
+                            (deviceLang == "pt" && (lang == "por" || lang == "pob"))
+                }
+
+                playerDialogState = PlayerDialogState.SubtitleResults(
+                    results = sortedResults,
+                    currentFileName = currentFile,
+                    onSelected = { downloadSubtitle(it) }
+                )
+            } else if (message != null) {
+                playerDialogState = PlayerDialogState.Message(
+                    title = getString(R.string.opensubtitles_search),
+                    message = message,
+                    onDismiss = { playerDialogState = null }
+                )
+            } else {
                 playerDialogState = null
-                playerDialogOverlay?.visibility = View.GONE
             }
-            results?.takeIf { it.isNotEmpty() }?.let(::showSubtitleResults)
-            message?.let(::showSubtitleMessage)
         }
     }
 
-    /**
-     * Shows the matching subtitle releases as an accessible selectable list.
-     *
-     * @param results OpenSubtitles results for this media title.
-     */
-    private fun showSubtitleResults(results: List<OpenSubtitleResult>) {
-        Log.i(TAG, "Showing OpenSubtitles list: resultCount=${results.size}")
-        val currentFile = intent.getStringExtra(EXTRA_FILE_PATH)?.let { File(it).name }
-            ?.takeIf { it.isNotBlank() } ?: mediaTitle
-            
-        val deviceLang = java.util.Locale.getDefault().language.lowercase(java.util.Locale.ROOT)
-        val sortedResults = results.sortedByDescending { result ->
-            val lang = result.language.lowercase(java.util.Locale.ROOT)
-            lang == deviceLang || 
-            (deviceLang == "es" && lang == "spa") ||
-            (deviceLang == "en" && lang == "eng") ||
-            (deviceLang == "pt" && (lang == "por" || lang == "pob"))
-        }
-
-        playerDialogState = PlayerDialogState.SubtitleResults(
-            results = sortedResults,
-            currentFileName = currentFile,
-            onSelected = { result ->
-                downloadSubtitle(result)
-            }
-        )
-        playerDialogOverlay?.visibility = View.VISIBLE
-        playerDialogOverlay?.requestFocus()
-    }
-
-    /**
-     * Downloads a selected subtitle and attaches it to local and Cast playback.
-     *
-     * @param result Subtitle result selected from the OpenSubtitles list.
-     */
     private fun downloadSubtitle(result: OpenSubtitleResult) {
-        if (subtitleOperationInProgress) {
-            Log.w(TAG, "OpenSubtitles download tap ignored: an operation is already active")
-            return
-        }
-        Log.i(TAG, "OpenSubtitles subtitle selected: language=${result.language}, fileId=${result.fileId}")
-        updateSubtitleSearchButton(inProgress = true)
-        val progressDialog = showSubtitleProgressDialog(R.string.opensubtitles_downloading)
+        if (subtitleOperationInProgress) return
+        subtitleOperationInProgress = true
+        playerDialogState = PlayerDialogState.Progress(
+            title = getString(R.string.opensubtitles_search),
+            message = getString(R.string.opensubtitles_downloading)
+        )
         lifecycleScope.launch {
             var errorMessage: String? = null
             try {
-                val subtitle = openSubtitlesRepository.download(
-                    result,
-                    torrentInfoHash = torrentInfoHash.takeIf(String::isNotBlank)
-                )
+                val subtitle = openSubtitlesRepository.download(result, torrentInfoHash)
                 attachSubtitle(subtitle)
-            } catch (error: CancellationException) {
-                throw error
+                playerDialogState = null
             } catch (error: OpenSubtitlesException) {
-                Log.e(
-                    TAG,
-                    "OpenSubtitles download failed: code=${error.code}, httpStatus=${error.httpStatus}, " +
-                        "message=${error.message}"
-                )
-                errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
-            } catch (error: IOException) {
-                Log.e(TAG, "OpenSubtitles download I/O failure: ${error.javaClass.simpleName}")
-                errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
-            } catch (error: IllegalStateException) {
-                Log.e(TAG, "OpenSubtitles playback setup failure: ${error.javaClass.simpleName}")
-                errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
-            } catch (error: IllegalArgumentException) {
-                Log.e(TAG, "OpenSubtitles download argument failure: ${error.javaClass.simpleName}")
                 errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
             } catch (error: Exception) {
-                Log.e(TAG, "Unexpected OpenSubtitles download failure: ${error.javaClass.simpleName}")
                 errorMessage = getString(R.string.opensubtitles_download_failed)
             } finally {
-                progressDialog?.dismiss()
-                updateSubtitleSearchButton(inProgress = false)
-                playerDialogState = null
-                playerDialogOverlay?.visibility = View.GONE
+                subtitleOperationInProgress = false
             }
-            errorMessage?.let(::showSubtitleMessage)
+
+            if (errorMessage != null) {
+                playerDialogState = PlayerDialogState.Message(
+                    title = getString(R.string.opensubtitles_search),
+                    message = errorMessage,
+                    onDismiss = { playerDialogState = null }
+                )
+            }
         }
     }
 
-    /**
-     * Adds a saved WebVTT subtitle to the current local or Cast playback item.
-     *
-     * @param subtitle Cached or newly downloaded subtitle to activate.
-     */
     private fun attachSubtitle(subtitle: DownloadedSubtitle) {
+        val controller = mediaController ?: return
         val localUri = Uri.fromFile(subtitle.file)
-        val castUri = if (castEnabled) {
-            val server = VerifiedTorrentHttpServer(subtitle.file, subtitle.file.length()) { _, _ -> true }
-            server.startServer()
-            try {
-                server.lanUrl().also { SubtitleServerRegistry.retain(server) }
-            } catch (error: IllegalStateException) {
-                server.stop()
-                throw error
-            }
-        } else {
-            null
-        }
-        if (castUri != null) castSubtitleUrls[localUri.toString()] = castUri
+        val displayLabel = subtitle.label.ifBlank { "OpenSubtitles (${subtitle.language.uppercase(Locale.ROOT)})" }
         val subtitleConfiguration = MediaItem.SubtitleConfiguration.Builder(localUri)
             .setMimeType(MimeTypes.TEXT_VTT)
-            .setLanguage(toLanguageTag(subtitle.language))
-            .setLabel(subtitle.label)
+            .setLanguage(subtitle.language)
+            .setLabel(displayLabel)
             .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
             .setRoleFlags(C.ROLE_FLAG_CAPTION)
             .build()
-        val updatedItem = requireNotNull(currentMediaItem)
-            .buildUpon()
+
+        val item = currentMediaItem ?: return
+        val currentPosition = controller.currentPosition.coerceAtLeast(0L)
+        val shouldPlay = controller.playWhenReady
+
+        val updatedItem = item.buildUpon()
             .setSubtitleConfigurations(listOf(subtitleConfiguration))
             .build()
         currentMediaItem = updatedItem
-        val player = requireNotNull(activePlayer)
-        val currentPosition = player.currentPosition
-        val wasPlaying = player.playWhenReady
-        player.setMediaItem(updatedItem, currentPosition)
-        player.prepare()
-        player.playWhenReady = wasPlaying
-        Log.i(TAG, "OpenSubtitles subtitle attached to playback")
-        Toast.makeText(this, R.string.opensubtitles_loaded, Toast.LENGTH_SHORT).show()
-    }
 
-    /**
-     * Shows a non-cancelable progress dialog sized for the current form factor.
-     *
-     * @param message Resource describing the active subtitle operation.
-     * @return Visible progress dialog dismissed when the operation completes.
-     */
-    private fun showSubtitleProgressDialog(message: Int): AlertDialog? {
-        val msgString = getString(message)
-        playerDialogState = PlayerDialogState.Progress(
-            title = getString(R.string.opensubtitles_title),
-            message = msgString
-        )
-        playerDialogOverlay?.visibility = View.VISIBLE
-        playerDialogOverlay?.requestFocus()
-        return null
-    }
+        controller.setMediaItem(updatedItem, currentPosition)
+        controller.prepare()
+        controller.playWhenReady = shouldPlay
 
-    private fun showSubtitleMessage(message: String) {
-        playerDialogState = PlayerDialogState.Message(
-            title = getString(R.string.opensubtitles_title),
-            message = message,
-            onDismiss = { playerDialogState = null }
-        )
-        playerDialogOverlay?.visibility = View.VISIBLE
-        playerDialogOverlay?.requestFocus()
-    }
-
-    /**
-     * Sizes subtitle dialogs for touch screens and viewing-distance layouts.
-     *
-     * @param dialog Subtitle dialog to show.
-     */
-    private fun showAdaptiveDialog(dialog: AlertDialog) {
-        dialog.setOnShowListener {
-            val widthFraction = if (isTvDevice()) 0.72f else 0.92f
-            val width = (resources.displayMetrics.widthPixels * widthFraction).toInt()
-            dialog.window?.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-        dialog.show()
-    }
-
-    /**
-     * Creates the unified local/Cast player, keeping local playback available if Cast is unavailable.
-     *
-     * @param local Local ExoPlayer used when no receiver session is active.
-     * @return Configured Cast player, or `null` if Cast services are unavailable.
-     */
-    @Suppress("DEPRECATION")
-    private fun setupCastAsync() {
-        if (isTvDevice() || isFinishing || isDestroyed) return
-        Log.d(TAG, "DEBUG CAST: setupCastAsync called")
-        try {
-            val mainExecutor = ContextCompat.getMainExecutor(this)
-            CastContext.getSharedInstance(applicationContext, mainExecutor)
-                .addOnSuccessListener { castContext ->
-                    Log.d(TAG, "DEBUG CAST: CastContext onSuccess listener triggered, castContext=$castContext")
-                    if (isFinishing || isDestroyed) return@addOnSuccessListener
-                    try {
-                        val remotePlayer = CastPlayer(
-                            castContext,
-                            castUrlConverter(castStreamUrl, localStreamUrl)
-                        )
-                        castPlayer = remotePlayer
-                        remotePlayer.setSessionAvailabilityListener(
-                            object : SessionAvailabilityListener {
-                                override fun onCastSessionAvailable() {
-                                    switchToCastPlayer()
-                                }
-
-                                override fun onCastSessionUnavailable() {
-                                    switchToLocalPlayer()
-                                }
-                            }
-                        )
-                        if (remotePlayer.isCastSessionAvailable()) {
-                            switchToCastPlayer()
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "DEBUG CAST: CastPlayer setup failed: ${e.javaClass.simpleName} - ${e.message}", e)
-                    }
-                }
-                .addOnFailureListener { e ->
-                    Log.e(TAG, "DEBUG CAST: CastContext initialization failed asynchronously: ${e.javaClass.simpleName} - ${e.message}", e)
-                }
-        } catch (e: Exception) {
-            Log.e(TAG, "CastContext.getSharedInstance call failed", e)
-        }
-    }
-
-    /** Transfers the current local playback item and position to an available Cast receiver. */
-    private fun switchToCastPlayer() {
-        val local = localPlayer ?: return
-        val remote = castPlayer ?: return
-        val view = playerView ?: return
-        val item = currentMediaItem ?: return
-        val position = local.currentPosition
-        val shouldPlay = local.playWhenReady
-        local.playWhenReady = false
-        remote.setMediaItem(item, position)
-        remote.prepare()
-        remote.playWhenReady = shouldPlay
-        activePlayer = remote
-        view.player = remote
-        castSessionActive = true
-        observePlaybackForScreenAwake(remote)
-    }
-
-    /** Returns playback to the local player when the receiver session ends. */
-    private fun switchToLocalPlayer() {
-        val remote = castPlayer ?: return
-        val local = localPlayer ?: return
-        val view = playerView ?: return
-        val item = currentMediaItem ?: return
-        val position = remote.currentPosition.coerceAtLeast(0L)
-        val shouldPlay = remote.playWhenReady
-        local.setMediaItem(item, position)
-        local.prepare()
-        local.playWhenReady = shouldPlay
-        activePlayer = local
-        view.player = local
-        castSessionActive = false
-        observePlaybackForScreenAwake(local)
-    }
-
-    /**
-     * Keeps Android TV out of Ambient mode while playback is active, including buffering.
-     *
-     * @param player Current local or Cast playback target.
-     */
-    private fun observePlaybackForScreenAwake(player: Player) {
-        screenAwakePlayer?.let { observed ->
-            screenAwakeListener?.let(observed::removeListener)
-        }
-        screenAwakePlayer = player
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                updateScreenAwakeState(player)
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                updateScreenAwakeState(player)
-            }
-
-            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-                updateScreenAwakeState(player)
-            }
-        }
-        screenAwakeListener = listener
-        player.addListener(listener)
-        updateScreenAwakeState(player)
-    }
-
-    /**
-     * Applies the TV keep-screen-on flag only while the current playback target is active.
-     *
-     * @param player Player whose state determines whether the screen should stay awake.
-     */
-    private fun updateScreenAwakeState(player: Player) {
-        if (!isTvDevice() || player !== activePlayer || player !== screenAwakePlayer) return
-        val shouldKeepScreenAwake =
-            player.playWhenReady &&
-                player.playbackState != Player.STATE_IDLE &&
-                player.playbackState != Player.STATE_ENDED
-        if (shouldKeepScreenAwake) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } else {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-    }
-
-    /**
-     * Maps common OpenSubtitles ISO-639-2 codes to BCP-47 tags understood by playback engines.
-     *
-     * @param language OpenSubtitles language code.
-     * @return BCP-47 language tag used by Media3 and Cast.
-     */
-    private fun toLanguageTag(language: String): String {
-        val code = when (language.lowercase(Locale.ROOT)) {
-            "eng" -> "en"
-            "spa" -> "es"
-            "fra", "fre" -> "fr"
-            "deu", "ger" -> "de"
-            "ita" -> "it"
-            "por" -> "pt"
-            "jpn" -> "ja"
-            "kor" -> "ko"
-            "rus" -> "ru"
-            "zho", "chi" -> "zh"
-            else -> language.lowercase(Locale.ROOT)
-        }
-        return Locale.forLanguageTag(code).toLanguageTag()
-    }
-
-    /**
-     * Converts app-local playback items into receiver-reachable Cast media and subtitle tracks.
-     *
-     * @param castUrl Receiver-reachable URL for the torrent media stream.
-     * @param localUrl Loopback URL for local playback when a Cast session ends.
-     * @return Media3 converter that maps downloaded subtitle tracks to their LAN URLs.
-     */
-    @androidx.annotation.OptIn(UnstableApi::class)
-    private fun castUrlConverter(castUrl: String, localUrl: String): MediaItemConverter {
-        val delegate = DefaultMediaItemConverter()
-        return object : MediaItemConverter {
-            override fun toMediaQueueItem(mediaItem: MediaItem): MediaQueueItem {
-                val remoteItem = mediaItem.buildUpon().setUri(Uri.parse(castUrl)).build()
-                val defaultItem = delegate.toMediaQueueItem(remoteItem)
-                val defaultMedia = requireNotNull(defaultItem.media)
-                val tracks = remoteItem.localConfiguration?.subtitleConfigurations
-                    .orEmpty()
-                    .mapIndexed { index, subtitle ->
-                        MediaTrack.Builder((index + 1).toLong(), MediaTrack.TYPE_TEXT)
-                            .setContentId(
-                                castSubtitleUrls[subtitle.uri.toString()] ?: subtitle.uri.toString()
-                            )
-                            .setContentType(subtitle.mimeType ?: MimeTypes.TEXT_VTT)
-                            .setName(subtitle.label ?: subtitle.language.orEmpty())
-                            .setLanguage(subtitle.language.orEmpty())
-                            .setSubtype(MediaTrack.SUBTYPE_SUBTITLES)
-                            .build()
-                    }
-                val metadata = CastMetadata(CastMetadata.MEDIA_TYPE_MOVIE).apply {
-                    mediaItem.mediaMetadata.title?.toString()?.let {
-                        putString(CastMetadata.KEY_TITLE, it)
-                    }
-                }
-                val mediaInfo = MediaInfo.Builder(castUrl)
-                    .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
-                    .setContentType(remoteItem.localConfiguration?.mimeType ?: MimeTypes.VIDEO_UNKNOWN)
-                    .setMetadata(metadata)
-                    .setMediaTracks(tracks)
-                    .setCustomData(defaultMedia.customData)
-                    .build()
-                val queueItemBuilder = MediaQueueItem.Builder(mediaInfo)
-                if (tracks.isNotEmpty()) {
-                    queueItemBuilder.setActiveTrackIds(longArrayOf(tracks.first().id))
-                }
-                return queueItemBuilder.build()
-            }
-
-            override fun toMediaItem(mediaQueueItem: MediaQueueItem): MediaItem =
-                delegate.toMediaItem(mediaQueueItem)
-                    .buildUpon()
-                    .setUri(Uri.parse(localUrl))
-                    .build()
-        }
-    }
-
-    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
-        val playerView = playerView ?: return super.onKeyDown(keyCode, event)
-        when (keyCode) {
-            android.view.KeyEvent.KEYCODE_DPAD_CENTER,
-            android.view.KeyEvent.KEYCODE_ENTER,
-            android.view.KeyEvent.KEYCODE_SPACE,
-            android.view.KeyEvent.KEYCODE_NUMPAD_ENTER,
-            android.view.KeyEvent.KEYCODE_DPAD_UP,
-            android.view.KeyEvent.KEYCODE_DPAD_DOWN,
-            android.view.KeyEvent.KEYCODE_DPAD_LEFT,
-            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                val controllerView = playerView.findViewById<View>(androidx.media3.ui.R.id.exo_controller)
-                val isVisible = controllerView?.visibility == View.VISIBLE
-                if (!isVisible) {
-                    playerView.showController()
-                    val playButton = playerView.findViewById<View>(androidx.media3.ui.R.id.exo_play)
-                        ?: playerView.findViewById<View>(androidx.media3.ui.R.id.exo_pause)
-                    playButton?.requestFocus()
-                    return true
-                }
-            }
-            android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
-            android.view.KeyEvent.KEYCODE_MEDIA_PLAY,
-            android.view.KeyEvent.KEYCODE_MEDIA_PAUSE,
-            android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
-            android.view.KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                playerView.showController()
-                return true
-            }
-        }
-        return super.onKeyDown(keyCode, event)
+        val params = controller.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .setPreferredTextLanguage(subtitle.language)
+            .setPreferredTextRoleFlags(C.ROLE_FLAG_CAPTION or C.ROLE_FLAG_SUBTITLE)
+            .build()
+        controller.trackSelectionParameters = params
+        Log.i(TAG, "Attached subtitle: ${subtitle.file.name}, lang: ${subtitle.language}")
     }
 
     override fun onPause() {
-        saveCurrentProgress(activePlayer)
+        saveCurrentProgress(mediaController)
         super.onPause()
     }
 
     override fun onStop() {
-        saveCurrentProgress(activePlayer)
-        activePlayer?.pause()
+        saveCurrentProgress(mediaController)
         super.onStop()
-    }
-
-    private var progressReportingJob: kotlinx.coroutines.Job? = null
-    private var initialSeekPerformed = false
-
-    private fun getMediaId(): String {
-        return when {
-            currentSeriesId > 0 && currentSeasonNumber > 0 && currentEpisodeNumber > 0 ->
-                "media_${currentSeriesId}_s${currentSeasonNumber}_e${currentEpisodeNumber}"
-            currentMovieId > 0 ->
-                currentMovieId.toString()
-            torrentInfoHash.isNotBlank() ->
-                torrentInfoHash
-            else ->
-                mediaTitle
-        }
     }
 
     private fun saveCurrentProgress(player: Player?) {
@@ -2424,157 +1041,764 @@ class LocalPlayerActivity : AppCompatActivity() {
         val pos = p.currentPosition
         val dur = p.duration
         if (dur <= 0L) return
-        val mediaId = getMediaId()
-        if (mediaId.isBlank()) return
+
+        val item = p.currentMediaItem ?: return
+        val mediaId = item.mediaId
+        if (mediaId.isBlank() || mediaId == MediaItem.DEFAULT_MEDIA_ID) return
+
+        val title = item.mediaMetadata.title?.toString() ?: mediaTitle
+        val isEpisode = currentSeriesId > 0
+
         val progress = PlaybackProgress(
             mediaId = mediaId,
-            title = mediaTitle.ifBlank { "Media Item" },
+            title = title.ifBlank { "Media Item" },
             positionMs = pos,
             durationMs = dur,
             timestamp = System.currentTimeMillis(),
-            isEpisode = currentSeriesId > 0
+            isEpisode = isEpisode
         )
+
         lifecycleScope.launch {
             try {
                 userLibraryRepository.savePlaybackProgress(progress)
+                Log.i(TAG, "Saved progress on Activity pause/stop: $pos / $dur ms for $mediaId")
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving playback progress", e)
             }
         }
     }
 
-    private fun startProgressReporting(player: Player) {
-        progressReportingJob?.cancel()
-        progressReportingJob = lifecycleScope.launch {
-            while (true) {
-                kotlinx.coroutines.delay(10_000L)
-                if (player.isPlaying) {
-                    saveCurrentProgress(player)
-                }
-            }
-        }
-    }
-
-    private fun setupWatchHistoryRecovery(player: ExoPlayer) {
-        val mediaId = getMediaId()
-        if (mediaId.isBlank()) return
-        lifecycleScope.launch {
-            try {
-                val saved = userLibraryRepository.getPlaybackProgress(mediaId)
-                if (saved != null && saved.positionMs > 5000L && !saved.isCompleted) {
-                    val targetPosition = saved.positionMs
-                    if (player.playbackState == Player.STATE_READY && !initialSeekPerformed) {
-                        initialSeekPerformed = true
-                        player.seekTo(targetPosition)
-                    } else if (!initialSeekPerformed) {
-                        player.addListener(object : Player.Listener {
-                            override fun onPlaybackStateChanged(playbackState: Int) {
-                                if (playbackState == Player.STATE_READY && !initialSeekPerformed) {
-                                    initialSeekPerformed = true
-                                    player.seekTo(targetPosition)
-                                    player.removeListener(this)
-                                }
-                            }
-                        })
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error fetching watch history recovery", e)
-            }
-        }
-    }
-
-    /** Releases decoder and subtitle streaming resources when this activity is destroyed. */
     override fun onDestroy() {
-        progressReportingJob?.cancel()
-        saveCurrentProgress(activePlayer)
-        subtitleSearchAnimator?.cancel()
-        subtitleSearchAnimator = null
-        screenAwakePlayer?.let { player ->
-            screenAwakeListener?.let(player::removeListener)
-        }
-        screenAwakeListener = null
-        screenAwakePlayer = null
-        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        playerView?.player = null
-        castPlayer?.release()
-        localPlayer?.release()
-        if (!castSessionActive) SubtitleServerRegistry.stopAll()
-        castSubtitleUrls.clear()
-        activePlayer = null
-        playerView = null
-        castPlayer = null
-        localPlayer = null
+        controllerFuture?.let { MediaController.releaseFuture(it) }
         super.onDestroy()
     }
 
-    private fun applyTvFocusHighlight(view: View) {
-        if (!isTvDevice()) return
-        val context = view.context
-        val typedValue = android.util.TypedValue()
-        context.theme.resolveAttribute(androidx.appcompat.R.attr.colorPrimary, typedValue, true)
-        val primaryColor = if (typedValue.data != 0) typedValue.data else android.graphics.Color.parseColor("#BB86FC")
+    companion object {
+        val EPISODE_PATTERN = Regex("""\bS\d{2}E\d{2}\b""", RegexOption.IGNORE_CASE)
+        const val EXTRA_FILE_PATH = "verified_media_file_path"
+        const val EXTRA_STREAM_URL = "verified_media_stream_url"
+        const val EXTRA_CAST_URL = "verified_media_cast_url"
+        const val EXTRA_INFO_HASH = "torrent_info_hash"
+        const val EXTRA_PARTIAL_TORRENT_STREAM = "partial_torrent_stream"
+        const val EXTRA_CAST_ENABLED = "torrent_cast_enabled"
+        const val EXTRA_MIME_TYPE = "torrent_media_mime_type"
+        const val EXTRA_TITLE = "torrent_media_title"
+        const val EXTRA_SERIES_ID = "extra_series_id"
+        const val EXTRA_SEASON_NUMBER = "extra_season_number"
+        const val EXTRA_EPISODE_NUMBER = "extra_episode_number"
+        const val EXTRA_MOVIE_ID = "extra_movie_id"
+        const val EXTRA_NEXT_EPISODE_INFO = "extra_next_episode_info"
+        private const val TAG = "LocalPlayerActivity"
+    }
+}
 
-        val normalBg = android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
-        val focusedBg = android.graphics.drawable.GradientDrawable().apply {
-            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-            cornerRadius = 12f * context.resources.displayMetrics.density
-            setColor(android.graphics.Color.argb(76, android.graphics.Color.red(primaryColor), android.graphics.Color.green(primaryColor), android.graphics.Color.blue(primaryColor)))
+@OptIn(UnstableApi::class)
+@Composable
+fun PlayerControlsOverlay(
+    controller: Player,
+    mediaTitle: String,
+    showStats: Boolean,
+    onToggleStats: () -> Unit,
+    onShowSubtitles: () -> Unit,
+    onSearchSubtitles: () -> Unit,
+    onShowSubtitleStyle: () -> Unit
+) {
+    var controlsVisible by remember { mutableStateOf(true) }
+    val isTv = LocalContext.current.isTvDevice()
+
+    LaunchedEffect(controlsVisible) {
+        if (controlsVisible) {
+            delay(5000L)
+            controlsVisible = false
         }
-        val stateList = android.graphics.drawable.StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_focused), focusedBg)
-            addState(intArrayOf(), normalBg)
-        }
-        view.background = stateList
     }
 
-    companion object {
-        /** Logcat tag for local playback and subtitle search diagnostics. */
-        private const val TAG = "LocalPlayer"
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { controlsVisible = !controlsVisible }
+    ) {
+        AnimatedVisibility(
+            visible = controlsVisible,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .padding(24.dp)
+            ) {
+                // Top Bar
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = mediaTitle,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
 
-        /** Initial player control visibility duration before Media3 hides the controls. */
-        private const val PLAYER_CONTROLLER_SHOW_TIMEOUT_MS = 5_000
+                    val hasSubtitleTracks = controller.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
 
-        /** Intent extra containing next episode information for quality selection. */
-        const val EXTRA_NEXT_EPISODE_INFO = "extra_next_episode_info"
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        IconButton(onClick = onToggleStats) {
+                            Icon(Icons.Default.BugReport, contentDescription = "Stats", tint = if (showStats) Color.Green else Color.White)
+                        }
+                        IconButton(onClick = onSearchSubtitles) {
+                            Icon(Icons.Default.Download, contentDescription = "Search Subtitles", tint = Color.White)
+                        }
+                        IconButton(
+                            onClick = onShowSubtitles,
+                            enabled = hasSubtitleTracks
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Subtitles,
+                                contentDescription = "Subtitles",
+                                tint = if (hasSubtitleTracks) Color.White else Color.Gray.copy(alpha = 0.5f)
+                            )
+                        }
+                        IconButton(onClick = onShowSubtitleStyle) {
+                            Icon(Icons.Default.Settings, contentDescription = "Subtitle Style", tint = Color.White)
+                        }
+                        AndroidView(
+                            factory = { context ->
+                                MediaRouteButton(context).apply {
+                                    androidx.media3.cast.MediaRouteButtonFactory.setUpMediaRouteButton(context, this)
+                                }
+                            },
+                            modifier = Modifier.size(48.dp)
+                        )
+                    }
+                }
 
-        /** Intent extra containing an app-private, fully verified media file path. */
-        const val EXTRA_FILE_PATH = "verified_media_file_path"
+                // Center Bar
+                Row(
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalArrangement = Arrangement.spacedBy(32.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { controller.seekBack() }) {
+                        Icon(Icons.Default.FastRewind, contentDescription = "Rewind", tint = Color.White, modifier = Modifier.size(48.dp))
+                    }
+                    IconButton(onClick = { if (controller.isPlaying) controller.pause() else controller.play() }) {
+                        Icon(
+                            imageVector = if (controller.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = "Play/Pause",
+                            tint = Color.White,
+                            modifier = Modifier.size(64.dp)
+                        )
+                    }
+                    IconButton(onClick = { controller.seekForward() }) {
+                        Icon(Icons.Default.FastForward, contentDescription = "Forward", tint = Color.White, modifier = Modifier.size(48.dp))
+                    }
+                }
 
-        /** Intent extra containing the local HTTP stream URL for verified byte ranges. */
-        const val EXTRA_STREAM_URL = "verified_media_stream_url"
+                // Bottom Bar
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                ) {
+                    var sliderPos by remember { mutableFloatStateOf(0f) }
+                    val duration = controller.duration.coerceAtLeast(1L)
+                    val pos = controller.currentPosition.coerceAtLeast(0L)
 
-        /** Intent extra containing the local-network URL available to Cast receivers. */
-        const val EXTRA_CAST_URL = "verified_media_cast_url"
+                    Text(
+                        text = "${formatTime(pos)} / ${formatTime(duration)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White
+                    )
 
-        /** Intent extra containing the local torrent's stable info hash. */
-        const val EXTRA_INFO_HASH = "torrent_info_hash"
+                    Slider(
+                        value = if (duration > 0) pos.toFloat() / duration.toFloat() else 0f,
+                        onValueChange = { fraction ->
+                            controller.seekTo((fraction * duration).toLong())
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+    }
+}
 
-        /** Intent extra enabling early-start extraction without cue seeking for an incomplete stream. */
-        const val EXTRA_PARTIAL_TORRENT_STREAM = "partial_torrent_stream"
+@OptIn(UnstableApi::class)
+@Composable
+fun StatsForNerdsOverlay(
+    controller: Player,
+    modifier: Modifier = Modifier
+) {
+    var videoSizeText by remember { mutableStateOf("") }
+    var audioText by remember { mutableStateOf("") }
+    var bufferText by remember { mutableStateOf("") }
 
-        /** Intent extra indicating whether Cast device selection should be available. */
-        const val EXTRA_CAST_ENABLED = "torrent_cast_enabled"
+    LaunchedEffect(controller) {
+        while (true) {
+            val videoGroup = controller.currentTracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO && it.isSelected }
+            val vFormat = videoGroup?.getTrackFormat(0)
 
-        /** Intent extra containing the video MIME type. */
-        const val EXTRA_MIME_TYPE = "torrent_media_mime_type"
+            val audioGroup = controller.currentTracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
+            val aFormat = audioGroup?.getTrackFormat(0)
 
-        /** Intent extra containing the user-visible media title. */
-        const val EXTRA_TITLE = "torrent_media_title"
+            val size = controller.videoSize
+            videoSizeText = "${size.width}x${size.height} @ ${vFormat?.frameRate?.toInt() ?: 0}fps (${vFormat?.codecs ?: vFormat?.sampleMimeType ?: "N/A"})"
+            audioText = "${aFormat?.sampleMimeType ?: "N/A"} (${aFormat?.channelCount ?: 0} ch)"
+            val buf = (controller.bufferedPosition - controller.currentPosition).coerceAtLeast(0L) / 1000L
+            bufferText = "${buf}s buffered"
+            delay(1000L)
+        }
+    }
 
-        /** Intent extra containing series ID. */
-        const val EXTRA_SERIES_ID = "extra_series_id"
+    Surface(
+        color = Color.Black.copy(alpha = 0.75f),
+        shape = MaterialTheme.shapes.medium,
+        modifier = modifier
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Stats for Nerds", style = MaterialTheme.typography.titleSmall, color = Color.Green, fontWeight = FontWeight.Bold)
+            Text("Video: $videoSizeText", style = MaterialTheme.typography.bodySmall, color = Color.White)
+            Text("Audio: $audioText", style = MaterialTheme.typography.bodySmall, color = Color.White)
+            Text("Buffer: $bufferText", style = MaterialTheme.typography.bodySmall, color = Color.White)
+        }
+    }
+}
 
-        /** Intent extra containing season number. */
-        const val EXTRA_SEASON_NUMBER = "extra_season_number"
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun PlayerDialogContent(
+    state: PlayerDialogState,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
 
-        /** Intent extra containing episode number. */
-        const val EXTRA_EPISODE_NUMBER = "extra_episode_number"
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.75f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {}
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .widthIn(min = 320.dp, max = 560.dp)
+                    .fillMaxWidth(0.92f),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh
+            ) {
+                Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    when (state) {
+                        is PlayerDialogState.Tracks -> {
+                            Text(state.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+                                itemsIndexed(state.options) { index, option ->
+                                    Surface(
+                                        onClick = {
+                                            state.onSelected(option)
+                                            onDismiss()
+                                        },
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                        color = if (option.isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+                                    ) {
+                                        Text(option.label, modifier = Modifier.padding(12.dp))
+                                    }
+                                }
+                            }
+                        }
+                        is PlayerDialogState.AdvancedSubtitleStyle -> {
+                            var selectedFont by remember { mutableStateOf(state.currentFontName) }
+                            var selectedSizeFraction by remember { mutableFloatStateOf(state.currentFontSizeFraction) }
+                            var selectedFgColor by remember { mutableIntStateOf(state.currentForegroundColor) }
+                            var selectedBgColor by remember { mutableIntStateOf(state.currentBackgroundColor) }
+                            var selectedEdgeType by remember { mutableIntStateOf(state.currentEdgeType) }
+                            var selectedBottomOffset by remember { mutableFloatStateOf(state.currentBottomOffset) }
 
-        /** Intent extra containing movie ID. */
-        const val EXTRA_MOVIE_ID = "extra_movie_id"
+                            var showColorPickerForFg by remember { mutableStateOf(false) }
+                            var showColorPickerForBg by remember { mutableStateOf(false) }
 
-        /** Identifies the season/episode naming used by the TV release-selection screen. */
-        val EPISODE_PATTERN = Regex("""\bS\d{2}E\d{2}\b""", RegexOption.IGNORE_CASE)
+                            val fontResolver = LocalFontFamilyResolver.current
+                            val fontFamily = FontFamily(
+                                Font(
+                                    googleFont = GoogleFont(selectedFont),
+                                    fontProvider = fontProvider
+                                )
+                            )
+                            val typeface = fontResolver.resolve(fontFamily).value as? android.graphics.Typeface
+
+                            // Trigger live preview updates on player background
+                            LaunchedEffect(selectedFont, selectedSizeFraction, selectedFgColor, selectedBgColor, selectedEdgeType, selectedBottomOffset) {
+                                state.onLiveChange(selectedFont, selectedSizeFraction, selectedFgColor, selectedBgColor, selectedEdgeType, selectedBottomOffset)
+                            }
+
+                            Text(
+                                text = "Subtitle Settings",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+
+                            // Visor / Compact Preview Area (Realistic text size & offset)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(65.dp)
+                                    .background(Color.Black.copy(alpha = 0.9f))
+                                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.medium),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AndroidView(
+                                    factory = { context ->
+                                        SubtitleView(context).apply {
+                                            val sp = when {
+                                                selectedSizeFraction <= 0.045f -> 14f
+                                                selectedSizeFraction <= 0.06f -> 18f
+                                                selectedSizeFraction <= 0.075f -> 24f
+                                                else -> 30f
+                                            }
+                                            setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sp)
+                                            setBottomPaddingFraction(selectedBottomOffset)
+                                            setCues(listOf(Cue.Builder().setText("Sample Subtitle / Vista Previa").build()))
+                                        }
+                                    },
+                                    update = { subtitleView ->
+                                        val sp = when {
+                                            selectedSizeFraction <= 0.045f -> 14f
+                                            selectedSizeFraction <= 0.06f -> 18f
+                                            selectedSizeFraction <= 0.075f -> 24f
+                                            else -> 30f
+                                        }
+                                        subtitleView.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sp)
+                                        subtitleView.setBottomPaddingFraction(selectedBottomOffset)
+                                        subtitleView.setStyle(
+                                            CaptionStyleCompat(
+                                                selectedFgColor,
+                                                selectedBgColor,
+                                                android.graphics.Color.TRANSPARENT,
+                                                selectedEdgeType,
+                                                android.graphics.Color.BLACK,
+                                                typeface
+                                            )
+                                        )
+                                        subtitleView.setCues(listOf(Cue.Builder().setText("Sample Subtitle / Vista Previa").build()))
+                                    },
+                                    modifier = Modifier.fillMaxWidth().height(60.dp)
+                                )
+                            }
+
+                            // Controls in a scrollable Column
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f, fill = false)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                // 1. Font Family
+                                Text("Font Family", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(GOOGLE_SUBTITLE_FONTS) { fontName ->
+                                        val isSelected = fontName == selectedFont
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = { selectedFont = fontName },
+                                            label = { Text(fontName) }
+                                        )
+                                    }
+                                }
+
+                                // 2. Font Size
+                                Text("Text Size", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    val sizes = listOf(
+                                        "Small" to 0.04f,
+                                        "Medium" to 0.0533f,
+                                        "Large" to 0.067f,
+                                        "X-Large" to 0.08f
+                                    )
+                                    sizes.forEach { (label, fraction) ->
+                                        val isSelected = Math.abs(selectedSizeFraction - fraction) < 0.005f
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = { selectedSizeFraction = fraction },
+                                            label = { Text(label) }
+                                        )
+                                    }
+                                }
+
+                                // 3. Vertical Position (Offset)
+                                Text("Vertical Position (Offset)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    val offsets = listOf(
+                                        "Low" to 0.02f,
+                                        "Default" to 0.08f,
+                                        "Medium Up" to 0.15f,
+                                        "High" to 0.25f
+                                    )
+                                    items(offsets) { (label, offsetVal) ->
+                                        val isSelected = Math.abs(selectedBottomOffset - offsetVal) < 0.01f
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = { selectedBottomOffset = offsetVal },
+                                            label = { Text(label) }
+                                        )
+                                    }
+                                }
+
+                                // 4. Colors (Text & Background)
+                                Text("Colors", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        onClick = { showColorPickerForFg = true },
+                                        shape = MaterialTheme.shapes.medium,
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                        modifier = Modifier.weight(1f).padding(end = 4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(20.dp)
+                                                    .background(Color(selectedFgColor), CircleShape)
+                                                    .border(1.dp, Color.Gray, CircleShape)
+                                            )
+                                            Text("Text Color", style = MaterialTheme.typography.bodyMedium)
+                                        }
+                                    }
+
+                                    Surface(
+                                        onClick = { showColorPickerForBg = true },
+                                        shape = MaterialTheme.shapes.medium,
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                        modifier = Modifier.weight(1f).padding(start = 4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(20.dp)
+                                                    .background(if (selectedBgColor == 0) Color.Transparent else Color(selectedBgColor), CircleShape)
+                                                    .border(1.dp, Color.Gray, CircleShape)
+                                            )
+                                            Text("Background", style = MaterialTheme.typography.bodyMedium)
+                                        }
+                                    }
+                                }
+
+                                // 5. Edge Type
+                                Text("Border Edge", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    val edges = listOf(
+                                        "None" to CaptionStyleCompat.EDGE_TYPE_NONE,
+                                        "Outline" to CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                                        "Drop Shadow" to CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW,
+                                        "Raised" to CaptionStyleCompat.EDGE_TYPE_RAISED,
+                                        "Depressed" to CaptionStyleCompat.EDGE_TYPE_DEPRESSED
+                                    )
+                                    items(edges) { (label, typeVal) ->
+                                        val isSelected = selectedEdgeType == typeVal
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = { selectedEdgeType = typeVal },
+                                            label = { Text(label) }
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Fixed Bottom Actions
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextButton(onClick = {
+                                    state.onCancel()
+                                }) {
+                                    Text("Cancel")
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                TextButton(onClick = {
+                                    state.onSave(selectedFont, selectedSizeFraction, selectedFgColor, selectedBgColor, selectedEdgeType, selectedBottomOffset)
+                                }) {
+                                    Text("Save", fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            // Primary Color Picker Dialogs
+                            if (showColorPickerForFg) {
+                                ColorPickerDialog(
+                                    title = "Select Text Color",
+                                    colors = listOf(
+                                        android.graphics.Color.WHITE,
+                                        android.graphics.Color.YELLOW,
+                                        android.graphics.Color.CYAN,
+                                        android.graphics.Color.GREEN,
+                                        android.graphics.Color.MAGENTA,
+                                        android.graphics.Color.BLACK
+                                    ),
+                                    selectedColor = selectedFgColor,
+                                    onColorSelected = {
+                                        selectedFgColor = it
+                                        showColorPickerForFg = false
+                                    },
+                                    onDismiss = { showColorPickerForFg = false }
+                                )
+                            }
+
+                            if (showColorPickerForBg) {
+                                ColorPickerDialog(
+                                    title = "Select Background Color",
+                                    colors = listOf(
+                                        android.graphics.Color.TRANSPARENT,
+                                        android.graphics.Color.parseColor("#80000000"),
+                                        android.graphics.Color.BLACK,
+                                        android.graphics.Color.parseColor("#80333333"),
+                                        android.graphics.Color.parseColor("#80000280")
+                                    ),
+                                    selectedColor = selectedBgColor,
+                                    onColorSelected = {
+                                        selectedBgColor = it
+                                        showColorPickerForBg = false
+                                    },
+                                    onDismiss = { showColorPickerForBg = false }
+                                )
+                            }
+                        }
+                        is PlayerDialogState.SubtitleResults -> {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = stringResource(R.string.opensubtitles_results_title),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (state.currentFileName.isNotBlank()) {
+                                    Text(
+                                        text = state.currentFileName,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 120.dp, max = 320.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                itemsIndexed(state.results) { _, result ->
+                                    val feature = result.featureTitle?.takeIf(String::isNotBlank)
+                                    val flag = when (result.language.lowercase(Locale.ROOT)) {
+                                        "en", "eng" -> "🇺🇸"
+                                        "es", "spa" -> "🇦🇷"
+                                        "pt", "por", "pob" -> "🇧🇷"
+                                        "fr", "fre", "fra" -> "🇫🇷"
+                                        "de", "ger", "deu" -> "🇩🇪"
+                                        "it", "ita" -> "🇮🇹"
+                                        else -> result.language.uppercase(Locale.ROOT)
+                                    }
+                                    val label = listOfNotNull<String>(
+                                        flag,
+                                        result.release.takeIf(String::isNotBlank) ?: result.fileName.takeIf(String::isNotBlank),
+                                        feature
+                                    ).joinToString(" · ")
+
+                                    val cardContent: @Composable (Color, Color) -> Unit = { textColor, primaryColor ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .padding(end = 8.dp),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = label,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = textColor,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Icon(
+                                                imageVector = Icons.Default.Download,
+                                                contentDescription = null,
+                                                tint = primaryColor,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                    }
+
+                                    if (isTv) {
+                                        val interactionSource = remember { MutableInteractionSource() }
+                                        val isFocused by interactionSource.collectIsFocusedAsState()
+
+                                        val tvColors = ClickableSurfaceDefaults.colors(
+                                            containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant,
+                                            focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.primaryContainer,
+                                            contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                                            focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+
+                                        val textColor = if (isFocused) {
+                                            androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
+                                        } else {
+                                            androidx.tv.material3.MaterialTheme.colorScheme.onSurface
+                                        }
+
+                                        val primaryColor = if (isFocused) {
+                                            androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
+                                        } else {
+                                            androidx.tv.material3.MaterialTheme.colorScheme.primary
+                                        }
+
+                                        TvSurface(
+                                            onClick = {
+                                                state.onSelected(result)
+                                                onDismiss()
+                                            },
+                                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
+                                            shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
+                                            colors = tvColors,
+                                            interactionSource = interactionSource,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            cardContent(textColor, primaryColor)
+                                        }
+                                    } else {
+                                        Card(
+                                            onClick = {
+                                                state.onSelected(result)
+                                                onDismiss()
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = MaterialTheme.shapes.medium,
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                                contentColor = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        ) {
+                                            cardContent(
+                                                MaterialTheme.colorScheme.onSurface,
+                                                MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        is PlayerDialogState.Message -> {
+                            Text(state.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(state.message)
+                            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
+                                Text("OK")
+                            }
+                        }
+                        is PlayerDialogState.Progress -> {
+                            CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                            Text(state.message, textAlign = TextAlign.Center)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ColorPickerDialog(
+    title: String,
+    colors: List<Int>,
+    selectedColor: Int,
+    onColorSelected: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    colors.forEach { colorVal ->
+                        val isSelected = selectedColor == colorVal
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(if (colorVal == 0) Color.Transparent else Color(colorVal), CircleShape)
+                                .border(
+                                    width = if (isSelected) 3.dp else 1.dp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
+                                    shape = CircleShape
+                                )
+                                .clickable { onColorSelected(colorVal) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = if (colorVal == android.graphics.Color.WHITE) Color.Black else Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatTime(ms: Long): String {
+    val totalSeconds = ms / 1000
+    val seconds = totalSeconds % 60
+    val minutes = (totalSeconds / 60) % 60
+    val hours = totalSeconds / 3600
+    return if (hours > 0) {
+        String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
     }
 }

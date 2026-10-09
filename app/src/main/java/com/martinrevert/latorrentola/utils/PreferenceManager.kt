@@ -189,6 +189,24 @@ class PreferenceManager @Inject constructor(
             ?: AutoPlayQualitySelectionMethod.OFF
     }
 
+    fun getSubtitleFontName(): String = sharedPreferences.getString(KEY_SUBTITLE_FONT_NAME, "Roboto") ?: "Roboto"
+    fun setSubtitleFontName(fontName: String) { sharedPreferences.edit { putString(KEY_SUBTITLE_FONT_NAME, fontName) } }
+
+    fun getSubtitleSizeFraction(): Float = sharedPreferences.getFloat(KEY_SUBTITLE_SIZE_FRACTION, 0.0533f)
+    fun setSubtitleSizeFraction(fraction: Float) { sharedPreferences.edit { putFloat(KEY_SUBTITLE_SIZE_FRACTION, fraction) } }
+
+    fun getSubtitleForegroundColor(): Int = sharedPreferences.getInt(KEY_SUBTITLE_FG_COLOR, android.graphics.Color.WHITE)
+    fun setSubtitleForegroundColor(color: Int) { sharedPreferences.edit { putInt(KEY_SUBTITLE_FG_COLOR, color) } }
+
+    fun getSubtitleBackgroundColor(): Int = sharedPreferences.getInt(KEY_SUBTITLE_BG_COLOR, android.graphics.Color.TRANSPARENT)
+    fun setSubtitleBackgroundColor(color: Int) { sharedPreferences.edit { putInt(KEY_SUBTITLE_BG_COLOR, color) } }
+
+    fun getSubtitleEdgeType(): Int = sharedPreferences.getInt(KEY_SUBTITLE_EDGE_TYPE, 1)
+    fun setSubtitleEdgeType(edgeType: Int) { sharedPreferences.edit { putInt(KEY_SUBTITLE_EDGE_TYPE, edgeType) } }
+
+    fun getSubtitleBottomOffset(): Float = sharedPreferences.getFloat(KEY_SUBTITLE_BOTTOM_OFFSET, 0.08f)
+    fun setSubtitleBottomOffset(offset: Float) { sharedPreferences.edit { putFloat(KEY_SUBTITLE_BOTTOM_OFFSET, offset) } }
+
     companion object {
         /** Preference key controlling general voice guidance. */
         private const val KEY_VOICE_SYSTEM = "voice_system"
@@ -218,6 +236,12 @@ class PreferenceManager @Inject constructor(
         private const val KEY_TORRENT_HANDLING_MODE = "torrent_handling_mode"
         /** Preference key for the auto-play quality selection method. */
         private const val KEY_AUTO_PLAY_QUALITY_SELECTION_METHOD = "auto_play_quality_selection_method"
+        private const val KEY_SUBTITLE_FONT_NAME = "subtitle_font_name"
+        private const val KEY_SUBTITLE_SIZE_FRACTION = "subtitle_size_fraction"
+        private const val KEY_SUBTITLE_FG_COLOR = "subtitle_fg_color"
+        private const val KEY_SUBTITLE_BG_COLOR = "subtitle_bg_color"
+        private const val KEY_SUBTITLE_EDGE_TYPE = "subtitle_edge_type"
+        private const val KEY_SUBTITLE_BOTTOM_OFFSET = "subtitle_bottom_offset"
 
         /** Follow the system theme. */
         const val THEME_SYSTEM = 0

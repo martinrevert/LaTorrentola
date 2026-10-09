@@ -21,5 +21,13 @@ data class TorrentDownload(
     /** Whether the user selected the Chromecast playback mode for this torrent. */
     val castWhenReady: Boolean,
     /** Last state update time in Unix milliseconds. */
-    val updatedAtMillis: Long
+    val updatedAtMillis: Long,
+    /** Optional TV series ID for this download. */
+    val seriesId: Int? = null,
+    /** Optional TV series season number for this download. */
+    val seasonNumber: Int? = null,
+    /** Optional TV series episode number for this download. */
+    val episodeNumber: Int? = null,
+    /** Optional Movie ID for this download. */
+    val movieId: Int? = null
 )
