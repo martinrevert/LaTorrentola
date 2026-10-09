@@ -89,6 +89,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -191,6 +192,7 @@ sealed class PlayerDialogState {
 
     data class SubtitleResults(
         val results: List<OpenSubtitleResult>,
+        val currentFileName: String,
         val onSelected: (OpenSubtitleResult) -> Unit
     ) : PlayerDialogState()
 
@@ -441,12 +443,23 @@ fun PlayerDialogContent(
                         }
                     }
                     is PlayerDialogState.SubtitleResults -> {
-                        Text(
-                            text = stringResource(R.string.opensubtitles_results_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = stringResource(R.string.opensubtitles_results_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (state.currentFileName.isNotBlank()) {
+                                Text(
+                                    text = state.currentFileName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -509,7 +522,7 @@ fun PlayerDialogContent(
                                     .then(
                                         if (isTv && state.results.isNotEmpty()) {
                                             Modifier.focusProperties {
-                                                up = firstItemFocusRequester
+                                                up = FocusRequester.Default // Let Compose find the list naturally
                                             }
                                         } else {
                                             Modifier
@@ -1845,8 +1858,11 @@ class LocalPlayerActivity : AppCompatActivity() {
      */
     private fun showSubtitleResults(results: List<OpenSubtitleResult>) {
         Log.i(TAG, "Showing OpenSubtitles list: resultCount=${results.size}")
+        val currentFile = intent.getStringExtra(EXTRA_FILE_PATH)?.let { File(it).name } ?: ""
+
         playerDialogState = PlayerDialogState.SubtitleResults(
             results = results,
+            currentFileName = currentFile,
             onSelected = { result ->
                 downloadSubtitle(result)
             }
