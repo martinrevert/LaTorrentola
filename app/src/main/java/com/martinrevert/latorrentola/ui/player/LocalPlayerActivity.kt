@@ -79,6 +79,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFontFamilyResolver
@@ -90,6 +94,7 @@ import androidx.compose.ui.text.googlefonts.Font
 import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -1092,6 +1097,77 @@ class LocalPlayerActivity : ComponentActivity() {
     }
 }
 
+@Composable
+fun ControlButton(
+    onClick: () -> Unit,
+    icon: ImageVector,
+    contentDescription: String,
+    tint: Color = Color.White,
+    enabled: Boolean = true,
+    focusRequester: FocusRequester? = null,
+    modifier: Modifier = Modifier,
+    iconSize: Dp = 24.dp
+) {
+    val isTv = LocalContext.current.isTvDevice()
+    val itemModifier = modifier
+        .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+        .focusHighlight(shape = CircleShape)
+
+    if (isTv) {
+        TvIconButton(
+            onClick = onClick,
+            enabled = enabled,
+            modifier = itemModifier
+        ) {
+            Icon(imageVector = icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(iconSize))
+        }
+    } else {
+        IconButton(
+            onClick = onClick,
+            enabled = enabled,
+            modifier = itemModifier
+        ) {
+            Icon(imageVector = icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(iconSize))
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun TvChoiceChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    val isTv = LocalContext.current.isTvDevice()
+    if (isTv) {
+        val interactionSource = remember { MutableInteractionSource() }
+        val isFocused by interactionSource.collectIsFocusedAsState()
+        TvSurface(
+            onClick = onClick,
+            shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = if (selected) androidx.tv.material3.MaterialTheme.colorScheme.primaryContainer else androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = if (selected) androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer else androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.primary,
+                focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onPrimary
+            ),
+            interactionSource = interactionSource,
+            modifier = modifier.focusHighlight(shape = MaterialTheme.shapes.small)
+        ) {
+            Text(text = label, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium)
+        }
+    } else {
+        FilterChip(
+            selected = selected,
+            onClick = onClick,
+            label = { Text(label) },
+            modifier = modifier
+        )
+    }
+}
+
 @OptIn(UnstableApi::class)
 @Composable
 fun PlayerControlsOverlay(
@@ -1106,8 +1182,21 @@ fun PlayerControlsOverlay(
     var controlsVisible by remember { mutableStateOf(true) }
     val isTv = LocalContext.current.isTvDevice()
 
+    val playPauseFocusRequester = remember { FocusRequester() }
+    val rewindFocusRequester = remember { FocusRequester() }
+    val forwardFocusRequester = remember { FocusRequester() }
+    val statsFocusRequester = remember { FocusRequester() }
+    val searchFocusRequester = remember { FocusRequester() }
+    val subtitlesFocusRequester = remember { FocusRequester() }
+    val styleFocusRequester = remember { FocusRequester() }
+    val sliderFocusRequester = remember { FocusRequester() }
+
     LaunchedEffect(controlsVisible) {
         if (controlsVisible) {
+            if (isTv) {
+                delay(100)
+                try { playPauseFocusRequester.requestFocus() } catch (_: Exception) {}
+            }
             delay(5000L)
             controlsVisible = false
         }
@@ -1116,6 +1205,29 @@ fun PlayerControlsOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .onPreviewKeyEvent { event ->
+                if (isTv && event.type == KeyEventType.KeyDown) {
+                    val keyCode = event.nativeKeyEvent.keyCode
+                    if (!controlsVisible && (keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                                keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP ||
+                                keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN ||
+                                keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT ||
+                                keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT ||
+                                keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
+                                keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER ||
+                                keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
+                                keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY ||
+                                keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PAUSE)) {
+                        controlsVisible = true
+                        try { playPauseFocusRequester.requestFocus() } catch (_: Exception) {}
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -1153,25 +1265,33 @@ fun PlayerControlsOverlay(
                     val hasSubtitleTracks = controller.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        IconButton(onClick = onToggleStats) {
-                            Icon(Icons.Default.BugReport, contentDescription = "Stats", tint = if (showStats) Color.Green else Color.White)
-                        }
-                        IconButton(onClick = onSearchSubtitles) {
-                            Icon(Icons.Default.Download, contentDescription = "Search Subtitles", tint = Color.White)
-                        }
-                        IconButton(
+                        ControlButton(
+                            onClick = onToggleStats,
+                            icon = Icons.Default.BugReport,
+                            contentDescription = "Stats",
+                            tint = if (showStats) Color.Green else Color.White,
+                            focusRequester = statsFocusRequester
+                        )
+                        ControlButton(
+                            onClick = onSearchSubtitles,
+                            icon = Icons.Default.Download,
+                            contentDescription = "Search Subtitles",
+                            focusRequester = searchFocusRequester
+                        )
+                        ControlButton(
                             onClick = onShowSubtitles,
-                            enabled = hasSubtitleTracks
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Subtitles,
-                                contentDescription = "Subtitles",
-                                tint = if (hasSubtitleTracks) Color.White else Color.Gray.copy(alpha = 0.5f)
-                            )
-                        }
-                        IconButton(onClick = onShowSubtitleStyle) {
-                            Icon(Icons.Default.Settings, contentDescription = "Subtitle Style", tint = Color.White)
-                        }
+                            icon = Icons.Default.Subtitles,
+                            contentDescription = "Subtitles",
+                            enabled = hasSubtitleTracks,
+                            tint = if (hasSubtitleTracks) Color.White else Color.Gray.copy(alpha = 0.5f),
+                            focusRequester = subtitlesFocusRequester
+                        )
+                        ControlButton(
+                            onClick = onShowSubtitleStyle,
+                            icon = Icons.Default.Settings,
+                            contentDescription = "Subtitle Style",
+                            focusRequester = styleFocusRequester
+                        )
                         AndroidView(
                             factory = { context ->
                                 MediaRouteButton(context).apply {
@@ -1189,20 +1309,27 @@ fun PlayerControlsOverlay(
                     horizontalArrangement = Arrangement.spacedBy(32.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { controller.seekBack() }) {
-                        Icon(Icons.Default.FastRewind, contentDescription = "Rewind", tint = Color.White, modifier = Modifier.size(48.dp))
-                    }
-                    IconButton(onClick = { if (controller.isPlaying) controller.pause() else controller.play() }) {
-                        Icon(
-                            imageVector = if (controller.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = "Play/Pause",
-                            tint = Color.White,
-                            modifier = Modifier.size(64.dp)
-                        )
-                    }
-                    IconButton(onClick = { controller.seekForward() }) {
-                        Icon(Icons.Default.FastForward, contentDescription = "Forward", tint = Color.White, modifier = Modifier.size(48.dp))
-                    }
+                    ControlButton(
+                        onClick = { controller.seekBack() },
+                        icon = Icons.Default.FastRewind,
+                        contentDescription = "Rewind",
+                        focusRequester = rewindFocusRequester,
+                        iconSize = 48.dp
+                    )
+                    ControlButton(
+                        onClick = { if (controller.isPlaying) controller.pause() else controller.play() },
+                        icon = if (controller.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = "Play/Pause",
+                        focusRequester = playPauseFocusRequester,
+                        iconSize = 64.dp
+                    )
+                    ControlButton(
+                        onClick = { controller.seekForward() },
+                        icon = Icons.Default.FastForward,
+                        contentDescription = "Forward",
+                        focusRequester = forwardFocusRequester,
+                        iconSize = 48.dp
+                    )
                 }
 
                 // Bottom Bar
@@ -1211,7 +1338,6 @@ fun PlayerControlsOverlay(
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
                 ) {
-                    var sliderPos by remember { mutableFloatStateOf(0f) }
                     val duration = controller.duration.coerceAtLeast(1L)
                     val pos = controller.currentPosition.coerceAtLeast(0L)
 
@@ -1226,7 +1352,10 @@ fun PlayerControlsOverlay(
                         onValueChange = { fraction ->
                             controller.seekTo((fraction * duration).toLong())
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(sliderFocusRequester)
+                            .focusHighlight(shape = MaterialTheme.shapes.small)
                     )
                 }
             }
@@ -1419,10 +1548,10 @@ fun PlayerDialogContent(
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     items(GOOGLE_SUBTITLE_FONTS) { fontName ->
                                         val isSelected = fontName == selectedFont
-                                        FilterChip(
+                                        TvChoiceChip(
                                             selected = isSelected,
                                             onClick = { selectedFont = fontName },
-                                            label = { Text(fontName) }
+                                            label = fontName
                                         )
                                     }
                                 }
@@ -1438,10 +1567,10 @@ fun PlayerDialogContent(
                                     )
                                     sizes.forEach { (label, fraction) ->
                                         val isSelected = Math.abs(selectedSizeFraction - fraction) < 0.005f
-                                        FilterChip(
+                                        TvChoiceChip(
                                             selected = isSelected,
                                             onClick = { selectedSizeFraction = fraction },
-                                            label = { Text(label) }
+                                            label = label
                                         )
                                     }
                                 }
@@ -1457,10 +1586,10 @@ fun PlayerDialogContent(
                                     )
                                     items(offsets) { (label, offsetVal) ->
                                         val isSelected = Math.abs(selectedBottomOffset - offsetVal) < 0.01f
-                                        FilterChip(
+                                        TvChoiceChip(
                                             selected = isSelected,
                                             onClick = { selectedBottomOffset = offsetVal },
-                                            label = { Text(label) }
+                                            label = label
                                         )
                                     }
                                 }
@@ -1527,10 +1656,10 @@ fun PlayerDialogContent(
                                     )
                                     items(edges) { (label, typeVal) ->
                                         val isSelected = selectedEdgeType == typeVal
-                                        FilterChip(
+                                        TvChoiceChip(
                                             selected = isSelected,
                                             onClick = { selectedEdgeType = typeVal },
-                                            label = { Text(label) }
+                                            label = label
                                         )
                                     }
                                 }
@@ -1772,6 +1901,7 @@ fun ColorPickerDialog(
                                     color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
                                     shape = CircleShape
                                 )
+                                .focusHighlight(shape = CircleShape)
                                 .clickable { onColorSelected(colorVal) },
                             contentAlignment = Alignment.Center
                         ) {
