@@ -155,7 +155,7 @@ android {
         targetSdk = 37
         testInstrumentationRunner = "com.martinrevert.latorrentola.HiltTestRunner"
         ndk {
-            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86_64'
         }
 
         def localProperties = new Properties()
@@ -227,6 +227,14 @@ android {
             test.systemProperty "net.bytebuddy.experimental", "true"
             test.systemProperty "jdk.attach.allowAttachSelf", "true"
         }
+    }
+}
+
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
+tasks.withType(KotlinCompile).configureEach {
+    compilerOptions {
+        freeCompilerArgs.add("-opt-in=dev.chrisbanes.haze.ExperimentalHazeApi")
     }
 }
 
@@ -302,7 +310,6 @@ dependencies {
     implementation libs.libtorrent4j
     implementation libs.libtorrent4j.android.arm
     implementation libs.libtorrent4j.android.arm64
-    implementation libs.libtorrent4j.android.x86
     implementation libs.libtorrent4j.android.x8664
     implementation libs.nanohttpd
 
