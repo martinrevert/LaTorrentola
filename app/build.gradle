@@ -155,7 +155,7 @@ android {
         targetSdk = 37
         testInstrumentationRunner = "com.martinrevert.latorrentola.HiltTestRunner"
         ndk {
-            abiFilters 'armeabi-v7a', 'arm64-v8a'
+            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
         }
 
         def localProperties = new Properties()
@@ -180,6 +180,7 @@ android {
         jniLibs {
             keepDebugSymbols.add('**/libandroidx.graphics.path.so')
             keepDebugSymbols.add('**/libtranslate_jni.so')
+            keepDebugSymbols.add('**/libtorrent4j.so')
         }
     }
 
@@ -301,6 +302,8 @@ dependencies {
     implementation libs.libtorrent4j
     implementation libs.libtorrent4j.android.arm
     implementation libs.libtorrent4j.android.arm64
+    implementation libs.libtorrent4j.android.x86
+    implementation libs.libtorrent4j.android.x8664
     implementation libs.nanohttpd
 
     // Local playback and Google Cast
