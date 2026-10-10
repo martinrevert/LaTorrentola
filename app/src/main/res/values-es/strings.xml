@@ -165,7 +165,7 @@
     <string name="tv_episode_details_title">Detalles del episodio</string>
     <string name="tv_available_torrents">Torrents disponibles</string>
     <string name="tv_no_torrents_found">No se encontraron torrents para este episodio.</string>
-    <string name="tv_torrent_peers_info">Semillas: %1$d | Peers: %2$d</string>
+    <string name="tv_torrent_peers_info">Seeds: %1$d | Peers: %2$d</string>
     <string name="tv_download_torrent_desc">Descargar torrent</string>
     <string name="tv_season_completed">✓ Completada</string>
     <string name="tv_season_partial">✓ Parcial (%1$d/%2$d)</string>
