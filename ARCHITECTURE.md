@@ -310,16 +310,16 @@ sequenceDiagram
 sequenceDiagram
     participant U as User
     participant HS as HomeScreen
-    participant TVVM as TvHomeViewModel and TvGenreResultsViewModel
-    participant TD as TmdbRepository
-    participant TMDB as TMDB API
-    participant DB as TvGenreDao/Room
-    participant NAV as AppNavigation
-    participant SD as TvDetailScreen/TvDetailViewModel
-    participant ED as TvEpisodeDetailScreen/TvEpisodeDetailViewModel
-    participant EZ as EztvRepository/EZTV
-    participant UL as UserLibraryRepository/Firestore
-    participant EXT as OS Torrent Client
+    participant TVVM as "TvHomeViewModel"
+    participant TD as "TmdbRepository"
+    participant TMDB as "TMDB API"
+    participant DB as "TvGenreDao"
+    participant NAV as "AppNavigation"
+    participant SD as "TvDetailScreen"
+    participant ED as "TvEpisodeDetailScreen"
+    participant EZ as "EztvRepository"
+    participant UL as "UserLibraryRepository"
+    participant EXT as "Torrent Client"
 
     U->>HS: Select TV mode or genre chip
     HS->>TVVM: Activate feed / record genre visit
