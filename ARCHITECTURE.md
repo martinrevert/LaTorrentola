@@ -341,7 +341,7 @@ sequenceDiagram
     ED->>TD: Resolve series IMDb external ID
     TD->>TMDB: /tv/id/external_ids
     TMDB-->>ED: IMDb ID (tt prefix stripped for EZTV)
-    ED->>EZ: Get releases by numeric IMDb ID; match S/E exactly
+    ED->>EZ: Get releases by numeric IMDb ID, match S/E exactly
     EZ-->>ED: Matching EZTV torrents, seed-sorted
     U->>ED: Select release
     ED->>UL: Save DownloadedEpisode (users/uid/tv_downloads/hash)
