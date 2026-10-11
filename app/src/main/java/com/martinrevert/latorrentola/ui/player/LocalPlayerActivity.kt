@@ -7,7 +7,7 @@ import android.os.Bundle
 import android.util.Log
 import android.view.WindowManager
 import android.widget.Toast
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.annotation.OptIn
@@ -124,7 +124,9 @@ import androidx.media3.ui.compose.ContentFrame
 import androidx.media3.ui.compose.modifiers.resizeWithContentScale
 import androidx.media3.ui.compose.state.rememberPresentationState
 import androidx.media3.ui.compose.PlayerSurface
-import androidx.mediarouter.app.MediaRouteButton
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.CastConnected
+import com.martinrevert.latorrentola.ui.components.CastBottomSheet
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.IconButton as TvIconButton
@@ -252,7 +254,7 @@ val fontProvider = GoogleFont.Provider(
 
 @OptIn(UnstableApi::class)
 @AndroidEntryPoint
-class LocalPlayerActivity : ComponentActivity() {
+class LocalPlayerActivity : FragmentActivity() {
 
     @Inject
     lateinit var openSubtitlesRepository: OpenSubtitleRepository
@@ -279,7 +281,6 @@ class LocalPlayerActivity : ComponentActivity() {
 
     private var localStreamUrl = ""
     private var castStreamUrl = ""
-    private var castEnabled = false
     private var mediaTitle = ""
     private var torrentInfoHash = ""
 
@@ -331,7 +332,7 @@ class LocalPlayerActivity : ComponentActivity() {
         currentSeasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
         currentEpisodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
         currentMovieId = intent.getIntExtra(EXTRA_MOVIE_ID, 0)
-        castEnabled = intent.getBooleanExtra(EXTRA_CAST_ENABLED, false)
+        var castEnabled = intent.getBooleanExtra(EXTRA_CAST_ENABLED, false)
 
         val nextEpisodeInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
         if (nextEpisodeInfo != null && nextEpisodeInfo.size >= 5) {
@@ -361,6 +362,9 @@ class LocalPlayerActivity : ComponentActivity() {
 
         val itemBundle = Bundle().apply {
             putBoolean(PlaybackService.EXTRA_IS_EPISODE, isEpisode)
+            if (castStreamUrl.isNotBlank()) {
+                putString(PlaybackService.EXTRA_CAST_URL, castStreamUrl)
+            }
         }
 
         val fontName = preferenceManager.getSubtitleFontName()
@@ -459,78 +463,101 @@ class LocalPlayerActivity : ComponentActivity() {
                     contentAlignment = Alignment.Center
                 ) {
                     if (controller != null) {
-                        val presentationState = rememberPresentationState(controller)
-                        val videoModifier = Modifier
-                            .fillMaxSize()
-                            .resizeWithContentScale(ContentScale.Fit, presentationState.videoSizeDp)
-
-                        ContentFrame(
-                            player = controller,
-                            modifier = videoModifier,
-                            contentScale = ContentScale.Fit
-                        )
-
-                        var currentCues by remember(controller) { mutableStateOf<List<Cue>>(controller.currentCues.cues) }
+                        var showCastBottomSheet by remember { mutableStateOf(false) }
+                        var deviceInfo by remember(controller) { mutableStateOf(controller.deviceInfo) }
                         DisposableEffect(controller) {
                             val listener = object : Player.Listener {
-                                override fun onCues(cueGroup: CueGroup) {
-                                    val normalizedCues = cueGroup.cues.map { cue ->
-                                        cue.buildUpon()
-                                            .setLine(Cue.DIMEN_UNSET, Cue.TYPE_UNSET)
-                                            .build()
-                                    }
-                                    currentCues = normalizedCues
-                                }
-                                override fun onTracksChanged(tracks: Tracks) {
-                                    selectDefaultSubtitleIfNeeded(controller)
-                                    prepareSubtitleTrackIfNeeded(tracks)
+                                override fun onDeviceInfoChanged(info: DeviceInfo) {
+                                    deviceInfo = info
                                 }
                             }
                             controller.addListener(listener)
-                            selectDefaultSubtitleIfNeeded(controller)
-                            onDispose {
-                                controller.removeListener(listener)
+                            onDispose { controller.removeListener(listener) }
+                        }
+
+                        androidx.compose.runtime.key(deviceInfo) {
+                            val presentationState = rememberPresentationState(controller)
+                            val videoModifier = Modifier
+                                .fillMaxSize()
+                                .resizeWithContentScale(ContentScale.Fit, presentationState.videoSizeDp)
+
+                            ContentFrame(
+                                player = controller,
+                                modifier = videoModifier,
+                                contentScale = ContentScale.Fit
+                            )
+
+                            var currentCues by remember(controller) { mutableStateOf<List<Cue>>(controller.currentCues.cues) }
+                            DisposableEffect(controller) {
+                                val listener = object : Player.Listener {
+                                    override fun onCues(cueGroup: CueGroup) {
+                                        val normalizedCues = cueGroup.cues.map { cue ->
+                                            cue.buildUpon()
+                                                .setLine(Cue.DIMEN_UNSET, Cue.TYPE_UNSET)
+                                                .build()
+                                        }
+                                        currentCues = normalizedCues
+                                    }
+                                    override fun onTracksChanged(tracks: Tracks) {
+                                        selectDefaultSubtitleIfNeeded(controller)
+                                        prepareSubtitleTrackIfNeeded(tracks)
+                                    }
+                                }
+                                controller.addListener(listener)
+                                selectDefaultSubtitleIfNeeded(controller)
+                                onDispose {
+                                    controller.removeListener(listener)
+                                }
+                            }
+
+                            AndroidView(
+                                factory = { context ->
+                                    val view = SubtitleView(context)
+                                    view.apply {
+                                        setUserDefaultStyle()
+                                        setFractionalTextSize(customSubtitleSizeFraction)
+                                        setBottomPaddingFraction(customSubtitleBottomOffset)
+                                    }
+                                },
+                                update = { subtitleView ->
+                                    val style = customCaptionStyle
+                                    if (style != null) {
+                                        subtitleView.setStyle(style)
+                                    } else {
+                                        subtitleView.setUserDefaultStyle()
+                                    }
+                                    subtitleView.setFractionalTextSize(customSubtitleSizeFraction)
+                                    subtitleView.setBottomPaddingFraction(customSubtitleBottomOffset)
+                                    subtitleView.setCues(currentCues)
+                                },
+                                modifier = videoModifier
+                            )
+
+                            PlayerControlsOverlay(
+                                controller = controller,
+                                mediaTitle = mediaTitle,
+                                showStats = showStatsForNerds,
+                                onToggleStats = { showStatsForNerds = !showStatsForNerds },
+                                onShowSubtitles = { showSubtitleOptions() },
+                                onSearchSubtitles = { searchSubtitles() },
+                                onShowSubtitleStyle = { showSubtitleStyleOptions() },
+                                onShowCast = { showCastBottomSheet = true }
+                            )
+
+                            if (showStatsForNerds) {
+                                StatsForNerdsOverlay(
+                                    controller = controller,
+                                    modifier = Modifier
+                                        .padding(16.dp)
+                                        .align(Alignment.TopStart)
+                                )
                             }
                         }
 
-                        AndroidView(
-                            factory = { context ->
-                                SubtitleView(context).apply {
-                                    setUserDefaultStyle()
-                                    setFractionalTextSize(customSubtitleSizeFraction)
-                                    setBottomPaddingFraction(customSubtitleBottomOffset)
-                                }
-                            },
-                            update = { subtitleView ->
-                                val style = customCaptionStyle
-                                if (style != null) {
-                                    subtitleView.setStyle(style)
-                                } else {
-                                    subtitleView.setUserDefaultStyle()
-                                }
-                                subtitleView.setFractionalTextSize(customSubtitleSizeFraction)
-                                subtitleView.setBottomPaddingFraction(customSubtitleBottomOffset)
-                                subtitleView.setCues(currentCues)
-                            },
-                            modifier = videoModifier
-                        )
-
-                        PlayerControlsOverlay(
-                            controller = controller,
-                            mediaTitle = mediaTitle,
-                            showStats = showStatsForNerds,
-                            onToggleStats = { showStatsForNerds = !showStatsForNerds },
-                            onShowSubtitles = { showSubtitleOptions() },
-                            onSearchSubtitles = { searchSubtitles() },
-                            onShowSubtitleStyle = { showSubtitleStyleOptions() }
-                        )
-
-                        if (showStatsForNerds) {
-                            StatsForNerdsOverlay(
-                                controller = controller,
-                                modifier = Modifier
-                                    .padding(16.dp)
-                                    .align(Alignment.TopStart)
+                        if (showCastBottomSheet) {
+                            CastBottomSheet(
+                                onDismissRequest = { showCastBottomSheet = false },
+                                mediaTitle = mediaTitle
                             )
                         }
 
@@ -796,6 +823,7 @@ class LocalPlayerActivity : ComponentActivity() {
                 preferenceManager.setSubtitleEdgeType(edge)
                 preferenceManager.setSubtitleBottomOffset(offset)
                 applyStyle(fontName, sizeFraction, fg, bg, edge, offset)
+                applyCastSubtitleStyleIfConnected()
                 playerDialogState = null
             },
             onCancel = {
@@ -803,6 +831,52 @@ class LocalPlayerActivity : ComponentActivity() {
                 playerDialogState = null
             }
         )
+    }
+
+    private fun applyCastSubtitleStyleIfConnected() {
+        try {
+            val mainExecutor = androidx.core.content.ContextCompat.getMainExecutor(this)
+            com.google.android.gms.cast.framework.CastContext.getSharedInstance(this, mainExecutor)
+                .addOnSuccessListener { castContext ->
+                    val session = castContext.sessionManager.currentCastSession
+                    if (session != null && session.isConnected) {
+                        val remoteMediaClient = session.remoteMediaClient
+                        if (remoteMediaClient != null) {
+                            val fg = preferenceManager.getSubtitleForegroundColor()
+                            val bg = preferenceManager.getSubtitleBackgroundColor()
+                            val edge = preferenceManager.getSubtitleEdgeType()
+                            val size = preferenceManager.getSubtitleSizeFraction()
+
+                            val castBgColor = if (bg == android.graphics.Color.TRANSPARENT || android.graphics.Color.alpha(bg) == 0) {
+                                android.graphics.Color.argb(1, 0, 0, 0)
+                            } else {
+                                bg
+                            }
+
+                            val textTrackStyle = com.google.android.gms.cast.TextTrackStyle().apply {
+                                foregroundColor = fg
+                                backgroundColor = castBgColor
+                                windowType = com.google.android.gms.cast.TextTrackStyle.WINDOW_TYPE_NONE
+                                windowColor = android.graphics.Color.argb(1, 0, 0, 0)
+                                edgeType = when (edge) {
+                                    CaptionStyleCompat.EDGE_TYPE_OUTLINE -> com.google.android.gms.cast.TextTrackStyle.EDGE_TYPE_OUTLINE
+                                    CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW -> com.google.android.gms.cast.TextTrackStyle.EDGE_TYPE_DROP_SHADOW
+                                    CaptionStyleCompat.EDGE_TYPE_RAISED -> com.google.android.gms.cast.TextTrackStyle.EDGE_TYPE_RAISED
+                                    CaptionStyleCompat.EDGE_TYPE_DEPRESSED -> com.google.android.gms.cast.TextTrackStyle.EDGE_TYPE_DEPRESSED
+                                    else -> com.google.android.gms.cast.TextTrackStyle.EDGE_TYPE_NONE
+                                }
+                                edgeColor = android.graphics.Color.BLACK
+                                fontScale = (size / 0.0533f).coerceIn(0.5f, 2.5f)
+                                fontGenericFamily = com.google.android.gms.cast.TextTrackStyle.FONT_FAMILY_SANS_SERIF
+                            }
+                            remoteMediaClient.setTextTrackStyle(textTrackStyle)
+                            Log.i(TAG, "Live updated custom TextTrackStyle on active Cast session")
+                        }
+                    }
+                }
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to apply Cast subtitle style: ${e.message}")
+        }
     }
 
     private fun trackLabel(format: androidx.media3.common.Format, type: PlaybackTrackType): String {
@@ -1177,7 +1251,8 @@ fun PlayerControlsOverlay(
     onToggleStats: () -> Unit,
     onShowSubtitles: () -> Unit,
     onSearchSubtitles: () -> Unit,
-    onShowSubtitleStyle: () -> Unit
+    onShowSubtitleStyle: () -> Unit,
+    onShowCast: () -> Unit
 ) {
     var controlsVisible by remember { mutableStateOf(true) }
     val isTv = LocalContext.current.isTvDevice()
@@ -1292,14 +1367,15 @@ fun PlayerControlsOverlay(
                             contentDescription = "Subtitle Style",
                             focusRequester = styleFocusRequester
                         )
-                        AndroidView(
-                            factory = { context ->
-                                MediaRouteButton(context).apply {
-                                    androidx.media3.cast.MediaRouteButtonFactory.setUpMediaRouteButton(context, this)
-                                }
-                            },
-                            modifier = Modifier.size(48.dp)
-                        )
+                        if (!isTv) {
+                            val isCasting = controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE
+                            ControlButton(
+                                onClick = onShowCast,
+                                icon = if (isCasting) Icons.Default.CastConnected else Icons.Default.Cast,
+                                contentDescription = "Cast",
+                                tint = if (isCasting) MaterialTheme.colorScheme.primary else Color.White
+                            )
+                        }
                     }
                 }
 
@@ -1404,7 +1480,7 @@ fun StatsForNerdsOverlay(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun PlayerDialogContent(
     state: PlayerDialogState,
@@ -1498,7 +1574,8 @@ fun PlayerDialogContent(
                             ) {
                                 AndroidView(
                                     factory = { context ->
-                                        SubtitleView(context).apply {
+                                        val view = SubtitleView(context)
+                                        view.apply {
                                             val sp = when {
                                                 selectedSizeFraction <= 0.045f -> 14f
                                                 selectedSizeFraction <= 0.06f -> 18f

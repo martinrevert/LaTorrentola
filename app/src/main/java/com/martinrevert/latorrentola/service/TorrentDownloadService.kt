@@ -384,13 +384,9 @@ class TorrentDownloadService : Service() {
         streamServers.remove(infoHash)?.stop()
         val server = VerifiedTorrentHttpServer(file, file.length()) { _, _ -> true }
         val port = server.startServer()
-        val castUrl = if (castWhenReady) {
-            try {
-                server.lanUrl()
-            } catch (_: IllegalStateException) {
-                null
-            }
-        } else {
+        val castUrl = try {
+            server.lanUrl()
+        } catch (_: IllegalStateException) {
             null
         }
         streamServers[infoHash] = server

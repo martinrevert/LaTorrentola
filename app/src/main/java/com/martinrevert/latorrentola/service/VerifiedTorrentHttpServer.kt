@@ -62,13 +62,73 @@ class VerifiedTorrentHttpServer(
     }
 
     /**
-     * Answers a single HTTP range request without reading any unverified bytes.
+     * Answers a single HTTP range request or subtitle file request without reading any unverified bytes.
      *
      * @param session Incoming request and headers.
-     * @return Bounded file response, range response, or an explicit unavailable/error status.
+     * @return Bounded file response, range response, subtitle file, or an explicit unavailable/error status.
      */
     override fun serve(session: IHTTPSession): Response {
-        if (session.uri.trim('/') != accessToken) {
+        // Handle CORS preflight OPTIONS requests for Cast receivers
+        if (session.method == Method.OPTIONS) {
+            return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "").apply {
+                addHeader("Access-Control-Allow-Origin", "*")
+                addHeader("Access-Control-Allow-Methods", "GET, OPTIONS, HEAD")
+                addHeader("Access-Control-Allow-Headers", "Origin, Accept, Content-Type, Authorization, Range")
+                addHeader("Access-Control-Max-Age", "86400")
+            }
+        }
+
+        val uri = session.uri.trim('/')
+
+        // Handle LAN subtitle requests for Cast receivers
+        // Format: /{accessToken}/subtitles/{base64Path}/{filename}
+        if (uri.startsWith("$accessToken/subtitles/")) {
+            val parts = uri.substringAfter("$accessToken/subtitles/").split('/')
+            var subFile: File? = null
+
+            if (parts.isNotEmpty()) {
+                val base64Path = parts[0]
+                try {
+                    val decodedPath = String(android.util.Base64.decode(base64Path, android.util.Base64.URL_SAFE))
+                    val candidate = File(decodedPath)
+                    if (candidate.exists() && candidate.isFile && (candidate.name.endsWith(".vtt", true) || candidate.name.endsWith(".srt", true))) {
+                        subFile = candidate
+                    }
+                } catch (_: Exception) {}
+            }
+
+            if (subFile == null) {
+                // Fallback search
+                val fileName = parts.lastOrNull() ?: ""
+                val parent = mediaFile.parentFile
+                val possibleLocations = listOfNotNull(
+                    parent?.let { File(it, "opensubtitles/$fileName") },
+                    parent?.let { File(it, fileName) },
+                    parent?.parentFile?.let { File(it, "opensubtitles/$fileName") },
+                    File(fileName)
+                )
+                subFile = possibleLocations.firstOrNull { it.exists() && it.isFile }
+            }
+
+            if (subFile != null) {
+                return try {
+                    val fis = FileInputStream(subFile)
+                    val mimeType = if (subFile.name.endsWith(".vtt", ignoreCase = true)) "text/vtt" else "text/plain"
+                    newFixedLengthResponse(Response.Status.OK, mimeType, fis, subFile.length()).apply {
+                        addHeader("Accept-Ranges", "bytes")
+                        addHeader("Access-Control-Allow-Origin", "*")
+                        addHeader("Access-Control-Allow-Methods", "GET, OPTIONS, HEAD")
+                        addHeader("Access-Control-Allow-Headers", "*")
+                    }
+                } catch (e: Exception) {
+                    newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, e.message.orEmpty())
+                }
+            } else {
+                return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Subtitle file not found")
+            }
+        }
+
+        if (uri != accessToken) {
             return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not found")
         }
 
@@ -113,6 +173,7 @@ class VerifiedTorrentHttpServer(
         response.addHeader("Accept-Ranges", "bytes")
         response.addHeader("Content-Length", length.toString())
         response.addHeader("Cache-Control", "no-store")
+        response.addHeader("Access-Control-Allow-Origin", "*")
         if (status == Response.Status.PARTIAL_CONTENT) {
             response.addHeader("Content-Range", "bytes $start-$end/$expectedLength")
         }

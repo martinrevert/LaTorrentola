@@ -1,21 +1,33 @@
 package com.martinrevert.latorrentola.ui.downloads
 
+import android.content.ComponentName
 import android.content.Intent
 import androidx.core.content.ContextCompat
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.CastConnected
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.CastConnected
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -24,18 +36,33 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import androidx.mediarouter.media.MediaControlIntent
+import androidx.mediarouter.media.MediaRouteSelector
+import androidx.mediarouter.media.MediaRouter
+import com.google.android.gms.cast.CastMediaControlIntent
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.IconButton as TvIconButton
 import androidx.tv.material3.Icon as TvIcon
@@ -43,7 +70,10 @@ import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Surface as TvSurface
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.torrent.TorrentDownload
+import com.martinrevert.latorrentola.service.PlaybackService
 import com.martinrevert.latorrentola.service.TorrentDownloadService
+import com.martinrevert.latorrentola.ui.components.CastBottomSheet
+import com.martinrevert.latorrentola.ui.player.LocalPlayerActivity
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.isTvDevice
 
@@ -62,11 +92,100 @@ fun TorrentDownloadsScreen(
     val downloads by viewModel.downloads.collectAsState()
     val context = LocalContext.current
     val isTv = context.isTvDevice()
+    var showCastBottomSheet by remember { mutableStateOf(false) }
+
+    // Connect to MediaController to track active playback
+    var mediaController by remember { mutableStateOf<MediaController?>(null) }
+    DisposableEffect(context) {
+        val sessionToken = SessionToken(context, ComponentName(context, PlaybackService::class.java))
+        val controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
+        controllerFuture.addListener({
+            try {
+                mediaController = controllerFuture.get()
+            } catch (_: Exception) {}
+        }, ContextCompat.getMainExecutor(context))
+
+        onDispose {
+            mediaController?.let {
+                MediaController.releaseFuture(controllerFuture)
+            }
+        }
+    }
+
+    // Observe active playback item and playing state from MediaController
+    var activeMediaId by remember { mutableStateOf("") }
+    var activeMediaTitle by remember { mutableStateOf("") }
+    var isMediaPlaying by remember { mutableStateOf(false) }
+
+    DisposableEffect(mediaController) {
+        val controller = mediaController ?: return@DisposableEffect onDispose {}
+        fun update() {
+            activeMediaId = controller.currentMediaItem?.mediaId.orEmpty()
+            activeMediaTitle = controller.currentMediaItem?.mediaMetadata?.title?.toString().orEmpty()
+            isMediaPlaying = controller.isPlaying
+        }
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) { update() }
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) { update() }
+            override fun onPlaybackStateChanged(playbackState: Int) { update() }
+        }
+        controller.addListener(listener)
+        update()
+        onDispose {
+            controller.removeListener(listener)
+        }
+    }
+
+    // Observe Cast connection state via MediaRouter
+    val mediaRouter = remember { MediaRouter.getInstance(context) }
+    val selector = remember {
+        MediaRouteSelector.Builder()
+            .addControlCategory(CastMediaControlIntent.categoryForCast(CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID))
+            .build()
+    }
+    var selectedRoute by remember { mutableStateOf(mediaRouter.selectedRoute) }
+    var isCasting by remember { mutableStateOf(!mediaRouter.selectedRoute.isDefault) }
+
+    DisposableEffect(Unit) {
+        val callback = object : MediaRouter.Callback() {
+            override fun onRouteSelected(router: MediaRouter, route: MediaRouter.RouteInfo) {
+                selectedRoute = route
+                isCasting = !route.isDefault
+            }
+            override fun onRouteUnselected(router: MediaRouter, route: MediaRouter.RouteInfo) {
+                selectedRoute = router.selectedRoute
+                isCasting = !router.selectedRoute.isDefault
+            }
+            override fun onRouteChanged(router: MediaRouter, route: MediaRouter.RouteInfo) {
+                selectedRoute = router.selectedRoute
+                isCasting = !router.selectedRoute.isDefault
+            }
+        }
+        mediaRouter.addCallback(selector, callback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY)
+        selectedRoute = mediaRouter.selectedRoute
+        isCasting = !mediaRouter.selectedRoute.isDefault
+        onDispose {
+            mediaRouter.removeCallback(callback)
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.torrent_downloads_title)) },
+                actions = {
+                    if (!isTv) {
+                        IconButton(
+                            onClick = { showCastBottomSheet = true }
+                        ) {
+                            Icon(
+                                imageVector = if (isCasting) Icons.Default.CastConnected else Icons.Default.Cast,
+                                contentDescription = "Cast",
+                                tint = if (isCasting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(
                         onClick = onBackClick,
@@ -79,6 +198,71 @@ fun TorrentDownloadsScreen(
                     }
                 }
             )
+        },
+        bottomBar = {
+            // Persistent Mini-Player Bar when playback or casting is active
+            if (activeMediaTitle.isNotBlank() && (isMediaPlaying || isCasting)) {
+                Surface(
+                    onClick = {
+                        val intent = Intent(context, LocalPlayerActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        }
+                        context.startActivity(intent)
+                    },
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (isCasting) Icons.Default.Tv else Icons.Default.PlayCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = activeMediaTitle,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = if (isCasting) "Transmitiendo en ${selectedRoute.name}" else "Reproduciendo en teléfono",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                if (isMediaPlaying) mediaController?.pause() else mediaController?.play()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = if (isMediaPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (isMediaPlaying) "Pausar" else "Reproducir"
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                mediaController?.stop()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Detener"
+                            )
+                        }
+                    }
+                }
+            }
         }
     ) { padding ->
         if (downloads.isEmpty()) {
@@ -105,9 +289,23 @@ fun TorrentDownloadsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(downloads, key = TorrentDownload::infoHash) { download ->
+                    val isActive = activeMediaTitle.isNotBlank() && (
+                        activeMediaId == download.infoHash ||
+                        activeMediaId == download.movieId?.toString() ||
+                        activeMediaId.contains(download.infoHash, ignoreCase = true) ||
+                        activeMediaTitle.equals(download.title, ignoreCase = true)
+                    )
+
                     TorrentDownloadItem(
                         download = download,
                         isTv = isTv,
+                        isActive = isActive,
+                        isPlaying = isMediaPlaying,
+                        isCasting = isCasting,
+                        activeRouteName = selectedRoute.name,
+                        onToggleActivePlayback = {
+                            if (isMediaPlaying) mediaController?.pause() else mediaController?.play()
+                        },
                         onPauseResume = { viewModel.togglePause(context, download) },
                         onDelete = { viewModel.delete(context, download) },
                         onPlay = { cast ->
@@ -136,6 +334,12 @@ fun TorrentDownloadsScreen(
             }
         }
     }
+
+    if (showCastBottomSheet) {
+        CastBottomSheet(
+            onDismissRequest = { showCastBottomSheet = false }
+        )
+    }
 }
 
 /**
@@ -151,6 +355,11 @@ fun TorrentDownloadsScreen(
 private fun TorrentDownloadItem(
     download: TorrentDownload,
     isTv: Boolean,
+    isActive: Boolean = false,
+    isPlaying: Boolean = false,
+    isCasting: Boolean = false,
+    activeRouteName: String = "",
+    onToggleActivePlayback: () -> Unit = {},
     onPauseResume: () -> Unit,
     onDelete: () -> Unit,
     onPlay: (Boolean) -> Unit
@@ -172,19 +381,24 @@ private fun TorrentDownloadItem(
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = stringResource(
-                    R.string.torrent_download_status,
-                    when (download.state) {
-                        TorrentDownloadService.STATE_COMPLETED -> stringResource(R.string.torrent_download_state_complete)
-                        TorrentDownloadService.STATE_PAUSED -> stringResource(R.string.torrent_download_state_paused)
-                        TorrentDownloadService.STATE_FAILED -> stringResource(R.string.torrent_download_state_failed)
-                        TorrentDownloadService.STATE_READY -> stringResource(R.string.torrent_download_state_ready)
-                        else -> stringResource(R.string.torrent_download_state_active)
-                    },
-                    download.progressPercent
-                ),
+                text = if (isActive) {
+                    if (isCasting) "🟢 Transmitiendo en $activeRouteName" else "🟢 En reproducción local"
+                } else {
+                    stringResource(
+                        R.string.torrent_download_status,
+                        when (download.state) {
+                            TorrentDownloadService.STATE_COMPLETED -> stringResource(R.string.torrent_download_state_complete)
+                            TorrentDownloadService.STATE_PAUSED -> stringResource(R.string.torrent_download_state_paused)
+                            TorrentDownloadService.STATE_FAILED -> stringResource(R.string.torrent_download_state_failed)
+                            TorrentDownloadService.STATE_READY -> stringResource(R.string.torrent_download_state_ready)
+                            else -> stringResource(R.string.torrent_download_state_active)
+                        },
+                        download.progressPercent
+                    )
+                },
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
             )
             if (!completed) {
                 LinearProgressIndicator(
@@ -200,42 +414,36 @@ private fun TorrentDownloadItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (playable) {
+                    val iconVector = if (isActive) {
+                        if (isPlaying) Icons.Default.Pause else (if (isCasting) Icons.Default.Tv else Icons.Default.PlayArrow)
+                    } else {
+                        if (isCasting) Icons.Default.Tv else Icons.Default.PlayArrow
+                    }
+                    val iconTint = if (isActive || isCasting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+
                     if (isTv) {
                         TvIconButton(
-                            onClick = { onPlay(false) },
+                            onClick = {
+                                if (isActive) onToggleActivePlayback() else onPlay(isCasting)
+                            },
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
                             TvIcon(
-                                Icons.Default.PlayArrow,
+                                imageVector = iconVector,
                                 contentDescription = stringResource(R.string.play_desc)
-                            )
-                        }
-                        TvIconButton(
-                            onClick = { onPlay(true) },
-                            modifier = Modifier.focusHighlight(shape = CircleShape)
-                        ) {
-                            TvIcon(
-                                Icons.Default.CastConnected,
-                                contentDescription = "Cast"
                             )
                         }
                     } else {
                         IconButton(
-                            onClick = { onPlay(false) },
+                            onClick = {
+                                if (isActive) onToggleActivePlayback() else onPlay(isCasting)
+                            },
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
                             Icon(
-                                Icons.Default.PlayArrow,
-                                contentDescription = stringResource(R.string.play_desc)
-                            )
-                        }
-                        IconButton(
-                            onClick = { onPlay(true) },
-                            modifier = Modifier.focusHighlight(shape = CircleShape)
-                        ) {
-                            Icon(
-                                Icons.Default.CastConnected,
-                                contentDescription = "Cast"
+                                imageVector = iconVector,
+                                contentDescription = stringResource(R.string.play_desc),
+                                tint = iconTint
                             )
                         }
                     }
@@ -292,6 +500,8 @@ private fun TorrentDownloadItem(
         }
     }
 
+    val activeBorder = if (isActive) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
+
     if (isTv) {
         TvSurface(
             shape = MaterialTheme.shapes.medium,
@@ -305,6 +515,7 @@ private fun TorrentDownloadItem(
     } else {
         Card(
             modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.medium),
+            border = activeBorder,
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 contentColor = MaterialTheme.colorScheme.onSurface
