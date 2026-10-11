@@ -18,7 +18,8 @@ Built for phones, tablets, foldables, and **Android TV / Chromecast**, the app f
 * **Language Exclusion Filter**: Automatically hide movies in languages you prefer not to watch.
 * **100% Android TV & Remote Ready**: Smooth navigation engineered for TV remotes with responsive card scaling, high-contrast focus indicators, and D-pad shortcuts.
 * **Torrent handling**: Choose external-client handoff, in-app download with local playback, or in-app download with Chromecast from Settings. In-app playback starts after a contiguous startup buffer has been verified by libtorrent4j; later HTTP byte ranges are served only after every overlapping torrent piece passes its hash check. Completed downloads remain in the app's download manager until deleted.
-* **Subtitles**: Local playback and Cast playback can search and load subtitles through OpenSubtitles when an API key is configured and the user has saved their account credentials in Settings.
+* **Watch History & Resume**: Local playback automatically tracks position via Room (`WatchHistoryDao`) for seamless resume across sessions, with background sync to Firestore.
+* **Subtitles & Casting**: Enhanced subtitle handling via OpenSubtitles (backed by `OpenSubtitlesCredentialStore` using Android Keystore encryption) and refined Google Cast integration supporting local server handoff via `PlaybackService` and `LocalPlayerActivity`.
 * **Push Notifications**: Receive alerts about new releases and updates via Firebase Cloud Messaging. Notifications deep-link directly to the relevant movie or screen inside the app.
 
 ---
@@ -47,8 +48,8 @@ This app has been refactored to leverage the latest Jetpack Compose libraries an
 * **Navigation**: [AndroidX Navigation 3](https://developer.android.com/jetpack/androidx/releases/navigation) Compose-first runtime.
 * **Networking**: [Retrofit 3.0](https://square.github.io/retrofit/) with OkHttp 5 and Coroutines Flow.
 * **TV Catalog & Episode Releases**: TMDB provides series/season/episode metadata and movie cast enrichment via IMDb ID; EZTV provides episode torrent releases matched through each series' IMDb identifier.
-* **In-App Torrent & Playback**: [libtorrent4j](https://github.com/aldenml/libtorrent4j) foreground service with piece-verified HTTP streaming (`VerifiedTorrentHttpServer`); [Media3 ExoPlayer](https://developer.android.com/media/media3/exoplayer) for local playback and [Cast SDK](https://developers.google.com/cast) for Chromecast handoff over LAN.
-* **Local Persistence**: [Room](https://developer.android.com/training/data-storage/room) for genre usage statistics, in-app transfer records, and session metadata.
+* **In-App Torrent & Playback**: [libtorrent4j](https://github.com/aldenml/libtorrent4j) foreground service with piece-verified HTTP streaming (`VerifiedTorrentHttpServer`); [Media3 ExoPlayer](https://developer.android.com/media/media3/exoplayer) for local playback and [Cast SDK](https://developers.google.com/cast) with `PlaybackService` for Chromecast handoff over LAN.
+* **Local Persistence**: [Room](https://developer.android.com/training/data-storage/room) for genre usage statistics, in-app transfer records, watch history, and session metadata.
 * **On-Device AI Translation**: [Google ML Kit Translate](https://developers.google.com/ml-kit/language/translation) for local summary translation.
 
 > [!NOTE]
@@ -75,26 +76,26 @@ This app has been refactored to leverage the latest Jetpack Compose libraries an
 2. **Google Services Config**:
    Place your `google-services.json` inside the `app/` folder. Ensure your development SHA-1 fingerprint is registered in the Firebase Console.
 
-### Build Commands (PowerShell / Bash)
+### Build Commands (Windows PowerShell `pwsh` / Bash)
 
 * **Compile Debug APK**:
   ```powershell
-  .\gradlew.bat assembleDebug
+  pwsh -Command ".\gradlew.bat assembleDebug"
   ```
 
 * **Install on Connected Device or Emulator**:
   ```powershell
-  .\gradlew.bat installDebug
+  pwsh -Command ".\gradlew.bat installDebug"
   ```
 
 * **Run Unit Tests**:
   ```powershell
-  .\gradlew.bat testDebugUnitTest
+  pwsh -Command ".\gradlew.bat testDebugUnitTest"
   ```
 
 * **Generate JaCoCo Coverage Report**:
   ```powershell
-  .\gradlew.bat testDebugUnitTest jacocoTestReport
+  pwsh -Command ".\gradlew.bat testDebugUnitTest jacocoTestReport"
   ```
 
 ---

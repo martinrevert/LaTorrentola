@@ -425,6 +425,55 @@ sequenceDiagram
     note over MFMS: Token refresh: onNewToken() calls FcmRepository.subscribe(newToken)
 ```
 
+### 8. In-App Downloads & Transfer Management
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant TDS as TorrentDownloadsScreen
+    participant VM as TorrentDownloadsViewModel
+    participant TDAO as TorrentDownloadDao
+    participant TSERV as TorrentDownloadService
+
+    U->>TDS: Open In-App Downloads (Settings -> Downloads)
+    TDS->>VM: observeDownloads()
+    VM->>TDAO: getActiveDownloads() (Flow)
+    TDAO-->>VM: List<TorrentDownload>
+    VM-->>TDS: Update UI State
+    TDS-->>U: Render transfer list (progress, speed, seeders)
+    U->>TDS: Tap Pause / Resume / Delete
+    alt Pause/Resume
+        TDS->>VM: updateDownloadStatus(hash, status)
+        VM->>TSERV: Pause or resume active libtorrent task
+    else Delete
+        TDS->>VM: deleteDownload(hash)
+        VM->>TDAO: delete(TorrentDownload)
+        VM->>TSERV: Stop task and remove files if requested
+    end
+```
+
+### 9. Settings, Preferences & Secure Credential Storage
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant SS as SettingsScreen
+    participant VM as SettingsViewModel
+    participant PM as PreferenceManager
+    participant KS as OpenSubtitlesCredentialStore
+    participant FCMR as FcmRepository
+
+    U->>SS: Change theme, torrent mode, or language filter
+    SS->>VM: updatePreference(...)
+    VM->>PM: Save value to SharedPreferences
+    PM-->>VM: Updated preference state
+    U->>SS: Enter OpenSubtitles username & password
+    SS->>VM: saveOpenSubtitlesCredentials(user, pass)
+    VM->>KS: Encrypt & store credentials in Android Keystore
+    KS-->>VM: Success
+    U->>SS: Toggle Push Notifications
+    SS->>VM: setNotificationsEnabled(enabled)
+    VM->>FCMR: subscribe() or unsubscribe() from FCM topic
+```
+
 ---
 
 ## 🔐 Identity and Ownership Notes
