@@ -12,7 +12,12 @@
 
 ---
 
-## 🛠️ 2. SKILL ACTIVATION TRIGGERS (MANDATORY)
+## 🛠️ 2. AGENT ENVIRONMENT & TOOLING
+- **Windows PowerShell Execution**: When using the `run_shell_command` tool in this Windows development environment, **you MUST set `shell="pwsh"`** to use PowerShell Core, or use the exact command `pwsh -Command "..."` if specifying the shell directly. Do not assume bash or standard cmd environments.
+
+---
+
+## 🎯 3. SKILL ACTIVATION TRIGGERS (MANDATORY)
 **IF** your task involves any of the following domains, **THEN** you MUST load the corresponding Android Studio Skill via the `read_file` tool on the skill's path before writing code:
 
 - `isTvDevice() == true`, `androidx.tv`, or D-pad Focus -> **LOAD:** `leanback-to-compose-tv-migration`
@@ -24,7 +29,7 @@
 
 ---
 
-## 🧪 3. UNIT TESTING MANDATE (ZERO EXCEPTIONS)
+## 🧪 4. UNIT TESTING MANDATE (ZERO EXCEPTIONS)
 **RULE**: You MUST write or update Unit Tests concurrently with any functional change.
 1. **Scope**: Create tests for ViewModels, Repositories, UseCases, and Utility classes. UI tests are required for complex Compose logic.
 2. **Frameworks**: Use JUnit4, MockK, Coroutines `runTest`, and Turbine (for Flows).
@@ -33,7 +38,7 @@
 
 ---
 
-## 🚫 4. ZERO TOLERANCE CONSTRAINTS (DO NOT VIOLATE)
+## 🚫 5. ZERO TOLERANCE CONSTRAINTS (DO NOT VIOLATE)
 
 ### A. Theming & Hardcoded Values
 - **NEVER** use explicit colors (e.g., `Color.Black`, `Color(0xFF...)`).
@@ -60,7 +65,7 @@
 
 ---
 
-## 🚦 5. DOMAIN-SPECIFIC LOGIC RULES
+## 🚦 6. DOMAIN-SPECIFIC LOGIC RULES
 
 ### Torrent Routing (`TorrentHandlingMode`)
 When triggering a download/play action, read `TorrentHandlingMode` and execute:
@@ -76,10 +81,11 @@ When triggering a download/play action, read `TorrentHandlingMode` and execute:
 
 ---
 
-## 🧠 6. EXECUTION CHECKLIST
+## 🧠 7. EXECUTION CHECKLIST
 Before marking a task complete, verify:
 1. [ ] Did I ask the user if this applies to Mobile, TV, or both? (If ambiguous).
 2. [ ] Are Unit Tests written, updated, and passing?
 3. [ ] Are there ZERO hardcoded colors, strings, or dimensions?
 4. [ ] Is TypeSafe serialization fully intact (both annotations present)?
 5. [ ] Is TV logic securely sandboxed behind `isTvDevice()`?
+6. [ ] Did I use `pwsh` for any required terminal commands?
