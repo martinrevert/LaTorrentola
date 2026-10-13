@@ -1350,6 +1350,7 @@ fun AdaptiveOptionItem(
             .padding(vertical = 2.dp)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
             .background(containerColor, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp)
@@ -1736,18 +1737,28 @@ private fun BottomSheetInnerContent(
         when (state) {
                         is PlayerBottomSheetState.Tracks -> {
                             Text(state.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+
+                            val firstFocusRequester = remember { FocusRequester() }
+                            val isTvDevice = isTv
+
+                            LaunchedEffect(Unit) {
+                                if (isTvDevice) {
+                                    delay(150)
+                                    try { firstFocusRequester.requestFocus() } catch (_: Exception) {}
+                                }
+                            }
+
+                            LazyColumn(modifier = Modifier.heightIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 itemsIndexed(state.options) { index, option ->
-                                    Surface(
+                                    AdaptiveOptionItem(
+                                        selected = option.isSelected,
+                                        label = option.label,
                                         onClick = {
                                             state.onSelected(option)
                                             onDismiss()
                                         },
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                        color = if (option.isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-                                    ) {
-                                        Text(option.label, modifier = Modifier.padding(12.dp))
-                                    }
+                                        focusRequester = if (index == 0) firstFocusRequester else null
+                                    )
                                 }
                             }
                         }
@@ -1832,6 +1843,16 @@ private fun BottomSheetInnerContent(
                                 )
                             }
 
+                            val firstStyleFocusRequester = remember { FocusRequester() }
+                            val isTvDevice = isTv
+
+                            LaunchedEffect(Unit) {
+                                if (isTvDevice) {
+                                    delay(150)
+                                    try { firstStyleFocusRequester.requestFocus() } catch (_: Exception) {}
+                                }
+                            }
+
                             // Controls in a scrollable Column
                             Column(
                                 modifier = Modifier
@@ -1843,12 +1864,13 @@ private fun BottomSheetInnerContent(
                                 // 1. Font Family
                                 Text("Font Family", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    items(GOOGLE_SUBTITLE_FONTS) { fontName ->
+                                    itemsIndexed(GOOGLE_SUBTITLE_FONTS) { index, fontName ->
                                         val isSelected = fontName == selectedFont
                                         AdaptiveChoiceChip(
                                             selected = isSelected,
                                             onClick = { selectedFont = fontName },
-                                            label = fontName
+                                            label = fontName,
+                                            focusRequester = if (index == 0) firstStyleFocusRequester else null
                                         )
                                     }
                                 }
@@ -2039,13 +2061,24 @@ private fun BottomSheetInnerContent(
                                     )
                                 }
                             }
+
+                            val firstResultFocusRequester = remember { FocusRequester() }
+                            val isTvDevice = isTv
+
+                            LaunchedEffect(Unit) {
+                                if (isTvDevice) {
+                                    delay(150)
+                                    try { firstResultFocusRequester.requestFocus() } catch (_: Exception) {}
+                                }
+                            }
+
                             LazyColumn(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .heightIn(min = 120.dp, max = 320.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                itemsIndexed(state.results) { _, result ->
+                                itemsIndexed(state.results) { index, result ->
                                     val feature = result.featureTitle?.takeIf(String::isNotBlank)
                                     val flag = when (result.language.lowercase(Locale.ROOT)) {
                                         "en", "eng" -> "🇺🇸"
@@ -2056,99 +2089,18 @@ private fun BottomSheetInnerContent(
                                         "it", "ita" -> "🇮🇹"
                                         else -> result.language.uppercase(Locale.ROOT)
                                     }
-                                    val label = listOfNotNull<String>(
+                                    val label = listOfNotNull(
                                         flag,
                                         result.release.takeIf(String::isNotBlank) ?: result.fileName.takeIf(String::isNotBlank),
                                         feature
                                     ).joinToString(" · ")
 
-                                    val cardContent: @Composable (Color, Color) -> Unit = { textColor, primaryColor ->
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Column(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .padding(end = 8.dp),
-                                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                Text(
-                                                    text = label,
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = textColor,
-                                                    maxLines = 2,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
-                                            Icon(
-                                                imageVector = Icons.Default.Download,
-                                                contentDescription = null,
-                                                tint = primaryColor,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                    }
-
-                                    if (isTv) {
-                                        val interactionSource = remember { MutableInteractionSource() }
-                                        val isFocused by interactionSource.collectIsFocusedAsState()
-
-                                        val tvColors = ClickableSurfaceDefaults.colors(
-                                            containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant,
-                                            focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.primaryContainer,
-                                            contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                                            focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-
-                                        val textColor = if (isFocused) {
-                                            androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
-                                        } else {
-                                            androidx.tv.material3.MaterialTheme.colorScheme.onSurface
-                                        }
-
-                                        val primaryColor = if (isFocused) {
-                                            androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
-                                        } else {
-                                            androidx.tv.material3.MaterialTheme.colorScheme.primary
-                                        }
-
-                                        TvSurface(
-                                            onClick = {
-                                                state.onSelected(result)
-                                                onDismiss()
-                                            },
-                                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
-                                            shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
-                                            colors = tvColors,
-                                            interactionSource = interactionSource,
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            cardContent(textColor, primaryColor)
-                                        }
-                                    } else {
-                                        Card(
-                                            onClick = {
-                                                state.onSelected(result)
-                                                onDismiss()
-                                            },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            shape = MaterialTheme.shapes.medium,
-                                            colors = CardDefaults.cardColors(
-                                                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                                                contentColor = MaterialTheme.colorScheme.onSurface
-                                            )
-                                        ) {
-                                            cardContent(
-                                                MaterialTheme.colorScheme.onSurface,
-                                                MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                    }
+                                    AdaptiveOptionItem(
+                                        selected = false,
+                                        label = label,
+                                        onClick = { state.onSelected(result) },
+                                        focusRequester = if (index == 0) firstResultFocusRequester else null
+                                    )
                                 }
                             }
                         }
