@@ -148,18 +148,16 @@ fun MovieItem(
                                     .padding(2.dp)
                             )
                         }
-
-                        if (progressPercent != null && progressPercent > 0) {
-                            LinearProgressIndicator(
-                                progress = { progressPercent / 100f },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(4.dp)
-                                    .align(Alignment.BottomCenter),
-                                color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                            )
-                        }
+                    }
+                    if (progressPercent != null && progressPercent > 0) {
+                        LinearProgressIndicator(
+                            progress = { progressPercent / 100f },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp),
+                            color = androidx.tv.material3.MaterialTheme.colorScheme.error,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        )
                     }
                     Column(
                         modifier = Modifier
@@ -278,6 +276,16 @@ fun MovieItem(
                                         .padding(2.dp)
                                 )
                             }
+                        }
+                        if (progressPercent != null && progressPercent > 0) {
+                            LinearProgressIndicator(
+                                progress = { progressPercent / 100f },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp),
+                                color = MaterialTheme.colorScheme.error,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            )
                         }
                         Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
                             Text(

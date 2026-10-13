@@ -100,6 +100,7 @@ fun SearchScreen(
     val selectedQuality by viewModel.selectedQuality.collectAsState()
     val lastClickedMovieId by viewModel.lastClickedMovieId.collectAsState()
     val downloadedMovieIds by viewModel.downloadedMovieIds.collectAsState()
+    val watchHistoryMap by viewModel.watchHistoryMap.collectAsState()
     val selectedFavoriteIds by viewModel.selectedFavoriteIds.collectAsState()
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val qualityOptions = viewModel.qualityOptions
@@ -170,6 +171,7 @@ fun SearchScreen(
         selectedQuality = selectedQuality,
         lastClickedMovieId = lastClickedMovieId,
         downloadedMovieIds = downloadedMovieIds,
+        watchHistoryMap = watchHistoryMap,
         selectedFavoriteIds = selectedFavoriteIds,
         qualityOptions = qualityOptions,
         searchQuery = searchQuery,
@@ -277,6 +279,7 @@ private fun SearchScreenContent(
     selectedQuality: String?,
     lastClickedMovieId: Int?,
     downloadedMovieIds: Set<Int>,
+    watchHistoryMap: Map<String, com.martinrevert.latorrentola.model.user.PlaybackProgress> = emptyMap(),
     selectedFavoriteIds: Set<Int>,
     qualityOptions: List<String>,
     searchQuery: String,
@@ -479,6 +482,7 @@ private fun SearchScreenContent(
                                     state = gridState,
                                     downloadedMovieIds = downloadedMovieIds,
                                     downloadedSeriesIds = downloadedSeriesIds,
+                                    watchHistoryMap = watchHistoryMap,
                                     selectedMovieIds = selectedFavoriteIds,
                                     lastClickedMovieId = lastClickedMovieId,
                                     lastClickedSeriesId = lastClickedSeriesId,
@@ -494,6 +498,7 @@ private fun SearchScreenContent(
                                 movies = state.movies,
                                 state = gridState,
                                 downloadedMovieIds = downloadedMovieIds,
+                                watchHistoryMap = watchHistoryMap,
                                 selectedIds = selectedFavoriteIds,
                                 isLoadingMore = isLoadingMore,
                                 onMovieClick = onMovieClick,
@@ -567,6 +572,7 @@ private fun SearchScreenContent(
                                 state = gridState,
                                 downloadedMovieIds = downloadedMovieIds,
                                 downloadedSeriesIds = downloadedSeriesIds,
+                                watchHistoryMap = watchHistoryMap,
                                 selectedMovieIds = selectedFavoriteIds,
                                 lastClickedMovieId = lastClickedMovieId,
                                 lastClickedSeriesId = lastClickedSeriesId,
@@ -581,6 +587,7 @@ private fun SearchScreenContent(
                             movies = state.movies,
                             state = gridState,
                             downloadedMovieIds = downloadedMovieIds,
+                            watchHistoryMap = watchHistoryMap,
                             selectedIds = selectedFavoriteIds,
                             isLoadingMore = isLoadingMore,
                             onMovieClick = onMovieClick,
@@ -660,6 +667,7 @@ private fun FavoriteItemsGrid(
     state: androidx.compose.foundation.lazy.grid.LazyGridState,
     downloadedMovieIds: Set<Int>,
     downloadedSeriesIds: Set<Int>,
+    watchHistoryMap: Map<String, com.martinrevert.latorrentola.model.user.PlaybackProgress> = emptyMap(),
     selectedMovieIds: Set<Int>,
     lastClickedMovieId: Int?,
     lastClickedSeriesId: Int?,
@@ -693,10 +701,13 @@ private fun FavoriteItemsGrid(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(movies, key = { "movie_${it.id}" }) { movie ->
+            val progress = watchHistoryMap[movie.id.toString()] ?: watchHistoryMap[movie.title]
+            val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
             MovieItem(
                 movie = movie,
                 isDownloaded = movie.id in downloadedMovieIds,
                 isSelected = movie.id in selectedMovieIds,
+                progressPercent = progressPercent,
                 onClick = { onMovieClick(movie) },
                 onLongClick = { onMovieLongClick(movie.id) },
                 shouldRequestFocus = movie.id == lastClickedMovieId,

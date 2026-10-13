@@ -374,7 +374,7 @@ private fun EpisodeHeader(
                             .fillMaxWidth()
                             .height(4.dp)
                             .align(Alignment.BottomCenter),
-                        color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
+                        color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.error,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     )
                 }

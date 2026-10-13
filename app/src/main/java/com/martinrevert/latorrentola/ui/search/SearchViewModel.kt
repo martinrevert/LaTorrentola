@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.TmdbTvFeed
 import com.martinrevert.latorrentola.network.UserLibraryRepository
@@ -99,6 +100,16 @@ class SearchViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptySet()
+        )
+
+    /** User's in-progress watch history items mapped by media identifier or title. */
+    val watchHistoryMap: StateFlow<Map<String, PlaybackProgress>> = userLibraryRepository.getWatchHistory()
+        .map { list -> list.associateBy { it.mediaId } }
+        .catch { emit(emptyMap()) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyMap()
         )
 
     /** All TMDB TV genres, ordered by local usage. */

@@ -1,5 +1,6 @@
 package com.martinrevert.latorrentola.ui.search
 
+import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.model.YTS.Data
 import com.martinrevert.latorrentola.model.YTS.Movie
@@ -36,6 +37,7 @@ class SearchViewModelTest {
     fun setUp() {
         every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
         every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(emptyList())
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(emptyList())
         every { preferenceManager.getFilteredLanguages() } returns ""
         every { preferenceManager.filteredLanguagesFlow } returns MutableStateFlow("")
         every { preferenceManager.getMinimumRating() } returns 6f
@@ -249,5 +251,26 @@ class SearchViewModelTest {
         
         // Should trigger showFavorites again
         coVerify(exactly = 2) { repository.getFavoriteMovies() }
+    }
+
+    @Test
+    fun `watchHistoryMap should expose progress items mapped by mediaId`() = runTest {
+        val progress = com.martinrevert.latorrentola.model.user.PlaybackProgress(
+            mediaId = "100",
+            title = "Test Movie",
+            positionMs = 300000L,
+            durationMs = 600000L,
+            timestamp = 1000L,
+            isEpisode = false
+        )
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(progress))
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager)
+
+        vm.watchHistoryMap.test {
+            val map = awaitItem()
+            assertThat(map["100"]).isEqualTo(progress)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 }
