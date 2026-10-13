@@ -76,6 +76,12 @@ When triggering a download/play action, read `TorrentHandlingMode` and execute:
 ### Data Sync Flow
 - **Watch History**: Write to Room DAO FIRST (Immediate UI update) -> Sync to Firestore in the background. Room is the Single Source of Truth.
 
+### Cast Subtitle Preloading Mandate (MANDATORY)
+When streaming via Google Cast (Chromecast / Nest Hub / Google TV):
+- **Subtitles MUST ALWAYS be preloaded and auto-activated** if subtitles (OpenSubtitles or local VTT files) exist for the video.
+- **NEVER remove or disable automatic subtitle activation on Cast.**
+- **Safe Activation Workflow**: To prevent initial `LOAD` socket connection errors on CAF Web Receivers, DO NOT pass `activeTrackIds` in the initial `MediaQueueItem` load payload. Instead, automatically activate the text track (`client.setActiveMediaTracks(longArrayOf(trackId))`) inside `RemoteMediaClient.Callback` (`onStatusUpdated` / `onQueueStatusUpdated`) as soon as the media session reaches `BUFFERING` or `PLAYING` state.
+
 ### Previews
 - Every UI Component MUST include `@Preview` functions covering: Light Mode, Dark Mode, Mobile form-factor, and TV form-factor (using appropriate theme wrappers).
 

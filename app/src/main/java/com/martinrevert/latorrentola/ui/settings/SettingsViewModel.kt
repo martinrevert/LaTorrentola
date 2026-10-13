@@ -250,7 +250,7 @@ data class SettingsUiState(
     val theme: Int = PreferenceManager.THEME_SYSTEM,
     val filteredLanguages: String = "",
     val minimumRating: Float = PreferenceManager.DEFAULT_MINIMUM_RATING,
-    val torrentHandlingMode: TorrentHandlingMode = TorrentHandlingMode.EXTERNAL_CLIENT,
+    val torrentHandlingMode: TorrentHandlingMode = TorrentHandlingMode.LOCAL_PLAYBACK,
     val autoPlayQualitySelectionMethod: AutoPlayQualitySelectionMethod = AutoPlayQualitySelectionMethod.OFF,
     val openSubtitlesUsername: String = "",
     val openSubtitlesCredentialsConfigured: Boolean = false

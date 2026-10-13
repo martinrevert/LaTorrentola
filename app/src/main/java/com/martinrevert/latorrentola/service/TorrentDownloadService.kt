@@ -89,14 +89,58 @@ class TorrentDownloadService : Service() {
     /** Hash of the currently active torrent, if one is downloading. */
     @Volatile
     private var activeInfoHash: String? = null
+    /** Active request of the currently downloading torrent. */
+    @Volatile
+    private var activeRequest: DownloadRequest? = null
     /** Hash of a transfer paused from the download manager. */
     @Volatile
     private var pausedInfoHash: String? = null
+
+    private var wakeLock: android.os.PowerManager.WakeLock? = null
+    private var wifiLock: android.net.wifi.WifiManager.WifiLock? = null
+
+    private fun acquireLocks() {
+        try {
+            if (wakeLock == null) {
+                val powerManager = getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+                wakeLock = powerManager.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "LaTorrentola:TorrentWakeLock").apply {
+                    setReferenceCounted(false)
+                    acquire(24 * 60 * 60 * 1000L)
+                }
+            }
+            if (wifiLock == null) {
+                val wifiManager = applicationContext.getSystemService(android.content.Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+                wifiLock = @Suppress("DEPRECATION") if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    wifiManager.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "LaTorrentola:TorrentWifiLock")
+                } else {
+                    wifiManager.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "LaTorrentola:TorrentWifiLock")
+                }.apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error acquiring WakeLock/WifiLock", e)
+        }
+    }
+
+    private fun releaseLocks() {
+        try {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        } catch (_: Exception) {}
+        wakeLock = null
+
+        try {
+            if (wifiLock?.isHeld == true) wifiLock?.release()
+        } catch (_: Exception) {}
+        wifiLock = null
+    }
 
     /** Initializes the notification channel required for foreground transfers. */
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        acquireLocks()
         serviceScope.launch {
             torrentDownloadDao.getRecoverable().forEach { stored ->
                 val hash = parseHexInfoHash(stored.magnetUri) ?: return@forEach
@@ -285,15 +329,19 @@ class TorrentDownloadService : Service() {
         openWhenReadyHashes.add(infoHash)
         startForegroundForDownload(buildProgressNotification(title, 0))
         serviceScope.launch {
+            val castWhenReady = intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false)
             val existingIntent = readyPlayerIntents[infoHash]
-            val existingTitle = existingIntent?.getStringExtra(LocalPlayerActivity.EXTRA_TITLE).orEmpty()
-            if (existingIntent != null && existingTitle == title) {
+            if (existingIntent != null) {
+                existingIntent.putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, castWhenReady)
                 openWhenReadyHashes.remove(infoHash)
                 openReadyPlayer(infoHash)
                 return@launch
-            } else {
-                readyPlayerIntents.remove(infoHash)
-                streamServers.remove(infoHash)?.stop()
+            }
+
+            if (infoHash == activeInfoHash) {
+                openWhenReadyHashes.add(infoHash)
+                activeRequest?.castWhenReady = castWhenReady
+                return@launch
             }
             val existing = torrentDownloadDao.get(infoHash)
             val completedFile = existing
@@ -382,14 +430,21 @@ class TorrentDownloadService : Service() {
         movieId: Int = 0
     ) {
         streamServers.remove(infoHash)?.stop()
-        val server = VerifiedTorrentHttpServer(file, file.length()) { _, _ -> true }
+
+        val server = VerifiedTorrentHttpServer(
+            mediaFile = file,
+            expectedLength = file.length(),
+            accessToken = infoHash,
+            isRangeVerified = { _, _ -> true }
+        )
         val port = server.startServer()
         val castUrl = try {
             server.lanUrl()
-        } catch (_: IllegalStateException) {
+        } catch (_: Exception) {
             null
         }
         streamServers[infoHash] = server
+
         val playerIntent = Intent(this, LocalPlayerActivity::class.java)
             .putExtra(LocalPlayerActivity.EXTRA_STREAM_URL, server.localUrl())
             .putExtra(LocalPlayerActivity.EXTRA_CAST_URL, castUrl)
@@ -407,7 +462,9 @@ class TorrentDownloadService : Service() {
                 }
             }
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
         readyPlayerIntents[infoHash] = playerIntent
+
         withContext(Dispatchers.Main) {
             startForegroundForPlayback(buildReadyNotification(title, playerIntent, port))
             startActivity(playerIntent)
@@ -478,7 +535,10 @@ class TorrentDownloadService : Service() {
                 if (downloadQueue.isEmpty()) {
                     null
                 } else {
-                    downloadQueue.removeFirst().also { activeInfoHash = it.infoHash }
+                    downloadQueue.removeFirst().also {
+                        activeInfoHash = it.infoHash
+                        activeRequest = it
+                    }
                 }
             } ?: break
 
@@ -515,6 +575,7 @@ class TorrentDownloadService : Service() {
                     torrentDownloadDao.delete(request.infoHash)
                 }
                 activeInfoHash = null
+                activeRequest = null
                 pausedInfoHash = null
             }
         }
@@ -609,12 +670,21 @@ class TorrentDownloadService : Service() {
                                     } else {
                                         target.firstPiece
                                     }
-                                    for (p in target.firstPiece..minOf(target.firstPiece + 4, target.lastPiece)) {
+                                    val startupPieceEnd = ((target.fileOffset + minOf(target.length - 1, STARTUP_BUFFER_BYTES)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
+                                    for (p in target.firstPiece..startupPieceEnd) {
                                         handle.piecePriority(p, Priority.TOP_PRIORITY)
                                     }
+
+                                    // Prioritize tail pieces (last 1.5MB) for MP4 moov atom / MKV cues
+                                    val tailBytes = 1_500_000L
+                                    val tailPieceStart = ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
+                                    for (p in tailPieceStart..target.lastPiece) {
+                                        handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                    }
+
                                     handle.setSequentialRange(resumePiece, target.lastPiece)
                                     if (resumePiece > target.firstPiece) {
-                                        for (p in resumePiece..minOf(resumePiece + 64, target.lastPiece)) {
+                                        for (p in resumePiece..minOf(resumePiece + 32, target.lastPiece)) {
                                             handle.piecePriority(p, Priority.TOP_PRIORITY)
                                         }
                                     }
@@ -628,6 +698,34 @@ class TorrentDownloadService : Service() {
                 if (target != null && targetWasMissing) {
                     updateDownloadRecord(request, STATE_BUFFERING, 0, target.file.absolutePath)
                 }
+
+                // Deterministic startup buffer enforcement: while waiting for ready, continuously request missing head pieces (and tail pieces if MKV)
+                if (!readyNotified && target != null) {
+                    synchronized(sessionLock) {
+                        if (sessionManager === manager && handle.isValid()) {
+                            val startupPieceEnd = ((target.fileOffset + minOf(target.length - 1, STARTUP_BUFFER_BYTES)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
+                            for (p in target.firstPiece..startupPieceEnd) {
+                                if (!handle.havePiece(p)) {
+                                    handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                    try { handle.setPieceDeadline(p, 500) } catch (_: Exception) {}
+                                }
+                            }
+
+                            val isMkv = target.file.extension.equals("mkv", ignoreCase = true)
+                            if (isMkv) {
+                                val tailBytes = 5L * 1024L * 1024L
+                                val tailPieceStart = ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
+                                for (p in tailPieceStart..target.lastPiece) {
+                                    if (!handle.havePiece(p)) {
+                                        handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                        try { handle.setPieceDeadline(p, 500) } catch (_: Exception) {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 val status = synchronized(sessionLock) {
                     if (sessionManager === manager && handle.isValid()) handle.status() else null
                 }
@@ -655,20 +753,39 @@ class TorrentDownloadService : Service() {
                     mediaTarget?.file?.absolutePath
                 )
                 if (!readyNotified && target != null && hasVerifiedBuffer(handle, target)) {
-                    val server = VerifiedTorrentHttpServer(target.file, target.length) { start, end ->
-                        completed.get() || synchronized(sessionLock) {
-                            sessionManager === manager &&
-                                isVerifiedRange(handle, target, start, end)
+                    val server = VerifiedTorrentHttpServer(
+                        mediaFile = target.file,
+                        expectedLength = target.length,
+                        accessToken = infoHash,
+                        onRangeRequested = { start, end ->
+                            if (!completed.get()) {
+                                synchronized(sessionLock) {
+                                    if (sessionManager === manager && handle.isValid()) {
+                                        val reqPiece = ((target.fileOffset + start) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
+                                        val reqEndPiece = ((target.fileOffset + end) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
+                                        val windowEnd = minOf(reqEndPiece + 16, target.lastPiece)
+                                        for (p in reqPiece..windowEnd) {
+                                            handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                            try {
+                                                handle.setPieceDeadline(p, 1000)
+                                            } catch (_: Exception) {}
+                                        }
+                                        handle.setSequentialRange(reqPiece, target.lastPiece)
+                                    }
+                                }
+                            }
+                        },
+                        isRangeVerified = { start, end ->
+                            completed.get() || synchronized(sessionLock) {
+                                sessionManager === manager &&
+                                    isVerifiedRange(handle, target, start, end)
+                            }
                         }
-                    }
+                    )
                     val port = server.startServer()
-                    val castUrl = if (request.castWhenReady) {
-                        try {
-                            server.lanUrl()
-                        } catch (_: IllegalStateException) {
-                            null
-                        }
-                    } else {
+                    val castUrl = try {
+                        server.lanUrl()
+                    } catch (_: Exception) {
                         null
                     }
                     streamServers[infoHash]?.stop()
@@ -711,6 +828,16 @@ class TorrentDownloadService : Service() {
                         ?: throw IllegalStateException("The completed torrent contains no supported video file")
                     completed.set(true)
                     updateDownloadRecord(request, STATE_COMPLETED, 100, playableFile.absolutePath)
+
+                    if (playableFile.extension.equals("mkv", ignoreCase = true)) {
+                        val mp4File = File(playableFile.parentFile, "${playableFile.nameWithoutExtension}.mp4")
+                        if (!mp4File.isFile || mp4File.length() == 0L) {
+                            serviceScope.launch(Dispatchers.IO) {
+                                com.martinrevert.latorrentola.utils.MkvToMp4Remuxer.remuxToMp4(playableFile, mp4File)
+                            }
+                        }
+                    }
+
                     val playerIntent = readyPlayerIntent
                     if (playerIntent != null) {
                         updateNotification(
@@ -846,7 +973,10 @@ class TorrentDownloadService : Service() {
     private fun hasVerifiedBuffer(
         handle: org.libtorrent4j.TorrentHandle,
         target: MediaTarget
-    ): Boolean = isVerifiedRange(handle, target, 0, minOf(target.length - 1, STARTUP_BUFFER_BYTES - 1))
+    ): Boolean {
+        val startupEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES - 1)
+        return isVerifiedRange(handle, target, 0, startupEnd)
+    }
 
     /**
      * Checks every torrent piece that overlaps a requested range before serving any bytes.
@@ -1112,7 +1242,7 @@ class TorrentDownloadService : Service() {
         val infoHash: String,
         val magnetUri: String,
         val title: String,
-        val castWhenReady: Boolean,
+        var castWhenReady: Boolean,
         val nextEpisodeInfo: ArrayList<String>? = null,
         val seriesId: Int = 0,
         val seasonNumber: Int = 0,
@@ -1155,6 +1285,7 @@ class TorrentDownloadService : Service() {
 
     /** Stops owned coroutines and closes the native session when the service is destroyed. */
     override fun onDestroy() {
+        releaseLocks()
         serviceScope.cancel()
         Thread { runBlockingStopSession() }.start()
         super.onDestroy()
@@ -1231,7 +1362,7 @@ class TorrentDownloadService : Service() {
         const val STATE_COMPLETED = "COMPLETED"
         /** Transfer failed and is available for an explicit retry. */
         const val STATE_FAILED = "FAILED"
-        /** Minimum verified startup buffer before playback may be offered. */
-        const val STARTUP_BUFFER_BYTES = 16L * 1024L * 1024L
+        /** Minimum verified startup buffer before playback may be offered (5 MB). */
+        const val STARTUP_BUFFER_BYTES = 5L * 1024L * 1024L
     }
 }

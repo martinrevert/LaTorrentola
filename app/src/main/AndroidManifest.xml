@@ -104,6 +104,7 @@
         <activity
             android:name=".ui.player.LocalPlayerActivity"
             android:exported="false"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density" />
     </application>

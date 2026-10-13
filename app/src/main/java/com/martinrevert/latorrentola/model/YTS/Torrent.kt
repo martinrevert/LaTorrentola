@@ -40,5 +40,11 @@ data class Torrent(
     @SerializedName("date_uploaded_unix")
     val dateUploadedUnix: Int? = null,
     @SerializedName("type")
-    val type: String? = null
+    val type: String? = null,
+    @SerializedName("video_codec")
+    val videoCodec: String? = null,
+    @SerializedName("bit_depth")
+    val bitDepth: String? = null,
+    @SerializedName("audio_channels")
+    val audioChannels: String? = null
 )

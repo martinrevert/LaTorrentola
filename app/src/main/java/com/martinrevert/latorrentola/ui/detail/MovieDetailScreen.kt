@@ -866,6 +866,18 @@ fun TorrentItem(
         .padding(vertical = 4.dp)
         .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
 
+    val codecLabel = listOfNotNull(
+        torrent.videoCodec?.uppercase()?.takeIf { it.isNotBlank() },
+        torrent.bitDepth?.let { if (it == "10") "10-BIT" else null },
+        torrent.audioChannels?.let { if (it.contains("5.1")) "5.1" else null }
+    ).joinToString(" ")
+
+    val torrentDisplayText = if (codecLabel.isNotBlank()) {
+        "${torrent.quality} • $codecLabel - ${torrent.size}"
+    } else {
+        "${torrent.quality} - ${torrent.size} (${torrent.type})"
+    }
+
     if (isTv) {
         TvButton(
             onClick = onTorrentClickInternal,
@@ -877,7 +889,7 @@ fun TorrentItem(
         ) {
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 androidx.tv.material3.Text(
-                    text = "${torrent.quality} - ${torrent.size} (${torrent.type})",
+                    text = torrentDisplayText,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = if (isDownloaded) 28.dp else 0.dp),
@@ -911,7 +923,7 @@ fun TorrentItem(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "${torrent.quality} - ${torrent.size} (${torrent.type})",
+                    text = torrentDisplayText,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = if (isDownloaded) 28.dp else 0.dp),

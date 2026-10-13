@@ -115,52 +115,29 @@ class PlaybackService : MediaSessionService() {
                     }
                     override fun toMediaQueueItem(mediaItem: MediaItem): MediaQueueItem {
                         val castUrl = mediaItem.mediaMetadata.extras?.getString(EXTRA_CAST_URL)
-                        
-                        // Let the default converter serialize the ORIGINAL mediaItem (which has 127.0.0.1 URI)
-                        // into the customData. This ensures seamless transfer back to local ExoPlayer.
-                        val defaultQueueItem = defaultConverter.toMediaQueueItem(mediaItem)
-                        val defaultMediaInfo = defaultQueueItem.media ?: return defaultQueueItem
+                        val uriStr = mediaItem.localConfiguration?.uri?.toString().orEmpty()
+                        val lanIp = VerifiedTorrentHttpServer.getLanIpAddress()
 
-                        // Create Cast-compatible subtitle tracks
-                        val castMediaTracks = mediaItem.localConfiguration?.subtitleConfigurations?.mapIndexedNotNull { index, subConfig ->
-                            val subUri = subConfig.uri
-                            if (!castUrl.isNullOrBlank() && subUri.scheme == "file") {
-                                val subFile = File(subUri.path ?: "")
-                                val base64Path = android.util.Base64.encodeToString(subFile.absolutePath.toByteArray(), android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
-                                val castSubUri = "$castUrl/subtitles/$base64Path/${subFile.name}"
-                                
-                                val lang = subConfig.language?.takeIf { it != "und" && it.isNotBlank() } ?: "es"
-
-                                MediaTrack.Builder(index + 1L, MediaTrack.TYPE_TEXT)
-                                    .setName(subConfig.label ?: "Subtítulo ${index + 1}")
-                                    .setSubtype(MediaTrack.SUBTYPE_SUBTITLES)
-                                    .setContentId(castSubUri)
-                                    .setContentType(subConfig.mimeType ?: "text/vtt")
-                                    .setLanguage(lang)
-                                    .build()
-                            } else null
-                        } ?: emptyList()
-
-                        // Override the contentUrl for the Cast receiver to use the LAN IP
-                        val castContentUrl = if (!castUrl.isNullOrBlank()) castUrl else defaultMediaInfo.contentUrl
-
-                        val newMediaInfoBuilder = MediaInfo.Builder(defaultMediaInfo.contentId)
-                            .setContentUrl(castContentUrl.orEmpty())
-                            .setStreamType(defaultMediaInfo.streamType)
-                            .setContentType(defaultMediaInfo.contentType)
-                            .setMetadata(defaultMediaInfo.metadata)
-                            .setCustomData(defaultMediaInfo.customData)
-
-                        if (castMediaTracks.isNotEmpty()) {
-                            newMediaInfoBuilder.setMediaTracks(castMediaTracks)
+                        val targetUrl = when {
+                            !castUrl.isNullOrBlank() && !castUrl.contains("127.0.0.1") && !castUrl.contains("localhost") -> castUrl
+                            !lanIp.isNullOrBlank() && (uriStr.contains("127.0.0.1") || uriStr.contains("localhost")) ->
+                                uriStr.replace("127.0.0.1", lanIp).replace("localhost", lanIp)
+                            else -> uriStr
                         }
 
-                        val queueItemBuilder = MediaQueueItem.Builder(newMediaInfoBuilder.build())
-                        if (castMediaTracks.isNotEmpty()) {
-                            queueItemBuilder.setActiveTrackIds(longArrayOf(1L))
+                        Log.d(TAG, "Converting MediaItem for Cast: targetUrl=$targetUrl")
+
+                        val mime = when {
+                            uriStr.endsWith(".webm", true) -> "video/webm"
+                            else -> "video/mp4"
                         }
 
-                        return queueItemBuilder.build()
+                        val castMediaItem = mediaItem.buildUpon()
+                            .setUri(targetUrl)
+                            .setMimeType(mime)
+                            .build()
+
+                        return defaultConverter.toMediaQueueItem(castMediaItem)
                     }
                 })
                 .build()

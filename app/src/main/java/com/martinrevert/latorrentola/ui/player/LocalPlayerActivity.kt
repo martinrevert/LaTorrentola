@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.ui.player
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -39,11 +40,19 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FastForward
@@ -52,6 +61,12 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.Warning
+import com.google.android.gms.cast.framework.CastContext
+import com.google.android.gms.cast.framework.CastSession
+import com.google.android.gms.cast.framework.SessionManager
+import com.google.android.gms.cast.framework.SessionManagerListener
+import com.martinrevert.latorrentola.ui.components.CastCodecWarningObserver
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -109,6 +124,7 @@ import androidx.media3.common.DeviceInfo
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionOverride
@@ -307,65 +323,13 @@ class LocalPlayerActivity : FragmentActivity() {
     private var subtitleOperationInProgress by mutableStateOf(false)
     private var subtitleStartupCheckStarted = false
 
+    private var pendingMediaUri: Uri? = null
+    private var pendingMediaItem: MediaItem? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        localStreamUrl = intent.getStringExtra(EXTRA_STREAM_URL).orEmpty()
-        castStreamUrl = intent.getStringExtra(EXTRA_CAST_URL).orEmpty()
-        val file = intent.getStringExtra(EXTRA_FILE_PATH)?.let(::File)
-        val isPartialStream = intent.getBooleanExtra(EXTRA_PARTIAL_TORRENT_STREAM, false)
-        val mediaUri = if (file != null && file.isFile && file.canRead() && !isPartialStream) {
-            Uri.fromFile(file)
-        } else {
-            localStreamUrl.takeIf(String::isNotBlank)?.let(Uri::parse)
-                ?: file?.takeIf { it.isFile && it.canRead() }?.let { Uri.fromFile(it) }
-        }
-
-        if (mediaUri == null) {
-            finish()
-            return
-        }
-
-        mediaTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty()
-        torrentInfoHash = intent.getStringExtra(EXTRA_INFO_HASH).orEmpty()
-        currentSeriesId = intent.getIntExtra(EXTRA_SERIES_ID, 0)
-        currentSeasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
-        currentEpisodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
-        currentMovieId = intent.getIntExtra(EXTRA_MOVIE_ID, 0)
-        var castEnabled = intent.getBooleanExtra(EXTRA_CAST_ENABLED, false)
-
-        val nextEpisodeInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
-        if (nextEpisodeInfo != null && nextEpisodeInfo.size >= 5) {
-            try {
-                nextEpisodeSeriesId = nextEpisodeInfo[0].toInt()
-                nextEpisodeSeriesName = nextEpisodeInfo[1]
-                nextEpisodeSeasonNumber = nextEpisodeInfo[2].toInt()
-                nextEpisodeEpisodeNumber = nextEpisodeInfo[3].toInt()
-                nextEpisodeEpisodeName = nextEpisodeInfo[4]
-                hasNextEpisodeInfo = true
-            } catch (e: NumberFormatException) {
-                hasNextEpisodeInfo = false
-            }
-        }
-
-        val isEpisode = currentSeriesId > 0
-        val mediaId = when {
-            currentSeriesId > 0 && currentSeasonNumber > 0 && currentEpisodeNumber > 0 ->
-                "media_${currentSeriesId}_s${currentSeasonNumber}_e${currentEpisodeNumber}"
-            currentMovieId > 0 ->
-                currentMovieId.toString()
-            torrentInfoHash.isNotBlank() ->
-                torrentInfoHash
-            else ->
-                mediaTitle
-        }
-
-        val itemBundle = Bundle().apply {
-            putBoolean(PlaybackService.EXTRA_IS_EPISODE, isEpisode)
-            if (castStreamUrl.isNotBlank()) {
-                putString(PlaybackService.EXTRA_CAST_URL, castStreamUrl)
-            }
-        }
+        handleIntent(intent)
 
         val fontName = preferenceManager.getSubtitleFontName()
         val sizeFraction = preferenceManager.getSubtitleSizeFraction()
@@ -389,68 +353,7 @@ class LocalPlayerActivity : FragmentActivity() {
         customSubtitleSizeFraction = sizeFraction
         customSubtitleBottomOffset = offset
 
-        val mediaItem = MediaItem.Builder()
-            .setMediaId(mediaId)
-            .setUri(mediaUri)
-            .setMimeType(intent.getStringExtra(EXTRA_MIME_TYPE) ?: file?.mediaMimeType())
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(mediaTitle)
-                    .setExtras(itemBundle)
-                    .build()
-            )
-            .build()
-        currentMediaItem = mediaItem
-
-        val sessionToken = SessionToken(this, ComponentName(this, PlaybackService::class.java))
-        controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
-        controllerFuture?.addListener({
-            try {
-                val controller = controllerFuture?.get()
-                mediaController = controller
-                if (controller != null) {
-                    lifecycleScope.launch {
-                        val savedProgress = userLibraryRepository.getPlaybackProgress(mediaId)
-                        val startPosition = if (savedProgress != null && savedProgress.positionMs > 5000L && !savedProgress.isCompleted) {
-                            Log.i(TAG, "Restoring playback position: ${savedProgress.positionMs}ms for $mediaId")
-                            savedProgress.positionMs
-                        } else {
-                            0L
-                        }
-
-                        val deviceLang = Locale.getDefault().language
-                        val defaultTrackParams = controller.trackSelectionParameters.buildUpon()
-                            .setPreferredTextLanguage(deviceLang)
-                            .setPreferredTextRoleFlags(C.ROLE_FLAG_CAPTION or C.ROLE_FLAG_SUBTITLE)
-                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                            .build()
-                        controller.trackSelectionParameters = defaultTrackParams
-
-                        controller.setMediaItem(mediaItem, startPosition)
-                        controller.prepare()
-                        controller.playWhenReady = true
-                        setupPlaybackCompletionListener(controller)
-
-                        controller.addListener(object : Player.Listener {
-                            override fun onTracksChanged(tracks: Tracks) {
-                                selectDefaultSubtitleIfNeeded(controller)
-                                prepareSubtitleTrackIfNeeded(tracks)
-                            }
-
-                            override fun onPlaybackStateChanged(state: Int) {
-                                if (state == Player.STATE_READY) {
-                                    prepareSubtitleTrackIfNeeded(controller.currentTracks)
-                                }
-                            }
-                        })
-                        selectDefaultSubtitleIfNeeded(controller)
-                        prepareSubtitleTrackIfNeeded(controller.currentTracks)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to connect MediaController", e)
-            }
-        }, ContextCompat.getMainExecutor(this))
+        connectToMediaSession()
 
         setContent {
             val themeMode = preferenceManager.getTheme()
@@ -464,6 +367,7 @@ class LocalPlayerActivity : FragmentActivity() {
                 ) {
                     if (controller != null) {
                         var showCastBottomSheet by remember { mutableStateOf(false) }
+
                         var deviceInfo by remember(controller) { mutableStateOf(controller.deviceInfo) }
                         DisposableEffect(controller) {
                             val listener = object : Player.Listener {
@@ -475,17 +379,16 @@ class LocalPlayerActivity : FragmentActivity() {
                             onDispose { controller.removeListener(listener) }
                         }
 
-                        androidx.compose.runtime.key(deviceInfo) {
-                            val presentationState = rememberPresentationState(controller)
-                            val videoModifier = Modifier
-                                .fillMaxSize()
-                                .resizeWithContentScale(ContentScale.Fit, presentationState.videoSizeDp)
+                        val presentationState = rememberPresentationState(controller)
+                        val videoModifier = Modifier
+                            .fillMaxSize()
+                            .resizeWithContentScale(ContentScale.Fit, presentationState.videoSizeDp)
 
-                            ContentFrame(
-                                player = controller,
-                                modifier = videoModifier,
-                                contentScale = ContentScale.Fit
-                            )
+                        ContentFrame(
+                            player = controller,
+                            modifier = videoModifier,
+                            contentScale = ContentScale.Fit
+                        )
 
                             var currentCues by remember(controller) { mutableStateOf<List<Cue>>(controller.currentCues.cues) }
                             DisposableEffect(controller) {
@@ -552,7 +455,13 @@ class LocalPlayerActivity : FragmentActivity() {
                                         .align(Alignment.TopStart)
                                 )
                             }
-                        }
+
+                        CastCodecWarningObserver(
+                            player = controller,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 72.dp)
+                        )
 
                         if (showCastBottomSheet) {
                             CastBottomSheet(
@@ -628,6 +537,180 @@ class LocalPlayerActivity : FragmentActivity() {
             } else {
                 LaTorrentolaTheme(themeMode = themeMode) { content() }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+        val controller = mediaController
+        if (controller != null) {
+            setupControllerMedia(controller)
+        }
+    }
+
+    private fun handleIntent(intent: Intent) {
+        localStreamUrl = intent.getStringExtra(EXTRA_STREAM_URL).orEmpty()
+        castStreamUrl = intent.getStringExtra(EXTRA_CAST_URL).orEmpty()
+        val file = intent.getStringExtra(EXTRA_FILE_PATH)?.let(::File)
+        val isPartialStream = intent.getBooleanExtra(EXTRA_PARTIAL_TORRENT_STREAM, false)
+        val mediaUri = if (file != null && file.isFile && file.canRead() && !isPartialStream) {
+            Uri.fromFile(file)
+        } else {
+            localStreamUrl.takeIf(String::isNotBlank)?.let(Uri::parse)
+                ?: file?.takeIf { it.isFile && it.canRead() }?.let { Uri.fromFile(it) }
+        }
+
+        pendingMediaUri = mediaUri
+
+        if (mediaUri != null) {
+            mediaTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty()
+            torrentInfoHash = intent.getStringExtra(EXTRA_INFO_HASH).orEmpty()
+            currentSeriesId = intent.getIntExtra(EXTRA_SERIES_ID, 0)
+            currentSeasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
+            currentEpisodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
+            currentMovieId = intent.getIntExtra(EXTRA_MOVIE_ID, 0)
+
+            val nextEpisodeInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
+            if (nextEpisodeInfo != null && nextEpisodeInfo.size >= 5) {
+                try {
+                    nextEpisodeSeriesId = nextEpisodeInfo[0].toInt()
+                    nextEpisodeSeriesName = nextEpisodeInfo[1]
+                    nextEpisodeSeasonNumber = nextEpisodeInfo[2].toInt()
+                    nextEpisodeEpisodeNumber = nextEpisodeInfo[3].toInt()
+                    nextEpisodeEpisodeName = nextEpisodeInfo[4]
+                    hasNextEpisodeInfo = true
+                } catch (e: NumberFormatException) {
+                    hasNextEpisodeInfo = false
+                }
+            }
+
+            val isEpisode = currentSeriesId > 0
+            val mediaId = when {
+                currentSeriesId > 0 && currentSeasonNumber > 0 && currentEpisodeNumber > 0 ->
+                    "media_${currentSeriesId}_s${currentSeasonNumber}_e${currentEpisodeNumber}"
+                currentMovieId > 0 ->
+                    currentMovieId.toString()
+                torrentInfoHash.isNotBlank() ->
+                    torrentInfoHash
+                else ->
+                    mediaTitle
+            }
+
+            val itemBundle = Bundle().apply {
+                putBoolean(PlaybackService.EXTRA_IS_EPISODE, isEpisode)
+                if (castStreamUrl.isNotBlank()) {
+                    putString(PlaybackService.EXTRA_CAST_URL, castStreamUrl)
+                }
+            }
+
+            pendingMediaItem = MediaItem.Builder()
+                .setMediaId(mediaId)
+                .setUri(mediaUri)
+                .setMimeType(intent.getStringExtra(EXTRA_MIME_TYPE) ?: file?.mediaMimeType())
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(mediaTitle)
+                        .setExtras(itemBundle)
+                        .build()
+                )
+                .build()
+            currentMediaItem = pendingMediaItem
+        }
+    }
+
+    private fun connectToMediaSession() {
+        val sessionToken = SessionToken(this, ComponentName(this, PlaybackService::class.java))
+        controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
+        controllerFuture?.addListener({
+            try {
+                val controller = controllerFuture?.get()
+                mediaController = controller
+                if (controller != null) {
+                    setupControllerMedia(controller)
+                } else if (pendingMediaUri == null) {
+                    finish()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to connect MediaController", e)
+                if (pendingMediaUri == null) {
+                    finish()
+                }
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun setupControllerMedia(controller: MediaController) {
+        lifecycleScope.launch {
+            val activeItem = controller.currentMediaItem
+            val newItem = pendingMediaItem
+
+            if (newItem != null && (activeItem == null || activeItem.mediaId != newItem.mediaId)) {
+                val savedProgress = userLibraryRepository.getPlaybackProgress(newItem.mediaId)
+                val startPosition = if (savedProgress != null && savedProgress.positionMs > 5000L && !savedProgress.isCompleted) {
+                    Log.i(TAG, "Restoring playback position: ${savedProgress.positionMs}ms for ${newItem.mediaId}")
+                    savedProgress.positionMs
+                } else {
+                    0L
+                }
+
+                val deviceLang = Locale.getDefault().language
+                val defaultTrackParams = controller.trackSelectionParameters.buildUpon()
+                    .setPreferredTextLanguage(deviceLang)
+                    .setPreferredTextRoleFlags(C.ROLE_FLAG_CAPTION or C.ROLE_FLAG_SUBTITLE)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .build()
+                controller.trackSelectionParameters = defaultTrackParams
+
+                controller.setMediaItem(newItem, startPosition)
+                controller.prepare()
+                controller.playWhenReady = true
+            } else if (activeItem != null) {
+                currentMediaItem = activeItem
+                val titleFromMetadata = activeItem.mediaMetadata.title?.toString()
+                if (!titleFromMetadata.isNullOrBlank()) {
+                    mediaTitle = titleFromMetadata
+                }
+            } else if (pendingMediaUri == null) {
+                finish()
+                return@launch
+            }
+
+            setupPlaybackCompletionListener(controller)
+
+            controller.addListener(object : Player.Listener {
+                override fun onTracksChanged(tracks: Tracks) {
+                    selectDefaultSubtitleIfNeeded(controller)
+                    prepareSubtitleTrackIfNeeded(tracks)
+                }
+
+                override fun onPlaybackStateChanged(state: Int) {
+                    if (state == Player.STATE_READY) {
+                        prepareSubtitleTrackIfNeeded(controller.currentTracks)
+                    }
+                }
+
+                override fun onPlayerError(error: PlaybackException) {
+                    Log.e(TAG, "Player error encountered: ${error.errorCodeName} (${error.errorCode}): ${error.message}", error)
+                    if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+                        error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                        error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+                        error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED) {
+                        lifecycleScope.launch {
+                            delay(1500L)
+                            if (controller.playbackState == Player.STATE_IDLE) {
+                                Log.i(TAG, "Attempting auto-recovery for transient playback error")
+                                controller.prepare()
+                                controller.playWhenReady = true
+                            }
+                        }
+                    }
+                }
+            })
+
+            selectDefaultSubtitleIfNeeded(controller)
+            prepareSubtitleTrackIfNeeded(controller.currentTracks)
         }
     }
 

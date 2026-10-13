@@ -169,11 +169,11 @@ class PreferenceManager @Inject constructor(
         _torrentHandlingModeFlow.value = mode
     }
 
-    /** Returns the configured torrent handling mode, defaulting to external handoff. */
+    /** Returns the configured torrent handling mode, defaulting to local playback/streaming. */
     fun getTorrentHandlingMode(): TorrentHandlingMode {
         val storedMode = sharedPreferences.getString(KEY_TORRENT_HANDLING_MODE, null)
         return TorrentHandlingMode.values().firstOrNull { it.name == storedMode }
-            ?: TorrentHandlingMode.EXTERNAL_CLIENT
+            ?: TorrentHandlingMode.LOCAL_PLAYBACK
     }
 
     /** Persists and publishes the auto-play quality selection method. */

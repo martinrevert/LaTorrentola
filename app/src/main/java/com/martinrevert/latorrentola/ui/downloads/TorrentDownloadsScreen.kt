@@ -6,6 +6,7 @@ import androidx.core.content.ContextCompat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -73,6 +74,7 @@ import com.martinrevert.latorrentola.model.torrent.TorrentDownload
 import com.martinrevert.latorrentola.service.PlaybackService
 import com.martinrevert.latorrentola.service.TorrentDownloadService
 import com.martinrevert.latorrentola.ui.components.CastBottomSheet
+import com.martinrevert.latorrentola.ui.components.CastCodecWarningObserver
 import com.martinrevert.latorrentola.ui.player.LocalPlayerActivity
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.isTvDevice
@@ -205,7 +207,7 @@ fun TorrentDownloadsScreen(
                 Surface(
                     onClick = {
                         val intent = Intent(context, LocalPlayerActivity::class.java).apply {
-                            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
                         }
                         context.startActivity(intent)
                     },
@@ -237,7 +239,9 @@ fun TorrentDownloadsScreen(
                             Text(
                                 text = if (isCasting) "Transmitiendo en ${selectedRoute.name}" else "Reproduciendo en teléfono",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                         IconButton(
@@ -265,73 +269,85 @@ fun TorrentDownloadsScreen(
             }
         }
     ) { padding ->
-        if (downloads.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = stringResource(R.string.torrent_downloads_empty),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = if (isTv) 48.dp else 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(downloads, key = TorrentDownload::infoHash) { download ->
-                    val isActive = activeMediaTitle.isNotBlank() && (
-                        activeMediaId == download.infoHash ||
-                        activeMediaId == download.movieId?.toString() ||
-                        activeMediaId.contains(download.infoHash, ignoreCase = true) ||
-                        activeMediaTitle.equals(download.title, ignoreCase = true)
-                    )
-
-                    TorrentDownloadItem(
-                        download = download,
-                        isTv = isTv,
-                        isActive = isActive,
-                        isPlaying = isMediaPlaying,
-                        isCasting = isCasting,
-                        activeRouteName = selectedRoute.name,
-                        onToggleActivePlayback = {
-                            if (isMediaPlaying) mediaController?.pause() else mediaController?.play()
-                        },
-                        onPauseResume = { viewModel.togglePause(context, download) },
-                        onDelete = { viewModel.delete(context, download) },
-                        onPlay = { cast ->
-                            val intent = Intent(context, TorrentDownloadService::class.java).apply {
-                                action = if (download.state == TorrentDownloadService.STATE_READY) {
-                                    TorrentDownloadService.ACTION_PLAY_STREAM
-                                } else {
-                                    TorrentDownloadService.ACTION_DOWNLOAD
-                                }
-                                putExtra(TorrentDownloadService.EXTRA_INFO_HASH, download.infoHash)
-                                putExtra(TorrentDownloadService.EXTRA_CAST_WHEN_READY, cast)
-                                if (download.seriesId != null) putExtra(TorrentDownloadService.EXTRA_SERIES_ID, download.seriesId)
-                                if (download.seasonNumber != null) putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, download.seasonNumber)
-                                if (download.episodeNumber != null) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, download.episodeNumber)
-                                if (download.movieId != null) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, download.movieId)
-
-                                if (download.state != TorrentDownloadService.STATE_READY) {
-                                    putExtra(TorrentDownloadService.EXTRA_MAGNET_URI, download.magnetUri)
-                                    putExtra(TorrentDownloadService.EXTRA_TITLE, download.title)
-                                }
-                            }
-                            ContextCompat.startForegroundService(context, intent)
-                        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            if (downloads.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = stringResource(R.string.torrent_downloads_empty),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = if (isTv) 48.dp else 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(downloads, key = TorrentDownload::infoHash) { download ->
+                        val isActive = activeMediaTitle.isNotBlank() && (
+                            activeMediaId == download.infoHash ||
+                            activeMediaId == download.movieId?.toString() ||
+                            activeMediaId.contains(download.infoHash, ignoreCase = true) ||
+                            activeMediaTitle.equals(download.title, ignoreCase = true)
+                        )
+
+                        TorrentDownloadItem(
+                            download = download,
+                            isTv = isTv,
+                            isActive = isActive,
+                            isPlaying = isMediaPlaying,
+                            isCasting = isCasting,
+                            activeRouteName = selectedRoute.name,
+                            onToggleActivePlayback = {
+                                if (isMediaPlaying) mediaController?.pause() else mediaController?.play()
+                            },
+                            onPauseResume = { viewModel.togglePause(context, download) },
+                            onDelete = { viewModel.delete(context, download) },
+                            onPlay = { cast ->
+                                val intent = Intent(context, TorrentDownloadService::class.java).apply {
+                                    action = if (download.state == TorrentDownloadService.STATE_READY || download.state == TorrentDownloadService.STATE_COMPLETED) {
+                                        TorrentDownloadService.ACTION_PLAY_STREAM
+                                    } else {
+                                        TorrentDownloadService.ACTION_DOWNLOAD
+                                    }
+                                    putExtra(TorrentDownloadService.EXTRA_INFO_HASH, download.infoHash)
+                                    putExtra(TorrentDownloadService.EXTRA_CAST_WHEN_READY, cast)
+                                    if (download.seriesId != null) putExtra(TorrentDownloadService.EXTRA_SERIES_ID, download.seriesId)
+                                    if (download.seasonNumber != null) putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, download.seasonNumber)
+                                    if (download.episodeNumber != null) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, download.episodeNumber)
+                                    if (download.movieId != null) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, download.movieId)
+
+                                    if (download.state != TorrentDownloadService.STATE_READY) {
+                                        putExtra(TorrentDownloadService.EXTRA_MAGNET_URI, download.magnetUri)
+                                        putExtra(TorrentDownloadService.EXTRA_TITLE, download.title)
+                                    }
+                                }
+                                ContextCompat.startForegroundService(context, intent)
+                            }
+                        )
+                    }
+                }
             }
+
+            CastCodecWarningObserver(
+                player = mediaController,
+                streamUrl = downloads.firstOrNull { it.infoHash == activeMediaId }?.mediaPath,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 16.dp)
+            )
         }
     }
 

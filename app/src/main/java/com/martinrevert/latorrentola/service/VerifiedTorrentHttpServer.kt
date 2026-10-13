@@ -1,5 +1,6 @@
 package com.martinrevert.latorrentola.service
 
+import android.util.Log
 import fi.iki.elonen.NanoHTTPD
 import java.io.File
 import java.io.FileInputStream
@@ -23,11 +24,10 @@ import com.martinrevert.latorrentola.utils.mediaMimeType
 class VerifiedTorrentHttpServer(
     private val mediaFile: File,
     private val expectedLength: Long,
+    val accessToken: String = UUID.randomUUID().toString(),
+    private val onRangeRequested: ((Long, Long) -> Unit)? = null,
     private val isRangeVerified: (Long, Long) -> Boolean
 ) : NanoHTTPD("0.0.0.0", 0) {
-
-    /** Random endpoint path component preventing unauthenticated access to app downloads. */
-    private val accessToken = UUID.randomUUID().toString()
 
     /**
      * Starts listening for local-player and Cast receiver media requests.
@@ -40,25 +40,18 @@ class VerifiedTorrentHttpServer(
     }
 
     /** Returns the localhost URL for the embedded Media3 player. */
-    fun localUrl(): String = "http://127.0.0.1:$listeningPort/$accessToken"
+    fun localUrl(): String {
+        val encodedName = java.net.URLEncoder.encode(mediaFile.name, "UTF-8").replace("+", "%20")
+        return "http://127.0.0.1:$listeningPort/$accessToken/$encodedName"
+    }
 
     /** Returns the URL reachable by another device on the same local network. */
     fun lanUrl(): String {
-        val address = Collections.list(NetworkInterface.getNetworkInterfaces())
-            .asSequence()
-            .filter(NetworkInterface::isUp)
-            .sortedBy { network ->
-                when {
-                    network.name.startsWith("wlan", ignoreCase = true) -> 0
-                    network.name.startsWith("eth", ignoreCase = true) -> 1
-                    else -> 2
-                }
-            }
-            .flatMap { Collections.list(it.inetAddresses).asSequence() }
-            .firstOrNull { it is Inet4Address && it.isSiteLocalAddress && !it.isLoopbackAddress }
-            ?.hostAddress
+        val address = getLanIpAddress()
             ?: error("No local-network address is available for Cast")
-        return "http://$address:$listeningPort/$accessToken"
+
+        val encodedName = java.net.URLEncoder.encode(mediaFile.name, "UTF-8").replace("+", "%20")
+        return "http://$address:$listeningPort/$accessToken/$encodedName"
     }
 
     /**
@@ -68,22 +61,21 @@ class VerifiedTorrentHttpServer(
      * @return Bounded file response, range response, subtitle file, or an explicit unavailable/error status.
      */
     override fun serve(session: IHTTPSession): Response {
+        Log.d(TAG, "HTTP ${session.method} ${session.uri} | Range: ${session.headers["range"]} | Origin: ${session.headers["origin"]}")
+
         // Handle CORS preflight OPTIONS requests for Cast receivers
         if (session.method == Method.OPTIONS) {
             return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "").apply {
-                addHeader("Access-Control-Allow-Origin", "*")
-                addHeader("Access-Control-Allow-Methods", "GET, OPTIONS, HEAD")
-                addHeader("Access-Control-Allow-Headers", "Origin, Accept, Content-Type, Authorization, Range")
-                addHeader("Access-Control-Max-Age", "86400")
+                addCorsHeaders(this, session)
             }
         }
 
         val uri = session.uri.trim('/')
 
         // Handle LAN subtitle requests for Cast receivers
-        // Format: /{accessToken}/subtitles/{base64Path}/{filename}
-        if (uri.startsWith("$accessToken/subtitles/")) {
-            val parts = uri.substringAfter("$accessToken/subtitles/").split('/')
+        // Supports both /{accessToken}/subtitles/{base64Path}/{filename} and /{accessToken}/{filename}/subtitles/{base64Path}/{filename}
+        if (uri.startsWith("$accessToken/subtitles/") || (uri.startsWith(accessToken) && uri.contains("/subtitles/"))) {
+            val parts = uri.substringAfter("/subtitles/").split('/')
             var subFile: File? = null
 
             if (parts.isNotEmpty()) {
@@ -112,93 +104,164 @@ class VerifiedTorrentHttpServer(
 
             if (subFile != null) {
                 return try {
-                    val fis = FileInputStream(subFile)
-                    val mimeType = if (subFile.name.endsWith(".vtt", ignoreCase = true)) "text/vtt" else "text/plain"
-                    newFixedLengthResponse(Response.Status.OK, mimeType, fis, subFile.length()).apply {
+                    val rawText = try { subFile.readText(Charsets.UTF_8) } catch (_: Exception) { subFile.readText(Charsets.ISO_8859_1) }
+                    val vttText = convertSrtToVtt(rawText)
+                    val vttBytes = vttText.toByteArray(Charsets.UTF_8)
+                    val bis = java.io.ByteArrayInputStream(vttBytes)
+                    Log.d(TAG, "Serving subtitle VTT for $uri (${vttBytes.size} bytes)")
+                    newFixedLengthResponse(Response.Status.OK, "text/vtt; charset=utf-8", bis, vttBytes.size.toLong()).apply {
                         addHeader("Accept-Ranges", "bytes")
-                        addHeader("Access-Control-Allow-Origin", "*")
-                        addHeader("Access-Control-Allow-Methods", "GET, OPTIONS, HEAD")
-                        addHeader("Access-Control-Allow-Headers", "*")
+                        addCorsHeaders(this, session)
                     }
                 } catch (e: Exception) {
-                    newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, e.message.orEmpty())
+                    Log.e(TAG, "Error serving subtitle VTT: ${e.message}")
+                    newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, e.message.orEmpty()).apply { addCorsHeaders(this, session) }
                 }
             } else {
-                return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Subtitle file not found")
+                Log.w(TAG, "Subtitle file not found for URI $uri")
+                return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Subtitle file not found").apply { addCorsHeaders(this, session) }
             }
         }
 
-        if (uri != accessToken) {
-            return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not found")
+        val isMediaUri = uri.contains(accessToken) && !uri.contains("/subtitles/")
+        if (!isMediaUri) {
+            Log.w(TAG, "URI not matched: $uri (expected token: $accessToken)")
+            return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not found").apply { addCorsHeaders(this, session) }
         }
 
-        val range = parseRange(session.headers["range"], expectedLength)
+        val rawRange = parseRange(session.headers["range"], expectedLength)
             ?: if (session.headers.containsKey("range")) {
-                return newFixedLengthResponse(Response.Status.RANGE_NOT_SATISFIABLE, MIME_PLAINTEXT, "")
+                Log.w(TAG, "Invalid Range requested: ${session.headers["range"]}")
+                return newFixedLengthResponse(Response.Status.RANGE_NOT_SATISFIABLE, MIME_PLAINTEXT, "").apply { addCorsHeaders(this, session) }
             } else {
                 0L to (expectedLength - 1L)
             }
-        val (start, end) = range
-        val length = end - start + 1L
-        val initialVerifiedEnd = minOf(end, start + VERIFIED_CHUNK_BYTES - 1L)
+
+        val (rawStart, rawEnd) = rawRange
+        val activeFile = if (mediaFile.extension.equals("mkv", ignoreCase = true)) {
+            val mp4 = File(mediaFile.parentFile, "${mediaFile.nameWithoutExtension}.mp4")
+            if (mp4.isFile && mp4.length() > 0) mp4 else mediaFile
+        } else {
+            mediaFile
+        }
+
+        val diskLength = activeFile.length()
+        val start = rawStart.coerceIn(0L, maxOf(0L, expectedLength - 1L))
+        val end = if (rawEnd >= expectedLength - 1L && diskLength > 0L) {
+            minOf(expectedLength - 1L, maxOf(start, diskLength - 1L))
+        } else {
+            rawEnd
+        }
+        val length = maxOf(0L, end - start + 1L)
+        val httpMimeType = getResponseMimeType()
+
+        val isRangeRequest = session.headers.containsKey("range")
+        val status = if (isRangeRequest) Response.Status.PARTIAL_CONTENT else Response.Status.OK
+
         if (session.method == Method.HEAD) {
-            return newFixedLengthResponse(Response.Status.OK, mediaFile.mediaMimeType(), null, length).apply {
+            Log.d(TAG, "HEAD request for $uri -> $httpMimeType length=$length range=$start-$end")
+            return newFixedLengthResponse(status, httpMimeType, null, length).apply {
                 addHeader("Accept-Ranges", "bytes")
                 addHeader("Content-Length", length.toString())
-                addHeader("Content-Range", "bytes $start-$end/$expectedLength")
+                if (isRangeRequest) {
+                    addHeader("Content-Range", "bytes $start-$end/$expectedLength")
+                }
+                addCorsHeaders(this, session)
             }
         }
-        if (
-            expectedLength <= 0L ||
-            !awaitVerified(start, initialVerifiedEnd)
-        ) {
-            return newFixedLengthResponse(Response.Status.SERVICE_UNAVAILABLE, MIME_PLAINTEXT, "Buffering")
-                .apply { addHeader("Retry-After", "2") }
+        if (expectedLength <= 0L) {
+            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "Invalid media length").apply { addCorsHeaders(this, session) }
         }
 
-        if (!mediaFile.isFile || mediaFile.length() < initialVerifiedEnd + 1L) {
-            return newFixedLengthResponse(Response.Status.SERVICE_UNAVAILABLE, MIME_PLAINTEXT, "Buffering")
-                .apply { addHeader("Retry-After", "2") }
+        // Check if file is ready on disk. If file exists and has data, skip wait loop completely.
+        if (!activeFile.isFile || activeFile.length() < 1000L) {
+            var fileWaitAttempts = 0
+            while ((!activeFile.isFile || activeFile.length() < 1000L) && fileWaitAttempts < 20) {
+                try { Thread.sleep(100) } catch (_: InterruptedException) {}
+                fileWaitAttempts++
+            }
         }
 
-        val input = FileInputStream(mediaFile)
+        if (!activeFile.isFile || activeFile.length() == 0L) {
+            Log.e(TAG, "File not ready on disk for $uri")
+            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "File not ready on disk").apply { addCorsHeaders(this, session) }
+        }
+
+        Log.d(TAG, "Streaming GET $uri -> range $start-$end / $expectedLength (MIME: $httpMimeType, file: ${activeFile.name})")
+        val input = FileInputStream(activeFile)
         skipFully(input, start)
         val body = VerifiedRangeInputStream(input, start, end, ::awaitVerified)
-        val status = if (session.headers.containsKey("range")) {
-            Response.Status.PARTIAL_CONTENT
-        } else {
-            Response.Status.OK
-        }
-        val response = newFixedLengthResponse(status, mediaFile.mediaMimeType(), body, length)
+        val response = newFixedLengthResponse(status, httpMimeType, body, length)
         response.addHeader("Accept-Ranges", "bytes")
         response.addHeader("Content-Length", length.toString())
         response.addHeader("Cache-Control", "no-store")
-        response.addHeader("Access-Control-Allow-Origin", "*")
         if (status == Response.Status.PARTIAL_CONTENT) {
             response.addHeader("Content-Range", "bytes $start-$end/$expectedLength")
         }
+        addCorsHeaders(response, session)
         return response
+    }
+
+    private fun addCorsHeaders(response: Response, session: IHTTPSession? = null) {
+        val origin = session?.headers?.get("origin")
+        response.addHeader("Access-Control-Allow-Origin", if (!origin.isNullOrBlank()) origin else "*")
+        response.addHeader("Access-Control-Allow-Methods", "GET, OPTIONS, HEAD")
+        val requestedHeaders = session?.headers?.get("access-control-request-headers")
+        if (!requestedHeaders.isNullOrBlank()) {
+            response.addHeader("Access-Control-Allow-Headers", requestedHeaders)
+        } else {
+            response.addHeader("Access-Control-Allow-Headers", "Origin, Accept, Content-Type, Authorization, Range, Access-Control-Request-Private-Network")
+        }
+        response.addHeader("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges, Access-Control-Allow-Private-Network")
+        response.addHeader("Access-Control-Allow-Private-Network", "true")
+        response.addHeader("Access-Control-Max-Age", "86400")
     }
 
     /**
      * Waits briefly for every byte in a receiver-requested range to become verified.
+     * Blocks for up to 30 seconds to allow libtorrent to download the required pieces,
+     * which prevents HTML5 video elements (like Chromecast) from fatally aborting on 503 errors.
      *
      * @param start Inclusive byte offset.
      * @param end Inclusive byte offset.
      * @return Whether all pieces covering the interval verified before timeout.
      */
     private fun awaitVerified(start: Long, end: Long): Boolean {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        onRangeRequested?.invoke(start, end)
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(500)
         while (System.nanoTime() < deadline) {
             if (isRangeVerified(start, end)) return true
             try {
-                Thread.sleep(250)
+                Thread.sleep(50)
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
                 return false
             }
         }
         return isRangeVerified(start, end)
+    }
+
+    private fun convertSrtToVtt(srtText: String): String {
+        val text = srtText.replace("\r\n", "\n").replace("\r", "\n")
+        if (text.trimStart().startsWith("WEBVTT")) {
+            return text
+        }
+        val timestampRegex = Regex("""(\d{2}:\d{2}:\d{2}),(\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}),(\d{3})""")
+        val convertedBody = timestampRegex.replace(text) { matchResult ->
+            val (startHms, startMs, endHms, endMs) = matchResult.destructured
+            "$startHms.$startMs --> $endHms.$endMs"
+        }
+        return "WEBVTT\n\n$convertedBody"
+    }
+
+    private fun getResponseMimeType(): String {
+        val mime = mediaFile.mediaMimeType()
+        val ext = mediaFile.extension.lowercase(java.util.Locale.ROOT)
+        return when {
+            mime.contains("webm", ignoreCase = true) || ext == "webm" -> "video/webm"
+            mime.contains("avi", ignoreCase = true) || ext == "avi" -> "video/x-msvideo"
+            else -> "video/mp4"
+        }
     }
 
     /**
@@ -262,8 +325,8 @@ class VerifiedTorrentHttpServer(
         private val waitForRangeVerified: (Long, Long) -> Boolean
     ) : FilterInputStream(input) {
         private var currentOffset = start
-        private var verifiedThrough =
-            minOf(end, start + VerifiedTorrentHttpServer.VERIFIED_CHUNK_BYTES - 1L)
+        // Start verifiedThrough before 'start' so the very first chunk is forced to verify
+        private var verifiedThrough = start - 1L
 
         /** Reads one byte after verifying the bounded piece range containing it. */
         override fun read(): Int {
@@ -300,11 +363,51 @@ class VerifiedTorrentHttpServer(
         }
     }
 
-    private companion object {
+    companion object {
+        const val TAG = "VerifiedTorrentHttpServer"
+
         /** NanoHTTPD socket timeout used while a receiver requests media. */
-        const val SOCKET_READ_TIMEOUT = 5_000
+        const val SOCKET_READ_TIMEOUT = 30_000
 
         /** Maximum byte interval verified before the response stream advances. */
-        const val VERIFIED_CHUNK_BYTES = 1024L * 1024L
+        const val VERIFIED_CHUNK_BYTES = 256L * 1024L
+
+        fun getLanIpAddress(): String? {
+            return try {
+                val interfaces = java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())
+
+                val primaryIp = interfaces.asSequence()
+                    .filter { it.isUp && !it.isLoopback }
+                    .filter { network ->
+                        val name = network.name.lowercase(java.util.Locale.ROOT)
+                        !name.contains("p2p") && !name.contains("tun") && !name.contains("tap") && !name.contains("dummy")
+                    }
+                    .sortedBy { network ->
+                        val name = network.name.lowercase(java.util.Locale.ROOT)
+                        when {
+                            name.startsWith("wlan") || name.contains("wlan") -> 0
+                            name.startsWith("eth") || name.contains("eth") -> 1
+                            else -> 2
+                        }
+                    }
+                    .flatMap { java.util.Collections.list(it.inetAddresses).asSequence() }
+                    .filterIsInstance<java.net.Inet4Address>()
+                    .filter { !it.isLoopbackAddress && !it.isLinkLocalAddress && it.isSiteLocalAddress }
+                    .firstOrNull()
+                    ?.hostAddress
+
+                if (primaryIp != null) return primaryIp
+
+                interfaces.asSequence()
+                    .filter { it.isUp && !it.isLoopback }
+                    .flatMap { java.util.Collections.list(it.inetAddresses).asSequence() }
+                    .filterIsInstance<java.net.Inet4Address>()
+                    .filter { !it.isLoopbackAddress && !it.isLinkLocalAddress }
+                    .firstOrNull()
+                    ?.hostAddress
+            } catch (_: Exception) {
+                null
+            }
+        }
     }
 }
