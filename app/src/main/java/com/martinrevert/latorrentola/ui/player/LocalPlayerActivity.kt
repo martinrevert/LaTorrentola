@@ -147,7 +147,6 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.SubtitleView
-import androidx.media3.ui.compose.ContentFrame
 import androidx.media3.ui.compose.modifiers.resizeWithContentScale
 import androidx.media3.ui.compose.state.rememberPresentationState
 import androidx.media3.ui.compose.PlayerSurface
@@ -395,10 +394,9 @@ class LocalPlayerActivity : FragmentActivity() {
                             .fillMaxSize()
                             .resizeWithContentScale(ContentScale.Fit, presentationState.videoSizeDp)
 
-                        ContentFrame(
+                        PlayerSurface(
                             player = controller,
-                            modifier = videoModifier,
-                            contentScale = ContentScale.Fit
+                            modifier = videoModifier
                         )
 
                             var currentCues by remember(controller) { mutableStateOf<List<Cue>>(controller.currentCues.cues) }
@@ -993,29 +991,98 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     private fun trackLabel(format: androidx.media3.common.Format, type: PlaybackTrackType): String {
-        val language = format.language?.takeIf(String::isNotBlank)?.let { lang ->
-            val locale = Locale.forLanguageTag(lang)
-            val name = locale.getDisplayName(Locale.getDefault()).replaceFirstChar { it.uppercase() }
-            val flag = when (lang.lowercase(Locale.ROOT)) {
-                "en", "eng" -> "🇺🇸"
-                "es", "spa" -> "🇦🇷"
-                "pt", "por", "pob" -> "🇧🇷"
-                "fr", "fre", "fra" -> "🇫🇷"
-                "de", "ger", "deu" -> "🇩🇪"
-                "it", "ita" -> "🇮🇹"
-                else -> ""
+        val rawLanguage = format.language?.takeIf { it.isNotBlank() && it != "und" }
+        val customLabel = format.label?.takeIf(String::isNotBlank)
+
+        // 1. Language Detection (from language code OR customLabel/id fallback)
+        val detectedLangCode = rawLanguage ?: run {
+            val textToScan = "${customLabel.orEmpty()} ${format.id.orEmpty()}".lowercase(Locale.ROOT)
+            when {
+                textToScan.contains("esp") || textToScan.contains("spa") || textToScan.contains("latino") || textToScan.contains("castellano") -> "es"
+                textToScan.contains("eng") || textToScan.contains("ingl") -> "en"
+                textToScan.contains("por") || textToScan.contains("portu") -> "pt"
+                textToScan.contains("jpn") || textToScan.contains("jap") -> "ja"
+                textToScan.contains("fra") || textToScan.contains("fren") || textToScan.contains("fran") -> "fr"
+                textToScan.contains("ger") || textToScan.contains("deu") || textToScan.contains("alem") -> "de"
+                textToScan.contains("ita") -> "it"
+                textToScan.contains("rus") -> "ru"
+                else -> null
             }
-            if (flag.isNotBlank()) "$flag $name" else name
         }
 
-        val label = format.label?.takeIf(String::isNotBlank)
-        val id = format.id?.takeIf(String::isNotBlank)
+        val languageStr = detectedLangCode?.let { lang ->
+            val cleanLang = lang.lowercase(Locale.ROOT)
+            val locale = Locale.forLanguageTag(cleanLang)
+            val displayLang = locale.getDisplayName(Locale.getDefault()).replaceFirstChar {
+                if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
+            }
+            val flag = when (cleanLang) {
+                "es", "spa", "spanish" -> "🇦🇷"
+                "en", "eng", "english" -> "🇺🇸"
+                "pt", "por", "pob", "portuguese" -> "🇧🇷"
+                "fr", "fre", "fra", "french" -> "🇫🇷"
+                "de", "ger", "deu", "german" -> "🇩🇪"
+                "it", "ita", "italian" -> "🇮🇹"
+                "ja", "jpn", "japanese" -> "🇯🇵"
+                "ru", "rus", "russian" -> "🇷🇺"
+                "zh", "zho", "chi", "chinese" -> "🇨🇳"
+                "ko", "kor", "korean" -> "🇰🇷"
+                else -> "🌐"
+            }
+            if (displayLang.isNotBlank() && displayLang != cleanLang) "$flag $displayLang" else "$flag $cleanLang"
+        }
 
-        val parts = listOfNotNull(label ?: id, language).distinct()
-        return if (parts.isNotEmpty()) {
-            parts.joinToString(" · ")
+        if (type == PlaybackTrackType.AUDIO) {
+            val mime = format.sampleMimeType?.lowercase(Locale.ROOT) ?: ""
+            val codecs = format.codecs?.lowercase(Locale.ROOT) ?: ""
+            val labelScan = customLabel?.lowercase(Locale.ROOT) ?: ""
+
+            val codecName = when {
+                mime.contains("eac3") || codecs.contains("ec-3") || labelScan.contains("eac3") || labelScan.contains("dd+") -> "E-AC-3 (Dolby Digital Plus)"
+                mime.contains("ac3") || codecs.contains("ac-3") || labelScan.contains("ac3") || labelScan.contains("dolby") -> "AC-3 (Dolby Digital)"
+                mime.contains("dts") || labelScan.contains("dts") -> "DTS"
+                mime.contains("truehd") || labelScan.contains("truehd") -> "Dolby TrueHD"
+                mime.contains("flac") || labelScan.contains("flac") -> "FLAC"
+                mime.contains("opus") || labelScan.contains("opus") -> "Opus"
+                mime.contains("vorbis") -> "Vorbis"
+                mime.contains("mp3") || mime.contains("mpeg") -> "MP3"
+                mime.contains("aac") || codecs.contains("mp4a") || labelScan.contains("aac") -> "AAC"
+                else -> mime.substringAfter("audio/").uppercase(Locale.ROOT).ifBlank { "Audio" }
+            }
+
+            val detectedChannels = if (format.channelCount > 0) {
+                format.channelCount
+            } else {
+                when {
+                    labelScan.contains("7.1") || labelScan.contains("8ch") -> 8
+                    labelScan.contains("5.1") || labelScan.contains("6ch") -> 6
+                    labelScan.contains("2.0") || labelScan.contains("stereo") || labelScan.contains("2ch") -> 2
+                    labelScan.contains("1.0") || labelScan.contains("mono") -> 1
+                    else -> -1
+                }
+            }
+
+            val channelStr = when (detectedChannels) {
+                1 -> "1.0 (Mono)"
+                2 -> "2.0 (Estéreo)"
+                6 -> "5.1 (Surround)"
+                8 -> "7.1 (Surround)"
+                in 3..5 -> "$detectedChannels Canales"
+                in 7..12 -> "$detectedChannels.1 Surround"
+                else -> null
+            }
+
+            val parts = listOfNotNull(
+                customLabel,
+                languageStr ?: "🌐 Idioma Desconocido",
+                codecName,
+                channelStr
+            ).distinct()
+
+            return parts.joinToString(" · ")
         } else {
-            format.sampleMimeType ?: getString(R.string.player_track_unknown)
+            val parts = listOfNotNull(customLabel ?: format.id?.takeIf(String::isNotBlank), languageStr).distinct()
+            return if (parts.isNotEmpty()) parts.joinToString(" · ") else format.sampleMimeType ?: getString(R.string.player_track_unknown)
         }
     }
 
@@ -1073,41 +1140,90 @@ class LocalPlayerActivity : FragmentActivity() {
                 val isEpisode = EPISODE_PATTERN.containsMatchIn(mediaTitle) || currentSeasonNumber > 0
                 val mediaType = if (isEpisode) "episode" else "movie"
 
-                var imdbResults: List<OpenSubtitleResult>? = null
-                try {
-                    if (currentSeriesId > 0 && isEpisode && currentSeasonNumber > 0 && currentEpisodeNumber > 0) {
-                        val imdbId = tmdbRepository.getTvImdbId(currentSeriesId)
-                        if (!imdbId.isNullOrBlank()) {
-                            imdbResults = openSubtitlesRepository.searchByImdbId(
-                                imdbId = imdbId,
-                                seasonNumber = currentSeasonNumber,
-                                episodeNumber = currentEpisodeNumber
-                            )
+                var effectiveSeriesId = currentSeriesId
+                var effectiveMovieId = currentMovieId
+                var effectiveSeason = currentSeasonNumber
+                var effectiveEpisode = currentEpisodeNumber
+
+                // 1. Recover IDs from Room DB if not present in Intent
+                if (torrentInfoHash.isNotBlank() && effectiveSeriesId <= 0 && effectiveMovieId <= 0) {
+                    try {
+                        val dbRecord = torrentDownloadDao.get(torrentInfoHash)
+                        if (dbRecord != null) {
+                            if (dbRecord.movieId != null && dbRecord.movieId > 0) {
+                                effectiveMovieId = dbRecord.movieId
+                            }
+                            if (dbRecord.seriesId != null && dbRecord.seriesId > 0) {
+                                effectiveSeriesId = dbRecord.seriesId
+                                effectiveSeason = dbRecord.seasonNumber ?: effectiveSeason
+                                effectiveEpisode = dbRecord.episodeNumber ?: effectiveEpisode
+                            }
                         }
-                    } else if (currentMovieId > 0 && !isEpisode) {
-                        val imdbId = tmdbRepository.getMovieImdbId(currentMovieId)
-                        if (!imdbId.isNullOrBlank()) {
-                            imdbResults = openSubtitlesRepository.searchByImdbId(imdbId = imdbId)
-                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to read download record for IMDb lookup: ${e.message}")
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "OpenSubtitles IMDb ID search failed, falling back to text query: ${e.message}")
                 }
 
+                // 2. Fetch IMDb ID from TMDB repository
+                var resolvedImdbId: String? = null
+                try {
+                    if (effectiveSeriesId > 0 && isEpisode) {
+                        resolvedImdbId = tmdbRepository.getTvImdbId(effectiveSeriesId)
+                    } else if (effectiveMovieId > 0) {
+                        resolvedImdbId = tmdbRepository.getMovieImdbId(effectiveMovieId)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to fetch IMDb ID from TMDB repository: ${e.message}")
+                }
+
+                // 3. Fallback: Search TMDB by clean title to get the exact IMDb ID if not found
+                if (resolvedImdbId.isNullOrBlank()) {
+                    val ttMatch = Regex("""tt\d{7,8}""", RegexOption.IGNORE_CASE).find(mediaTitle)
+                    if (ttMatch != null) {
+                        resolvedImdbId = ttMatch.value
+                    } else if (isEpisode) {
+                        try {
+                            val cleanTitle = mediaTitle.replace(EPISODE_PATTERN, "").trim()
+                            val tvPage = tmdbRepository.searchTvSeries(cleanTitle)
+                            val firstTv = tvPage.results?.firstOrNull()
+                            if (firstTv != null && firstTv.id > 0) {
+                                resolvedImdbId = tmdbRepository.getTvImdbId(firstTv.id)
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to resolve IMDb ID via TMDB title search: ${e.message}")
+                        }
+                    }
+                }
+
+                // 4. Perform OpenSubtitles search PRIORITIZING IMDb ID FIRST
+                var imdbResults: List<OpenSubtitleResult>? = null
+                if (!resolvedImdbId.isNullOrBlank()) {
+                    Log.i(TAG, "Searching OpenSubtitles by IMDb ID: $resolvedImdbId (isEpisode=$isEpisode, S=$effectiveSeason, E=$effectiveEpisode)")
+                    try {
+                        imdbResults = if (isEpisode && effectiveSeason > 0 && effectiveEpisode > 0) {
+                            openSubtitlesRepository.searchByImdbId(
+                                imdbId = resolvedImdbId,
+                                seasonNumber = effectiveSeason,
+                                episodeNumber = effectiveEpisode
+                            )
+                        } else {
+                            openSubtitlesRepository.searchByImdbId(imdbId = resolvedImdbId)
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "OpenSubtitles searchByImdbId failed: ${e.message}")
+                    }
+                }
+
+                // 5. String query search ONLY as a last resort
                 if (!imdbResults.isNullOrEmpty()) {
                     results = imdbResults
                 } else {
-                    val cleanTitle = if (isEpisode) {
-                        mediaTitle.replace(EPISODE_PATTERN, "").trim()
-                    } else {
-                        mediaTitle
-                    }
-                    val queryTitle = cleanTitle.ifBlank { mediaTitle }
-
+                    Log.w(TAG, "No IMDb ID results found. Falling back to text query search for: $mediaTitle")
+                    val cleanTitle = mediaTitle.replace(EPISODE_PATTERN, "").trim().ifBlank { mediaTitle }
                     results = openSubtitlesRepository.search(
-                        query = queryTitle,
-                        seasonNumber = currentSeasonNumber.takeIf { it > 0 },
-                        episodeNumber = currentEpisodeNumber.takeIf { it > 0 },
+                        query = cleanTitle,
+                        seasonNumber = effectiveSeason.takeIf { it > 0 },
+                        episodeNumber = effectiveEpisode.takeIf { it > 0 },
                         type = mediaType
                     )
                 }
