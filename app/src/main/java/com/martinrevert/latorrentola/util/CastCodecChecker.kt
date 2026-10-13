@@ -1,6 +1,5 @@
 package com.martinrevert.latorrentola.util
 
-import android.content.Context
 import android.media.MediaMetadataRetriever
 import androidx.annotation.OptIn
 import androidx.media3.common.Format
@@ -49,7 +48,7 @@ object CastCodecChecker {
                 } else null
 
                 Pair(videoFormat, null)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 Pair(null, null)
             } finally {
                 try {
@@ -63,17 +62,17 @@ object CastCodecChecker {
      * Cruza el modelo de dispositivo detectado vía mDNS con los formatos de video/audio para predecir fallos.
      */
     fun checkCompatibility(castDevice: CastDevice, videoFormat: Format?, audioFormat: Format?): CodecWarning? {
-        val model = (castDevice.modelName ?: "").lowercase()
-        val deviceName = castDevice.friendlyName ?: "Dispositivo Cast"
+        val rawModel = castDevice.modelName
+        val rawName = castDevice.friendlyName
+        val model = rawModel.lowercase()
+        val deviceName = rawName.ifBlank { "Dispositivo Cast" }
 
-        // Dispositivos y perfiles
         val isNestHub = model.contains("hub") || model.contains("display") || model.contains("nest")
         val isLegacyChromecast = model.contains("chromecast") && !model.contains("ultra") && !model.contains("google tv")
         val isChromecastUltra = model.contains("ultra")
 
         val warnings = mutableListOf<String>()
 
-        // Video format checks
         if (videoFormat != null) {
             val videoMime = videoFormat.sampleMimeType ?: ""
             val codecs = videoFormat.codecs ?: ""
@@ -90,15 +89,11 @@ object CastCodecChecker {
             val is4k = (videoFormat.height >= 2000) || (videoFormat.width >= 3500)
             val isAbove1080p = (videoFormat.height > 1080) || (videoFormat.width > 1920)
 
-            // Lógica por Arquitectura:
-            
-            // 1. Google Nest Hub / Legacy Chromecast
             if (isNestHub || isLegacyChromecast) {
                 if (isHevc) warnings.add("Códec de video x265 / HEVC no soportado.")
                 if (isAbove1080p) warnings.add("Resolución mayor a 1080p no soportada.")
             }
 
-            // 2. Chromecast Ultra
             if (isChromecastUltra) {
                 if (is4k && isAvc) {
                     warnings.add("Resolución 4K en códec H.264 (x264) causará lag o cierre. Requiere HEVC (x265).")
@@ -106,7 +101,6 @@ object CastCodecChecker {
             }
         }
 
-        // Audio format checks
         if (audioFormat != null) {
             val audioMime = audioFormat.sampleMimeType ?: ""
             val isAc3OrDts = audioMime.contains("ac3", ignoreCase = true) ||
@@ -122,7 +116,7 @@ object CastCodecChecker {
 
         return CodecWarning(
             deviceName = deviceName,
-            modelName = castDevice.modelName ?: "Cast",
+            modelName = rawModel ?: "Cast",
             warnings = warnings
         )
     }
@@ -131,8 +125,10 @@ object CastCodecChecker {
      * Evalúa directamente los metadatos expuestos por la API de YTS antes de iniciar la descarga.
      */
     fun checkCompatibility(castDevice: CastDevice, torrent: com.martinrevert.latorrentola.model.YTS.Torrent): CodecWarning? {
-        val model = (castDevice.modelName ?: "").lowercase()
-        val deviceName = castDevice.friendlyName ?: "Dispositivo Cast"
+        val rawModel = castDevice.modelName
+        val rawName = castDevice.friendlyName
+        val model = rawModel.lowercase()
+        val deviceName = rawName.ifBlank { "Dispositivo Cast" }
 
         val isNestHub = model.contains("hub") || model.contains("display") || model.contains("nest")
         val isLegacyChromecast = model.contains("chromecast") && !model.contains("ultra") && !model.contains("google tv")
@@ -149,14 +145,12 @@ object CastCodecChecker {
         val isAvc = codec.contains("x264") || codec.contains("h264") || codec.contains("avc")
         val is4k = quality.contains("2160p") || quality.contains("4k")
 
-        // 1. Google Nest Hub / Legacy Chromecast
         if (isNestHub || isLegacyChromecast) {
             if (isHevc) warnings.add("Códec de video x265 / HEVC 10-bit no soportado por este dispositivo.")
             if (is4k) warnings.add("Resolución 4K (2160p) no soportada.")
             if (isNestHub && audioChannels == "5.1") warnings.add("Audio 5.1 / Dolby no soportado en Smart Displays.")
         }
 
-        // 2. Chromecast Ultra
         if (isChromecastUltra) {
             if (is4k && isAvc) {
                 warnings.add("Resolución 4K en códec H.264 (x264) causará saturación en Chromecast Ultra. Se sugiere x265.")
@@ -167,7 +161,7 @@ object CastCodecChecker {
 
         return CodecWarning(
             deviceName = deviceName,
-            modelName = castDevice.modelName ?: "Cast",
+            modelName = rawModel ?: "Cast",
             warnings = warnings
         )
     }

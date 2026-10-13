@@ -72,7 +72,9 @@ fun CastBottomSheet(
 
     DisposableEffect(Unit) {
         val callback = object : MediaRouter.Callback() {
+            @Suppress("DEPRECATION")
             override fun onRouteAdded(router: MediaRouter, route: MediaRouter.RouteInfo) { updateState() }
+            @Suppress("DEPRECATION")
             override fun onRouteRemoved(router: MediaRouter, route: MediaRouter.RouteInfo) { updateState() }
             override fun onRouteChanged(router: MediaRouter, route: MediaRouter.RouteInfo) { updateState() }
             override fun onRouteSelected(router: MediaRouter, route: MediaRouter.RouteInfo) { updateState() }
@@ -100,7 +102,7 @@ fun CastBottomSheet(
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            if (isCasting && selectedRoute != null) {
+            if (isCasting) {
                 // "Reproduciendo" Header Section
                 item {
                     Column(
@@ -333,6 +335,7 @@ private fun CastDeviceRow(
     }
 }
 
+@Suppress("DEPRECATION")
 private fun routeIcon(route: MediaRouter.RouteInfo?): ImageVector {
     if (route == null) return Icons.Default.Tv
     return when {
