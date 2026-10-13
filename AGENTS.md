@@ -29,12 +29,13 @@
 
 ---
 
-## 🧪 4. UNIT TESTING MANDATE (ZERO EXCEPTIONS)
+## 🧪 4. UNIT TESTING & VALIDATION MANDATE (ZERO EXCEPTIONS)
 **RULE**: You MUST write or update Unit Tests concurrently with any functional change.
-1. **Scope**: Create tests for ViewModels, Repositories, UseCases, and Utility classes. UI tests are required for complex Compose logic.
-2. **Frameworks**: Use JUnit4, MockK, Coroutines `runTest`, and Turbine (for Flows).
-3. **Location**: Place tests in `app/src/test/...` mirroring the package structure of the target class.
-4. **Execution**: If you are in planning/execution mode, do not call `set_plan_state(COMPLETED)` until tests are written and verified.
+1. **No APK Building Required**: AI agents **DO NOT** need to assemble or build release/debug APKs (`assembleRelease`, `assembleDebug`). Running unit tests (`pwsh -Command ".\gradlew.bat testDebugUnitTest"`) is sufficient validation after finishing changes or executing a plan.
+2. **Scope**: Create tests for ViewModels, Repositories, UseCases, and Utility classes. UI tests are required for complex Compose logic.
+3. **Frameworks**: Use JUnit4, MockK, Coroutines `runTest`, and Turbine (for Flows).
+4. **Location**: Place tests in `app/src/test/...` mirroring the package structure of the target class.
+5. **Execution**: If you are in planning/execution mode, do not call `set_plan_state(COMPLETED)` until unit tests are written and verified.
 
 ---
 
@@ -95,3 +96,4 @@ Before marking a task complete, verify:
 4. [ ] Is TypeSafe serialization fully intact (both annotations present)?
 5. [ ] Is TV logic securely sandboxed behind `isTvDevice()`?
 6. [ ] Did I use `pwsh` for any required terminal commands?
+7. [ ] Did I run unit tests (`testDebugUnitTest`) as validation instead of assembling release/debug APKs?
