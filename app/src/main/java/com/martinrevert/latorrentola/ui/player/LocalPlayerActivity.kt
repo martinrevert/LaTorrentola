@@ -278,7 +278,8 @@ val fontProvider = GoogleFont.Provider(
     certificates = R.array.com_google_android_gms_fonts_certs
 )
 
-@OptIn(UnstableApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
+@OptIn(androidx.media3.common.util.UnstableApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Suppress("OPT_IN_USAGE_ERROR")
 @AndroidEntryPoint
 class LocalPlayerActivity : FragmentActivity() {
 
@@ -994,42 +995,32 @@ class LocalPlayerActivity : FragmentActivity() {
         val rawLanguage = format.language?.takeIf { it.isNotBlank() && it != "und" }
         val customLabel = format.label?.takeIf(String::isNotBlank)
 
-        // 1. Language Detection (from language code OR customLabel/id fallback)
-        val detectedLangCode = rawLanguage ?: run {
-            val textToScan = "${customLabel.orEmpty()} ${format.id.orEmpty()}".lowercase(Locale.ROOT)
-            when {
-                textToScan.contains("esp") || textToScan.contains("spa") || textToScan.contains("latino") || textToScan.contains("castellano") -> "es"
-                textToScan.contains("eng") || textToScan.contains("ingl") -> "en"
-                textToScan.contains("por") || textToScan.contains("portu") -> "pt"
-                textToScan.contains("jpn") || textToScan.contains("jap") -> "ja"
-                textToScan.contains("fra") || textToScan.contains("fren") || textToScan.contains("fran") -> "fr"
-                textToScan.contains("ger") || textToScan.contains("deu") || textToScan.contains("alem") -> "de"
-                textToScan.contains("ita") -> "it"
-                textToScan.contains("rus") -> "ru"
-                else -> null
+        val textToScan = "${customLabel.orEmpty()} ${format.id.orEmpty()}".lowercase(Locale.ROOT)
+        val flag = getLanguageFlag(rawLanguage, textToScan)
+
+        val displayLang = rawLanguage?.let { lang ->
+            val locale = Locale.forLanguageTag(lang)
+            locale.getDisplayName(Locale.getDefault()).replaceFirstChar {
+                if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
             }
         }
 
-        val languageStr = detectedLangCode?.let { lang ->
-            val cleanLang = lang.lowercase(Locale.ROOT)
-            val locale = Locale.forLanguageTag(cleanLang)
-            val displayLang = locale.getDisplayName(Locale.getDefault()).replaceFirstChar {
-                if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
+        val languageStr = if (!displayLang.isNullOrBlank() && displayLang.lowercase(Locale.ROOT) != rawLanguage?.lowercase(Locale.ROOT)) {
+            "$flag $displayLang"
+        } else {
+            val fallbackName = when {
+                textToScan.contains("latino") -> "Español (Latinoamérica)"
+                textToScan.contains("esp") || textToScan.contains("spa") || textToScan.contains("castellano") -> "Español"
+                textToScan.contains("eng") || textToScan.contains("ingl") -> "Inglés"
+                textToScan.contains("por") || textToScan.contains("portu") -> "Portugués"
+                textToScan.contains("jpn") || textToScan.contains("jap") -> "Japonés"
+                textToScan.contains("fra") || textToScan.contains("fren") -> "Francés"
+                textToScan.contains("ger") || textToScan.contains("deu") -> "Alemán"
+                textToScan.contains("ita") -> "Italiano"
+                textToScan.contains("rus") -> "Ruso"
+                else -> null
             }
-            val flag = when (cleanLang) {
-                "es", "spa", "spanish" -> "🇦🇷"
-                "en", "eng", "english" -> "🇺🇸"
-                "pt", "por", "pob", "portuguese" -> "🇧🇷"
-                "fr", "fre", "fra", "french" -> "🇫🇷"
-                "de", "ger", "deu", "german" -> "🇩🇪"
-                "it", "ita", "italian" -> "🇮🇹"
-                "ja", "jpn", "japanese" -> "🇯🇵"
-                "ru", "rus", "russian" -> "🇷🇺"
-                "zh", "zho", "chi", "chinese" -> "🇨🇳"
-                "ko", "kor", "korean" -> "🇰🇷"
-                else -> "🌐"
-            }
-            if (displayLang.isNotBlank() && displayLang != cleanLang) "$flag $displayLang" else "$flag $cleanLang"
+            if (fallbackName != null) "$flag $fallbackName" else "$flag Desconocido"
         }
 
         if (type == PlaybackTrackType.AUDIO) {
@@ -1136,6 +1127,7 @@ class LocalPlayerActivity : FragmentActivity() {
         lifecycleScope.launch {
             var results: List<OpenSubtitleResult>? = null
             var message: String? = null
+            var dbRecord: com.martinrevert.latorrentola.model.torrent.TorrentDownload? = null
             try {
                 val isEpisode = EPISODE_PATTERN.containsMatchIn(mediaTitle) || currentSeasonNumber > 0
                 val mediaType = if (isEpisode) "episode" else "movie"
@@ -1146,14 +1138,14 @@ class LocalPlayerActivity : FragmentActivity() {
                 var effectiveEpisode = currentEpisodeNumber
 
                 // 1. Recover IDs from Room DB if not present in Intent
-                if (torrentInfoHash.isNotBlank() && effectiveSeriesId <= 0 && effectiveMovieId <= 0) {
+                if (torrentInfoHash.isNotBlank()) {
                     try {
-                        val dbRecord = torrentDownloadDao.get(torrentInfoHash)
+                        dbRecord = torrentDownloadDao.get(torrentInfoHash)
                         if (dbRecord != null) {
-                            if (dbRecord.movieId != null && dbRecord.movieId > 0) {
+                            if (dbRecord.movieId != null && dbRecord.movieId > 0 && effectiveMovieId <= 0) {
                                 effectiveMovieId = dbRecord.movieId
                             }
-                            if (dbRecord.seriesId != null && dbRecord.seriesId > 0) {
+                            if (dbRecord.seriesId != null && dbRecord.seriesId > 0 && effectiveSeriesId <= 0) {
                                 effectiveSeriesId = dbRecord.seriesId
                                 effectiveSeason = dbRecord.seasonNumber ?: effectiveSeason
                                 effectiveEpisode = dbRecord.episodeNumber ?: effectiveEpisode
@@ -1219,12 +1211,26 @@ class LocalPlayerActivity : FragmentActivity() {
                     results = imdbResults
                 } else {
                     Log.w(TAG, "No IMDb ID results found. Falling back to text query search for: $mediaTitle")
-                    val cleanTitle = mediaTitle.replace(EPISODE_PATTERN, "").trim().ifBlank { mediaTitle }
-                    results = openSubtitlesRepository.search(
+                    val yearMatch = Regex("""\b(19\d\d|20\d\d)\b""").find(mediaTitle)
+                    val expectedYear = yearMatch?.value?.toIntOrNull()
+                    val cleanTitle = mediaTitle
+                        .replace(Regex("""\b(19\d\d|20\d\d)\b"""), "")
+                        .replace(Regex("""[()\[\]]"""), "")
+                        .replace(EPISODE_PATTERN, "")
+                        .trim()
+                        .ifBlank { mediaTitle }
+
+                    val rawResults = openSubtitlesRepository.search(
                         query = cleanTitle,
                         seasonNumber = effectiveSeason.takeIf { it > 0 },
                         episodeNumber = effectiveEpisode.takeIf { it > 0 },
                         type = mediaType
+                    )
+
+                    results = filterStringFallbackResults(
+                        rawResults = rawResults,
+                        expectedTitle = cleanTitle,
+                        expectedYear = expectedYear
                     )
                 }
 
@@ -1241,7 +1247,11 @@ class LocalPlayerActivity : FragmentActivity() {
 
             if (!results.isNullOrEmpty()) {
                 val currentFile = intent.getStringExtra(EXTRA_FILE_PATH)?.let { File(it).name }
-                    ?.takeIf { it.isNotBlank() } ?: mediaTitle
+                    ?.takeIf { it.isNotBlank() }
+                    ?: dbRecord?.mediaPath?.let { File(it).name }?.takeIf { it.isNotBlank() }
+                    ?: dbRecord?.title?.takeIf { it.isNotBlank() }
+                    ?: intent.getStringExtra(EXTRA_TITLE)?.takeIf { it.isNotBlank() }
+                    ?: mediaTitle
 
                 val deviceLang = Locale.getDefault().language.lowercase(Locale.ROOT)
                 val sortedResults = results.sortedByDescending { result ->
@@ -1298,6 +1308,64 @@ class LocalPlayerActivity : FragmentActivity() {
                 )
             }
         }
+    }
+
+    private fun filterStringFallbackResults(
+        rawResults: List<OpenSubtitleResult>,
+        expectedTitle: String,
+        expectedYear: Int?
+    ): List<OpenSubtitleResult> {
+        if (rawResults.isEmpty()) return emptyList()
+
+        val normalizedExpectedTitle = normalizeTitleForComparison(expectedTitle)
+        if (normalizedExpectedTitle.isBlank()) return rawResults
+
+        return rawResults.filter { result ->
+            val rawResultTitle = result.featureTitle
+                ?: extractTitleFromRelease(result.release.ifBlank { result.fileName })
+            val normalizedResultTitle = normalizeTitleForComparison(rawResultTitle)
+
+            val isTitleMatch = normalizedResultTitle == normalizedExpectedTitle
+            if (!isTitleMatch) {
+                Log.d(TAG, "Fallback subtitle search filtered out result: title '$normalizedResultTitle' != '$normalizedExpectedTitle'")
+                return@filter false
+            }
+
+            val resultYear = result.featureYear
+                ?: extractYearFromRelease(result.release.ifBlank { result.fileName })
+
+            if (resultYear != null && expectedYear != null && resultYear != expectedYear) {
+                Log.d(TAG, "Fallback subtitle search filtered out result: year $resultYear != $expectedYear")
+                return@filter false
+            }
+
+            true
+        }
+    }
+
+    private fun normalizeTitleForComparison(title: String): String {
+        return title
+            .lowercase(Locale.ROOT)
+            .replace(Regex("""\b(19\d\d|20\d\d)\b"""), " ")
+            .replace(Regex("""[^a-z0-9]"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+    }
+
+    private fun extractYearFromRelease(release: String): Int? {
+        return Regex("""\b(19\d\d|20\d\d)\b""").find(release)?.value?.toIntOrNull()
+    }
+
+    private fun extractTitleFromRelease(release: String): String {
+        val yearMatch = Regex("""\b(19\d\d|20\d\d)\b""").find(release)
+        if (yearMatch != null) {
+            return release.substring(0, yearMatch.range.first)
+        }
+        val qualityMatch = Regex("""\b(1080p|720p|480p|2160p|4k|bluray|web-dl|webrip|dvdrip|h264|x264|hevc|x265)\b""", RegexOption.IGNORE_CASE).find(release)
+        if (qualityMatch != null) {
+            return release.substring(0, qualityMatch.range.first)
+        }
+        return release.substringBeforeLast('.')
     }
 
     private fun attachSubtitle(subtitle: DownloadedSubtitle) {
@@ -1520,7 +1588,6 @@ fun AdaptiveChoiceChip(
     }
 }
 
-@OptIn(UnstableApi::class)
 @Composable
 fun PlayerControlsOverlay(
     controller: Player,
@@ -1734,7 +1801,6 @@ fun PlayerControlsOverlay(
     }
 }
 
-@OptIn(UnstableApi::class)
 @Composable
 fun StatsForNerdsOverlay(
     controller: Player,
@@ -1775,7 +1841,7 @@ fun StatsForNerdsOverlay(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class, UnstableApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerBottomSheetContent(
     state: PlayerBottomSheetState,
@@ -2172,7 +2238,7 @@ private fun BottomSheetInnerContent(
                                         text = state.currentFileName,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
+                                        maxLines = 2,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
@@ -2196,15 +2262,8 @@ private fun BottomSheetInnerContent(
                             ) {
                                 itemsIndexed(state.results) { index, result ->
                                     val feature = result.featureTitle?.takeIf(String::isNotBlank)
-                                    val flag = when (result.language.lowercase(Locale.ROOT)) {
-                                        "en", "eng" -> "🇺🇸"
-                                        "es", "spa" -> "🇦🇷"
-                                        "pt", "por", "pob" -> "🇧🇷"
-                                        "fr", "fre", "fra" -> "🇫🇷"
-                                        "de", "ger", "deu" -> "🇩🇪"
-                                        "it", "ita" -> "🇮🇹"
-                                        else -> result.language.uppercase(Locale.ROOT)
-                                    }
+                                    val textToScan = "${result.release} ${result.fileName} ${result.featureTitle.orEmpty()}"
+                                    val flag = getLanguageFlag(result.language, textToScan)
                                     val label = listOfNotNull(
                                         flag,
                                         result.release.takeIf(String::isNotBlank) ?: result.fileName.takeIf(String::isNotBlank),
@@ -2292,5 +2351,109 @@ private fun formatTime(ms: Long): String {
         String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds)
     } else {
         String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+    }
+}
+
+fun getLanguageFlag(langCode: String?, textToScan: String? = null): String {
+    val cleanLang = langCode?.lowercase(Locale.ROOT)?.trim().orEmpty()
+    val cleanText = textToScan?.lowercase(Locale.ROOT).orEmpty()
+    val combined = "$cleanLang $cleanText"
+
+    // 1. Spanish: Latin American (🇦🇷) vs Plain / Spain (🇪🇸)
+    val isSpanish = cleanLang.startsWith("es") || cleanLang == "spa" || cleanLang == "spanish" ||
+            combined.contains("esp") || combined.contains("spa") || combined.contains("castellano") || combined.contains("latino")
+
+    if (isSpanish) {
+        val isLatinAmerican = cleanLang.contains("419") || cleanLang.contains("ar") || cleanLang.contains("mx") ||
+                cleanLang.contains("cl") || cleanLang.contains("co") || cleanLang.contains("pe") || cleanLang.contains("ve") ||
+                cleanLang.contains("lat") || combined.contains("latino") || combined.contains("latin") ||
+                combined.contains("latam") || combined.contains("hispanoamerica") || combined.contains("es-419")
+
+        return if (isLatinAmerican) "🇦🇷" else "🇪🇸"
+    }
+
+    // 2. Portuguese: Brazil (🇧🇷) vs Portugal / Plain (🇵🇹)
+    val isPortuguese = cleanLang.startsWith("pt") || cleanLang == "por" || cleanLang == "pob" || cleanLang == "portuguese" || combined.contains("portu")
+    if (isPortuguese) {
+        val isBrazil = cleanLang.contains("br") || cleanLang == "pob" || combined.contains("brazil") || combined.contains("brasil")
+        return if (isBrazil) "🇧🇷" else "🇵🇹"
+    }
+
+    // 3. English: UK (🇬🇧) vs US / Plain (🇺🇸)
+    val isEnglish = cleanLang.startsWith("en") || cleanLang == "eng" || cleanLang == "english" || combined.contains("ingl")
+    if (isEnglish) {
+        val isUk = cleanLang.contains("gb") || cleanLang.contains("uk") || combined.contains("british")
+        return if (isUk) "🇬🇧" else "🇺🇸"
+    }
+
+    // 4. Chinese: Taiwan / Traditional (🇹🇼) vs China / Plain (🇨🇳)
+    val isChinese = cleanLang.startsWith("zh") || cleanLang == "zho" || cleanLang == "chi" || cleanLang == "chinese" || combined.contains("chino")
+    if (isChinese) {
+        val isTaiwan = cleanLang.contains("tw") || cleanLang.contains("hk") || cleanLang.contains("hant") || combined.contains("taiwan")
+        return if (isTaiwan) "🇹🇼" else "🇨🇳"
+    }
+
+    // 5. Comprehensive language / country lookup table
+    return when {
+        cleanLang.startsWith("fr") || cleanLang == "fra" || cleanLang == "fre" || combined.contains("french") || combined.contains("franc") -> "🇫🇷"
+        cleanLang.startsWith("de") || cleanLang == "deu" || cleanLang == "ger" || combined.contains("german") || combined.contains("deutsch") || combined.contains("alem") -> "🇩🇪"
+        cleanLang.startsWith("it") || cleanLang == "ita" || combined.contains("italian") || combined.contains("italiano") -> "🇮🇹"
+        cleanLang.startsWith("ja") || cleanLang == "jpn" || combined.contains("japanese") || combined.contains("jap") -> "🇯🇵"
+        cleanLang.startsWith("ru") || cleanLang == "rus" || combined.contains("russian") || combined.contains("ruso") -> "🇷🇺"
+        cleanLang.startsWith("ko") || cleanLang == "kor" || combined.contains("korean") || combined.contains("coreano") -> "🇰🇷"
+        cleanLang.startsWith("ar") || cleanLang == "ara" || combined.contains("arabic") || combined.contains("arabe") -> "🇸🇦"
+        cleanLang.startsWith("hi") || cleanLang == "hin" || combined.contains("hindi") -> "🇮🇳"
+        cleanLang.startsWith("bn") || cleanLang == "ben" || combined.contains("bengali") -> "🇧🇩"
+        cleanLang.startsWith("nl") || cleanLang == "nld" || cleanLang == "dut" || combined.contains("dutch") || combined.contains("holand") -> "🇳🇱"
+        cleanLang.startsWith("pl") || cleanLang == "pol" || combined.contains("polish") || combined.contains("polaco") -> "🇵🇱"
+        cleanLang.startsWith("tr") || cleanLang == "tur" || combined.contains("turkish") || combined.contains("turco") -> "🇹🇷"
+        cleanLang.startsWith("sv") || cleanLang == "swe" || combined.contains("swedish") || combined.contains("sueco") -> "🇸🇪"
+        cleanLang.startsWith("no") || cleanLang == "nor" || cleanLang == "nob" || cleanLang == "nno" || combined.contains("norwegian") || combined.contains("noruego") -> "🇳🇴"
+        cleanLang.startsWith("da") || cleanLang == "dan" || combined.contains("danish") || combined.contains("danes") -> "🇩🇰"
+        cleanLang.startsWith("fi") || cleanLang == "fin" || combined.contains("finnish") || combined.contains("finland") -> "🇫🇮"
+        cleanLang.startsWith("el") || cleanLang == "ell" || cleanLang == "gre" || combined.contains("greek") || combined.contains("griego") -> "🇬🇷"
+        cleanLang.startsWith("he") || cleanLang == "heb" || combined.contains("hebrew") || combined.contains("hebreo") -> "🇮🇱"
+        cleanLang.startsWith("hu") || cleanLang == "hun" || combined.contains("hungarian") || combined.contains("hungaro") -> "🇭🇺"
+        cleanLang.startsWith("cs") || cleanLang == "ces" || cleanLang == "cze" || combined.contains("czech") || combined.contains("checo") -> "🇨🇿"
+        cleanLang.startsWith("ro") || cleanLang == "ron" || cleanLang == "rum" || combined.contains("romanian") || combined.contains("rumano") -> "🇷🇴"
+        cleanLang.startsWith("uk") || cleanLang == "ukr" || combined.contains("ukrainian") || combined.contains("ucraniano") -> "🇺🇦"
+        cleanLang.startsWith("th") || cleanLang == "tha" || combined.contains("thai") || combined.contains("tailand") -> "🇹🇭"
+        cleanLang.startsWith("vi") || cleanLang == "vie" || combined.contains("vietnamese") || combined.contains("vietnam") -> "🇻🇳"
+        cleanLang.startsWith("id") || cleanLang == "ind" || combined.contains("indonesian") -> "🇮🇩"
+        cleanLang.startsWith("ms") || cleanLang == "msa" || cleanLang == "may" || combined.contains("malay") -> "🇲🇾"
+        cleanLang.startsWith("fil") || cleanLang == "tl" || cleanLang == "tgl" || combined.contains("tagalog") || combined.contains("filipino") -> "🇵🇭"
+        cleanLang.startsWith("fa") || cleanLang == "fas" || cleanLang == "per" || combined.contains("persian") || combined.contains("farsi") -> "🇮🇷"
+        cleanLang.startsWith("hr") || cleanLang == "hrv" || combined.contains("croatian") || combined.contains("croata") -> "🇭🇷"
+        cleanLang.startsWith("sr") || cleanLang == "srp" || combined.contains("serbian") || combined.contains("serbio") -> "🇸🇷"
+        cleanLang.startsWith("bs") || cleanLang == "bos" || combined.contains("bosnian") -> "🇧🇦"
+        cleanLang.startsWith("sk") || cleanLang == "slk" || cleanLang == "slo" || combined.contains("slovak") || combined.contains("eslovaco") -> "🇸🇰"
+        cleanLang.startsWith("sl") || cleanLang == "slv" || combined.contains("slovenian") || combined.contains("esloveno") -> "🇸🇮"
+        cleanLang.startsWith("bg") || cleanLang == "bul" || combined.contains("bulgarian") || combined.contains("bulgaro") -> "🇧🇬"
+        cleanLang.startsWith("ca") || cleanLang == "cat" || combined.contains("catalan") -> "🇪🇸"
+        cleanLang.startsWith("gl") || cleanLang == "glg" || combined.contains("galician") || combined.contains("gallego") -> "🇪🇸"
+        cleanLang.startsWith("eu") || cleanLang == "eus" || cleanLang == "baq" || combined.contains("basque") || combined.contains("vasco") -> "🇪🇸"
+        cleanLang.startsWith("is") || cleanLang == "isl" || cleanLang == "ice" || combined.contains("icelandic") || combined.contains("islandes") -> "🇮🇸"
+        cleanLang.startsWith("et") || cleanLang == "est" || combined.contains("estonian") -> "🇪🇪"
+        cleanLang.startsWith("lv") || cleanLang == "lav" || combined.contains("latvian") -> "🇱🇻"
+        cleanLang.startsWith("lt") || cleanLang == "lit" || combined.contains("lithuanian") -> "🇱🇹"
+        cleanLang.startsWith("sw") || cleanLang == "swa" || combined.contains("swahili") -> "🇰🇪"
+        cleanLang.startsWith("af") || cleanLang == "afr" || combined.contains("afrikaans") -> "🇿🇦"
+        cleanLang.startsWith("sq") || cleanLang == "sqi" || cleanLang == "alb" || combined.contains("albanian") -> "🇦🇱"
+        cleanLang.startsWith("mk") || cleanLang == "mkd" || cleanLang == "mac" || combined.contains("macedonian") -> "🇲🇰"
+        cleanLang.startsWith("ka") || cleanLang == "kat" || cleanLang == "geo" || combined.contains("georgian") -> "🇬🇪"
+        cleanLang.startsWith("hy") || cleanLang == "hye" || cleanLang == "arm" || combined.contains("armenian") -> "🇦🇲"
+        cleanLang.startsWith("az") || cleanLang == "aze" || combined.contains("azerbaijani") -> "🇦🇿"
+        cleanLang.startsWith("kk") || cleanLang == "kaz" || combined.contains("kazakh") -> "🇰🇿"
+        cleanLang.startsWith("uz") || cleanLang == "uzb" || combined.contains("uzbek") -> "🇺🇿"
+        cleanLang.startsWith("mn") || cleanLang == "mon" || combined.contains("mongolian") -> "🇲🇳"
+        cleanLang.startsWith("ur") || cleanLang == "urd" || combined.contains("urdu") -> "🇵🇰"
+        cleanLang.startsWith("ta") || cleanLang == "tam" || combined.contains("tamil") -> "🇮🇳"
+        cleanLang.startsWith("te") || cleanLang == "tel" || combined.contains("telugu") -> "🇮🇳"
+        cleanLang.startsWith("ml") || cleanLang == "mal" || combined.contains("malayalam") -> "🇮🇳"
+        cleanLang.startsWith("kn") || cleanLang == "kan" || combined.contains("kannada") -> "🇮🇳"
+        cleanLang.startsWith("mr") || cleanLang == "mar" || combined.contains("marathi") -> "🇮🇳"
+        cleanLang.startsWith("gu") || cleanLang == "guj" || combined.contains("gujarati") -> "🇮🇳"
+        cleanLang.startsWith("pa") || cleanLang == "pan" || combined.contains("punjabi") -> "🇮🇳"
+        else -> "🇺🇳"
     }
 }

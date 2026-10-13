@@ -38,6 +38,7 @@ import javax.inject.Singleton
  * @property downloadCount Number of downloads reported by OpenSubtitles.
  * @property fileName Subtitle filename reported by OpenSubtitles.
  * @property featureTitle Feature title when supplied by the API.
+ * @property featureYear Feature release year reported by OpenSubtitles.
  */
 data class OpenSubtitleResult(
     val id: String,
@@ -46,7 +47,8 @@ data class OpenSubtitleResult(
     val release: String,
     val downloadCount: Long,
     val fileName: String,
-    val featureTitle: String?
+    val featureTitle: String?,
+    val featureYear: Int? = null
 )
 
 /**
@@ -692,6 +694,7 @@ class OpenSubtitlesRepository @Inject constructor(
         val file = attributes.files?.firstOrNull() ?: return null
         val fileId = file.fileId?.takeIf { it > 0L } ?: return null
         val fileName = file.fileName.orEmpty()
+        val featureDetails = attributes.featureDetails
         return OpenSubtitleResult(
             id = entry.id.orEmpty(),
             fileId = fileId,
@@ -699,7 +702,9 @@ class OpenSubtitlesRepository @Inject constructor(
             release = attributes.release.orEmpty().ifBlank { fileName },
             downloadCount = attributes.downloadCount ?: 0L,
             fileName = fileName,
-            featureTitle = attributes.featureDetails?.title?.takeIf(String::isNotBlank)
+            featureTitle = featureDetails?.movieName?.takeIf(String::isNotBlank)
+                ?: featureDetails?.title?.takeIf(String::isNotBlank),
+            featureYear = featureDetails?.year
         )
     }
 

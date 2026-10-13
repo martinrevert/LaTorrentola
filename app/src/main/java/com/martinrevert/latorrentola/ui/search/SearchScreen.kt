@@ -715,12 +715,21 @@ private fun FavoriteItemsGrid(
             )
         }
         items(series, key = { "tv_${it.id}" }) { item ->
+            val progress = watchHistoryMap["media_${item.id}"]
+                ?: watchHistoryMap[item.id.toString()]
+                ?: watchHistoryMap[item.name.orEmpty()]
+                ?: watchHistoryMap.values
+                    .filter { it.mediaId.startsWith("media_${item.id}_") }
+                    .maxByOrNull { it.timestamp }
+            val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
+
             TvSeriesCard(
                 series = item,
                 genres = item.genres.orEmpty().map { it.name }.ifEmpty {
                     item.genreIds.orEmpty().mapNotNull(genreNames::get)
                 },
                 hasDownloads = item.id in downloadedSeriesIds,
+                progressPercent = progressPercent,
                 onClick = { onTvSeriesClick(item) },
                 shouldRequestFocus = item.id == lastClickedSeriesId,
                 onFocusRestored = onTvFocusRestored

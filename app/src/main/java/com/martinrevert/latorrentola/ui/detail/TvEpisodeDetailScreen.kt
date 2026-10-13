@@ -24,6 +24,7 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudDone
@@ -352,8 +353,6 @@ private fun EpisodeHeader(
     summaryFocusRequester: FocusRequester? = null,
     nextFocusRequester: FocusRequester? = null
 ) {
-    val context = LocalContext.current
-    val isTv = remember(context) { context.isTvDevice() }
     Column(modifier = modifier) {
         if (episode.fullStillUrl != null) {
             Box(
@@ -374,8 +373,9 @@ private fun EpisodeHeader(
                             .fillMaxWidth()
                             .height(4.dp)
                             .align(Alignment.BottomCenter),
-                        color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.error,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        color = Color(0xFFE50914),
+                        trackColor = Color(0x33FFFFFF),
+                        strokeCap = StrokeCap.Butt
                     )
                 }
             }

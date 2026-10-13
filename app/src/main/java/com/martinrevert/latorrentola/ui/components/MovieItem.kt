@@ -22,6 +22,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -155,8 +156,9 @@ fun MovieItem(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(4.dp),
-                            color = androidx.tv.material3.MaterialTheme.colorScheme.error,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            color = Color(0xFFE50914),
+                            trackColor = Color(0x33FFFFFF),
+                            strokeCap = StrokeCap.Butt
                         )
                     }
                     Column(
@@ -283,8 +285,9 @@ fun MovieItem(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(4.dp),
-                                color = MaterialTheme.colorScheme.error,
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                color = Color(0xFFE50914),
+                                trackColor = Color(0x33FFFFFF),
+                                strokeCap = StrokeCap.Butt
                             )
                         }
                         Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {

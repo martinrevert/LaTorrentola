@@ -57,6 +57,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -850,8 +851,9 @@ private fun TvEpisodeCard(
                                 .fillMaxWidth()
                                 .height(4.dp)
                                 .align(Alignment.BottomCenter),
-                            color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.error,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            color = Color(0xFFE50914),
+                            trackColor = Color(0x33FFFFFF),
+                            strokeCap = StrokeCap.Butt
                         )
                     }
                 }

@@ -331,6 +331,7 @@ private fun HomeScreenContent(
                             gridState = tvGridState,
                             isLoadingMore = tvIsLoadingMore,
                             downloadedSeriesIds = downloadedSeriesIds,
+                            watchHistoryMap = watchHistoryMap,
                             onSeriesClick = {
                                 tvHomeViewModel?.setLastClickedSeriesId(it.id)
                                 onTvSeriesClick(it)
@@ -395,6 +396,7 @@ private fun HomeScreenContent(
                             gridState = tvGridState,
                             isLoadingMore = tvIsLoadingMore,
                             downloadedSeriesIds = downloadedSeriesIds,
+                            watchHistoryMap = watchHistoryMap,
                             onSeriesClick = {
                                 tvHomeViewModel?.setLastClickedSeriesId(it.id)
                                 onTvSeriesClick(it)
@@ -523,6 +525,7 @@ private fun TvHomeContent(
     gridState: LazyGridState,
     isLoadingMore: Boolean,
     downloadedSeriesIds: Set<Int> = emptySet(),
+    watchHistoryMap: Map<String, PlaybackProgress> = emptyMap(),
     onSeriesClick: (TmdbTvSummary) -> Unit,
     onLoadMore: () -> Unit,
     lastClickedSeriesId: Int?,
@@ -541,6 +544,7 @@ private fun TvHomeContent(
             state = gridState,
             isLoadingMore = isLoadingMore,
             downloadedSeriesIds = downloadedSeriesIds,
+            watchHistoryMap = watchHistoryMap,
             onSeriesClick = onSeriesClick,
             onLoadMore = onLoadMore,
             initialFocusId = lastClickedSeriesId,

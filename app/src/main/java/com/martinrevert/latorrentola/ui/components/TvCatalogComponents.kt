@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -23,7 +24,10 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -315,6 +319,7 @@ fun TvSeriesGrid(
     onSeriesClick: (TmdbTvSummary) -> Unit,
     onLoadMore: () -> Unit,
     downloadedSeriesIds: Set<Int> = emptySet(),
+    watchHistoryMap: Map<String, PlaybackProgress> = emptyMap(),
     initialFocusId: Int? = null,
     onFocusRestored: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(16.dp),
@@ -343,10 +348,19 @@ fun TvSeriesGrid(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(series, key = { it.id }) { item ->
+            val progress = watchHistoryMap["media_${item.id}"]
+                ?: watchHistoryMap[item.id.toString()]
+                ?: watchHistoryMap[item.name.orEmpty()]
+                ?: watchHistoryMap.values
+                    .filter { it.mediaId.startsWith("media_${item.id}_") }
+                    .maxByOrNull { it.timestamp }
+            val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
+
             TvSeriesCard(
                 series = item,
                 genres = item.genreIds.orEmpty().mapNotNull(genreNames::get),
                 hasDownloads = item.id in downloadedSeriesIds,
+                progressPercent = progressPercent,
                 onClick = { onSeriesClick(item) },
                 shouldRequestFocus = item.id == initialFocusId,
                 onFocusRestored = onFocusRestored
@@ -382,6 +396,7 @@ fun TvSeriesCard(
     series: TmdbTvSummary,
     genres: List<String>,
     hasDownloads: Boolean = false,
+    progressPercent: Int? = null,
     onClick: () -> Unit,
     shouldRequestFocus: Boolean = false,
     onFocusRestored: () -> Unit = {}
@@ -446,6 +461,17 @@ fun TvSeriesCard(
                                     .padding(2.dp)
                             )
                         }
+                    }
+                    if (progressPercent != null && progressPercent > 0) {
+                        LinearProgressIndicator(
+                            progress = { progressPercent / 100f },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp),
+                            color = Color(0xFFE50914),
+                            trackColor = Color(0x33FFFFFF),
+                            strokeCap = StrokeCap.Butt
+                        )
                     }
                     Column(
                         modifier = Modifier
@@ -533,6 +559,17 @@ fun TvSeriesCard(
                                         .padding(2.dp)
                                 )
                             }
+                        }
+                        if (progressPercent != null && progressPercent > 0) {
+                            LinearProgressIndicator(
+                                progress = { progressPercent / 100f },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp),
+                                color = Color(0xFFE50914),
+                                trackColor = Color(0x33FFFFFF),
+                                strokeCap = StrokeCap.Butt
+                            )
                         }
                         Column(
                             modifier = Modifier

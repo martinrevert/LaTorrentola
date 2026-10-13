@@ -198,7 +198,11 @@ data class OpenSubtitlesFile(
  * Media feature metadata supplied with a subtitle result.
  *
  * @property title Display title of the matched movie or television episode.
+ * @property movieName Display title of the matched feature movie.
+ * @property year Feature release year reported by OpenSubtitles.
  */
 data class OpenSubtitlesFeatureDetails(
-    @SerializedName("title") val title: String?
+    @SerializedName("title") val title: String?,
+    @SerializedName("movie_name") val movieName: String?,
+    @SerializedName("year") val year: Int?
 )
