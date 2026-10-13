@@ -3,11 +3,11 @@ package com.martinrevert.latorrentola.ui.player
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
-class PlayerDialogStateUnitTest {
+class PlayerBottomSheetStateUnitTest {
 
     @Test
-    fun `player dialog state tracks stores properties correctly`() {
-        val state = PlayerDialogState.Tracks(
+    fun `player bottom sheet state tracks stores properties correctly`() {
+        val state = PlayerBottomSheetState.Tracks(
             type = PlaybackTrackType.SUBTITLE,
             title = "Subtitles",
             options = emptyList(),
@@ -22,8 +22,8 @@ class PlayerDialogStateUnitTest {
     }
 
     @Test
-    fun `player dialog state message stores properties correctly`() {
-        val state = PlayerDialogState.Message(
+    fun `player bottom sheet state message stores properties correctly`() {
+        val state = PlayerBottomSheetState.Message(
             title = "Error",
             message = "Network failed",
             onDismiss = {}

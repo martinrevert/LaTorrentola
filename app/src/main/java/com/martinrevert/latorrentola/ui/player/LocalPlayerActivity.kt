@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.media3.common.util.UnstableApi::class)
+
 package com.martinrevert.latorrentola.ui.player
 
 import android.content.ComponentName
@@ -11,7 +13,7 @@ import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.annotation.OptIn
+import kotlin.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -52,11 +54,15 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ClosedCaption
+import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
@@ -78,6 +84,10 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -210,14 +220,14 @@ private object SubtitleServerRegistry {
     }
 }
 
-sealed class PlayerDialogState {
+sealed class PlayerBottomSheetState {
     data class Tracks(
         val type: PlaybackTrackType,
         val title: String,
         val options: List<PlaybackTrackOption>,
         val selectedIndex: Int,
         val onSelected: (PlaybackTrackOption?) -> Unit
-    ) : PlayerDialogState()
+    ) : PlayerBottomSheetState()
 
     data class AdvancedSubtitleStyle(
         val currentFontName: String,
@@ -229,24 +239,24 @@ sealed class PlayerDialogState {
         val onLiveChange: (fontName: String, sizeFraction: Float, fgColor: Int, bgColor: Int, edgeType: Int, bottomOffset: Float) -> Unit,
         val onSave: (fontName: String, sizeFraction: Float, fgColor: Int, bgColor: Int, edgeType: Int, bottomOffset: Float) -> Unit,
         val onCancel: () -> Unit
-    ) : PlayerDialogState()
+    ) : PlayerBottomSheetState()
 
     data class SubtitleResults(
         val results: List<OpenSubtitleResult>,
         val currentFileName: String,
         val onSelected: (OpenSubtitleResult) -> Unit
-    ) : PlayerDialogState()
+    ) : PlayerBottomSheetState()
 
     data class Message(
         val title: String,
         val message: String,
         val onDismiss: () -> Unit = {}
-    ) : PlayerDialogState()
+    ) : PlayerBottomSheetState()
 
     data class Progress(
         val title: String,
         val message: String
-    ) : PlayerDialogState()
+    ) : PlayerBottomSheetState()
 }
 
 val GOOGLE_SUBTITLE_FONTS = listOf(
@@ -268,7 +278,7 @@ val fontProvider = GoogleFont.Provider(
     certificates = R.array.com_google_android_gms_fonts_certs
 )
 
-@OptIn(UnstableApi::class)
+@OptIn(UnstableApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @AndroidEntryPoint
 class LocalPlayerActivity : FragmentActivity() {
 
@@ -314,7 +324,7 @@ class LocalPlayerActivity : FragmentActivity() {
     private var nextEpisodeTriggered = false
 
     private var showNextEpisodeDialog by mutableStateOf(false)
-    private var playerDialogState by mutableStateOf<PlayerDialogState?>(null)
+    private var playerBottomSheetState by mutableStateOf<PlayerBottomSheetState?>(null)
     private var showStatsForNerds by mutableStateOf(false)
     private var customCaptionStyle by mutableStateOf<CaptionStyleCompat?>(null)
     private var customSubtitleSizeFraction by mutableFloatStateOf(0.0533f)
@@ -444,6 +454,7 @@ class LocalPlayerActivity : FragmentActivity() {
                                 onShowSubtitles = { showSubtitleOptions() },
                                 onSearchSubtitles = { searchSubtitles() },
                                 onShowSubtitleStyle = { showSubtitleStyleOptions() },
+                                onShowAudioTracks = { showAudioOptions() },
                                 onShowCast = { showCastBottomSheet = true }
                             )
 
@@ -452,7 +463,8 @@ class LocalPlayerActivity : FragmentActivity() {
                                     controller = controller,
                                     modifier = Modifier
                                         .padding(16.dp)
-                                        .align(Alignment.TopStart)
+                                        .align(Alignment.TopCenter)
+                                        .padding(top = 56.dp)
                                 )
                             }
 
@@ -522,11 +534,11 @@ class LocalPlayerActivity : FragmentActivity() {
                         )
                     }
 
-                    val state = playerDialogState
+                    val state = playerBottomSheetState
                     if (state != null) {
-                        PlayerDialogContent(
+                        PlayerBottomSheetContent(
                             state = state,
-                            onDismiss = { playerDialogState = null }
+                            onDismiss = { playerBottomSheetState = null }
                         )
                     }
                 }
@@ -851,14 +863,31 @@ class LocalPlayerActivity : FragmentActivity() {
         val allOptions = listOf(offOption) + options
         val selectedIndex = allOptions.indexOfFirst { it.isSelected }.let { if (it < 0) 0 else it }
 
-        playerDialogState = PlayerDialogState.Tracks(
+        playerBottomSheetState = PlayerBottomSheetState.Tracks(
             type = PlaybackTrackType.SUBTITLE,
             title = getString(R.string.player_subtitle_tracks),
             options = allOptions,
             selectedIndex = selectedIndex,
             onSelected = { option ->
                 selectTrack(PlaybackTrackType.SUBTITLE, option)
-                playerDialogState = null
+                playerBottomSheetState = null
+            }
+        )
+    }
+
+    private fun showAudioOptions() {
+        val controller = mediaController ?: return
+        val options = availableTrackOptions(PlaybackTrackType.AUDIO)
+        val selectedIndex = options.indexOfFirst { it.isSelected }.let { if (it < 0) 0 else it }
+
+        playerBottomSheetState = PlayerBottomSheetState.Tracks(
+            type = PlaybackTrackType.AUDIO,
+            title = getString(R.string.player_audio_tracks),
+            options = options,
+            selectedIndex = selectedIndex,
+            onSelected = { option ->
+                selectTrack(PlaybackTrackType.AUDIO, option)
+                playerBottomSheetState = null
             }
         )
     }
@@ -888,7 +917,7 @@ class LocalPlayerActivity : FragmentActivity() {
             customSubtitleBottomOffset = offset
         }
 
-        playerDialogState = PlayerDialogState.AdvancedSubtitleStyle(
+        playerBottomSheetState = PlayerBottomSheetState.AdvancedSubtitleStyle(
             currentFontName = initialFont,
             currentFontSizeFraction = initialSize,
             currentForegroundColor = initialFg,
@@ -907,11 +936,11 @@ class LocalPlayerActivity : FragmentActivity() {
                 preferenceManager.setSubtitleBottomOffset(offset)
                 applyStyle(fontName, sizeFraction, fg, bg, edge, offset)
                 applyCastSubtitleStyleIfConnected()
-                playerDialogState = null
+                playerBottomSheetState = null
             },
             onCancel = {
                 applyStyle(initialFont, initialSize, initialFg, initialBg, initialEdge, initialOffset)
-                playerDialogState = null
+                playerBottomSheetState = null
             }
         )
     }
@@ -1032,7 +1061,7 @@ class LocalPlayerActivity : FragmentActivity() {
     private fun searchSubtitles() {
         if (subtitleOperationInProgress) return
         subtitleOperationInProgress = true
-        playerDialogState = PlayerDialogState.Progress(
+        playerBottomSheetState = PlayerBottomSheetState.Progress(
             title = getString(R.string.opensubtitles_search),
             message = getString(R.string.opensubtitles_searching)
         )
@@ -1106,19 +1135,19 @@ class LocalPlayerActivity : FragmentActivity() {
                             (deviceLang == "pt" && (lang == "por" || lang == "pob"))
                 }
 
-                playerDialogState = PlayerDialogState.SubtitleResults(
+                playerBottomSheetState = PlayerBottomSheetState.SubtitleResults(
                     results = sortedResults,
                     currentFileName = currentFile,
                     onSelected = { downloadSubtitle(it) }
                 )
             } else if (message != null) {
-                playerDialogState = PlayerDialogState.Message(
+                playerBottomSheetState = PlayerBottomSheetState.Message(
                     title = getString(R.string.opensubtitles_search),
                     message = message,
-                    onDismiss = { playerDialogState = null }
+                    onDismiss = { playerBottomSheetState = null }
                 )
             } else {
-                playerDialogState = null
+                playerBottomSheetState = null
             }
         }
     }
@@ -1126,7 +1155,7 @@ class LocalPlayerActivity : FragmentActivity() {
     private fun downloadSubtitle(result: OpenSubtitleResult) {
         if (subtitleOperationInProgress) return
         subtitleOperationInProgress = true
-        playerDialogState = PlayerDialogState.Progress(
+        playerBottomSheetState = PlayerBottomSheetState.Progress(
             title = getString(R.string.opensubtitles_search),
             message = getString(R.string.opensubtitles_downloading)
         )
@@ -1135,7 +1164,7 @@ class LocalPlayerActivity : FragmentActivity() {
             try {
                 val subtitle = openSubtitlesRepository.download(result, torrentInfoHash)
                 attachSubtitle(subtitle)
-                playerDialogState = null
+                playerBottomSheetState = null
             } catch (error: OpenSubtitlesException) {
                 errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
             } catch (error: Exception) {
@@ -1145,10 +1174,10 @@ class LocalPlayerActivity : FragmentActivity() {
             }
 
             if (errorMessage != null) {
-                playerDialogState = PlayerDialogState.Message(
+                playerBottomSheetState = PlayerBottomSheetState.Message(
                     title = getString(R.string.opensubtitles_search),
                     message = errorMessage,
-                    onDismiss = { playerDialogState = null }
+                    onDismiss = { playerBottomSheetState = null }
                 )
             }
         }
@@ -1335,6 +1364,7 @@ fun PlayerControlsOverlay(
     onShowSubtitles: () -> Unit,
     onSearchSubtitles: () -> Unit,
     onShowSubtitleStyle: () -> Unit,
+    onShowAudioTracks: () -> Unit,
     onShowCast: () -> Unit
 ) {
     var controlsVisible by remember { mutableStateOf(true) }
@@ -1347,6 +1377,7 @@ fun PlayerControlsOverlay(
     val searchFocusRequester = remember { FocusRequester() }
     val subtitlesFocusRequester = remember { FocusRequester() }
     val styleFocusRequester = remember { FocusRequester() }
+    val audioFocusRequester = remember { FocusRequester() }
     val sliderFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(controlsVisible) {
@@ -1421,21 +1452,10 @@ fun PlayerControlsOverlay(
                     )
 
                     val hasSubtitleTracks = controller.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
+                    val hasAudioTracks = controller.currentTracks.groups.any { it.type == C.TRACK_TYPE_AUDIO }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ControlButton(
-                            onClick = onToggleStats,
-                            icon = Icons.Default.BugReport,
-                            contentDescription = "Stats",
-                            tint = if (showStats) Color.Green else Color.White,
-                            focusRequester = statsFocusRequester
-                        )
-                        ControlButton(
-                            onClick = onSearchSubtitles,
-                            icon = Icons.Default.Download,
-                            contentDescription = "Search Subtitles",
-                            focusRequester = searchFocusRequester
-                        )
+                        // 1. Subtítulos Incrustados
                         ControlButton(
                             onClick = onShowSubtitles,
                             icon = Icons.Default.Subtitles,
@@ -1444,12 +1464,38 @@ fun PlayerControlsOverlay(
                             tint = if (hasSubtitleTracks) Color.White else Color.Gray.copy(alpha = 0.5f),
                             focusRequester = subtitlesFocusRequester
                         )
+                        // 2. OpenSubtitles
+                        ControlButton(
+                            onClick = onSearchSubtitles,
+                            icon = Icons.Default.Download,
+                            contentDescription = "Search Subtitles",
+                            focusRequester = searchFocusRequester
+                        )
+                        // 3. Estilos de Subtítulo
                         ControlButton(
                             onClick = onShowSubtitleStyle,
-                            icon = Icons.Default.Settings,
+                            icon = Icons.Default.ColorLens,
                             contentDescription = "Subtitle Style",
                             focusRequester = styleFocusRequester
                         )
+                        // 4. Pistas de Audio
+                        ControlButton(
+                            onClick = onShowAudioTracks,
+                            icon = Icons.Default.GraphicEq,
+                            contentDescription = "Audio Tracks",
+                            enabled = hasAudioTracks,
+                            tint = if (hasAudioTracks) Color.White else Color.Gray.copy(alpha = 0.5f),
+                            focusRequester = audioFocusRequester
+                        )
+                        // 5. Stats for Nerds
+                        ControlButton(
+                            onClick = onToggleStats,
+                            icon = Icons.Default.BugReport,
+                            contentDescription = "Stats",
+                            tint = if (showStats) Color.Green else Color.White,
+                            focusRequester = statsFocusRequester
+                        )
+                        // 6. Cast (Handheld only)
                         if (!isTv) {
                             val isCasting = controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE
                             ControlButton(
@@ -1563,41 +1609,83 @@ fun StatsForNerdsOverlay(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class, androidx.media3.common.util.UnstableApi::class)
+@OptIn(ExperimentalTvMaterial3Api::class, UnstableApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun PlayerDialogContent(
-    state: PlayerDialogState,
+fun PlayerBottomSheetContent(
+    state: PlayerBottomSheetState,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.75f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {}
-                ),
-            contentAlignment = Alignment.Center
+    if (isTv) {
+        Dialog(
+            onDismissRequest = onDismiss,
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
         ) {
-            Surface(
+            Box(
                 modifier = Modifier
-                    .padding(24.dp)
-                    .widthIn(min = 320.dp, max = 560.dp)
-                    .fillMaxWidth(0.92f),
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onDismiss
+                    ),
+                contentAlignment = Alignment.BottomCenter
             ) {
-                Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    when (state) {
-                        is PlayerDialogState.Tracks -> {
+                Surface(
+                    modifier = Modifier
+                        .widthIn(max = 600.dp)
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {}
+                        ),
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ) {
+                    BottomSheetInnerContent(state = state, onDismiss = onDismiss)
+                }
+            }
+        }
+    } else {
+        PlayerMobileBottomSheet(state = state, onDismiss = onDismiss)
+    }
+}
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun PlayerMobileBottomSheet(
+    state: PlayerBottomSheetState,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface
+    ) {
+        BottomSheetInnerContent(state = state, onDismiss = onDismiss)
+    }
+}
+
+@OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+private fun BottomSheetInnerContent(
+    state: PlayerBottomSheetState,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
+    
+    Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        when (state) {
+                        is PlayerBottomSheetState.Tracks -> {
                             Text(state.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
                                 itemsIndexed(state.options) { index, option ->
@@ -1614,7 +1702,7 @@ fun PlayerDialogContent(
                                 }
                             }
                         }
-                        is PlayerDialogState.AdvancedSubtitleStyle -> {
+                        is PlayerBottomSheetState.AdvancedSubtitleStyle -> {
                             var selectedFont by remember { mutableStateOf(state.currentFontName) }
                             var selectedSizeFraction by remember { mutableFloatStateOf(state.currentFontSizeFraction) }
                             var selectedFgColor by remember { mutableIntStateOf(state.currentForegroundColor) }
@@ -1884,7 +1972,7 @@ fun PlayerDialogContent(
                                 )
                             }
                         }
-                        is PlayerDialogState.SubtitleResults -> {
+                        is PlayerBottomSheetState.SubtitleResults -> {
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(
                                     text = stringResource(R.string.opensubtitles_results_title),
@@ -2015,20 +2103,17 @@ fun PlayerDialogContent(
                                 }
                             }
                         }
-                        is PlayerDialogState.Message -> {
+                        is PlayerBottomSheetState.Message -> {
                             Text(state.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(state.message)
                             TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
                                 Text("OK")
                             }
                         }
-                        is PlayerDialogState.Progress -> {
+                        is PlayerBottomSheetState.Progress -> {
                             CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
                             Text(state.message, textAlign = TextAlign.Center)
                         }
-                    }
-                }
-            }
         }
     }
 }
