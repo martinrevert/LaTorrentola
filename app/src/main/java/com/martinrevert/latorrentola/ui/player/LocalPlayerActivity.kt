@@ -20,6 +20,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -545,7 +546,7 @@ class LocalPlayerActivity : FragmentActivity() {
             }
 
             if (isTv) {
-                TvLaTorrentolaTheme { content() }
+                TvLaTorrentolaTheme(themeMode = themeMode) { content() }
             } else {
                 LaTorrentolaTheme(themeMode = themeMode) { content() }
             }
@@ -1295,9 +1296,12 @@ fun ControlButton(
     iconSize: Dp = 24.dp
 ) {
     val isTv = LocalContext.current.isTvDevice()
+    var isFocused by remember { mutableStateOf(false) }
+
     val itemModifier = modifier
         .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-        .focusHighlight(shape = CircleShape)
+        .onFocusChanged { isFocused = it.isFocused }
+        .background(if (isFocused) Color.White.copy(alpha = 0.25f) else Color.Transparent, CircleShape)
 
     if (isTv) {
         TvIconButton(
@@ -1318,38 +1322,83 @@ fun ControlButton(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun TvChoiceChip(
+fun AdaptiveOptionItem(
+    selected: Boolean,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null
+) {
+    var isFocused by remember { mutableStateOf(false) }
+
+    val containerColor = when {
+        isFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+        selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+    }
+
+    val contentColor = when {
+        isFocused -> MaterialTheme.colorScheme.onPrimary
+        selected -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .onFocusChanged { isFocused = it.isFocused }
+            .background(containerColor, RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (selected || isFocused) FontWeight.Bold else FontWeight.Normal,
+            color = contentColor
+        )
+    }
+}
+
+@Composable
+fun AdaptiveChoiceChip(
     selected: Boolean,
     onClick: () -> Unit,
     label: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null
 ) {
-    val isTv = LocalContext.current.isTvDevice()
-    if (isTv) {
-        val interactionSource = remember { MutableInteractionSource() }
-        val isFocused by interactionSource.collectIsFocusedAsState()
-        TvSurface(
-            onClick = onClick,
-            shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small),
-            colors = ClickableSurfaceDefaults.colors(
-                containerColor = if (selected) androidx.tv.material3.MaterialTheme.colorScheme.primaryContainer else androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = if (selected) androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer else androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.primary,
-                focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onPrimary
-            ),
-            interactionSource = interactionSource,
-            modifier = modifier.focusHighlight(shape = MaterialTheme.shapes.small)
-        ) {
-            Text(text = label, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium)
-        }
-    } else {
-        FilterChip(
-            selected = selected,
-            onClick = onClick,
-            label = { Text(label) },
-            modifier = modifier
+    var isFocused by remember { mutableStateOf(false) }
+
+    val containerColor = when {
+        isFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+        selected -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+
+    val contentColor = when {
+        isFocused -> MaterialTheme.colorScheme.onPrimary
+        selected -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Box(
+        modifier = modifier
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .onFocusChanged { isFocused = it.isFocused }
+            .background(containerColor, RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (selected || isFocused) FontWeight.Bold else FontWeight.Normal,
+            color = contentColor
         )
     }
 }
@@ -1796,7 +1845,7 @@ private fun BottomSheetInnerContent(
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     items(GOOGLE_SUBTITLE_FONTS) { fontName ->
                                         val isSelected = fontName == selectedFont
-                                        TvChoiceChip(
+                                        AdaptiveChoiceChip(
                                             selected = isSelected,
                                             onClick = { selectedFont = fontName },
                                             label = fontName
@@ -1815,7 +1864,7 @@ private fun BottomSheetInnerContent(
                                     )
                                     sizes.forEach { (label, fraction) ->
                                         val isSelected = Math.abs(selectedSizeFraction - fraction) < 0.005f
-                                        TvChoiceChip(
+                                        AdaptiveChoiceChip(
                                             selected = isSelected,
                                             onClick = { selectedSizeFraction = fraction },
                                             label = label
@@ -1834,7 +1883,7 @@ private fun BottomSheetInnerContent(
                                     )
                                     items(offsets) { (label, offsetVal) ->
                                         val isSelected = Math.abs(selectedBottomOffset - offsetVal) < 0.01f
-                                        TvChoiceChip(
+                                        AdaptiveChoiceChip(
                                             selected = isSelected,
                                             onClick = { selectedBottomOffset = offsetVal },
                                             label = label
@@ -1904,7 +1953,7 @@ private fun BottomSheetInnerContent(
                                     )
                                     items(edges) { (label, typeVal) ->
                                         val isSelected = selectedEdgeType == typeVal
-                                        TvChoiceChip(
+                                        AdaptiveChoiceChip(
                                             selected = isSelected,
                                             onClick = { selectedEdgeType = typeVal },
                                             label = label
