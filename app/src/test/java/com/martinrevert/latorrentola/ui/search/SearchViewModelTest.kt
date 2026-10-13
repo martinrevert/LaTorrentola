@@ -268,7 +268,10 @@ class SearchViewModelTest {
         val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager)
 
         vm.watchHistoryMap.test {
-            val map = awaitItem()
+            var map = awaitItem()
+            if (map.isEmpty()) {
+                map = awaitItem()
+            }
             assertThat(map["100"]).isEqualTo(progress)
             cancelAndIgnoreRemainingEvents()
         }
