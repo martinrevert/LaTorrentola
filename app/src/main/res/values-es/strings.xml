@@ -225,4 +225,15 @@
     <string name="next_episode_no_torrents">No se encontraron torrents en EZTV para este capítulo.</string>
     <string name="next_episode_end_of_season">Fin de temporada. No hay más capítulos disponibles.</string>
     <string name="next_episode_autoplay_toast">Reproduciendo siguiente capítulo automáticamente: S%1$02dE%2$02d (%3$s)&#8230;</string>
+
+    <!-- Delete Torrent Dialog -->
+    <string name="delete_torrent_dialog_title">¿Borrar descargas del torrent?</string>
+    <string name="delete_torrent_dialog_message">¿Deseas borrar el archivo descargado y sus subtítulos para liberar espacio en el dispositivo?</string>
+    <string name="delete_torrent_dialog_confirm">Borrar</string>
+    <string name="delete_torrent_dialog_keep">Conservar</string>
+
+    <!-- Insufficient Storage Dialog -->
+    <string name="insufficient_storage_dialog_title">Espacio de almacenamiento insuficiente</string>
+    <string name="insufficient_storage_dialog_message">El espacio disponible en tu dispositivo Android es menor a 1 GB (%1$s disponible). Debes borrar información o aplicaciones de tu dispositivo para poder realizar la descarga.</string>
+    <string name="insufficient_storage_dialog_confirm">Entendido</string>
 </resources>

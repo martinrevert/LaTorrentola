@@ -44,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,6 +66,7 @@ import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
+import com.martinrevert.latorrentola.ui.components.InsufficientStorageDialog
 import com.martinrevert.latorrentola.ui.components.MovieDetailPlaceholder
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
@@ -100,6 +102,7 @@ fun TvEpisodeDetailScreen(
     val isTv = remember(context) { context.isTvDevice() }
     val episodeSummaryFocusRequester = remember { FocusRequester() }
     val firstTorrentFocusRequester = remember { FocusRequester() }
+    val insufficientStorageState = remember { mutableStateOf<Pair<Long, Long>?>(null) }
 
     LaunchedEffect(seriesId, seasonNumber, episodeNumber) {
         viewModel.loadEpisode(
@@ -192,8 +195,9 @@ fun TvEpisodeDetailScreen(
                             ).show()
                         } else {
                             val nextEpisodeInfo = viewModel.getNextEpisodeInfo()?.let { ArrayList(it.map { item -> item.toString() }) }
+                            val sizeBytes = torrent.sizeBytes?.toLongOrNull()
                             when (
-                                TorrentLaunchHelper.launch(
+                                val result = TorrentLaunchHelper.launch(
                                     context,
                                     torrentHandlingMode,
                                     magnetUri,
@@ -201,7 +205,8 @@ fun TvEpisodeDetailScreen(
                                     nextEpisodeInfo,
                                     seriesId = seriesId,
                                     seasonNumber = state.episode.seasonNumber,
-                                    episodeNumber = state.episode.episodeNumber
+                                    episodeNumber = state.episode.episodeNumber,
+                                    requiredSizeBytes = sizeBytes
                                 )
                             ) {
                                 TorrentLaunchResult.Started -> {
@@ -230,12 +235,24 @@ fun TvEpisodeDetailScreen(
                                     context.resources.getString(R.string.torrent_cast_unavailable),
                                     Toast.LENGTH_LONG
                                 ).show()
+                                is TorrentLaunchResult.InsufficientStorage -> {
+                                    insufficientStorageState.value = Pair(result.availableBytes, result.requiredBytes)
+                                }
                             }
                         }
                     }
                 )
             }
         }
+    }
+
+    val storageData = insufficientStorageState.value
+    if (storageData != null) {
+        InsufficientStorageDialog(
+            availableBytes = storageData.first,
+            requiredBytes = storageData.second,
+            onDismiss = { insufficientStorageState.value = null }
+        )
     }
 }
 

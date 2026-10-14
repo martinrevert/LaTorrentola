@@ -16,6 +16,7 @@ import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.ui.player.LocalPlayerActivity
 import com.martinrevert.latorrentola.model.torrent.TorrentDownload
+import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
 import dagger.hilt.android.AndroidEntryPoint
 import com.martinrevert.latorrentola.utils.mediaMimeType
 import org.libtorrent4j.Priority
@@ -367,6 +368,28 @@ class TorrentDownloadService : Service() {
                 openWhenReadyHashes.remove(infoHash)
                 val castWhenReady = intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false)
                 startCompletedPlayback(infoHash, title, completedFile, castWhenReady, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId)
+                return@launch
+            }
+
+            if (!TorrentLaunchHelper.hasEnoughStorage(this@TorrentDownloadService)) {
+                openWhenReadyHashes.remove(infoHash)
+                torrentDownloadDao.upsert(
+                    TorrentDownload(
+                        infoHash = infoHash,
+                        magnetUri = magnetUri,
+                        title = title,
+                        state = STATE_FAILED,
+                        progressPercent = existing?.progressPercent ?: 0,
+                        mediaPath = existing?.mediaPath,
+                        castWhenReady = intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false),
+                        updatedAtMillis = System.currentTimeMillis(),
+                        seriesId = seriesId,
+                        seasonNumber = seasonNumber,
+                        episodeNumber = episodeNumber,
+                        movieId = movieId
+                    )
+                )
+                stopForeground(STOP_FOREGROUND_REMOVE)
                 return@launch
             }
             torrentDownloadDao.upsert(

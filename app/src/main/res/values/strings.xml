@@ -226,5 +226,16 @@
     <string name="next_episode_end_of_season">End of season. No further episodes available.</string>
     <string name="next_episode_autoplay_toast">Auto-playing next episode: S%1$02dE%2$02d (%3$s)&#8230;</string>
 
+    <!-- Delete Torrent Dialog -->
+    <string name="delete_torrent_dialog_title">Delete torrent downloads?</string>
+    <string name="delete_torrent_dialog_message">Do you want to delete the downloaded video file and its subtitles to free up space on the device?</string>
+    <string name="delete_torrent_dialog_confirm">Delete</string>
+    <string name="delete_torrent_dialog_keep">Keep</string>
+
+    <!-- Insufficient Storage Dialog -->
+    <string name="insufficient_storage_dialog_title">Insufficient storage space</string>
+    <string name="insufficient_storage_dialog_message">Available space on your Android device is less than 1 GB (%1$s available). You must delete data or apps from your device to proceed with the download.</string>
+    <string name="insufficient_storage_dialog_confirm">OK</string>
+
     <string name="asset_statements" translatable="false">[]</string>
 </resources>

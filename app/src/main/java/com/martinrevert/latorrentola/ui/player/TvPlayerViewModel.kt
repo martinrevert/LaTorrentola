@@ -146,6 +146,7 @@ class TvPlayerViewModel @Inject constructor(
                     displayTitle
                 )
 
+            val sizeBytes = release.sizeBytes?.toLongOrNull()
             val result = TorrentLaunchHelper.launch(
                 context,
                 preferenceManager.getTorrentHandlingMode(),
@@ -154,7 +155,8 @@ class TvPlayerViewModel @Inject constructor(
                 nextEpisodeInfo,
                 seriesId = seriesId,
                 seasonNumber = seasonNumber,
-                episodeNumber = episodeNumber
+                episodeNumber = episodeNumber,
+                requiredSizeBytes = sizeBytes
             )
 
             if (result == TorrentLaunchResult.Started) {

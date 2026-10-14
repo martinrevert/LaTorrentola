@@ -173,13 +173,17 @@ import com.martinrevert.latorrentola.network.OpenSubtitlesException
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.service.PlaybackService
+import com.martinrevert.latorrentola.service.TorrentDownloadService
 import com.martinrevert.latorrentola.service.VerifiedTorrentHttpServer
+import com.martinrevert.latorrentola.ui.components.DeleteTorrentDownloadsDialog
+import com.martinrevert.latorrentola.ui.components.InsufficientStorageDialog
 import com.martinrevert.latorrentola.ui.components.NextEpisodeTorrentDialog
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.utils.TorrentLaunchResult
 import com.martinrevert.latorrentola.utils.mediaMimeType
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dagger.hilt.android.AndroidEntryPoint
@@ -325,6 +329,8 @@ class LocalPlayerActivity : FragmentActivity() {
     private var nextEpisodeTriggered = false
 
     private var showNextEpisodeDialog by mutableStateOf(false)
+    private var showDeletePromptDialog by mutableStateOf(false)
+    private var insufficientStorageData by mutableStateOf<Pair<Long, Long>?>(null)
     private var playerBottomSheetState by mutableStateOf<PlayerBottomSheetState?>(null)
     private var showStatsForNerds by mutableStateOf(false)
     private var customCaptionStyle by mutableStateOf<CaptionStyleCompat?>(null)
@@ -503,6 +509,31 @@ class LocalPlayerActivity : FragmentActivity() {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     }
 
+                    if (showDeletePromptDialog) {
+                        DeleteTorrentDownloadsDialog(
+                            mediaTitle = mediaTitle,
+                            onConfirmDelete = {
+                                if (torrentInfoHash.isNotBlank()) {
+                                    val deleteIntent = Intent(this@LocalPlayerActivity, TorrentDownloadService::class.java).apply {
+                                        action = TorrentDownloadService.ACTION_DELETE
+                                        putExtra(TorrentDownloadService.EXTRA_INFO_HASH, torrentInfoHash)
+                                    }
+                                    startService(deleteIntent)
+                                }
+                                showDeletePromptDialog = false
+                                proceedAfterPlaybackEnded()
+                            },
+                            onKeep = {
+                                showDeletePromptDialog = false
+                                proceedAfterPlaybackEnded()
+                            },
+                            onDismiss = {
+                                showDeletePromptDialog = false
+                                proceedAfterPlaybackEnded()
+                            }
+                        )
+                    }
+
                     if (showNextEpisodeDialog) {
                         val nextData by tvPlayerViewModel.nextEpisodeData.collectAsState()
                         val releases by tvPlayerViewModel.nextEpisodeReleases.collectAsState()
@@ -524,13 +555,35 @@ class LocalPlayerActivity : FragmentActivity() {
                             isLoading = isLoading,
                             error = error,
                             onTorrentSelected = { torrent ->
-                                showNextEpisodeDialog = false
-                                // Trigger next episode stream
+                                lifecycleScope.launch {
+                                    val result = tvPlayerViewModel.downloadEpisode(
+                                        this@LocalPlayerActivity,
+                                        torrent,
+                                        targetSeriesId,
+                                        targetSeriesName,
+                                        targetSeason,
+                                        targetEpisode,
+                                        targetEpName
+                                    )
+                                    if (result is TorrentLaunchResult.InsufficientStorage) {
+                                        insufficientStorageData = Pair(result.availableBytes, result.requiredBytes)
+                                    } else {
+                                        showNextEpisodeDialog = false
+                                    }
+                                }
                             },
                             onDismiss = {
                                 showNextEpisodeDialog = false
                                 finish()
                             }
+                        )
+                    }
+
+                    insufficientStorageData?.let { (available, required) ->
+                        InsufficientStorageDialog(
+                            availableBytes = available,
+                            requiredBytes = required,
+                            onDismiss = { insufficientStorageData = null }
                         )
                     }
 
@@ -797,8 +850,19 @@ class LocalPlayerActivity : FragmentActivity() {
 
     private fun handlePlaybackEnded() {
         mediaController?.pause()
+        if (torrentInfoHash.isNotBlank()) {
+            showDeletePromptDialog = true
+        } else {
+            proceedAfterPlaybackEnded()
+        }
+    }
+
+    private fun proceedAfterPlaybackEnded() {
         val isTvEpisode = hasNextEpisodeInfo || (currentSeriesId > 0 && currentSeasonNumber > 0 && currentEpisodeNumber > 0)
-        if (!isTvEpisode) return
+        if (!isTvEpisode) {
+            finish()
+            return
+        }
 
         val autoPlayMode = preferenceManager.getAutoPlayQualitySelectionMethod()
         when (autoPlayMode) {

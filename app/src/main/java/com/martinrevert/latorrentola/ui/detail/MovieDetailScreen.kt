@@ -64,6 +64,7 @@ import com.martinrevert.latorrentola.model.YTS.Torrent
 import com.martinrevert.latorrentola.model.YTS.Cast
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.ui.components.ActorDetailBottomSheet
+import com.martinrevert.latorrentola.ui.components.InsufficientStorageDialog
 import com.martinrevert.latorrentola.ui.components.MovieDetailPlaceholder
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.GenreTranslation
@@ -214,6 +215,7 @@ private fun MovieDetailScreenContent(
     val contentFocusRequester = remember { FocusRequester() }
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
+    val insufficientStorageState = remember { mutableStateOf<Pair<Long, Long>?>(null) }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -309,6 +311,9 @@ private fun MovieDetailScreenContent(
                         onTorrentClick = { onTorrentClick(state.movie, it) },
                         onAddLanguageToFilter = onAddLanguageToFilter,
                         onCastClick = onCastClick,
+                        onInsufficientStorage = { available, required ->
+                            insufficientStorageState.value = Pair(available, required)
+                        },
                         contentFocusRequester = contentFocusRequester,
                         contentPadding = detailContentPadding,
                         scrollState = scrollState
@@ -333,6 +338,15 @@ private fun MovieDetailScreenContent(
             onCreditClick = onActorCreditClick
         )
     }
+
+    val storageData = insufficientStorageState.value
+    if (storageData != null) {
+        InsufficientStorageDialog(
+            availableBytes = storageData.first,
+            requiredBytes = storageData.second,
+            onDismiss = { insufficientStorageState.value = null }
+        )
+    }
 }
 
 
@@ -352,6 +366,7 @@ fun MovieDetailContent(
     onTorrentClick: (Torrent) -> Unit,
     onAddLanguageToFilter: (String) -> Unit,
     onCastClick: (String) -> Unit,
+    onInsufficientStorage: (Long, Long) -> Unit = { _, _ -> },
     contentFocusRequester: FocusRequester? = null,
     contentPadding: PaddingValues = PaddingValues(16.dp),
     scrollState: ScrollState = rememberScrollState()
@@ -460,6 +475,7 @@ fun MovieDetailContent(
                     isDownloaded = downloadedHashes.contains(torrent.hash),
                     onTorrentClick = onTorrentClick,
                     handlingMode = torrentHandlingMode,
+                    onInsufficientStorage = onInsufficientStorage,
                     focusRequester = when {
                         isTv && index == 0 && !movie.cast.isNullOrEmpty() ->
                             firstTorrentFocusRequester
@@ -798,7 +814,8 @@ fun TorrentItem(
     isDownloaded: Boolean,
     onTorrentClick: (Torrent) -> Unit,
     focusRequester: FocusRequester? = null,
-    handlingMode: TorrentHandlingMode = TorrentHandlingMode.EXTERNAL_CLIENT
+    handlingMode: TorrentHandlingMode = TorrentHandlingMode.EXTERNAL_CLIENT,
+    onInsufficientStorage: (available: Long, required: Long) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -812,7 +829,8 @@ fun TorrentItem(
             try {
                 val title = movie.title ?: resources.getString(R.string.torrent_download_title)
                 val magnetUri = TorrentLaunchHelper.buildMagnetUri(hash, title)
-                when (TorrentLaunchHelper.launch(context, handlingMode, magnetUri, title, movieId = movie.id)) {
+                val sizeBytes = torrent.sizeBytes?.toLongOrNull()
+                when (val result = TorrentLaunchHelper.launch(context, handlingMode, magnetUri, title, movieId = movie.id, requiredSizeBytes = sizeBytes)) {
                     TorrentLaunchResult.Started -> {
                         onTorrentClick(torrent)
                         if (handlingMode != TorrentHandlingMode.EXTERNAL_CLIENT) {
@@ -833,6 +851,9 @@ fun TorrentItem(
                         resources.getString(R.string.torrent_cast_unavailable),
                         Toast.LENGTH_LONG
                     ).show()
+                    is TorrentLaunchResult.InsufficientStorage -> {
+                        onInsufficientStorage(result.availableBytes, result.requiredBytes)
+                    }
                 }
             } catch (e: IllegalArgumentException) {
                 Toast.makeText(context, resources.getString(R.string.toast_magnet_error), Toast.LENGTH_SHORT).show()

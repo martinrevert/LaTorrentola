@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import android.os.StatFs
 import androidx.core.content.ContextCompat
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.service.TorrentDownloadService
@@ -11,6 +12,37 @@ import java.net.URLEncoder
 
 /** Starts a torrent using the selected handling mode without exposing partial files. */
 object TorrentLaunchHelper {
+
+    /** Minimum required free disk space in bytes (1 GB). */
+    const val MIN_REQUIRED_STORAGE_BYTES = 1_000_000_000L
+
+    /**
+     * Returns the available storage space in bytes for the private app directory.
+     *
+     * @param context App context used to locate internal storage.
+     * @return Free disk space in bytes.
+     */
+    fun getAvailableStorageBytes(context: Context): Long {
+        return try {
+            val stat = StatFs(context.filesDir.absolutePath)
+            stat.availableBytes
+        } catch (_: Exception) {
+            0L
+        }
+    }
+
+    /**
+     * Verifies if the available disk space meets the 1 GB minimum requirement and optional file size.
+     *
+     * @param context App context.
+     * @param requiredSizeBytes Optional video release size in bytes.
+     * @return `true` if free disk space is greater than or equal to the required bytes.
+     */
+    fun hasEnoughStorage(context: Context, requiredSizeBytes: Long? = null): Boolean {
+        val available = getAvailableStorageBytes(context)
+        val required = maxOf(MIN_REQUIRED_STORAGE_BYTES, requiredSizeBytes ?: 0L)
+        return available >= required
+    }
 
     /**
      * Builds the app's standard magnet URI for a torrent hash and human-readable title.
@@ -93,6 +125,7 @@ object TorrentLaunchHelper {
      * @param seasonNumber Current season number.
      * @param episodeNumber Current episode number.
      * @param movieId Movie ID.
+     * @param requiredSizeBytes Optional size in bytes of the torrent release.
      * @return Result describing whether the request started or why it was rejected.
      */
     fun launch(
@@ -104,18 +137,28 @@ object TorrentLaunchHelper {
         seriesId: Int = 0,
         seasonNumber: Int = 0,
         episodeNumber: Int = 0,
-        movieId: Int = 0
-    ): TorrentLaunchResult = when (mode) {
-        TorrentHandlingMode.EXTERNAL_CLIENT ->
-            if (openExternal(context, magnetUri)) TorrentLaunchResult.Started
-            else TorrentLaunchResult.NoExternalClient
-        TorrentHandlingMode.LOCAL_PLAYBACK -> {
-            downloadLocally(context, magnetUri, title, false, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId)
-            TorrentLaunchResult.Started
+        movieId: Int = 0,
+        requiredSizeBytes: Long? = null
+    ): TorrentLaunchResult {
+        if (mode == TorrentHandlingMode.LOCAL_PLAYBACK || mode == TorrentHandlingMode.CHROMECAST) {
+            val required = maxOf(MIN_REQUIRED_STORAGE_BYTES, requiredSizeBytes ?: 0L)
+            val available = getAvailableStorageBytes(context)
+            if (available < required) {
+                return TorrentLaunchResult.InsufficientStorage(availableBytes = available, requiredBytes = required)
+            }
         }
-        TorrentHandlingMode.CHROMECAST -> {
-            downloadLocally(context, magnetUri, title, true, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId)
-            TorrentLaunchResult.Started
+        return when (mode) {
+            TorrentHandlingMode.EXTERNAL_CLIENT ->
+                if (openExternal(context, magnetUri)) TorrentLaunchResult.Started
+                else TorrentLaunchResult.NoExternalClient
+            TorrentHandlingMode.LOCAL_PLAYBACK -> {
+                downloadLocally(context, magnetUri, title, false, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId)
+                TorrentLaunchResult.Started
+            }
+            TorrentHandlingMode.CHROMECAST -> {
+                downloadLocally(context, magnetUri, title, true, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId)
+                TorrentLaunchResult.Started
+            }
         }
     }
 }
@@ -128,4 +171,6 @@ sealed interface TorrentLaunchResult {
     data object NoExternalClient : TorrentLaunchResult
     /** No external client accepted a magnet URI. */
     data object CastUnavailable : TorrentLaunchResult
+    /** Free storage space is lower than required (1 GB minimum). */
+    data class InsufficientStorage(val availableBytes: Long, val requiredBytes: Long) : TorrentLaunchResult
 }
