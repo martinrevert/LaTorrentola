@@ -167,6 +167,7 @@ import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
+import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.network.DownloadedSubtitle
 import com.martinrevert.latorrentola.network.OpenSubtitleRepository
 import com.martinrevert.latorrentola.network.OpenSubtitleResult
@@ -654,15 +655,20 @@ class LocalPlayerActivity : FragmentActivity() {
             }
 
             val isEpisode = currentSeriesId > 0
-            val mediaId = when {
-                currentSeriesId > 0 && currentSeasonNumber > 0 && currentEpisodeNumber > 0 ->
-                    "media_${currentSeriesId}_s${currentSeasonNumber}_e${currentEpisodeNumber}"
-                currentMovieId > 0 ->
-                    currentMovieId.toString()
-                torrentInfoHash.isNotBlank() ->
-                    torrentInfoHash
-                else ->
-                    mediaTitle
+            val mediaId = if (isEpisode) {
+                MediaIdHelper.forEpisode(
+                    seriesId = currentSeriesId,
+                    seasonNumber = currentSeasonNumber,
+                    episodeNumber = currentEpisodeNumber,
+                    infoHash = torrentInfoHash,
+                    title = mediaTitle
+                )
+            } else {
+                MediaIdHelper.forMovie(
+                    movieId = currentMovieId,
+                    infoHash = torrentInfoHash,
+                    title = mediaTitle
+                )
             }
 
             val itemBundle = Bundle().apply {

@@ -2,23 +2,34 @@ package com.martinrevert.latorrentola.data
 
 import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
+import com.martinrevert.latorrentola.utils.MediaIdHelper
 import org.junit.Test
 
 class WatchHistoryAndResumeTest {
 
     @Test
-    fun `canonical mediaId formatting for movies and tv episodes`() {
+    fun `canonical mediaId formatting using MediaIdHelper`() {
         val movieId = 12345
         val seriesId = 100
         val seasonNumber = 1
         val episodeNumber = 2
 
         // Test Movie ID format
-        val movieMediaId = movieId.toString()
+        val movieMediaId = MediaIdHelper.forMovie(movieId = movieId, infoHash = "hash123", title = "Inception")
         assertThat(movieMediaId).isEqualTo("12345")
 
+        // Test fallback for movie without movieId
+        val fallbackMovieMediaId = MediaIdHelper.forMovie(movieId = 0, infoHash = "hash123", title = "Inception")
+        assertThat(fallbackMovieMediaId).isEqualTo("hash123")
+
         // Test TV Episode ID format
-        val episodeMediaId = "media_${seriesId}_s${seasonNumber}_e${episodeNumber}"
+        val episodeMediaId = MediaIdHelper.forEpisode(
+            seriesId = seriesId,
+            seasonNumber = seasonNumber,
+            episodeNumber = episodeNumber,
+            infoHash = "hash456",
+            title = "Episode 2"
+        )
         assertThat(episodeMediaId).isEqualTo("media_100_s1_e2")
     }
 

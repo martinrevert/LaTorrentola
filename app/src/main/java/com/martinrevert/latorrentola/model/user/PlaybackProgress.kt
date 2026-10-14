@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.model.user
 
 import com.google.firebase.firestore.IgnoreExtraProperties
+import com.google.firebase.firestore.PropertyName
 import com.google.gson.annotations.SerializedName
 import kotlinx.serialization.Serializable
 
@@ -18,18 +19,12 @@ import kotlinx.serialization.Serializable
 @IgnoreExtraProperties
 @Serializable
 data class PlaybackProgress(
-    @SerializedName("media_id")
-    val mediaId: String = "",
-    @SerializedName("title")
-    val title: String = "",
-    @SerializedName("position_ms")
-    val positionMs: Long = 0L,
-    @SerializedName("duration_ms")
-    val durationMs: Long = 0L,
-    @SerializedName("timestamp")
-    val timestamp: Long = System.currentTimeMillis(),
-    @SerializedName("is_episode")
-    val isEpisode: Boolean = false
+    @get:PropertyName("media_id") @set:PropertyName("media_id") @SerializedName("media_id") var mediaId: String = "",
+    @get:PropertyName("title") @set:PropertyName("title") @SerializedName("title") var title: String = "",
+    @get:PropertyName("position_ms") @set:PropertyName("position_ms") @SerializedName("position_ms") var positionMs: Long = 0L,
+    @get:PropertyName("duration_ms") @set:PropertyName("duration_ms") @SerializedName("duration_ms") var durationMs: Long = 0L,
+    @get:PropertyName("timestamp") @set:PropertyName("timestamp") @SerializedName("timestamp") var timestamp: Long = System.currentTimeMillis(),
+    @get:PropertyName("is_episode") @set:PropertyName("is_episode") @SerializedName("is_episode") var isEpisode: Boolean = false
 ) {
     /** Calculates watch progress as a percentage between 0 and 100. */
     val progressPercent: Int

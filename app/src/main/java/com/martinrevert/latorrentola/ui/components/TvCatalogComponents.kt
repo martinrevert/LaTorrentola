@@ -357,19 +357,10 @@ fun TvSeriesGrid(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(series, key = { it.id }) { item ->
-            val progress = watchHistoryMap["media_${item.id}"]
-                ?: watchHistoryMap[item.id.toString()]
-                ?: watchHistoryMap[item.name.orEmpty()]
-                ?: watchHistoryMap.values
-                    .filter { it.mediaId.startsWith("media_${item.id}_") }
-                    .maxByOrNull { it.timestamp }
-            val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
-
             TvSeriesCard(
                 series = item,
                 genres = item.genreIds.orEmpty().mapNotNull(genreNames::get),
                 hasDownloads = item.id in downloadedSeriesIds,
-                progressPercent = progressPercent,
                 onClick = { onSeriesClick(item) },
                 shouldRequestFocus = item.id == initialFocusId,
                 onFocusRestored = onFocusRestored
@@ -405,7 +396,6 @@ fun TvSeriesCard(
     series: TmdbTvSummary,
     genres: List<String>,
     hasDownloads: Boolean = false,
-    progressPercent: Int? = null,
     onClick: () -> Unit,
     shouldRequestFocus: Boolean = false,
     onFocusRestored: () -> Unit = {}
@@ -470,17 +460,6 @@ fun TvSeriesCard(
                                     .padding(2.dp)
                             )
                         }
-                    }
-                    if (progressPercent != null && progressPercent > 0) {
-                        LinearProgressIndicator(
-                            progress = { progressPercent / 100f },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(4.dp),
-                            color = Color(0xFFE50914),
-                            trackColor = Color(0x33FFFFFF),
-                            strokeCap = StrokeCap.Butt
-                        )
                     }
                     Column(
                         modifier = Modifier
@@ -568,17 +547,6 @@ fun TvSeriesCard(
                                         .padding(2.dp)
                                 )
                             }
-                        }
-                        if (progressPercent != null && progressPercent > 0) {
-                            LinearProgressIndicator(
-                                progress = { progressPercent / 100f },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(4.dp),
-                                color = Color(0xFFE50914),
-                                trackColor = Color(0x33FFFFFF),
-                                strokeCap = StrokeCap.Butt
-                            )
                         }
                         Column(
                             modifier = Modifier

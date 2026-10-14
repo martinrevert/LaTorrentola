@@ -417,6 +417,32 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
+    private fun parsePlaybackProgress(doc: com.google.firebase.firestore.DocumentSnapshot): PlaybackProgress? {
+        if (!doc.exists()) return null
+        val parsed = doc.toObject(PlaybackProgress::class.java) ?: PlaybackProgress()
+        val finalMediaId = parsed.mediaId.ifBlank {
+            doc.getString("mediaId") ?: doc.getString("media_id") ?: doc.id
+        }
+        if (finalMediaId.isBlank()) return null
+
+        val finalTitle = parsed.title.ifBlank {
+            doc.getString("title") ?: ""
+        }
+        val finalPos = if (parsed.positionMs > 0L) parsed.positionMs else (doc.getLong("positionMs") ?: doc.getLong("position_ms") ?: 0L)
+        val finalDur = if (parsed.durationMs > 0L) parsed.durationMs else (doc.getLong("durationMs") ?: doc.getLong("duration_ms") ?: 0L)
+        val finalTs = if (parsed.timestamp > 0L) parsed.timestamp else (doc.getLong("timestamp") ?: System.currentTimeMillis())
+        val finalIsEpisode = parsed.isEpisode || (doc.getBoolean("isEpisode") ?: doc.getBoolean("is_episode") ?: false)
+
+        return PlaybackProgress(
+            mediaId = finalMediaId,
+            title = finalTitle,
+            positionMs = finalPos,
+            durationMs = finalDur,
+            timestamp = finalTs,
+            isEpisode = finalIsEpisode
+        )
+    }
+
     /** Retrieves saved playback progress locally from Room DB, falling back to or syncing with Firestore when signed in. */
     suspend fun getPlaybackProgress(mediaId: String): PlaybackProgress? {
         if (mediaId.isBlank()) return null
@@ -430,7 +456,7 @@ class UserLibraryRepository @Inject constructor(
                     .document(mediaId)
                     .get()
                     .await()
-                remoteProgress = doc.toObject(PlaybackProgress::class.java)
+                remoteProgress = parsePlaybackProgress(doc)
             } catch (e: Exception) {
                 Log.e("UserLibraryRepository", "Error fetching remote watch history: ${e.message}")
             }
@@ -489,8 +515,8 @@ class UserLibraryRepository @Inject constructor(
                         Log.e("UserLibraryRepository", "Error observing remote watch history: ${error.message}")
                         return@addSnapshotListener
                     }
-                    val remoteItems = snapshot?.documents?.mapNotNull {
-                        it.toObject(PlaybackProgress::class.java)
+                    val remoteItems = snapshot?.documents?.mapNotNull { doc ->
+                        parsePlaybackProgress(doc)
                     } ?: emptyList()
 
                     if (remoteItems.isNotEmpty()) {

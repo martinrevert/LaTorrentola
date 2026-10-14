@@ -16,6 +16,7 @@ import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.ui.player.LocalPlayerActivity
 import com.martinrevert.latorrentola.model.torrent.TorrentDownload
+import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
 import dagger.hilt.android.AndroidEntryPoint
 import com.martinrevert.latorrentola.utils.mediaMimeType
@@ -352,13 +353,20 @@ class TorrentDownloadService : Service() {
                 ?.takeIf { it.isFile && it.canRead() }
             val nextEpisodeInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
 
-            val mediaId = when {
-                seriesId > 0 && seasonNumber > 0 && episodeNumber > 0 ->
-                    "media_${seriesId}_s${seasonNumber}_e${episodeNumber}"
-                movieId > 0 ->
-                    movieId.toString()
-                else ->
-                    infoHash
+            val mediaId = if (seriesId > 0) {
+                MediaIdHelper.forEpisode(
+                    seriesId = seriesId,
+                    seasonNumber = seasonNumber,
+                    episodeNumber = episodeNumber,
+                    infoHash = infoHash,
+                    title = title
+                )
+            } else {
+                MediaIdHelper.forMovie(
+                    movieId = movieId,
+                    infoHash = infoHash,
+                    title = title
+                )
             }
             val playbackProgress = userLibraryRepository.getPlaybackProgress(mediaId)
             val resumePos = if (playbackProgress != null && playbackProgress.positionMs > 5000L && !playbackProgress.isCompleted) playbackProgress.positionMs else 0L
