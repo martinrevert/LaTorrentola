@@ -46,13 +46,24 @@
 - **ALWAYS** extract colors from `MaterialTheme.colorScheme` (Mobile) or `TvMaterialTheme.colorScheme` (TV).
 - **NEVER** hardcode strings. **ALWAYS** use the `UiText` wrapper or `strings.xml`.
 
-### B. TV & UI Branching
-- **MANDATORY THEME WRAPPER**: Every new Compose entry point (`setContent`, `Dialog`, `@Preview`) MUST branch:
+### B. TV & UI Branching and Theme Mode Propagation (STRICT MANDATE)
+- **MANDATORY THEME MODE PROPAGATION**: Every Compose entry point (`setContent`), `Dialog`, `BottomSheet`, `@Preview`, or isolated Window MUST explicitly resolve and pass `themeMode` from `PreferenceManager` to BOTH theme wrappers:
   ```kotlin
-  val themeMode = preferenceManager.getTheme()
-  if (context.isTvDevice()) { TvLaTorrentolaTheme { /* TV UI */ } } 
-  else { LaTorrentolaTheme(themeMode = themeMode) { /* Mobile UI */ } }
+  val themeMode = remember(context) { PreferenceManager(context).getTheme() }
+  if (context.isTvDevice()) { 
+      TvLaTorrentolaTheme(themeMode = themeMode) { /* TV UI */ } 
+  } else { 
+      LaTorrentolaTheme(themeMode = themeMode) { /* Mobile UI */ } 
+  }
   ```
+- **CRITICAL DIALOG/WINDOW THEME TRAP (DO NOT IGNORE)**: Compose `Dialog`s and `BottomSheet`s open in separate Android Window instances. Calling `TvLaTorrentolaTheme` without passing `themeMode = ...` WILL default to `THEME_SYSTEM` and silently break the user's selected Dark Mode preference on Android TV!
+- **COMPONENT-LEVEL RULE**: Every reusable `@Composable` `Dialog`, `BottomSheet`, or standalone screen component MUST accept an optional `themeMode: Int? = null` parameter and compute:
+  ```kotlin
+  val effectiveThemeMode = remember(context, themeMode) {
+      themeMode ?: PreferenceManager(context).getTheme()
+  }
+  ```
+  Pass `effectiveThemeMode` into both `TvLaTorrentolaTheme(themeMode = effectiveThemeMode)` and `LaTorrentolaTheme(themeMode = effectiveThemeMode)`.
 - **STRICT TV COMPONENTS**: If `isTvDevice() == true`, use `androidx.tv.material3.*` components exclusively. DO NOT use mobile interactive components on TV layouts (they break D-pad focus).
 
 ### C. Focus & Overlays (Android TV)
@@ -95,5 +106,6 @@ Before marking a task complete, verify:
 3. [ ] Are there ZERO hardcoded colors, strings, or dimensions?
 4. [ ] Is TypeSafe serialization fully intact (both annotations present)?
 5. [ ] Is TV logic securely sandboxed behind `isTvDevice()`?
-6. [ ] Did I use `pwsh` for any required terminal commands?
-7. [ ] Did I run unit tests (`testDebugUnitTest`) as validation instead of assembling release/debug APKs?
+6. [ ] Did I pass `themeMode` from `PreferenceManager` to `TvLaTorrentolaTheme(themeMode = ...)` and `LaTorrentolaTheme(themeMode = ...)` in every Dialog, BottomSheet, and Compose entry point to prevent Dark Mode regressions on Android TV?
+7. [ ] Did I use `pwsh` for any required terminal commands?
+8. [ ] Did I run unit tests (`testDebugUnitTest`) as validation instead of assembling release/debug APKs?

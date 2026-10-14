@@ -82,6 +82,7 @@ import androidx.tv.material3.Button as TvButton
 import androidx.tv.material3.IconButtonDefaults
 import androidx.tv.material3.Surface
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
+import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.UiText
 import com.martinrevert.latorrentola.utils.IntentAppsFinder
 import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
@@ -974,7 +975,7 @@ fun MovieDetailScreenTvPreview() {
         )
     )
 
-    LaTorrentolaTheme {
+    TvLaTorrentolaTheme {
         MovieDetailScreenContent(
             uiState = DetailUiState.Success(sampleMovie, isFavorite = true),
             downloadedHashes = setOf("HASH1"),

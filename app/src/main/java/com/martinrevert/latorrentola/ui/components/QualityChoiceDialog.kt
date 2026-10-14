@@ -56,7 +56,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
+import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import kotlinx.coroutines.delay
 
@@ -84,10 +86,14 @@ fun NextEpisodeTorrentDialog(
     isLoading: Boolean,
     error: String?,
     onTorrentSelected: (EztvTorrent) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    themeMode: Int? = null
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
+    val effectiveThemeMode = remember(context, themeMode) {
+        themeMode ?: PreferenceManager(context).getTheme()
+    }
     val firstItemFocusRequester = remember { FocusRequester() }
     val closeButtonFocusRequester = remember { FocusRequester() }
 
@@ -279,43 +285,47 @@ fun NextEpisodeTorrentDialog(
         }
 
         if (isTv) {
-            TvSurface(
-                onClick = {},
-                shape = ClickableSurfaceDefaults.shape(androidx.tv.material3.MaterialTheme.shapes.extraLarge),
-                colors = ClickableSurfaceDefaults.colors(
-                    containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
-                    contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
-                    focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
-                    focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface
-                ),
-                modifier = Modifier
-                    .padding(24.dp)
-                    .widthIn(min = 520.dp, max = 680.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {}
-                    )
-            ) {
-                dialogContent()
+            TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
+                TvSurface(
+                    onClick = {},
+                    shape = ClickableSurfaceDefaults.shape(androidx.tv.material3.MaterialTheme.shapes.extraLarge),
+                    colors = ClickableSurfaceDefaults.colors(
+                        containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
+                        contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
+                        focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
+                        focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .widthIn(min = 520.dp, max = 680.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {}
+                        )
+                ) {
+                    dialogContent()
+                }
             }
         } else {
-            Surface(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .widthIn(min = 320.dp, max = 560.dp)
-                    .fillMaxWidth(0.92f)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {}
-                    ),
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                tonalElevation = 6.dp,
-                shadowElevation = 8.dp
-            ) {
-                dialogContent()
+            LaTorrentolaTheme(themeMode = effectiveThemeMode) {
+                Surface(
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .widthIn(min = 320.dp, max = 560.dp)
+                        .fillMaxWidth(0.92f)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {}
+                        ),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 6.dp,
+                    shadowElevation = 8.dp
+                ) {
+                    dialogContent()
+                }
             }
         }
     }
@@ -455,23 +465,27 @@ fun QualityChoiceDialog(
     onDismiss: () -> Unit,
     releases: List<EztvTorrent>,
     isLoading: Boolean,
-    error: String?
+    error: String?,
+    themeMode: Int? = null
 ) {
-    LaTorrentolaTheme {
-        NextEpisodeTorrentDialog(
-            seriesName = "",
-            seasonNumber = 0,
-            episodeNumber = 0,
-            episodeName = "",
-            releases = releases,
-            isLoading = isLoading,
-            error = error,
-            onTorrentSelected = { torrent ->
-                onQualitySelected(torrent.title)
-            },
-            onDismiss = onDismiss
-        )
+    val context = LocalContext.current
+    val effectiveThemeMode = remember(context, themeMode) {
+        themeMode ?: PreferenceManager(context).getTheme()
     }
+    NextEpisodeTorrentDialog(
+        seriesName = "",
+        seasonNumber = 0,
+        episodeNumber = 0,
+        episodeName = "",
+        releases = releases,
+        isLoading = isLoading,
+        error = error,
+        onTorrentSelected = { torrent ->
+            onQualitySelected(torrent.title)
+        },
+        onDismiss = onDismiss,
+        themeMode = effectiveThemeMode
+    )
 }
 
 @Preview(name = "Light Phone", uiMode = Configuration.UI_MODE_NIGHT_NO, showBackground = true, widthDp = 360, heightDp = 640)

@@ -38,6 +38,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
+import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
+import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.utils.isTvDevice
 import androidx.media3.common.Player
 import androidx.mediarouter.media.MediaRouteSelector
 import androidx.mediarouter.media.MediaRouter
@@ -52,9 +56,14 @@ import com.google.android.gms.cast.CastMediaControlIntent
 fun CastBottomSheet(
     onDismissRequest: () -> Unit,
     mediaTitle: String = "",
-    mediaSubtitle: String = ""
+    mediaSubtitle: String = "",
+    themeMode: Int? = null
 ) {
     val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
+    val effectiveThemeMode = remember(context, themeMode) {
+        themeMode ?: PreferenceManager(context).getTheme()
+    }
     val mediaRouter = remember { MediaRouter.getInstance(context) }
     val selector = remember {
         MediaRouteSelector.Builder()
@@ -90,12 +99,7 @@ fun CastBottomSheet(
     val isCasting = selectedRoute != null && !selectedRoute.isDefault
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    ModalBottomSheet(
-        onDismissRequest = onDismissRequest,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurface
-    ) {
+    val sheetBody: @Composable () -> Unit = {
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
@@ -286,6 +290,23 @@ fun CastBottomSheet(
                         }
                     }
                 }
+            }
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface
+    ) {
+        if (isTv) {
+            TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
+                sheetBody()
+            }
+        } else {
+            LaTorrentolaTheme(themeMode = effectiveThemeMode) {
+                sheetBody()
             }
         }
     }

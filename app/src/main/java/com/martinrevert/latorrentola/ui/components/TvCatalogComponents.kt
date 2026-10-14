@@ -52,6 +52,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import dagger.hilt.android.EntryPointAccessors
 import com.martinrevert.latorrentola.di.RepositoryEntryPoint
+import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -269,8 +271,13 @@ fun TvGenreBottomSheet(
     genres: List<TmdbTvGenre>,
     onGenreClick: (TmdbTvGenre) -> Unit,
     onDismiss: () -> Unit,
-    sheetState: SheetState
+    sheetState: SheetState,
+    themeMode: Int? = null
 ) {
+    val context = LocalContext.current
+    val effectiveThemeMode = remember(context, themeMode) {
+        themeMode ?: PreferenceManager(context).getTheme()
+    }
     val sortedGenres = remember(genres) {
         genres.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }
@@ -280,29 +287,31 @@ fun TvGenreBottomSheet(
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 32.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.browse_by_genre),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
-            androidx.compose.foundation.layout.FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+        TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp)
             ) {
-                sortedGenres.forEach { genre ->
-                    AdaptiveChip(
-                        selected = false,
-                        onClick = { onGenreClick(genre) },
-                        label = { Text(genre.name) }
-                    )
+                Text(
+                    text = stringResource(R.string.browse_by_genre),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    sortedGenres.forEach { genre ->
+                        AdaptiveChip(
+                            selected = false,
+                            onClick = { onGenreClick(genre) },
+                            label = { Text(genre.name) }
+                        )
+                    }
                 }
             }
         }

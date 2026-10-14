@@ -58,6 +58,8 @@ import com.martinrevert.latorrentola.ui.components.TvGenreChips
 import com.martinrevert.latorrentola.ui.components.TvSeriesGrid
 import com.martinrevert.latorrentola.network.TmdbTvFeed
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
+import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dev.chrisbanes.haze.HazeState
@@ -776,7 +778,7 @@ fun HomeScreenTvPreview() {
         )
     )
 
-    LaTorrentolaTheme(dynamicColor = false) {
+    TvLaTorrentolaTheme {
         HomeScreenContent(
             uiState = HomeUiState.Success(sampleMovies),
             topGenres = listOf("Action", "Adventure", "Animation"),

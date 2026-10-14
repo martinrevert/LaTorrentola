@@ -37,6 +37,9 @@ import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
 import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
+import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
+import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeInput
@@ -60,10 +63,14 @@ fun ActorDetailBottomSheet(
     onDismiss: () -> Unit,
     sheetState: SheetState,
     hazeState: HazeState? = null,
-    onCreditClick: ((TmdbCastCredit) -> Unit)? = null
+    onCreditClick: ((TmdbCastCredit) -> Unit)? = null,
+    themeMode: Int? = null
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
+    val effectiveThemeMode = remember(context, themeMode) {
+        themeMode ?: PreferenceManager(context).getTheme()
+    }
     val configuration = LocalConfiguration.current
     val isWideScreen = configuration.screenWidthDp >= 600 || isTv
 
@@ -80,34 +87,36 @@ fun ActorDetailBottomSheet(
             onDismissRequest = onDismiss,
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
-            Surface(
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier
-                    .fillMaxWidth(0.96f)
-                    .fillMaxHeight(0.92f)
-                    .padding(12.dp)
-            ) {
-                Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-                    if (isLoading) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator()
-                        }
-                    } else {
-                        actorDetailState?.fold(
-                            onSuccess = { actor ->
-                                TvActorContent(actor = actor, onDismiss = onDismiss, onCreditClick = onCreditClick)
-                            },
-                            onFailure = {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = stringResource(R.string.no_results),
-                                        style = MaterialTheme.typography.titleLarge,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
+            TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
+                Surface(
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = androidx.tv.material3.MaterialTheme.colorScheme.surface,
+                    modifier = Modifier
+                        .fillMaxWidth(0.96f)
+                        .fillMaxHeight(0.92f)
+                        .padding(12.dp)
+                ) {
+                    Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+                        if (isLoading) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
                             }
-                        )
+                        } else {
+                            actorDetailState?.fold(
+                                onSuccess = { actor ->
+                                    TvActorContent(actor = actor, onDismiss = onDismiss, onCreditClick = onCreditClick)
+                                },
+                                onFailure = {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = stringResource(R.string.no_results),
+                                            style = MaterialTheme.typography.titleLarge,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -122,46 +131,48 @@ fun ActorDetailBottomSheet(
                 .fillMaxWidth()
                 .widthIn(max = 1200.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = (configuration.screenHeightDp * 0.9f).dp)
-                    .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                if (isLoading) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(250.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator()
-                    }
-                } else {
-                    actorDetailState?.fold(
-                        onSuccess = { actor ->
-                            if (isWideScreen) {
-                                WideActorContent(actor = actor, onCreditClick = onCreditClick)
-                            } else {
-                                MobileActorContent(actor = actor, onCreditClick = onCreditClick)
-                            }
-                        },
-                        onFailure = {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(180.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.no_results),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
+            LaTorrentolaTheme(themeMode = effectiveThemeMode) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = (configuration.screenHeightDp * 0.9f).dp)
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    if (isLoading) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(250.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
                         }
-                    )
+                    } else {
+                        actorDetailState?.fold(
+                            onSuccess = { actor ->
+                                if (isWideScreen) {
+                                    WideActorContent(actor = actor, onCreditClick = onCreditClick)
+                                } else {
+                                    MobileActorContent(actor = actor, onCreditClick = onCreditClick)
+                                }
+                            },
+                            onFailure = {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                    .height(180.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.no_results),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }

@@ -10,6 +10,7 @@ import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -20,7 +21,9 @@ import com.martinrevert.latorrentola.network.FirebaseMessagingConfig
 import com.martinrevert.latorrentola.network.FirebaseMessagingInitializer
 import com.martinrevert.latorrentola.ui.navigation.AppNavigation
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
+import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.utils.isTvDevice
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.fragment.app.FragmentActivity
 import javax.inject.Inject
@@ -74,7 +77,8 @@ class MainActivity : FragmentActivity() {
         window.isNavigationBarContrastEnforced = false
         setContent {
             val themeMode by preferenceManager.themeFlow.collectAsState()
-            LaTorrentolaTheme(themeMode = themeMode) {
+            val isTv = isTvDevice()
+            val navigationContent: @Composable () -> Unit = {
                 AppNavigation(
                     initialMovieJson = movieJsonToOpen,
                     initialMovieId = movieIdToOpen,
@@ -85,6 +89,16 @@ class MainActivity : FragmentActivity() {
                         searchQueryToOpen = null
                     }
                 )
+            }
+
+            if (isTv) {
+                TvLaTorrentolaTheme(themeMode = themeMode) {
+                    navigationContent()
+                }
+            } else {
+                LaTorrentolaTheme(themeMode = themeMode) {
+                    navigationContent()
+                }
             }
         }
     }

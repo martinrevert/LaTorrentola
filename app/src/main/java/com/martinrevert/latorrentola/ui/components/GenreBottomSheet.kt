@@ -9,7 +9,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.GenreTranslation
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.glass.hazeGlass
@@ -22,9 +24,13 @@ fun GenreBottomSheet(
     onGenreClick: (String) -> Unit,
     onDismiss: () -> Unit,
     sheetState: SheetState,
-    hazeState: HazeState? = null
+    hazeState: HazeState? = null,
+    themeMode: Int? = null
 ) {
     val context = LocalContext.current
+    val effectiveThemeMode = remember(context, themeMode) {
+        themeMode ?: PreferenceManager(context).getTheme()
+    }
     val sortedGenres = remember(genres) {
         genres.sortedBy { GenreTranslation.getGenreText(it).asString(context) }
     }
@@ -43,38 +49,40 @@ fun GenreBottomSheet(
         contentColor = MaterialTheme.colorScheme.onSurface,
         modifier = sheetModifier
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .navigationBarsPadding()
-        ) {
-            Text(
-                text = stringResource(R.string.browse_by_genre),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
-
-            // Grid of genres
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+        LaTorrentolaTheme(themeMode = effectiveThemeMode) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .navigationBarsPadding()
             ) {
-                sortedGenres.forEach { genre ->
-                    AdaptiveChip(
-                        selected = false,
-                        onClick = { onGenreClick(genre) },
-                        label = {
-                            Text(
-                                text = GenreTranslation.getGenreText(genre).asString(),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    )
+                Text(
+                    text = stringResource(R.string.browse_by_genre),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                // Grid of genres
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    sortedGenres.forEach { genre ->
+                        AdaptiveChip(
+                            selected = false,
+                            onClick = { onGenreClick(genre) },
+                            label = {
+                                Text(
+                                    text = GenreTranslation.getGenreText(genre).asString(),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        )
+                    }
                 }
+                Spacer(modifier = Modifier.height(32.dp))
             }
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }

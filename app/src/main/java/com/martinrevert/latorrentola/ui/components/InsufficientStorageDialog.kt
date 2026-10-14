@@ -42,6 +42,7 @@ import androidx.tv.material3.SurfaceDefaults
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import kotlinx.coroutines.delay
 
@@ -57,10 +58,14 @@ import kotlinx.coroutines.delay
 fun InsufficientStorageDialog(
     availableBytes: Long,
     requiredBytes: Long,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    themeMode: Int? = null
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
+    val effectiveThemeMode = remember(context, themeMode) {
+        themeMode ?: PreferenceManager(context).getTheme()
+    }
     val okButtonFocusRequester = remember { FocusRequester() }
 
     val formattedAvailable = remember(availableBytes) {
@@ -148,21 +153,22 @@ fun InsufficientStorageDialog(
             }
 
             if (isTv) {
-                TvLaTorrentolaTheme {
+                TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
                     Surface(
                         modifier = Modifier
                             .widthIn(max = 500.dp)
                             .padding(24.dp),
                         shape = RoundedCornerShape(16.dp),
                         colors = SurfaceDefaults.colors(
-                            containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant
+                            containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
+                            contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface
                         )
                     ) {
                         dialogBody()
                     }
                 }
             } else {
-                LaTorrentolaTheme {
+                LaTorrentolaTheme(themeMode = effectiveThemeMode) {
                     Card(
                         modifier = Modifier
                             .widthIn(max = 480.dp)
@@ -196,11 +202,12 @@ private fun InsufficientStorageDialogMobilePreview() {
 @Preview(name = "TV Insufficient Storage Preview")
 @Composable
 private fun InsufficientStorageDialogTvPreview() {
-    TvLaTorrentolaTheme {
+    TvLaTorrentolaTheme(themeMode = PreferenceManager.THEME_DARK) {
         InsufficientStorageDialog(
             availableBytes = 250_000_000L,
             requiredBytes = 1_000_000_000L,
-            onDismiss = {}
+            onDismiss = {},
+            themeMode = PreferenceManager.THEME_DARK
         )
     }
 }
