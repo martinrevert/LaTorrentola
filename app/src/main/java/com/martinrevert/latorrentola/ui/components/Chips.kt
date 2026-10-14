@@ -56,9 +56,9 @@ fun AdaptiveChip(
             shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small),
             colors = ClickableSurfaceDefaults.colors(
                 containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                focusedContainerColor = MaterialTheme.colorScheme.primary,
+                focusedContainerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
                 contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-                focusedContentColor = MaterialTheme.colorScheme.onPrimary
+                focusedContentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
             ),
             interactionSource = interactionSource,
             modifier = modifier
