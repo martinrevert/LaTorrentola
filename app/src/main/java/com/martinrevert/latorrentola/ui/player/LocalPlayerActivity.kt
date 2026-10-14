@@ -1,4 +1,5 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.media3.common.util.UnstableApi::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 
 package com.martinrevert.latorrentola.ui.player
 
@@ -282,7 +283,8 @@ val fontProvider = GoogleFont.Provider(
     certificates = R.array.com_google_android_gms_fonts_certs
 )
 
-@OptIn(androidx.media3.common.util.UnstableApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
+@androidx.annotation.OptIn(UnstableApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Suppress("OPT_IN_USAGE_ERROR")
 @AndroidEntryPoint
 class LocalPlayerActivity : FragmentActivity() {
@@ -1069,7 +1071,7 @@ class LocalPlayerActivity : FragmentActivity() {
             }
         }
 
-        val languageStr = if (!displayLang.isNullOrBlank() && displayLang.lowercase(Locale.ROOT) != rawLanguage?.lowercase(Locale.ROOT)) {
+        val languageStr = if (!displayLang.isNullOrBlank() && displayLang.lowercase(Locale.ROOT) != rawLanguage.lowercase(Locale.ROOT)) {
             "$flag $displayLang"
         } else {
             val fallbackName = when {
@@ -1129,7 +1131,7 @@ class LocalPlayerActivity : FragmentActivity() {
 
             val parts = listOfNotNull(
                 customLabel,
-                languageStr ?: "🌐 Idioma Desconocido",
+                languageStr,
                 codecName,
                 channelStr
             ).distinct()
@@ -1970,7 +1972,7 @@ private fun PlayerMobileBottomSheet(
     }
 }
 
-@OptIn(androidx.media3.common.util.UnstableApi::class)
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 private fun BottomSheetInnerContent(
     state: PlayerBottomSheetState,

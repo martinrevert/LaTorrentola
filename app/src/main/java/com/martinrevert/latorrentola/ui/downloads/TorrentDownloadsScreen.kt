@@ -150,13 +150,11 @@ fun TorrentDownloadsScreen(
 
     DisposableEffect(Unit) {
         val callback = object : MediaRouter.Callback() {
-            @Suppress("DEPRECATION")
-            override fun onRouteSelected(router: MediaRouter, route: MediaRouter.RouteInfo) {
+            override fun onRouteSelected(router: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) {
                 selectedRoute = route
                 isCasting = !route.isDefault
             }
-            @Suppress("DEPRECATION")
-            override fun onRouteUnselected(router: MediaRouter, route: MediaRouter.RouteInfo) {
+            override fun onRouteUnselected(router: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) {
                 selectedRoute = router.selectedRoute
                 isCasting = !router.selectedRoute.isDefault
             }

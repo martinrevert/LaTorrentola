@@ -81,13 +81,11 @@ fun CastBottomSheet(
 
     DisposableEffect(Unit) {
         val callback = object : MediaRouter.Callback() {
-            @Suppress("DEPRECATION")
             override fun onRouteAdded(router: MediaRouter, route: MediaRouter.RouteInfo) { updateState() }
-            @Suppress("DEPRECATION")
             override fun onRouteRemoved(router: MediaRouter, route: MediaRouter.RouteInfo) { updateState() }
             override fun onRouteChanged(router: MediaRouter, route: MediaRouter.RouteInfo) { updateState() }
-            override fun onRouteSelected(router: MediaRouter, route: MediaRouter.RouteInfo) { updateState() }
-            override fun onRouteUnselected(router: MediaRouter, route: MediaRouter.RouteInfo) { updateState() }
+            override fun onRouteSelected(router: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) { updateState() }
+            override fun onRouteUnselected(router: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) { updateState() }
         }
         mediaRouter.addCallback(selector, callback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY)
         updateState()
@@ -96,7 +94,7 @@ fun CastBottomSheet(
         }
     }
 
-    val isCasting = selectedRoute != null && !selectedRoute.isDefault
+    val isCasting = !selectedRoute.isDefault
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val sheetBody: @Composable () -> Unit = {
