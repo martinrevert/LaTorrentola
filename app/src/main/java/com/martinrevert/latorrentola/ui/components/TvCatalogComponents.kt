@@ -18,7 +18,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tv
@@ -390,13 +394,15 @@ fun TvSeriesGrid(
 }
 
 /** Displays one TMDB TV poster card with phone and native TV focus behavior. */
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TvSeriesCard(
     series: TmdbTvSummary,
     genres: List<String>,
     hasDownloads: Boolean = false,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     shouldRequestFocus: Boolean = false,
     onFocusRestored: () -> Unit = {}
 ) {
@@ -427,6 +433,7 @@ fun TvSeriesCard(
         if (isTv) {
             Surface(
                 onClick = onClick,
+                onLongClick = onLongClick,
                 scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
                 shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
                 modifier = Modifier
@@ -511,12 +518,16 @@ fun TvSeriesCard(
             }
         } else {
             Card(
-                onClick = onClick,
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
                     .onFocusChanged { if (it.isFocused && shouldRequestFocus) onFocusRestored() }
-                    .focusHighlight(shape = MaterialTheme.shapes.medium),
+                    .focusHighlight(shape = MaterialTheme.shapes.medium)
+                    .semantics(mergeDescendants = true) { }
+                    .combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick
+                    ),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                 shape = MaterialTheme.shapes.medium
             ) {
@@ -637,6 +648,23 @@ fun TvSeriesCard(
                     }
                 }
             }
+        }
+
+        if (isSelected) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+            )
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = stringResource(R.string.selected_desc),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(32.dp)
+            )
         }
     }
 }

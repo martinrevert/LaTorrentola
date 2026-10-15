@@ -21,6 +21,16 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** Filter options for the mixed Favorites collection. */
+enum class FavoritesFilter {
+    ALL,
+    MOVIES,
+    TV_SERIES,
+    WATCHED,
+    UNWATCHED,
+    IN_PROGRESS
+}
+
 /**
  * Performs movie and TV series searches and exposes favorites, downloads, and new-release collections.
  *
@@ -36,6 +46,11 @@ class SearchViewModel @Inject constructor(
     private val userLibraryRepository: UserLibraryRepository,
     private val preferenceManager: PreferenceManager
 ) : ViewModel() {
+
+    /** Mutable backing state for the selected favorites filter. */
+    private val _selectedFavoritesFilter = MutableStateFlow(FavoritesFilter.ALL)
+    /** Currently selected filter for the favorites collection. */
+    val selectedFavoritesFilter: StateFlow<FavoritesFilter> = _selectedFavoritesFilter.asStateFlow()
 
     /** Mutable backing state for current search results. */
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
@@ -197,6 +212,15 @@ class SearchViewModel @Inject constructor(
             showNewMovies(force = true)
         } else {
             resetAndLoad()
+        }
+    }
+
+    /** Applies [filter] to the favorites collection and refreshes display. */
+    fun setFavoritesFilter(filter: FavoritesFilter) {
+        if (_selectedFavoritesFilter.value == filter) return
+        _selectedFavoritesFilter.value = filter
+        if (isShowingFavorites) {
+            showFavorites(force = true)
         }
     }
 
@@ -384,6 +408,8 @@ class SearchViewModel @Inject constructor(
         resetAndLoad()
     }
 
+    private val seriesDetailsCache = mutableMapOf<Int, TmdbTvSummary>()
+
     /** Observes and filters the signed-in user's favorites. */
     fun showFavorites(force: Boolean = false) {
         if (!force && isShowingFavorites && (favoritesJob?.isActive == true || _uiState.value is SearchUiState.Success)) return
@@ -401,27 +427,147 @@ class SearchViewModel @Inject constructor(
             _uiState.value = SearchUiState.Loading
             combine(
                 ytsRepository.getFavoriteMovies(),
-                userLibraryRepository.getFavoriteTvSeries()
-            ) { movies, series -> movies to series }.collect { (favorites, series) ->
+                userLibraryRepository.getFavoriteTvSeries(),
+                userLibraryRepository.getWatchHistory(),
+                _selectedFavoritesFilter
+            ) { favorites, series, watchHistory, filter ->
+                val watchMap = watchHistory.associateBy { it.mediaId }
+                
+                val missingSeriesIds = series.filter { (it.numberOfEpisodes == null || it.numberOfEpisodes == 0) && !seriesDetailsCache.containsKey(it.id) }.map { it.id }
+                if (missingSeriesIds.isNotEmpty()) {
+                    viewModelScope.launch {
+                        missingSeriesIds.forEach { seriesId ->
+                            try {
+                                val details = tmdbRepository.getTvDetails(seriesId)
+                                seriesDetailsCache[seriesId] = details
+                            } catch (_: Exception) {}
+                        }
+                        if (isShowingFavorites) {
+                            showFavorites(force = true)
+                        }
+                    }
+                }
+
+                val enrichedSeries = series.map { s ->
+                    val cached = seriesDetailsCache[s.id]
+                    if (cached != null) {
+                        s.copy(
+                            numberOfSeasons = cached.numberOfSeasons?.takeIf { it > 0 } ?: s.numberOfSeasons,
+                            numberOfEpisodes = cached.numberOfEpisodes?.takeIf { it > 0 } ?: s.numberOfEpisodes
+                        )
+                    } else s
+                }
+
+                val (filteredMovies, filteredSeries) = when (filter) {
+                    FavoritesFilter.ALL -> favorites to enrichedSeries
+                    FavoritesFilter.MOVIES -> favorites to emptyList()
+                    FavoritesFilter.TV_SERIES -> emptyList<Movie>() to enrichedSeries
+                    FavoritesFilter.WATCHED -> {
+                        favorites.filter { isMovieWatched(it, watchMap) } to enrichedSeries.filter { isTvSeriesWatched(it, watchHistory) }
+                    }
+                    FavoritesFilter.UNWATCHED -> {
+                        favorites.filter { isMovieUnwatched(it, watchMap) } to enrichedSeries.filter { isTvSeriesUnwatched(it, watchHistory) }
+                    }
+                    FavoritesFilter.IN_PROGRESS -> {
+                        favorites.filter { isMovieInProgress(it, watchMap) } to enrichedSeries.filter { isTvSeriesInProgress(it, watchHistory) }
+                    }
+                }
+                
+                val excludedLangs = preferenceManager.getFilteredLanguages()
+                val finalMovies = MovieFilter.filterMovies(
+                    filteredMovies,
+                    excludedLangs,
+                    _selectedQuality.value
+                ).distinctBy { it.id }
+
+                finalMovies to filteredSeries
+            }.collect { (filteredMovies, filteredSeries) ->
                 if (isShowingFavorites) {
-                    _favoriteTvSeries.value = series
+                    _favoriteTvSeries.value = filteredSeries
                     allResults.clear()
+                    allResults.addAll(filteredMovies)
                     
-                    val excludedLangs = preferenceManager.getFilteredLanguages()
-                    val filteredFavorites = MovieFilter.filterMovies(
-                        favorites,
-                        excludedLangs,
-                        _selectedQuality.value
-                    ).distinctBy { it.id }
-                    
-                    allResults.addAll(filteredFavorites)
-                    if (allResults.isEmpty() && series.isEmpty()) {
+                    if (allResults.isEmpty() && filteredSeries.isEmpty()) {
                         _uiState.value = SearchUiState.Empty
                     } else {
                         _uiState.value = SearchUiState.Success(allResults.toList(), isFavorites = true)
                     }
                 }
             }
+        }
+    }
+
+    private fun isMovieWatched(m: Movie, watchMap: Map<String, PlaybackProgress>): Boolean {
+        val progress = watchMap[m.id.toString()] ?: watchMap[m.title]
+        return progress != null && (progress.isCompleted || progress.progressPercent >= 95)
+    }
+
+    private fun isMovieInProgress(m: Movie, watchMap: Map<String, PlaybackProgress>): Boolean {
+        val progress = watchMap[m.id.toString()] ?: watchMap[m.title]
+        return progress != null && !progress.isCompleted && progress.progressPercent > 0 && progress.progressPercent < 95
+    }
+
+    private fun isMovieUnwatched(m: Movie, watchMap: Map<String, PlaybackProgress>): Boolean {
+        val progress = watchMap[m.id.toString()] ?: watchMap[m.title]
+        val percent = progress?.let { if (it.isCompleted) 100 else it.progressPercent } ?: 0
+        return percent == 0
+    }
+
+    private fun getSeriesEpisodeProgresses(s: TmdbTvSummary, watchHistory: List<PlaybackProgress>): List<PlaybackProgress> {
+        val seriesIdStr = s.id.toString()
+        return watchHistory.filter { item ->
+            val isEpisodeMedia = item.isEpisode ||
+                item.mediaId.startsWith("media_") ||
+                (item.mediaId.contains("_s") && item.mediaId.contains("_e"))
+
+            if (!isEpisodeMedia) return@filter false
+
+            item.mediaId.startsWith("media_${seriesIdStr}_s") ||
+            item.mediaId.contains("_${seriesIdStr}_s") ||
+            item.mediaId.contains("_${seriesIdStr}_")
+        }
+    }
+
+    private fun isTvSeriesInProgress(s: TmdbTvSummary, watchHistory: List<PlaybackProgress>): Boolean {
+        val episodeProgresses = getSeriesEpisodeProgresses(s, watchHistory)
+        val hasStartedEpisode = episodeProgresses.any {
+            val pct = if (it.isCompleted) 100 else it.progressPercent
+            pct > 0 || it.positionMs > 0
+        }
+        if (!hasStartedEpisode) return false
+
+        val fullSeries = seriesDetailsCache[s.id] ?: s
+        val totalEpisodes = fullSeries.numberOfEpisodes
+
+        if (totalEpisodes == null || totalEpisodes <= 0) {
+            return true
+        }
+
+        val completedCount = episodeProgresses.count { it.isCompleted || it.progressPercent >= 95 }
+        return completedCount < totalEpisodes
+    }
+
+    private fun isTvSeriesWatched(s: TmdbTvSummary, watchHistory: List<PlaybackProgress>): Boolean {
+        val episodeProgresses = getSeriesEpisodeProgresses(s, watchHistory)
+        if (episodeProgresses.isEmpty()) return false
+
+        val fullSeries = seriesDetailsCache[s.id] ?: s
+        val totalEpisodes = fullSeries.numberOfEpisodes
+
+        if (totalEpisodes == null || totalEpisodes <= 0) {
+            return false
+        }
+
+        val completedCount = episodeProgresses.count { it.isCompleted || it.progressPercent >= 95 }
+        return completedCount >= totalEpisodes
+    }
+
+    private fun isTvSeriesUnwatched(s: TmdbTvSummary, watchHistory: List<PlaybackProgress>): Boolean {
+        val episodeProgresses = getSeriesEpisodeProgresses(s, watchHistory)
+        if (episodeProgresses.isEmpty()) return true
+        return episodeProgresses.none {
+            val pct = if (it.isCompleted) 100 else it.progressPercent
+            pct > 0 || it.positionMs > 0
         }
     }
 
@@ -604,16 +750,19 @@ class SearchViewModel @Inject constructor(
         _selectedFavoriteIds.value = emptySet()
     }
 
-    /** Removes every selected movie from favorites and clears the selection. */
+    /** Removes every selected movie or TV series from favorites and clears the selection. */
     fun deleteSelectedFavorites() {
         val idsToDelete = _selectedFavoriteIds.value
         if (idsToDelete.isEmpty()) return
 
         viewModelScope.launch {
-            // Find movies in allResults that match the ids to delete
             val moviesToDelete = allResults.filter { it.id in idsToDelete }
             moviesToDelete.forEach { movie ->
                 ytsRepository.removeFavorite(movie)
+            }
+            val seriesToDelete = _favoriteTvSeries.value.filter { it.id in idsToDelete }
+            seriesToDelete.forEach { series ->
+                userLibraryRepository.removeFavoriteTvSeries(series)
             }
             clearSelection()
         }

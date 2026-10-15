@@ -48,6 +48,12 @@
     <string name="share_movie_text">Mira esta película: %1$s\n%2$s</string>
     <string name="selected_count">%1$d seleccionados</string>
     <string name="my_favorites">Mis Favoritos</string>
+    <string name="favorites_filter_all">Todas</string>
+    <string name="favorites_filter_movies">Películas</string>
+    <string name="favorites_filter_tv_series">Series</string>
+    <string name="favorites_filter_watched">Vistas</string>
+    <string name="favorites_filter_unwatched">No vistas</string>
+    <string name="favorites_filter_watching">Viendo</string>
     <string name="search_placeholder">Buscar películas&#8230;</string>
     <string name="tv_search_placeholder">Buscar series de TV&#8230;</string>
     <string name="voice_search_prompt">Hable para buscar películas</string>

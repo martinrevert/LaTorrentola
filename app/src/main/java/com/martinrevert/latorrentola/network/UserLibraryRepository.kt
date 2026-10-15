@@ -223,7 +223,9 @@ class UserLibraryRepository @Inject constructor(
                             voteAverage = (document.get("voteAverage") as? Number)?.toDouble(),
                             genreIds = (document.get("genreIds") as? List<*>)
                                 .orEmpty()
-                                .mapNotNull { (it as? Number)?.toInt() }
+                                .mapNotNull { (it as? Number)?.toInt() },
+                            numberOfSeasons = (document.get("numberOfSeasons") as? Number)?.toInt(),
+                            numberOfEpisodes = (document.get("numberOfEpisodes") as? Number)?.toInt()
                         ).toTmdbTvSummary()
                     } ?: emptyList()
                 trySend(favorites)
@@ -247,7 +249,9 @@ class UserLibraryRepository @Inject constructor(
                     "posterPath" to favorite.posterPath,
                     "firstAirDate" to favorite.firstAirDate,
                     "voteAverage" to favorite.voteAverage,
-                    "genreIds" to favorite.genreIds.orEmpty()
+                    "genreIds" to favorite.genreIds.orEmpty(),
+                    "numberOfSeasons" to favorite.numberOfSeasons,
+                    "numberOfEpisodes" to favorite.numberOfEpisodes
                 )
             )
             .await()
@@ -431,7 +435,10 @@ class UserLibraryRepository @Inject constructor(
         val finalPos = if (parsed.positionMs > 0L) parsed.positionMs else (doc.getLong("positionMs") ?: doc.getLong("position_ms") ?: 0L)
         val finalDur = if (parsed.durationMs > 0L) parsed.durationMs else (doc.getLong("durationMs") ?: doc.getLong("duration_ms") ?: 0L)
         val finalTs = if (parsed.timestamp > 0L) parsed.timestamp else (doc.getLong("timestamp") ?: System.currentTimeMillis())
-        val finalIsEpisode = parsed.isEpisode || (doc.getBoolean("isEpisode") ?: doc.getBoolean("is_episode") ?: false)
+        val finalIsEpisode = parsed.isEpisode || 
+            (doc.getBoolean("isEpisode") ?: doc.getBoolean("is_episode") ?: false) ||
+            finalMediaId.startsWith("media_") ||
+            (finalMediaId.contains("_s") && finalMediaId.contains("_e"))
 
         return PlaybackProgress(
             mediaId = finalMediaId,

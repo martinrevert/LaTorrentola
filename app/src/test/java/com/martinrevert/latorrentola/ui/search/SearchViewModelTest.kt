@@ -207,15 +207,19 @@ class SearchViewModelTest {
     }
 
     @Test
-    fun `deleteSelectedFavorites should call repository for each selected id`() = runTest {
+    fun `deleteSelectedFavorites should call repository for each selected id including tv series`() = runTest {
         val movie = Movie(id = 1)
+        val tvSeries = com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary(id = 10, name = "Series 1")
         every { repository.getFavoriteMovies() } returns flowOf(listOf(movie))
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(tvSeries))
         viewModel.showFavorites()
         
         viewModel.toggleFavoriteSelection(1)
+        viewModel.toggleFavoriteSelection(10)
         viewModel.deleteSelectedFavorites()
 
         coVerify { repository.removeFavorite(match { it.id == 1 }) }
+        coVerify { userLibraryRepository.removeFavoriteTvSeries(match { it.id == 10 }) }
         assertThat(viewModel.selectedFavoriteIds.value).isEmpty()
     }
 
@@ -275,5 +279,69 @@ class SearchViewModelTest {
             assertThat(map["100"]).isEqualTo(progress)
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun `setFavoritesFilter should update selectedFavoritesFilter state`() = runTest {
+        viewModel.setFavoritesFilter(FavoritesFilter.MOVIES)
+        assertThat(viewModel.selectedFavoritesFilter.value).isEqualTo(FavoritesFilter.MOVIES)
+    }
+
+    @Test
+    fun `showFavorites with MOVIES filter should filter out tv series`() = runTest {
+        val movie = Movie(id = 1, title = "Movie 1", rating = "8")
+        val tvSeries = com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary(id = 10, name = "Series 1")
+        every { repository.getFavoriteMovies() } returns flowOf(listOf(movie))
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(tvSeries))
+
+        viewModel.setFavoritesFilter(FavoritesFilter.MOVIES)
+        viewModel.showFavorites()
+
+        val state = viewModel.uiState.value as SearchUiState.Success
+        assertThat(state.movies).containsExactly(movie)
+        assertThat(viewModel.favoriteTvSeries.value).isEmpty()
+    }
+
+    @Test
+    fun `showFavorites with TV_SERIES filter should filter out movies`() = runTest {
+        val movie = Movie(id = 1, title = "Movie 1", rating = "8")
+        val tvSeries = com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary(id = 10, name = "Series 1")
+        every { repository.getFavoriteMovies() } returns flowOf(listOf(movie))
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(tvSeries))
+
+        viewModel.setFavoritesFilter(FavoritesFilter.TV_SERIES)
+        viewModel.showFavorites()
+
+        val state = viewModel.uiState.value as SearchUiState.Success
+        assertThat(state.movies).isEmpty()
+        assertThat(viewModel.favoriteTvSeries.value).containsExactly(tvSeries)
+    }
+
+    @Test
+    fun `showFavorites with IN_PROGRESS filter should return movies and series in progress`() = runTest {
+        val inProgressMovie = Movie(id = 1, title = "In Progress Movie", rating = "8")
+        val watchedMovie = Movie(id = 2, title = "Watched Movie", rating = "8")
+        val inProgressSeries = com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary(id = 10, name = "Series 1", numberOfEpisodes = 10)
+
+        val movieProgress = com.martinrevert.latorrentola.model.user.PlaybackProgress(
+            mediaId = "1", title = "In Progress Movie", positionMs = 500000L, durationMs = 1000000L, isEpisode = false
+        )
+        val watchedMovieProgress = com.martinrevert.latorrentola.model.user.PlaybackProgress(
+            mediaId = "2", title = "Watched Movie", positionMs = 980000L, durationMs = 1000000L, isEpisode = false
+        )
+        val episodeProgress = com.martinrevert.latorrentola.model.user.PlaybackProgress(
+            mediaId = "media_10_s1_e1", title = "Episode 1", positionMs = 500000L, durationMs = 1000000L, isEpisode = true
+        )
+
+        every { repository.getFavoriteMovies() } returns flowOf(listOf(inProgressMovie, watchedMovie))
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(inProgressSeries))
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(movieProgress, watchedMovieProgress, episodeProgress))
+
+        viewModel.setFavoritesFilter(FavoritesFilter.IN_PROGRESS)
+        viewModel.showFavorites()
+
+        val state = viewModel.uiState.value as SearchUiState.Success
+        assertThat(state.movies).containsExactly(inProgressMovie)
+        assertThat(viewModel.favoriteTvSeries.value).containsExactly(inProgressSeries)
     }
 }

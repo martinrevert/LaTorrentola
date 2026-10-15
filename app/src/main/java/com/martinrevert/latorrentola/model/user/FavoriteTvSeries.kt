@@ -36,7 +36,13 @@ data class FavoriteTvSeries(
     val voteAverage: Double? = null,
     @SerializedName("genre_ids")
     @SerialName("genre_ids")
-    val genreIds: List<Int>? = emptyList()
+    val genreIds: List<Int>? = emptyList(),
+    @SerializedName("number_of_seasons")
+    @SerialName("number_of_seasons")
+    val numberOfSeasons: Int? = null,
+    @SerializedName("number_of_episodes")
+    @SerialName("number_of_episodes")
+    val numberOfEpisodes: Int? = null
 ) {
     /** Converts stored metadata to the catalog model used by favorite cards. */
     fun toTmdbTvSummary(): TmdbTvSummary = TmdbTvSummary(
@@ -45,7 +51,9 @@ data class FavoriteTvSeries(
         posterPath = posterPath,
         firstAirDate = firstAirDate,
         voteAverage = voteAverage,
-        genreIds = genreIds.orEmpty()
+        genreIds = genreIds.orEmpty(),
+        numberOfSeasons = numberOfSeasons,
+        numberOfEpisodes = numberOfEpisodes
     )
 
     companion object {
@@ -56,7 +64,9 @@ data class FavoriteTvSeries(
             posterPath = series.posterPath,
             firstAirDate = series.firstAirDate,
             voteAverage = series.voteAverage,
-            genreIds = series.genreIds.orEmpty().ifEmpty { series.genres.orEmpty().map { it.id } }
+            genreIds = series.genreIds.orEmpty().ifEmpty { series.genres.orEmpty().map { it.id } },
+            numberOfSeasons = series.numberOfSeasons,
+            numberOfEpisodes = series.numberOfEpisodes
         )
     }
 }

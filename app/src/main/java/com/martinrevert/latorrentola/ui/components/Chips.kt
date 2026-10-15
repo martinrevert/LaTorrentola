@@ -4,9 +4,16 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items as lazyItems
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AllInclusive
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.NewReleases
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.VisibilityOff
+import com.martinrevert.latorrentola.ui.search.FavoritesFilter
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -138,6 +145,56 @@ fun QualityChips(
                 label = {
                     Text(
                         text = if (quality == "All") stringResource(R.string.quality_all) else quality
+                    )
+                }
+            )
+        }
+    }
+}
+
+/** Displays horizontally scrolling favorite category and progress filters with Material icons. */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+fun FavoritesChips(
+    selectedFilter: FavoritesFilter,
+    onFilterClick: (FavoritesFilter) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyRow(
+        modifier = modifier
+            .fillMaxWidth()
+            .focusRestorer()
+            .padding(bottom = 8.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        lazyItems(FavoritesFilter.entries) { filter ->
+            val isSelected = selectedFilter == filter
+            val icon = when (filter) {
+                FavoritesFilter.ALL -> Icons.Default.AllInclusive
+                FavoritesFilter.MOVIES -> Icons.Default.Movie
+                FavoritesFilter.TV_SERIES -> Icons.Default.Tv
+                FavoritesFilter.WATCHED -> Icons.Default.CheckCircle
+                FavoritesFilter.UNWATCHED -> Icons.Default.VisibilityOff
+                FavoritesFilter.IN_PROGRESS -> Icons.Default.PlayCircle
+            }
+            val labelRes = when (filter) {
+                FavoritesFilter.ALL -> R.string.favorites_filter_all
+                FavoritesFilter.MOVIES -> R.string.favorites_filter_movies
+                FavoritesFilter.TV_SERIES -> R.string.favorites_filter_tv_series
+                FavoritesFilter.WATCHED -> R.string.favorites_filter_watched
+                FavoritesFilter.UNWATCHED -> R.string.favorites_filter_unwatched
+                FavoritesFilter.IN_PROGRESS -> R.string.favorites_filter_watching
+            }
+            AdaptiveChip(
+                selected = isSelected,
+                onClick = { onFilterClick(filter) },
+                label = { Text(text = stringResource(labelRes)) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             )

@@ -48,6 +48,12 @@
     <string name="share_movie_text">Check out this movie: %1$s\n%2$s</string>
     <string name="selected_count">%1$d selected</string>
     <string name="my_favorites">My Favorites</string>
+    <string name="favorites_filter_all">All</string>
+    <string name="favorites_filter_movies">Movies</string>
+    <string name="favorites_filter_tv_series">TV Series</string>
+    <string name="favorites_filter_watched">Watched</string>
+    <string name="favorites_filter_unwatched">Unwatched</string>
+    <string name="favorites_filter_watching">Watching</string>
     <string name="search_placeholder">Search movies&#8230;</string>
     <string name="tv_search_placeholder">Search TV series&#8230;</string>
     <string name="voice_search_prompt">Speak to search movies</string>

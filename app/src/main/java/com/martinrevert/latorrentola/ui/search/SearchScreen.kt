@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.ui.components.FavoritesChips
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.MovieList
 import com.martinrevert.latorrentola.ui.components.MovieItem
@@ -98,6 +99,7 @@ fun SearchScreen(
     val tvGenres by viewModel.tvGenres.collectAsState()
     val lastClickedSeriesId by viewModel.lastClickedSeriesId.collectAsState()
     val selectedQuality by viewModel.selectedQuality.collectAsState()
+    val selectedFavoritesFilter by viewModel.selectedFavoritesFilter.collectAsState()
     val lastClickedMovieId by viewModel.lastClickedMovieId.collectAsState()
     val downloadedMovieIds by viewModel.downloadedMovieIds.collectAsState()
     val watchHistoryMap by viewModel.watchHistoryMap.collectAsState()
@@ -205,6 +207,8 @@ fun SearchScreen(
             }
         },
         onQualityClick = { viewModel.setQuality(it) },
+        selectedFavoritesFilter = selectedFavoritesFilter,
+        onFavoritesFilterClick = { viewModel.setFavoritesFilter(it) },
         onMovieClick = {
             if (selectedFavoriteIds.isNotEmpty()) {
                 viewModel.toggleFavoriteSelection(it.id)
@@ -215,9 +219,13 @@ fun SearchScreen(
             }
         },
         onTvSeriesClick = {
-            viewModel.clearLastClickedMovieId()
-            viewModel.setLastClickedSeriesId(it.id)
-            onTvSeriesClick(it)
+            if (selectedFavoriteIds.isNotEmpty()) {
+                viewModel.toggleFavoriteSelection(it.id)
+            } else {
+                viewModel.clearLastClickedMovieId()
+                viewModel.setLastClickedSeriesId(it.id)
+                onTvSeriesClick(it)
+            }
         },
         onLongClick = { viewModel.toggleFavoriteSelection(it) },
         onLoadMore = { viewModel.loadMore() },
@@ -294,6 +302,8 @@ private fun SearchScreenContent(
     onSearchQueryChange: (String) -> Unit,
     onVoiceSearchClick: () -> Unit,
     onQualityClick: (String) -> Unit,
+    selectedFavoritesFilter: FavoritesFilter = FavoritesFilter.ALL,
+    onFavoritesFilterClick: (FavoritesFilter) -> Unit = {},
     onMovieClick: (Movie) -> Unit,
     onTvSeriesClick: (TmdbTvSummary) -> Unit = {},
     onLongClick: (Int) -> Unit,
@@ -421,7 +431,15 @@ private fun SearchScreenContent(
                     .padding(padding)
                     .consumeWindowInsets(padding)
             ) {
-                if (!isTvMode) {
+                if (isShowingFavorites) {
+                    FavoritesChips(
+                        selectedFilter = selectedFavoritesFilter,
+                        onFilterClick = onFavoritesFilterClick,
+                        modifier = Modifier
+                            .focusRequester(qualityChipsFocusRequester)
+                            .focusProperties { down = resultsFocusRequester }
+                    )
+                } else if (!isTvMode) {
                     QualityChips(
                         options = qualityOptions,
                         selectedQuality = selectedQuality ?: "All",
@@ -618,7 +636,13 @@ private fun SearchScreenContent(
                             } else Modifier
                         )
                 ) {
-                    if (!isTvMode) {
+                    if (isShowingFavorites) {
+                        FavoritesChips(
+                            selectedFilter = selectedFavoritesFilter,
+                            onFilterClick = onFavoritesFilterClick,
+                            modifier = Modifier.focusRequester(qualityChipsFocusRequester)
+                        )
+                    } else if (!isTvMode) {
                         QualityChips(
                             options = qualityOptions,
                             selectedQuality = selectedQuality ?: "All",
@@ -721,7 +745,9 @@ private fun FavoriteItemsGrid(
                     item.genreIds.orEmpty().mapNotNull(genreNames::get)
                 },
                 hasDownloads = item.id in downloadedSeriesIds,
+                isSelected = item.id in selectedMovieIds,
                 onClick = { onTvSeriesClick(item) },
+                onLongClick = { onMovieLongClick(item.id) },
                 shouldRequestFocus = item.id == lastClickedSeriesId,
                 onFocusRestored = onTvFocusRestored
             )
