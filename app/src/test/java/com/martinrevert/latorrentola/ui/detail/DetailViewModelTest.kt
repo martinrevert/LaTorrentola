@@ -107,4 +107,44 @@ class DetailViewModelTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+
+    @Test
+    fun `setMovieByQuery should set Success state when YTS returns a movie`() = runTest {
+        val movie = Movie(id = 123, title = "YTS Movie", imdbCode = "tt0137523")
+        coEvery { repository.searchMovies("tt0137523", 1) } returns MovieDetails(data = Data(movies = listOf(movie)))
+        coEvery { repository.isFavorite(123) } returns false
+        coEvery { repository.getMovieFullDetails(123) } returns MovieDetails(data = Data(movie = movie))
+
+        viewModel.setMovieByQuery("tt0137523")
+
+        val state = viewModel.uiState.value
+        assertThat(state).isInstanceOf(DetailUiState.Success::class.java)
+        val success = state as DetailUiState.Success
+        assertThat(success.movie.title).isEqualTo("YTS Movie")
+    }
+
+    @Test
+    fun `setMovieByQuery should fallback to TMDB TV and set OpenTvDetail when YTS returns no movie`() = runTest {
+        val tvSeries = com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary(id = 1399, name = "Game of Thrones")
+        coEvery { repository.searchMovies("tt0944947", 1) } returns MovieDetails(data = Data(movies = emptyList()))
+        coEvery { tmdbRepository.findTvSeriesByImdbId("tt0944947") } returns tvSeries
+
+        viewModel.setMovieByQuery("https://www.imdb.com/title/tt0944947/")
+
+        val state = viewModel.uiState.value
+        assertThat(state).isInstanceOf(DetailUiState.OpenTvDetail::class.java)
+        val openTv = state as DetailUiState.OpenTvDetail
+        assertThat(openTv.seriesId).isEqualTo(1399)
+    }
+
+    @Test
+    fun `setMovieByQuery should set Error state when both YTS and TMDB find nothing`() = runTest {
+        coEvery { repository.searchMovies("tt0000000", 1) } returns MovieDetails(data = Data(movies = emptyList()))
+        coEvery { tmdbRepository.findTvSeriesByImdbId("tt0000000") } returns null
+
+        viewModel.setMovieByQuery("tt0000000")
+
+        val state = viewModel.uiState.value
+        assertThat(state).isInstanceOf(DetailUiState.Error::class.java)
+    }
 }

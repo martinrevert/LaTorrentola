@@ -8,12 +8,17 @@ import kotlinx.serialization.Serializable
  * Result returned by TMDB `find/{external_id}` endpoint.
  *
  * @property movieResults Matching movies for the provided external ID.
+ * @property tvResults Matching TV series for the provided external ID.
  */
 @Serializable
 data class TmdbFindResponse(
     @SerializedName("movie_results")
     @SerialName("movie_results")
-    val movieResults: List<TmdbMovieResult>? = null
+    val movieResults: List<TmdbMovieResult>? = null,
+
+    @SerializedName("tv_results")
+    @SerialName("tv_results")
+    val tvResults: List<TmdbTvSummary>? = null
 )
 
 /**

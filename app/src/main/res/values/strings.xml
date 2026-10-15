@@ -195,6 +195,7 @@
     <string name="error_no_movies_filtered">No movies found with current filters</string>
     <string name="movie_not_found">Movie not found</string>
     <string name="movie_not_found_query">Movie not found for: %1$s</string>
+    <string name="media_not_found_query">No content found for: %1$s</string>
     <string name="unknown_error">Unknown error</string>
     <string name="quality_all">All</string>
 

@@ -122,6 +122,12 @@ fun MovieDetailScreen(
         }
     }
 
+    LaunchedEffect(uiState) {
+        (uiState as? DetailUiState.OpenTvDetail)?.let { tvState ->
+            onTvSeriesClick(tvState.seriesId)
+        }
+    }
+
     MovieDetailScreenContent(
         uiState = uiState,
         downloadedHashes = downloadedHashes,
@@ -299,7 +305,7 @@ private fun MovieDetailScreenContent(
             contentAlignment = Alignment.TopCenter
         ) {
             when (val state = uiState) {
-                is DetailUiState.Loading -> {
+                is DetailUiState.Loading, is DetailUiState.OpenTvDetail -> {
                     MovieDetailPlaceholder(contentPadding = detailContentPadding)
                 }
                 is DetailUiState.Success -> {

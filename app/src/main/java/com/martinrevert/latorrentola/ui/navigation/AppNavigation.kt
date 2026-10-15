@@ -202,7 +202,12 @@ fun AppNavigation(
                 MovieDetailScreen(
                     viewModel = viewModel,
                     onBackClick = { backStack.removeLastOrNull() },
-                    onTvSeriesClick = { backStack.add(Route.TvDetail(it)) }
+                    onTvSeriesClick = { seriesId ->
+                        if (backStack.lastOrNull() is Route.Detail) {
+                            backStack.removeLastOrNull()
+                        }
+                        backStack.add(Route.TvDetail(seriesId))
+                    }
                 )
             }
             entry<Route.Settings> {

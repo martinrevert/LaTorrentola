@@ -232,7 +232,7 @@ class SearchViewModel @Inject constructor(
         _lastClickedSeriesId.value = null
     }
 
-    /** Performs a TV series search on TMDB. */
+    /** Performs a TV series search on TMDB, checking IMDb IDs first when provided. */
     fun searchTvSeries(query: String, force: Boolean = false) {
         if (query.isEmpty()) {
             _tvUiState.value = SearchTvUiState.Idle
@@ -243,6 +243,15 @@ class SearchViewModel @Inject constructor(
         lastQuery = query
         viewModelScope.launch {
             _tvUiState.value = SearchTvUiState.Loading
+            val imdbId = extractImdbId(query)
+            if (imdbId != null) {
+                val tvSeries = tmdbRepository.findTvSeriesByImdbId(imdbId)
+                if (tvSeries != null) {
+                    _tvUiState.value = SearchTvUiState.Success(listOf(tvSeries))
+                    return@launch
+                }
+            }
+
             try {
                 val page = tmdbRepository.searchTvSeries(query)
                 val results = page.results.orEmpty()
@@ -255,6 +264,11 @@ class SearchViewModel @Inject constructor(
                 _tvUiState.value = SearchTvUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
             }
         }
+    }
+
+    private fun extractImdbId(input: String): String? {
+        val regex = Regex("tt\\d{7,10}", RegexOption.IGNORE_CASE)
+        return regex.find(input)?.value
     }
 
     /** Loads TV series that have downloaded episodes for the user. */

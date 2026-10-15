@@ -190,8 +190,10 @@ import com.martinrevert.latorrentola.utils.mediaMimeType
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.IOException
 import java.util.Locale
@@ -662,6 +664,24 @@ class LocalPlayerActivity : FragmentActivity() {
             currentEpisodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
             currentMovieId = intent.getIntExtra(EXTRA_MOVIE_ID, 0)
 
+            if (torrentInfoHash.isNotBlank() && (currentSeriesId <= 0 && currentMovieId <= 0)) {
+                try {
+                    val dbRecord = runBlocking(Dispatchers.IO) { torrentDownloadDao.get(torrentInfoHash) }
+                    if (dbRecord != null) {
+                        if (currentMovieId <= 0 && (dbRecord.movieId ?: 0) > 0) {
+                            currentMovieId = dbRecord.movieId ?: 0
+                        }
+                        if (currentSeriesId <= 0 && (dbRecord.seriesId ?: 0) > 0) {
+                            currentSeriesId = dbRecord.seriesId ?: 0
+                            if (currentSeasonNumber <= 0) currentSeasonNumber = dbRecord.seasonNumber ?: 0
+                            if (currentEpisodeNumber <= 0) currentEpisodeNumber = dbRecord.episodeNumber ?: 0
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to recover series/movie metadata from DB: ${e.message}")
+                }
+            }
+
             val nextEpisodeInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
             if (nextEpisodeInfo != null && nextEpisodeInfo.size >= 5) {
                 try {
@@ -673,6 +693,29 @@ class LocalPlayerActivity : FragmentActivity() {
                     hasNextEpisodeInfo = true
                 } catch (e: NumberFormatException) {
                     hasNextEpisodeInfo = false
+                }
+            }
+
+            if (currentSeriesId > 0 && !hasNextEpisodeInfo) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        val info = tvPlayerViewModel.getNextEpisodeInfo(
+                            seriesId = currentSeriesId,
+                            seriesName = mediaTitle,
+                            seasonNumber = currentSeasonNumber,
+                            episodeNumber = currentEpisodeNumber
+                        )
+                        if (info != null && info.size >= 5) {
+                            nextEpisodeSeriesId = info[0].toIntOrNull() ?: currentSeriesId
+                            nextEpisodeSeriesName = info[1]
+                            nextEpisodeSeasonNumber = info[2].toIntOrNull() ?: currentSeasonNumber
+                            nextEpisodeEpisodeNumber = info[3].toIntOrNull() ?: (currentEpisodeNumber + 1)
+                            nextEpisodeEpisodeName = info[4]
+                            hasNextEpisodeInfo = true
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to resolve next episode info asynchronously: ${e.message}")
+                    }
                 }
             }
 

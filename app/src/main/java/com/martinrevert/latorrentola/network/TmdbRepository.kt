@@ -231,6 +231,26 @@ class TmdbRepository @Inject constructor(
         }
     }
 
+    /**
+     * Finds a TMDB TV series by its external IMDb identifier.
+     *
+     * @param imdbId IMDb title identifier (e.g. "tt0944947" or "0944947").
+     * @return The matching [TmdbTvSummary] or `null` if not found.
+     */
+    suspend fun findTvSeriesByImdbId(imdbId: String): TmdbTvSummary? {
+        if (apiKey.isEmpty() || imdbId.isBlank()) return null
+        val formattedImdbId = if (imdbId.startsWith("tt")) imdbId else "tt$imdbId"
+        return try {
+            val findResponse = tmdbService.findByExternalId(
+                externalId = formattedImdbId,
+                apiKey = apiKey
+            )
+            findResponse.tvResults?.firstOrNull()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     /** Fails clearly when the build does not provide a TMDB API key. */
     private fun requireConfiguredApiKey() {
         check(apiKey.isNotBlank()) { "TMDB API key not configured" }

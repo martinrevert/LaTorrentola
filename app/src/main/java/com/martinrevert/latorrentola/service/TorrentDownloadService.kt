@@ -29,6 +29,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.libtorrent4j.SessionManager
 import org.libtorrent4j.Sha1Hash
@@ -310,10 +311,10 @@ class TorrentDownloadService : Service() {
             stopSelf(startId)
             return START_NOT_STICKY
         }
-        val seriesId = intent.getIntExtra(EXTRA_SERIES_ID, 0)
-        val seasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
-        val episodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
-        val movieId = intent.getIntExtra(EXTRA_MOVIE_ID, 0)
+        var seriesId = intent.getIntExtra(EXTRA_SERIES_ID, 0)
+        var seasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
+        var episodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
+        var movieId = intent.getIntExtra(EXTRA_MOVIE_ID, 0)
         val magnetUri = intent.getStringExtra(EXTRA_MAGNET_URI).orEmpty()
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank {
             getString(R.string.torrent_download_title)
@@ -326,6 +327,22 @@ class TorrentDownloadService : Service() {
         if (infoHash == null) {
             stopSelf(startId)
             return START_NOT_STICKY
+        }
+
+        if (seriesId <= 0 && movieId <= 0) {
+            try {
+                val existingRecord = runBlocking(Dispatchers.IO) { torrentDownloadDao.get(infoHash) }
+                if (existingRecord != null) {
+                    if (seriesId <= 0 && (existingRecord.seriesId ?: 0) > 0) {
+                        seriesId = existingRecord.seriesId ?: 0
+                        if (seasonNumber <= 0) seasonNumber = existingRecord.seasonNumber ?: 0
+                        if (episodeNumber <= 0) episodeNumber = existingRecord.episodeNumber ?: 0
+                    }
+                    if (movieId <= 0 && (existingRecord.movieId ?: 0) > 0) {
+                        movieId = existingRecord.movieId ?: 0
+                    }
+                }
+            } catch (_: Exception) {}
         }
 
         openWhenReadyHashes.add(infoHash)
@@ -1140,10 +1157,29 @@ class TorrentDownloadService : Service() {
     private fun buildCompletedNotification(title: String, file: File): Notification {
         val hashPattern = Regex("(?i)[a-f0-9]{40}")
         val extractedHash = hashPattern.find(file.absolutePath)?.value?.lowercase(java.util.Locale.ROOT).orEmpty()
+        var seriesId = 0
+        var seasonNumber = 0
+        var episodeNumber = 0
+        var movieId = 0
+        if (extractedHash.isNotBlank()) {
+            try {
+                val record = runBlocking(Dispatchers.IO) { torrentDownloadDao.get(extractedHash) }
+                if (record != null) {
+                    seriesId = record.seriesId ?: 0
+                    seasonNumber = record.seasonNumber ?: 0
+                    episodeNumber = record.episodeNumber ?: 0
+                    movieId = record.movieId ?: 0
+                }
+            } catch (_: Exception) {}
+        }
         val playerIntent = Intent(this, LocalPlayerActivity::class.java)
             .putExtra(LocalPlayerActivity.EXTRA_FILE_PATH, file.absolutePath)
             .putExtra(LocalPlayerActivity.EXTRA_TITLE, title)
             .putExtra(LocalPlayerActivity.EXTRA_INFO_HASH, extractedHash)
+            .putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, seriesId)
+            .putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, seasonNumber)
+            .putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, episodeNumber)
+            .putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, movieId)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val pendingIntent = PendingIntent.getActivity(
             this,

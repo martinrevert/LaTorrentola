@@ -122,6 +122,7 @@ class MainActivity : FragmentActivity() {
             .allowComponent(ComponentName(this, MainActivity::class.java))
             .allowAction(Intent.ACTION_MAIN)
             .allowAction(Intent.ACTION_VIEW)
+            .allowAction(Intent.ACTION_SEND)
             .allowCategory(Intent.CATEGORY_LAUNCHER)
             .allowCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
             .allowCategory(Intent.CATEGORY_DEFAULT)
@@ -132,6 +133,8 @@ class MainActivity : FragmentActivity() {
             .allowExtra("peli", String::class.java)
             .allowExtra("id", String::class.java)
             .allowExtra("id", Int::class.javaObjectType)
+            .allowExtra(Intent.EXTRA_TEXT, String::class.java)
+            .allowExtra(Intent.EXTRA_SUBJECT, String::class.java)
             .allowData { uri ->
                 uri.host?.contains("imdb.com") == true && uri.path?.startsWith("/title/") == true
             }
@@ -162,19 +165,37 @@ class MainActivity : FragmentActivity() {
                 movieIdToOpen = idStr.toIntOrNull()
             }
 
+            // Handle ACTION_SEND (sharing text / link from IMDb app or browser)
+            if (it.action == Intent.ACTION_SEND) {
+                val sharedText = it.getStringExtra(Intent.EXTRA_TEXT)
+                if (!sharedText.isNullOrBlank()) {
+                    extractImdbId(sharedText)?.let { imdbId ->
+                        searchQueryToOpen = imdbId
+                    }
+                }
+            }
+
             // Handle Deep Links (URI)
             if (it.action == Intent.ACTION_VIEW) {
                 it.data?.let { uri ->
                     if (uri.host?.contains("imdb.com") == true) {
-                        // Extract ttID from /title/tt1234567/
-                        val segments = uri.pathSegments
-                        if (segments.size >= 2 && segments[0] == "title") {
-                            searchQueryToOpen = segments[1]
+                        val extractedId = extractImdbId(uri.toString()) ?: run {
+                            val segments = uri.pathSegments
+                            if (segments.size >= 2 && segments[0] == "title") segments[1] else null
+                        }
+                        extractedId?.let { imdbId ->
+                            searchQueryToOpen = imdbId
                         }
                     }
                 }
             }
         }
+    }
+
+    /** Extracts an IMDb title identifier (`tt1234567`) from a string, if present. */
+    private fun extractImdbId(input: String): String? {
+        val regex = Regex("tt\\d{7,10}", RegexOption.IGNORE_CASE)
+        return regex.find(input)?.value
     }
 
     /** Requests Android 13+ notification permission when needed, otherwise subscribes to FCM. */

@@ -192,22 +192,45 @@ class DetailViewModel @Inject constructor(
         }
     }
 
-    /** Searches for [query] and opens the first matching movie. */
+    /** Searches for [query] and opens the matching movie, or falls back to a TMDB TV series when unavailable. */
     fun setMovieByQuery(query: String) {
         viewModelScope.launch {
             _uiState.value = DetailUiState.Loading
+            val cleanImdbId = extractImdbId(query)
+            val queryToSearch = cleanImdbId ?: query
+
             try {
-                val searchResponse = ytsRepository.searchMovies(query, 1)
+                val searchResponse = ytsRepository.searchMovies(queryToSearch, 1)
                 val movie = searchResponse.data?.movies?.firstOrNull()
                 if (movie != null) {
                     setMovie(movie)
-                } else {
-                    _uiState.value = DetailUiState.Error(UiText.StringResource(R.string.movie_not_found_query, query))
+                    return@launch
                 }
-            } catch (e: Exception) {
-                _uiState.value = DetailUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
+            } catch (_: Exception) {
+                // YTS search failed or returned no results; proceed to TMDB TV fallback
             }
+
+            // Fallback: Check TMDB for a TV series matching the IMDb ID or query
+            val imdbIdToTry = cleanImdbId ?: query.takeIf { it.startsWith("tt") || it.all { char -> char.isDigit() } }
+            if (!imdbIdToTry.isNullOrBlank()) {
+                val tvSeries = tmdbRepository.findTvSeriesByImdbId(imdbIdToTry)
+                if (tvSeries != null) {
+                    _uiState.value = DetailUiState.OpenTvDetail(tvSeries.id)
+                    return@launch
+                }
+            }
+
+            // If neither YTS nor TMDB found anything, report error
+            _uiState.value = DetailUiState.Error(
+                UiText.StringResource(R.string.media_not_found_query, query)
+            )
         }
+    }
+
+    /** Extracts an IMDb identifier (`tt1234567`) from a query string or URL, when present. */
+    private fun extractImdbId(input: String): String? {
+        val regex = Regex("tt\\d{7,10}", RegexOption.IGNORE_CASE)
+        return regex.find(input)?.value
     }
 
     /** Resolves a TMDB movie to an IMDb ID when possible and searches YTS using that ID. */
@@ -345,6 +368,12 @@ sealed interface DetailUiState {
      * @property isFavorite Whether the movie is in the user's favorites.
      */
     data class Success(val movie: Movie, val isFavorite: Boolean) : DetailUiState
+    /**
+     * Query resolved to a TV series on TMDB.
+     *
+     * @property seriesId TMDB TV series identifier.
+     */
+    data class OpenTvDetail(val seriesId: Int) : DetailUiState
     /**
      * Movie detail lookup failed.
      *
