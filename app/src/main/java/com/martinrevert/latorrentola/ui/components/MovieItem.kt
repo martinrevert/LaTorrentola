@@ -89,10 +89,11 @@ fun MovieItem(
     Box {
         if (isTv) {
             Surface(
-                onClick = onToggleSelection ?: onClick,
-                onLongClick = onLongClick,
-                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
-                shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
+                shape = MaterialTheme.shapes.medium,
+                colors = androidx.tv.material3.SurfaceDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
@@ -101,6 +102,10 @@ fun MovieItem(
                             onFocusRestored()
                         }
                     }
+                    .adaptiveLongClickable(
+                        onClick = onToggleSelection ?: onClick,
+                        onLongClick = onLongClick
+                    )
             ) {
                 Column {
                     Box {
@@ -221,12 +226,11 @@ fun MovieItem(
                             onFocusRestored()
                         }
                     }
-                    .focusHighlight(shape = MaterialTheme.shapes.medium)
-                    .semantics(mergeDescendants = true) { }
-                    .combinedClickable(
+                    .adaptiveLongClickable(
                         onClick = onToggleSelection ?: onClick,
                         onLongClick = onLongClick
-                    ),
+                    )
+                    .focusHighlight(shape = MaterialTheme.shapes.medium),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                 shape = MaterialTheme.shapes.medium
             ) {

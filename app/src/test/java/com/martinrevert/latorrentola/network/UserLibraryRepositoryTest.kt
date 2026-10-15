@@ -75,4 +75,68 @@ class UserLibraryRepositoryTest {
         assertThat(progress?.title).isEqualTo("Movie 101")
         assertThat(progress?.positionMs).isEqualTo(5000L)
     }
+
+    @Test
+    fun `markMovieAsCompleted should save completed progress to room`() = runTest {
+        val movie = com.martinrevert.latorrentola.model.YTS.Movie(id = 500, title = "Test Movie")
+        repository.markMovieAsCompleted(movie)
+
+        io.mockk.coVerify {
+            watchHistoryDao.upsert(
+                match { entity ->
+                    entity.mediaId == "500" &&
+                            entity.title == "Test Movie" &&
+                            entity.positionMs == 1000L &&
+                            entity.durationMs == 1000L &&
+                            !entity.isEpisode
+                }
+            )
+        }
+    }
+
+    @Test
+    fun `markMovieAsUncompleted should delete progress from room`() = runTest {
+        val movie = com.martinrevert.latorrentola.model.YTS.Movie(id = 500, title = "Test Movie")
+        repository.markMovieAsUncompleted(movie)
+
+        io.mockk.coVerify {
+            watchHistoryDao.delete("500")
+        }
+    }
+
+    @Test
+    fun `markEpisodeAsCompleted should save episode completed progress`() = runTest {
+        repository.markEpisodeAsCompleted(
+            seriesId = 10,
+            seasonNumber = 1,
+            episodeNumber = 2,
+            episodeTitle = "Pilot Part 2",
+            seriesName = "Breaking Series"
+        )
+
+        io.mockk.coVerify {
+            watchHistoryDao.upsert(
+                match { entity ->
+                    entity.mediaId == "media_10_s1_e2" &&
+                            entity.title == "Breaking Series - S1E2 - Pilot Part 2" &&
+                            entity.positionMs == 1000L &&
+                            entity.durationMs == 1000L &&
+                            entity.isEpisode
+                }
+            )
+        }
+    }
+
+    @Test
+    fun `markEpisodeAsUncompleted should delete episode progress from room`() = runTest {
+        repository.markEpisodeAsUncompleted(
+            seriesId = 10,
+            seasonNumber = 1,
+            episodeNumber = 2
+        )
+
+        io.mockk.coVerify {
+            watchHistoryDao.delete("media_10_s1_e2")
+        }
+    }
 }

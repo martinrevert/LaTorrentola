@@ -49,6 +49,7 @@ import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.components.FavoritesChips
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.MovieList
+import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import com.martinrevert.latorrentola.ui.components.MovieItem
 import com.martinrevert.latorrentola.ui.components.QualityChips
 import com.martinrevert.latorrentola.ui.components.TvSeriesGrid
@@ -117,6 +118,7 @@ fun SearchScreen(
     val resources = LocalResources.current
     val isTv = remember(context) { context.isTvDevice() }
     val focusRequester = remember { FocusRequester() }
+    var selectedMovieForDialog by remember { mutableStateOf<Movie?>(null) }
 
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -218,6 +220,7 @@ fun SearchScreen(
                 onMovieClick(it)
             }
         },
+        onMovieProgressLongClick = { movie -> selectedMovieForDialog = movie },
         onTvSeriesClick = {
             if (selectedFavoriteIds.isNotEmpty()) {
                 viewModel.toggleFavoriteSelection(it.id)
@@ -235,6 +238,17 @@ fun SearchScreen(
         onFocusRestored = { viewModel.clearLastClickedMovieId() },
         onTvFocusRestored = { viewModel.clearLastClickedSeriesId() }
     )
+
+    selectedMovieForDialog?.let { movie ->
+        WatchProgressOptionDialog(
+            title = stringResource(R.string.mark_movie_title),
+            option1Text = stringResource(R.string.mark_movie_completed),
+            option2Text = stringResource(R.string.mark_movie_uncompleted),
+            onOption1Selected = { viewModel.markMovieAsCompleted(movie) },
+            onOption2Selected = { viewModel.markMovieAsUncompleted(movie) },
+            onDismissRequest = { selectedMovieForDialog = null }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalHazeApi::class)
@@ -305,6 +319,7 @@ private fun SearchScreenContent(
     selectedFavoritesFilter: FavoritesFilter = FavoritesFilter.ALL,
     onFavoritesFilterClick: (FavoritesFilter) -> Unit = {},
     onMovieClick: (Movie) -> Unit,
+    onMovieProgressLongClick: (Movie) -> Unit = {},
     onTvSeriesClick: (TmdbTvSummary) -> Unit = {},
     onLongClick: (Int) -> Unit,
     onLoadMore: () -> Unit,
@@ -520,7 +535,7 @@ private fun SearchScreenContent(
                                 selectedIds = selectedFavoriteIds,
                                 isLoadingMore = isLoadingMore,
                                 onMovieClick = onMovieClick,
-                                onLongClick = null,
+                                onLongClick = { id -> state.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick) },
                                 onLoadMore = { if (!state.isFavorites && !state.isDownloads && !state.isNew) onLoadMore() },
                                 initialFocusId = lastClickedMovieId,
                                 onFocusRestored = onFocusRestored,
@@ -609,7 +624,7 @@ private fun SearchScreenContent(
                             selectedIds = selectedFavoriteIds,
                             isLoadingMore = isLoadingMore,
                             onMovieClick = onMovieClick,
-                            onLongClick = null,
+                            onLongClick = { id -> state.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick) },
                             onLoadMore = { if (!state.isFavorites && !state.isDownloads && !state.isNew) onLoadMore() },
                             initialFocusId = lastClickedMovieId,
                             onFocusRestored = onFocusRestored,

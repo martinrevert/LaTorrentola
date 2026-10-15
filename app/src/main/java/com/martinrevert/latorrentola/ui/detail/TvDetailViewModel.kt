@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola.ui.detail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeason
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
@@ -187,6 +188,98 @@ class TvDetailViewModel @Inject constructor(
     fun clearSelectedActor() {
         _selectedActorDetail.value = null
         _isActorLoading.value = false
+    }
+
+    /** Marks all episodes in [season] as completed in Room and Firestore. */
+    fun markSeasonAsCompleted(season: TmdbTvSeason) {
+        val series = (uiState.value as? TvDetailUiState.Success)?.series ?: return
+        viewModelScope.launch {
+            try {
+                val currentSeasonState = seasonState.value
+                val episodes = if (currentSeasonState is TvSeasonUiState.Success &&
+                    currentSeasonState.season.seasonNumber == season.seasonNumber
+                ) {
+                    currentSeasonState.season.episodes.orEmpty()
+                } else {
+                    tmdbRepository.getTvSeasonDetails(series.id, season.seasonNumber).episodes.orEmpty()
+                }
+                userLibraryRepository.markSeasonAsCompleted(
+                    seriesId = series.id,
+                    seasonNumber = season.seasonNumber,
+                    episodes = episodes,
+                    seriesName = series.name.orEmpty()
+                )
+            } catch (e: Exception) {
+                if (e !is CancellationException) {
+                    _favoriteActionError.value = e.localizedMessage ?: "Error updating season"
+                }
+            }
+        }
+    }
+
+    /** Clears watch progress and downloads for all episodes in [season]. */
+    fun markSeasonAsUncompleted(season: TmdbTvSeason) {
+        val series = (uiState.value as? TvDetailUiState.Success)?.series ?: return
+        viewModelScope.launch {
+            try {
+                val currentSeasonState = seasonState.value
+                val episodes = if (currentSeasonState is TvSeasonUiState.Success &&
+                    currentSeasonState.season.seasonNumber == season.seasonNumber
+                ) {
+                    currentSeasonState.season.episodes.orEmpty()
+                } else {
+                    tmdbRepository.getTvSeasonDetails(series.id, season.seasonNumber).episodes.orEmpty()
+                }
+                userLibraryRepository.markSeasonAsUncompleted(
+                    seriesId = series.id,
+                    seasonNumber = season.seasonNumber,
+                    episodes = episodes
+                )
+            } catch (e: Exception) {
+                if (e !is CancellationException) {
+                    _favoriteActionError.value = e.localizedMessage ?: "Error updating season"
+                }
+            }
+        }
+    }
+
+    /** Marks a single episode as completed in Room and Firestore. */
+    fun markEpisodeAsCompleted(episode: TmdbTvEpisode) {
+        val series = (uiState.value as? TvDetailUiState.Success)?.series ?: return
+        viewModelScope.launch {
+            try {
+                userLibraryRepository.markEpisodeAsCompleted(
+                    seriesId = series.id,
+                    seasonNumber = episode.seasonNumber,
+                    episodeNumber = episode.episodeNumber,
+                    episodeTitle = episode.name.orEmpty(),
+                    seriesName = series.name.orEmpty(),
+                    stillPath = episode.stillPath
+                )
+            } catch (e: Exception) {
+                if (e !is CancellationException) {
+                    _favoriteActionError.value = e.localizedMessage ?: "Error updating episode"
+                }
+            }
+        }
+    }
+
+    /** Clears watch progress and downloads for a single episode. */
+    fun markEpisodeAsUncompleted(episode: TmdbTvEpisode) {
+        val series = (uiState.value as? TvDetailUiState.Success)?.series ?: return
+        viewModelScope.launch {
+            try {
+                userLibraryRepository.markEpisodeAsUncompleted(
+                    seriesId = series.id,
+                    seasonNumber = episode.seasonNumber,
+                    episodeNumber = episode.episodeNumber
+                )
+            } catch (e: Exception) {
+                if (e !is CancellationException) {
+                    _favoriteActionError.value = e.localizedMessage ?: "Error updating episode"
+                }
+            }
+        }
     }
 }
 

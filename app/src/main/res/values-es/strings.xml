@@ -259,4 +259,16 @@
     <string name="insufficient_storage_dialog_title">Espacio de almacenamiento insuficiente</string>
     <string name="insufficient_storage_dialog_message">El espacio disponible en tu dispositivo Android es menor a 1 GB (%1$s disponible). Debes borrar información o aplicaciones de tu dispositivo para poder realizar la descarga.</string>
     <string name="insufficient_storage_dialog_confirm">Entendido</string>
+
+    <!-- Watch Progress Management Dialog -->
+    <string name="mark_season_title">Gestionar Temporada</string>
+    <string name="mark_season_completed">Marcar toda la temporada como completada</string>
+    <string name="mark_season_uncompleted">Marcar no completada</string>
+    <string name="mark_episode_title">Gestionar Episodio</string>
+    <string name="mark_episode_completed">Marcar completado</string>
+    <string name="mark_episode_uncompleted">Marcar no completado</string>
+    <string name="mark_movie_title">Gestionar Película</string>
+    <string name="mark_movie_completed">Marcar completada</string>
+    <string name="mark_movie_uncompleted">Marcar no completada</string>
+    <string name="cancel">Cancelar</string>
 </resources>

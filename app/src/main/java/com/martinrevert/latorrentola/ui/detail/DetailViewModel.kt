@@ -350,6 +350,28 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    /** Marks [movie] as 100% completed in Room and Firestore. */
+    fun markMovieAsCompleted(movie: Movie) {
+        viewModelScope.launch {
+            try {
+                userLibraryRepository.markMovieAsCompleted(movie)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+        }
+    }
+
+    /** Clears watch progress and downloads for [movie]. */
+    fun markMovieAsUncompleted(movie: Movie) {
+        viewModelScope.launch {
+            try {
+                userLibraryRepository.markMovieAsUncompleted(movie)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+        }
+    }
+
     /** Cancels ongoing speech when this view model is cleared. */
     override fun onCleared() {
         voiceJob?.cancel()

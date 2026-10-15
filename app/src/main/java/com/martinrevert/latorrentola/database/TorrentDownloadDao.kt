@@ -34,4 +34,12 @@ interface TorrentDownloadDao {
     /** Removes a completed or canceled job's local record. */
     @Query("DELETE FROM torrent_downloads WHERE infoHash = :infoHash")
     suspend fun delete(infoHash: String)
+
+    /** Removes torrent download records associated with a specific TV episode. */
+    @Query("DELETE FROM torrent_downloads WHERE seriesId = :seriesId AND seasonNumber = :seasonNumber AND episodeNumber = :episodeNumber")
+    suspend fun deleteForEpisode(seriesId: Int, seasonNumber: Int, episodeNumber: Int)
+
+    /** Removes torrent download records associated with a specific movie. */
+    @Query("DELETE FROM torrent_downloads WHERE movieId = :movieId")
+    suspend fun deleteForMovie(movieId: Int)
 }

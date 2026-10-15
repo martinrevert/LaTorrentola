@@ -276,6 +276,31 @@ class TvEpisodeDetailViewModel @Inject constructor(
             else -> "SD"
         }
     }
+
+    /** Marks the active episode as completed in Room and Firestore. */
+    fun markEpisodeAsCompleted(seriesName: String, episode: TmdbTvEpisode) {
+        viewModelScope.launch {
+            userLibraryRepository.markEpisodeAsCompleted(
+                seriesId = activeSeriesId,
+                seasonNumber = activeSeasonNumber,
+                episodeNumber = activeEpisodeNumber,
+                episodeTitle = episode.name.orEmpty(),
+                seriesName = seriesName,
+                stillPath = episode.stillPath
+            )
+        }
+    }
+
+    /** Clears watch progress and downloads for the active episode. */
+    fun markEpisodeAsUncompleted() {
+        viewModelScope.launch {
+            userLibraryRepository.markEpisodeAsUncompleted(
+                seriesId = activeSeriesId,
+                seasonNumber = activeSeasonNumber,
+                episodeNumber = activeEpisodeNumber
+            )
+        }
+    }
 }
 
 /** Internal raw UI states for episode details before combining with download history. */

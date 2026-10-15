@@ -260,5 +260,17 @@
     <string name="insufficient_storage_dialog_message">Available space on your Android device is less than 1 GB (%1$s available). You must delete data or apps from your device to proceed with the download.</string>
     <string name="insufficient_storage_dialog_confirm">OK</string>
 
+    <!-- Watch Progress Management Dialog -->
+    <string name="mark_season_title">Manage Season</string>
+    <string name="mark_season_completed">Mark entire season as completed</string>
+    <string name="mark_season_uncompleted">Mark season as uncompleted</string>
+    <string name="mark_episode_title">Manage Episode</string>
+    <string name="mark_episode_completed">Mark as completed</string>
+    <string name="mark_episode_uncompleted">Mark as uncompleted</string>
+    <string name="mark_movie_title">Manage Movie</string>
+    <string name="mark_movie_completed">Mark as completed</string>
+    <string name="mark_movie_uncompleted">Mark as uncompleted</string>
+    <string name="cancel">Cancel</string>
+
     <string name="asset_statements" translatable="false">[]</string>
 </resources>

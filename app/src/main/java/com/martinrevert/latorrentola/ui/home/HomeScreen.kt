@@ -52,6 +52,7 @@ import com.martinrevert.latorrentola.ui.components.QualityChips
 import com.martinrevert.latorrentola.ui.components.GenreChips
 import com.martinrevert.latorrentola.ui.components.GenreBottomSheet
 import com.martinrevert.latorrentola.ui.components.MovieList
+import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import com.martinrevert.latorrentola.ui.components.TvFeedChips
 import com.martinrevert.latorrentola.ui.components.TvGenreBottomSheet
 import com.martinrevert.latorrentola.ui.components.TvGenreChips
@@ -110,6 +111,7 @@ fun HomeScreen(
     val allGenres = viewModel.allGenres
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
+    var selectedMovieForDialog by remember { mutableStateOf<Movie?>(null) }
 
     HomeScreenContent(
         uiState = uiState,
@@ -127,6 +129,7 @@ fun HomeScreen(
         userPhotoUrl = userPhotoUrl,
         isTv = isTv,
         onMovieClick = onMovieClick,
+        onMovieLongClick = { movie -> selectedMovieForDialog = movie },
         onSettingsClick = onSettingsClick,
         onSearchClick = onSearchClick,
         onFavoritesClick = onFavoritesClick,
@@ -140,6 +143,17 @@ fun HomeScreen(
         onTvSeriesClick = onTvSeriesClick,
         onTvGenreClick = onTvGenreClick
     )
+
+    selectedMovieForDialog?.let { movie ->
+        WatchProgressOptionDialog(
+            title = stringResource(R.string.mark_movie_title),
+            option1Text = stringResource(R.string.mark_movie_completed),
+            option2Text = stringResource(R.string.mark_movie_uncompleted),
+            onOption1Selected = { viewModel.markMovieAsCompleted(movie) },
+            onOption2Selected = { viewModel.markMovieAsUncompleted(movie) },
+            onDismissRequest = { selectedMovieForDialog = null }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, ExperimentalTvMaterial3Api::class)
@@ -163,6 +177,7 @@ private fun HomeScreenContent(
     userPhotoUrl: String?,
     isTv: Boolean,
     onMovieClick: (Movie) -> Unit,
+    onMovieLongClick: (Movie) -> Unit = {},
     onSettingsClick: () -> Unit,
     onSearchClick: (isTvMode: Boolean) -> Unit,
     onFavoritesClick: () -> Unit,
@@ -355,6 +370,7 @@ private fun HomeScreenContent(
                                 onSetLastClickedMovieId(it.id)
                                 onMovieClick(it)
                             },
+                            onMovieLongClick = onMovieLongClick,
                             onLoadMore = onLoadMore,
                             lastClickedMovieId = lastClickedMovieId,
                             onFocusRestored = onFocusRestored,
@@ -420,6 +436,7 @@ private fun HomeScreenContent(
                                 onSetLastClickedMovieId(it.id)
                                 onMovieClick(it)
                             },
+                            onMovieLongClick = onMovieLongClick,
                             onLoadMore = onLoadMore,
                             lastClickedMovieId = lastClickedMovieId,
                             onFocusRestored = onFocusRestored,
@@ -718,6 +735,7 @@ private fun HomeContent(
     watchHistoryMap: Map<String, PlaybackProgress>,
     isLoadingMore: Boolean = false,
     onMovieClick: (Movie) -> Unit,
+    onMovieLongClick: (Movie) -> Unit = {},
     onLoadMore: () -> Unit,
     lastClickedMovieId: Int? = null,
     onFocusRestored: () -> Unit = {},
@@ -738,6 +756,7 @@ private fun HomeContent(
                 isLoadingMore = isLoadingMore,
                 onMovieClick = onMovieClick,
                 onLoadMore = onLoadMore,
+                onLongClick = { id -> uiState.movies.firstOrNull { it.id == id }?.let(onMovieLongClick) },
                 initialFocusId = lastClickedMovieId,
                 onFocusRestored = onFocusRestored,
                 contentPadding = contentPadding,

@@ -13,6 +13,8 @@ import com.martinrevert.latorrentola.model.user.DownloadedMovie
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.database.WatchHistoryDao
 import com.martinrevert.latorrentola.database.WatchHistoryEntity
+import com.martinrevert.latorrentola.database.TorrentDownloadDao
+import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.CoroutineScope
@@ -33,12 +35,14 @@ import javax.inject.Singleton
  * @property firestore Firestore client used for cloud library operations.
  * @property auth Firebase authentication client used to scope data by user.
  * @property watchHistoryDao Local database access for watch progress caching.
+ * @property torrentDownloadDao Local database access for torrent transfers cleanup.
  */
 @Singleton
 class UserLibraryRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val auth: FirebaseAuth,
-    private val watchHistoryDao: WatchHistoryDao
+    private val watchHistoryDao: WatchHistoryDao,
+    private val torrentDownloadDao: TorrentDownloadDao? = null
 ) {
     /** Authenticated Firebase UID used to scope cloud library documents. */
     private val userId: String? get() = auth.currentUser?.uid
@@ -571,6 +575,208 @@ class UserLibraryRepository @Inject constructor(
         awaitClose {
             firestoreListener?.remove()
             job.cancel()
+        }
+    }
+
+    /** Deletes watch history playback progress locally from Room and from Firestore. */
+    suspend fun deletePlaybackProgress(mediaId: String) {
+        if (mediaId.isBlank()) return
+        try {
+            watchHistoryDao.delete(mediaId)
+        } catch (e: Exception) {
+            Log.e("UserLibraryRepository", "Error deleting watch history locally: ${e.message}")
+        }
+
+        val uid = userId ?: return
+        try {
+            firestore.collection("users")
+                .document(uid)
+                .collection("watch_history")
+                .document(mediaId)
+                .delete()
+                .await()
+        } catch (e: Exception) {
+            Log.e("Firestore", "Error deleting playback progress remotely: ${e.message}")
+        }
+    }
+
+    /** Marks a movie as 100% completed and downloaded in both Room and Firestore. */
+    suspend fun markMovieAsCompleted(movie: Movie) {
+        val title = movie.title.orEmpty()
+        val mediaId = MediaIdHelper.forMovie(movie.id, title = title)
+        val progress = PlaybackProgress(
+            mediaId = mediaId,
+            title = title,
+            positionMs = 1000L,
+            durationMs = 1000L,
+            timestamp = System.currentTimeMillis(),
+            isEpisode = false
+        )
+        savePlaybackProgress(progress)
+
+        val downloadedMovie = DownloadedMovie(
+            movieId = movie.id,
+            movieTitle = title,
+            quality = movie.torrents?.firstOrNull()?.quality ?: "HD",
+            hash = movie.id.toString(),
+            timestamp = System.currentTimeMillis(),
+            movie = movie
+        )
+        markAsDownloaded(downloadedMovie)
+    }
+
+    /** Clears watch progress and downloads for a movie in both Room and Firestore. */
+    suspend fun markMovieAsUncompleted(movie: Movie) {
+        val title = movie.title.orEmpty()
+        val mediaId = MediaIdHelper.forMovie(movie.id, title = title)
+        deletePlaybackProgress(mediaId)
+        removeMovieDownloads(movie.id)
+    }
+
+    /** Deletes download records for a specific movie in Firestore and Room. */
+    suspend fun removeMovieDownloads(movieId: Int) {
+        try {
+            torrentDownloadDao?.deleteForMovie(movieId)
+        } catch (e: Exception) {
+            Log.e("UserLibraryRepository", "Error deleting movie download local record: ${e.message}")
+        }
+
+        val uid = userId ?: return
+        try {
+            firestore.collection("users")
+                .document(uid)
+                .collection("downloads")
+                .document(movieId.toString())
+                .delete()
+                .await()
+
+            val snapshot = firestore.collection("users")
+                .document(uid)
+                .collection("downloads")
+                .whereEqualTo("movieId", movieId)
+                .get()
+                .await()
+            for (doc in snapshot.documents) {
+                doc.reference.delete().await()
+            }
+        } catch (e: Exception) {
+            Log.e("Firestore", "Error removing remote movie download: ${e.message}")
+        }
+    }
+
+    /** Marks a single TV episode as 100% completed and downloaded in both Room and Firestore. */
+    suspend fun markEpisodeAsCompleted(
+        seriesId: Int,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        episodeTitle: String,
+        seriesName: String,
+        stillPath: String? = null
+    ) {
+        val mediaId = MediaIdHelper.forEpisode(seriesId, seasonNumber, episodeNumber)
+        val title = if (seriesName.isNotBlank()) {
+            "$seriesName - S${seasonNumber}E${episodeNumber} - $episodeTitle"
+        } else {
+            episodeTitle
+        }
+        val progress = PlaybackProgress(
+            mediaId = mediaId,
+            title = title,
+            positionMs = 1000L,
+            durationMs = 1000L,
+            timestamp = System.currentTimeMillis(),
+            isEpisode = true
+        )
+        savePlaybackProgress(progress)
+
+        val docId = "tv_${seriesId}_s${seasonNumber}_e${episodeNumber}"
+        val downloadedEpisode = DownloadedEpisode(
+            seriesId = seriesId,
+            seriesName = seriesName,
+            seasonNumber = seasonNumber,
+            episodeNumber = episodeNumber,
+            episodeName = episodeTitle,
+            releaseTitle = if (seriesName.isNotBlank()) "$seriesName S${seasonNumber}E${episodeNumber}" else episodeTitle,
+            quality = "HD",
+            hash = docId,
+            timestamp = System.currentTimeMillis(),
+            stillPath = stillPath
+        )
+        markEpisodeAsDownloaded(downloadedEpisode)
+    }
+
+    /** Clears watch progress and download markers for an episode in both Room and Firestore. */
+    suspend fun markEpisodeAsUncompleted(
+        seriesId: Int,
+        seasonNumber: Int,
+        episodeNumber: Int
+    ) {
+        val mediaId = MediaIdHelper.forEpisode(seriesId, seasonNumber, episodeNumber)
+        deletePlaybackProgress(mediaId)
+        removeEpisodeDownloads(seriesId, seasonNumber, episodeNumber)
+    }
+
+    /** Deletes download records for a specific episode in Firestore and Room. */
+    suspend fun removeEpisodeDownloads(
+        seriesId: Int,
+        seasonNumber: Int,
+        episodeNumber: Int
+    ) {
+        try {
+            torrentDownloadDao?.deleteForEpisode(seriesId, seasonNumber, episodeNumber)
+        } catch (e: Exception) {
+            Log.e("UserLibraryRepository", "Error deleting local episode download: ${e.message}")
+        }
+
+        val uid = userId ?: return
+        try {
+            val snapshot = firestore.collection("users")
+                .document(uid)
+                .collection("tv_downloads")
+                .whereEqualTo("seriesId", seriesId)
+                .whereEqualTo("seasonNumber", seasonNumber)
+                .whereEqualTo("episodeNumber", episodeNumber)
+                .get()
+                .await()
+            for (doc in snapshot.documents) {
+                doc.reference.delete().await()
+            }
+        } catch (e: Exception) {
+            Log.e("Firestore", "Error removing remote episode download: ${e.message}")
+        }
+    }
+
+    /** Marks all episodes in a season as completed and downloaded in both Room and Firestore. */
+    suspend fun markSeasonAsCompleted(
+        seriesId: Int,
+        seasonNumber: Int,
+        episodes: List<com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode>,
+        seriesName: String
+    ) {
+        for (episode in episodes) {
+            markEpisodeAsCompleted(
+                seriesId = seriesId,
+                seasonNumber = seasonNumber,
+                episodeNumber = episode.episodeNumber,
+                episodeTitle = episode.name.orEmpty(),
+                seriesName = seriesName,
+                stillPath = episode.stillPath
+            )
+        }
+    }
+
+    /** Clears watch progress and download markers for all episodes in a season. */
+    suspend fun markSeasonAsUncompleted(
+        seriesId: Int,
+        seasonNumber: Int,
+        episodes: List<com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode>
+    ) {
+        for (episode in episodes) {
+            markEpisodeAsUncompleted(
+                seriesId = seriesId,
+                seasonNumber = seasonNumber,
+                episodeNumber = episode.episodeNumber
+            )
         }
     }
 }

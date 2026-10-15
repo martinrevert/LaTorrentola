@@ -101,6 +101,9 @@ import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.ui.components.ActorDetailBottomSheet
 import com.martinrevert.latorrentola.ui.components.AdaptiveChip
 import com.martinrevert.latorrentola.ui.components.MovieDetailPlaceholder
+import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
+import com.martinrevert.latorrentola.ui.components.adaptiveLongClickable
+import androidx.compose.foundation.combinedClickable
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dev.chrisbanes.haze.HazeInput
@@ -156,6 +159,9 @@ fun TvDetailScreen(
     val firstCastFocusRequester = remember { FocusRequester() }
     var showActorSheet by remember { mutableStateOf(false) }
     val actorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    var selectedSeasonForDialog by remember { mutableStateOf<TmdbTvSeason?>(null) }
+    var selectedEpisodeForDialog by remember { mutableStateOf<TmdbTvEpisode?>(null) }
     val favoriteSnackbarHostState = remember { SnackbarHostState() }
 
     val hasCast = (uiState as? TvDetailUiState.Success)?.series?.aggregateCredits?.cast.orEmpty().isNotEmpty()
@@ -323,7 +329,9 @@ fun TvDetailScreen(
                     downloadedEpisodes = downloadedEpisodes,
                     watchHistoryMap = watchHistoryMap,
                     onSeasonSelected = viewModel::selectSeason,
+                    onSeasonLongClick = { season -> selectedSeasonForDialog = season },
                     onEpisodeClick = { episode -> onEpisodeClick(state.series.name.orEmpty(), episode) },
+                    onEpisodeLongClick = { episode -> selectedEpisodeForDialog = episode },
                     contentFocusRequester = detailContentFocusRequester,
                     firstCastFocusRequester = firstCastFocusRequester,
                     firstContentFocusRequester = firstContentFocusRequester.takeIf { isTv },
@@ -354,6 +362,28 @@ fun TvDetailScreen(
             }
         )
     }
+
+    selectedSeasonForDialog?.let { season ->
+        WatchProgressOptionDialog(
+            title = stringResource(R.string.mark_season_title),
+            option1Text = stringResource(R.string.mark_season_completed),
+            option2Text = stringResource(R.string.mark_season_uncompleted),
+            onOption1Selected = { viewModel.markSeasonAsCompleted(season) },
+            onOption2Selected = { viewModel.markSeasonAsUncompleted(season) },
+            onDismissRequest = { selectedSeasonForDialog = null }
+        )
+    }
+
+    selectedEpisodeForDialog?.let { episode ->
+        WatchProgressOptionDialog(
+            title = stringResource(R.string.mark_episode_title),
+            option1Text = stringResource(R.string.mark_episode_completed),
+            option2Text = stringResource(R.string.mark_episode_uncompleted),
+            onOption1Selected = { viewModel.markEpisodeAsCompleted(episode) },
+            onOption2Selected = { viewModel.markEpisodeAsUncompleted(episode) },
+            onDismissRequest = { selectedEpisodeForDialog = null }
+        )
+    }
 }
 
 /**
@@ -381,7 +411,9 @@ private fun TvDetailContent(
     downloadedEpisodes: List<DownloadedEpisode>,
     watchHistoryMap: Map<String, PlaybackProgress>,
     onSeasonSelected: (TmdbTvSeason) -> Unit,
+    onSeasonLongClick: (TmdbTvSeason) -> Unit = {},
     onEpisodeClick: (TmdbTvEpisode) -> Unit,
+    onEpisodeLongClick: (TmdbTvEpisode) -> Unit = {},
     contentFocusRequester: FocusRequester,
     firstCastFocusRequester: FocusRequester,
     firstContentFocusRequester: FocusRequester?,
@@ -514,6 +546,7 @@ private fun TvDetailContent(
                     AdaptiveChip(
                         selected = selectedSeasonNumber == season.seasonNumber,
                         onClick = { onSeasonSelected(season) },
+                        onLongClick = { onSeasonLongClick(season) },
                         label = { Text(statusLabel) },
                         modifier = if (
                             season.seasonNumber == selectedSeasonNumber ||
@@ -581,6 +614,7 @@ private fun TvDetailContent(
                             isDownloaded = isDownloaded,
                             progressPercent = progressPercent,
                             onClick = { onEpisodeClick(episode) },
+                            onLongClick = { onEpisodeLongClick(episode) },
                             modifier = Modifier
                                 .focusRequester(episodeFocusRequesters[index])
                                 .focusProperties {
@@ -820,6 +854,7 @@ private fun TvEpisodeCard(
     isDownloaded: Boolean = false,
     progressPercent: Int? = null,
     onClick: () -> Unit = {},
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -904,6 +939,7 @@ private fun TvEpisodeCard(
     if (isTv) {
         TvSurface(
             onClick = onClick,
+            onLongClick = onLongClick,
             scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
             shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
             colors = ClickableSurfaceDefaults.colors(
@@ -912,14 +948,18 @@ private fun TvEpisodeCard(
                 contentColor = MaterialTheme.colorScheme.onSurface,
                 focusedContentColor = MaterialTheme.colorScheme.onSurface
             ),
-            modifier = modifier.fillMaxWidth()
+            modifier = modifier
+                .fillMaxWidth()
+                .adaptiveLongClickable(onClick = onClick, onLongClick = onLongClick)
         ) {
             cardContent()
         }
     } else {
         Card(
-            onClick = onClick,
-            modifier = modifier.focusHighlight(shape = MaterialTheme.shapes.medium),
+            modifier = modifier
+                .fillMaxWidth()
+                .focusHighlight(shape = MaterialTheme.shapes.medium)
+                .adaptiveLongClickable(onClick = onClick, onLongClick = onLongClick),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 contentColor = MaterialTheme.colorScheme.onSurface

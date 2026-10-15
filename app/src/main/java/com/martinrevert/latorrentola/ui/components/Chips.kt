@@ -33,6 +33,8 @@ import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
 
+import androidx.compose.foundation.combinedClickable
+
 /**
  * Adaptive Chip component that renders `androidx.tv.material3.Surface` on Android TV
  * for native D-pad focus scaling, and falls back to Material 3 `FilterChip` on handheld devices.
@@ -44,6 +46,7 @@ fun AdaptiveChip(
     onClick: () -> Unit,
     label: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
     leadingIcon: (@Composable () -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -51,16 +54,14 @@ fun AdaptiveChip(
 
     if (isTv) {
         Surface(
-            onClick = onClick,
-            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
-            shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small),
-            colors = ClickableSurfaceDefaults.colors(
+            shape = MaterialTheme.shapes.small,
+            colors = androidx.tv.material3.SurfaceDefaults.colors(
                 containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                focusedContainerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-                focusedContentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
             ),
-            modifier = modifier.padding(vertical = 4.dp)
+            modifier = modifier
+                .padding(vertical = 4.dp)
+                .adaptiveLongClickable(onClick = onClick, onLongClick = onLongClick)
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -78,27 +79,29 @@ fun AdaptiveChip(
             }
         }
     } else {
-        FilterChip(
-            selected = selected,
-            onClick = onClick,
-            label = {
+        androidx.compose.material3.Surface(
+            modifier = modifier
+                .focusHighlight(shape = MaterialTheme.shapes.small)
+                .adaptiveLongClickable(onClick = onClick, onLongClick = onLongClick),
+            shape = MaterialTheme.shapes.small,
+            color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (leadingIcon != null) {
+                    leadingIcon()
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
                 CompositionLocalProvider(
                     LocalContentColor provides if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
                 ) {
                     label()
                 }
-            },
-            leadingIcon = leadingIcon,
-            colors = FilterChipDefaults.filterChipColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                labelColor = MaterialTheme.colorScheme.onSurface,
-                iconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer
-            ),
-            modifier = modifier.focusHighlight(shape = MaterialTheme.shapes.small)
-        )
+            }
+        }
     }
 }
 

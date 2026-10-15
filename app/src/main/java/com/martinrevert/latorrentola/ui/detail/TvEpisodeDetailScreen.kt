@@ -46,6 +46,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -57,6 +58,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.combinedClickable
+import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface as TvSurface
@@ -161,6 +164,7 @@ fun TvEpisodeDetailScreen(
             }
 
             is TvEpisodeDetailUiState.Success -> {
+                var showOptionDialog by remember { mutableStateOf(false) }
                 val downloadedText = stringResource(R.string.tv_episode_downloaded)
                 val mediaId = "media_${seriesId}_s${seasonNumber}_e${episodeNumber}"
                 val progress = watchHistoryMap[mediaId]
@@ -175,6 +179,7 @@ fun TvEpisodeDetailScreen(
                     topPadding = padding.calculateTopPadding(),
                     episodeSummaryFocusRequester = if (isTv) episodeSummaryFocusRequester else null,
                     firstTorrentFocusRequester = if (isTv) firstTorrentFocusRequester else null,
+                    onHeaderLongClick = { showOptionDialog = true },
                     onTorrentClick = { torrent ->
                         val title = "%s S%02dE%02d %s".format(
                             state.seriesName,
@@ -242,6 +247,21 @@ fun TvEpisodeDetailScreen(
                         }
                     }
                 )
+
+                if (showOptionDialog) {
+                    WatchProgressOptionDialog(
+                        title = stringResource(R.string.mark_episode_title),
+                        option1Text = stringResource(R.string.mark_episode_completed),
+                        option2Text = stringResource(R.string.mark_episode_uncompleted),
+                        onOption1Selected = {
+                            viewModel.markEpisodeAsCompleted(state.seriesName, state.episode)
+                        },
+                        onOption2Selected = {
+                            viewModel.markEpisodeAsUncompleted()
+                        },
+                        onDismissRequest = { showOptionDialog = false }
+                    )
+                }
             }
         }
     }
@@ -280,6 +300,7 @@ private fun EpisodeDetailContent(
     topPadding: Dp,
     episodeSummaryFocusRequester: FocusRequester?,
     firstTorrentFocusRequester: FocusRequester?,
+    onHeaderLongClick: (() -> Unit)? = null,
     onTorrentClick: (EztvTorrent) -> Unit
 ) {
     val context = LocalContext.current
@@ -303,6 +324,7 @@ private fun EpisodeDetailContent(
             episode = episode,
             isDownloaded = isDownloaded,
             progressPercent = progressPercent,
+            onLongClick = onHeaderLongClick,
             modifier = Modifier.fillMaxWidth(),
             summaryFocusRequester = episodeSummaryFocusRequester,
             nextFocusRequester = firstTorrentFocusRequester.takeIf { torrents.isNotEmpty() }
@@ -366,11 +388,23 @@ private fun EpisodeHeader(
     episode: TmdbTvEpisode,
     isDownloaded: Boolean = false,
     progressPercent: Int? = null,
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     summaryFocusRequester: FocusRequester? = null,
     nextFocusRequester: FocusRequester? = null
 ) {
-    Column(modifier = modifier) {
+    Column(
+        modifier = modifier.then(
+            if (onLongClick != null) {
+                Modifier.combinedClickable(
+                    onClick = {},
+                    onLongClick = onLongClick
+                )
+            } else {
+                Modifier
+            }
+        )
+    ) {
         if (episode.fullStillUrl != null) {
             Box(
                 modifier = Modifier

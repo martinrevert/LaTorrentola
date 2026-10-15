@@ -86,4 +86,50 @@ class TvDetailViewModelTest {
         assertThat(viewModel.favoriteActionError.value).isNotEqualTo("null")
         assertThat(viewModel.favoriteActionError.value).isEqualTo("Unable to update TV favorites")
     }
+
+    @Test
+    fun `markEpisodeAsCompleted delegates to repository`() = runTest {
+        val series = TmdbTvSummary(id = 100, name = "Test Series")
+        coEvery { tmdbRepository.getTvDetails(100) } returns series
+        viewModel.load(100)
+        testScheduler.advanceUntilIdle()
+
+        val episode = com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(
+            id = 1, seasonNumber = 1, episodeNumber = 1, name = "Episode 1"
+        )
+        viewModel.markEpisodeAsCompleted(episode)
+        testScheduler.advanceUntilIdle()
+
+        coVerify {
+            userLibraryRepository.markEpisodeAsCompleted(
+                seriesId = 100,
+                seasonNumber = 1,
+                episodeNumber = 1,
+                episodeTitle = "Episode 1",
+                seriesName = "Test Series"
+            )
+        }
+    }
+
+    @Test
+    fun `markEpisodeAsUncompleted delegates to repository`() = runTest {
+        val series = TmdbTvSummary(id = 100, name = "Test Series")
+        coEvery { tmdbRepository.getTvDetails(100) } returns series
+        viewModel.load(100)
+        testScheduler.advanceUntilIdle()
+
+        val episode = com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(
+            id = 1, seasonNumber = 1, episodeNumber = 1, name = "Episode 1"
+        )
+        viewModel.markEpisodeAsUncompleted(episode)
+        testScheduler.advanceUntilIdle()
+
+        coVerify {
+            userLibraryRepository.markEpisodeAsUncompleted(
+                seriesId = 100,
+                seasonNumber = 1,
+                episodeNumber = 1
+            )
+        }
+    }
 }
