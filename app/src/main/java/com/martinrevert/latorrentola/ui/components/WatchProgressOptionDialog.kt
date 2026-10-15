@@ -11,7 +11,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -30,14 +29,17 @@ import androidx.tv.material3.Button as TvButton
 import androidx.tv.material3.ButtonDefaults as TvButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme as TvMaterialTheme
-import androidx.tv.material3.OutlinedButton as TvOutlinedButton
-import androidx.tv.material3.OutlinedButtonDefaults as TvOutlinedButtonDefaults
 import androidx.tv.material3.Surface as TvSurface
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 
 /**
  * Reusable dialog providing options to manually mark content as completed or uncompleted.
@@ -72,8 +74,11 @@ fun WatchProgressOptionDialog(
     if (isTv) {
         TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
             val option1FocusRequester = remember { FocusRequester() }
+            var isDialogReady by remember { mutableStateOf(false) }
 
             LaunchedEffect(Unit) {
+                delay(350)
+                isDialogReady = true
                 try {
                     option1FocusRequester.requestFocus()
                 } catch (_: Exception) {
@@ -111,8 +116,10 @@ fun WatchProgressOptionDialog(
 
                         TvButton(
                             onClick = {
-                                onOption1Selected()
-                                onDismissRequest()
+                                if (isDialogReady) {
+                                    onOption1Selected()
+                                    onDismissRequest()
+                                }
                             },
                             colors = TvButtonDefaults.colors(
                                 containerColor = TvMaterialTheme.colorScheme.primary,
@@ -129,15 +136,18 @@ fun WatchProgressOptionDialog(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        TvOutlinedButton(
+                        TvButton(
                             onClick = {
-                                onOption2Selected()
-                                onDismissRequest()
+                                if (isDialogReady) {
+                                    onOption2Selected()
+                                    onDismissRequest()
+                                }
                             },
-                            colors = TvOutlinedButtonDefaults.colors(
-                                contentColor = TvMaterialTheme.colorScheme.onSurface,
-                                focusedContainerColor = TvMaterialTheme.colorScheme.surfaceVariant,
-                                focusedContentColor = TvMaterialTheme.colorScheme.onSurfaceVariant
+                            colors = TvButtonDefaults.colors(
+                                containerColor = TvMaterialTheme.colorScheme.primary,
+                                contentColor = TvMaterialTheme.colorScheme.onPrimary,
+                                focusedContainerColor = TvMaterialTheme.colorScheme.primaryContainer,
+                                focusedContentColor = TvMaterialTheme.colorScheme.onPrimaryContainer
                             ),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -147,7 +157,11 @@ fun WatchProgressOptionDialog(
                         Spacer(modifier = Modifier.height(16.dp))
 
                         TvButton(
-                            onClick = onDismissRequest,
+                            onClick = {
+                                if (isDialogReady) {
+                                    onDismissRequest()
+                                }
+                            },
                             colors = TvButtonDefaults.colors(
                                 containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
                                 contentColor = TvMaterialTheme.colorScheme.onSurfaceVariant,
@@ -190,12 +204,16 @@ fun WatchProgressOptionDialog(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        OutlinedButton(
+                        Button(
                             onClick = {
                                 onOption2Selected()
                                 onDismissRequest()
                             },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            )
                         ) {
                             Text(text = option2Text)
                         }

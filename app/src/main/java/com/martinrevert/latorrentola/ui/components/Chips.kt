@@ -54,14 +54,19 @@ fun AdaptiveChip(
 
     if (isTv) {
         Surface(
-            shape = MaterialTheme.shapes.small,
-            colors = androidx.tv.material3.SurfaceDefaults.colors(
+            onClick = onClick,
+            onLongClick = onLongClick,
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+            shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small),
+            colors = ClickableSurfaceDefaults.colors(
                 containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                focusedContainerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                focusedContentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
             ),
             modifier = modifier
                 .padding(vertical = 4.dp)
-                .adaptiveLongClickable(onClick = onClick, onLongClick = onLongClick)
+                .tvDpadLongClickable(onLongClick)
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),

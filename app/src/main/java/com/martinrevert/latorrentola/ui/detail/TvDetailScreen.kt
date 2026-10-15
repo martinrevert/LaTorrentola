@@ -103,6 +103,7 @@ import com.martinrevert.latorrentola.ui.components.AdaptiveChip
 import com.martinrevert.latorrentola.ui.components.MovieDetailPlaceholder
 import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import com.martinrevert.latorrentola.ui.components.adaptiveLongClickable
+import com.martinrevert.latorrentola.ui.components.tvDpadLongClickable
 import androidx.compose.foundation.combinedClickable
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.isTvDevice
@@ -950,7 +951,7 @@ private fun TvEpisodeCard(
             ),
             modifier = modifier
                 .fillMaxWidth()
-                .adaptiveLongClickable(onClick = onClick, onLongClick = onLongClick)
+                .tvDpadLongClickable(onLongClick)
         ) {
             cardContent()
         }

@@ -440,6 +440,7 @@ fun TvSeriesCard(
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
                     .onFocusChanged { if (it.isFocused && shouldRequestFocus) onFocusRestored() }
+                    .tvDpadLongClickable(onLongClick)
             ) {
                 Column {
                     Box {

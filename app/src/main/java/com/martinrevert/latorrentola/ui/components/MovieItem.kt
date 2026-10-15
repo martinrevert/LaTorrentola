@@ -89,10 +89,15 @@ fun MovieItem(
     Box {
         if (isTv) {
             Surface(
-                shape = MaterialTheme.shapes.medium,
-                colors = androidx.tv.material3.SurfaceDefaults.colors(
+                onClick = onToggleSelection ?: onClick,
+                onLongClick = onLongClick,
+                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+                shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
+                colors = ClickableSurfaceDefaults.colors(
                     containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    focusedContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -102,10 +107,7 @@ fun MovieItem(
                             onFocusRestored()
                         }
                     }
-                    .adaptiveLongClickable(
-                        onClick = onToggleSelection ?: onClick,
-                        onLongClick = onLongClick
-                    )
+                    .tvDpadLongClickable(onLongClick)
             ) {
                 Column {
                     Box {
