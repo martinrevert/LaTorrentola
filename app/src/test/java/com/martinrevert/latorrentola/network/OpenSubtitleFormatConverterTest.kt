@@ -18,6 +18,19 @@ class OpenSubtitleFormatConverterTest {
         )
     }
 
+    /** Converts SubRip timestamps with single-digit hour indicators. */
+    @Test
+    fun convertsSingleDigitHourSubRipTimestampsToWebVtt() {
+        val result = OpenSubtitleFormatConverter.toWebVtt(
+            "1\r\n0:00:01,250 --> 0:00:02,500\r\nHello"
+        )
+
+        assertEquals(
+            "WEBVTT\n\n1\n0:00:01.250 --> 0:00:02.500\nHello\n",
+            result
+        )
+    }
+
     /** Removes a UTF-8 BOM and preserves an existing WebVTT header. */
     @Test
     fun normalizesExistingWebVtt() {

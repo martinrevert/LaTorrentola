@@ -29,5 +29,9 @@ data class TorrentDownload(
     /** Optional TV series episode number for this download. */
     val episodeNumber: Int? = null,
     /** Optional Movie ID for this download. */
-    val movieId: Int? = null
+    val movieId: Int? = null,
+    /** Dynamic number of connected seeds. */
+    val numSeeds: Int = 0,
+    /** Dynamic number of connected peers. */
+    val numPeers: Int = 0
 )

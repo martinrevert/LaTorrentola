@@ -52,6 +52,9 @@ class PlaybackService : MediaSessionService() {
     @Inject
     lateinit var preferenceManager: PreferenceManager
 
+    private var lastAppliedStyleContentId: String? = null
+    private var lastActivatedTrackContentId: String? = null
+
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
@@ -114,33 +117,111 @@ class PlaybackService : MediaSessionService() {
                         return defaultConverter.toMediaItem(mediaQueueItem)
                     }
                     override fun toMediaQueueItem(mediaItem: MediaItem): MediaQueueItem {
-                        val castUrl = mediaItem.mediaMetadata.extras?.getString(EXTRA_CAST_URL)
+                        val castUrl = mediaItem.mediaMetadata.extras?.getString(EXTRA_CAST_URL).orEmpty()
                         val uriStr = mediaItem.localConfiguration?.uri?.toString().orEmpty()
-                        val lanIp = VerifiedTorrentHttpServer.getLanIpAddress()
+                        val lanIp = VerifiedTorrentHttpServer.getLanIpAddress().orEmpty()
 
-                        val targetUrl = when {
-                            !castUrl.isNullOrBlank() && !castUrl.contains("127.0.0.1") && !castUrl.contains("localhost") -> castUrl
-                            !lanIp.isNullOrBlank() && (uriStr.contains("127.0.0.1") || uriStr.contains("localhost")) ->
-                                uriStr.replace("127.0.0.1", lanIp).replace("localhost", lanIp)
-                            else -> uriStr
+                        val candidateUrl = castUrl.ifBlank { uriStr }
+                        val targetUrl = if (lanIp.isNotBlank() && (candidateUrl.contains("127.0.0.1") || candidateUrl.contains("localhost"))) {
+                            candidateUrl.replace("127.0.0.1", lanIp).replace("localhost", lanIp)
+                        } else {
+                            candidateUrl
                         }
 
                         Log.d(TAG, "Converting MediaItem for Cast: targetUrl=$targetUrl")
 
+                        val defaultQueueItem = defaultConverter.toMediaQueueItem(mediaItem)
+                        val defaultMediaInfo = defaultQueueItem.media ?: return defaultQueueItem
+
+                        val serverBaseUrl = if (targetUrl.contains('/')) targetUrl.substringBeforeLast('/') else ""
+
+                        val castMediaTracks = mediaItem.localConfiguration?.subtitleConfigurations.orEmpty().mapIndexedNotNull { index, subConfig ->
+                            val subUri = subConfig.uri
+                            val subUriStr = subUri.toString()
+
+                            val subFile = try {
+                                if (subUri.scheme == "file" || (subUri.scheme == null && subUri.path?.startsWith("/") == true)) {
+                                    File(subUri.path.orEmpty())
+                                } else null
+                            } catch (_: Exception) { null }
+
+                            val lanSubUrl = when {
+                                subFile != null && subFile.exists() && subFile.isFile && serverBaseUrl.isNotBlank() -> {
+                                    val base64Path = android.util.Base64.encodeToString(
+                                        subFile.absolutePath.toByteArray(Charsets.UTF_8),
+                                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
+                                    )
+                                    val encodedSubName = java.net.URLEncoder.encode(subFile.name, "UTF-8").replace("+", "%20")
+                                    "$serverBaseUrl/subtitles/$base64Path/$encodedSubName"
+                                }
+                                lanIp.isNotBlank() && (subUriStr.contains("127.0.0.1") || subUriStr.contains("localhost")) -> {
+                                    subUriStr.replace("127.0.0.1", lanIp).replace("localhost", lanIp)
+                                }
+                                else -> subUriStr
+                            }
+
+                            if (lanSubUrl.isNotBlank()) {
+                                Log.d(TAG, "Converted subtitle configuration for Cast: lanSubUrl=$lanSubUrl")
+                                val safeLanguage = subConfig.language?.takeIf { it != "und" && it.isNotBlank() } ?: "es"
+                                val safeLabel = subConfig.label?.takeIf { it.isNotBlank() }
+                                    ?: "Subtítulo ${index + 1}"
+
+                                MediaTrack.Builder(index + 1L, MediaTrack.TYPE_TEXT)
+                                    .setName(safeLabel)
+                                    .setSubtype(MediaTrack.SUBTYPE_SUBTITLES)
+                                    .setContentId(lanSubUrl)
+                                    .setContentType("text/vtt")
+                                    .setLanguage(safeLanguage)
+                                    .build()
+                            } else null
+                        }
+
                         val mime = when {
                             uriStr.endsWith(".webm", true) -> "video/webm"
+                            uriStr.endsWith(".mkv", true) -> "video/x-matroska"
                             else -> "video/mp4"
                         }
 
-                        val castMediaItem = mediaItem.buildUpon()
-                            .setUri(targetUrl)
-                            .setMimeType(mime)
-                            .build()
+                        val newMediaInfoBuilder = MediaInfo.Builder(targetUrl)
+                            .setContentUrl(targetUrl)
+                            .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
+                            .setContentType(mime)
+                            .setMetadata(defaultMediaInfo.metadata)
+                            .setCustomData(defaultMediaInfo.customData)
 
-                        return defaultConverter.toMediaQueueItem(castMediaItem)
+                        if (castMediaTracks.isNotEmpty()) {
+                            newMediaInfoBuilder.setMediaTracks(castMediaTracks)
+                        }
+
+                        val queueItemBuilder = MediaQueueItem.Builder(newMediaInfoBuilder.build())
+                        if (castMediaTracks.isNotEmpty()) {
+                            queueItemBuilder.setActiveTrackIds(longArrayOf(1L))
+                        }
+
+                        return queueItemBuilder.build()
                     }
                 })
                 .build()
+
+            remotePlayerInstance.setSessionAvailabilityListener(object : SessionAvailabilityListener {
+                override fun onCastSessionAvailable() {
+                    Log.i(TAG, "Cast session available")
+                }
+
+                override fun onCastSessionUnavailable() {
+                    Log.i(TAG, "Cast session unavailable - restoring local playback on ExoPlayer")
+                    serviceScope.launch {
+                        delay(200)
+                        localPlayer?.let { exo ->
+                            if (exo.mediaItemCount > 0 && exo.playbackState == Player.STATE_IDLE) {
+                                exo.prepare()
+                                exo.play()
+                                Log.i(TAG, "ExoPlayer prepared and resumed at position ${exo.currentPosition}ms")
+                            }
+                        }
+                    }
+                }
+            })
 
             // Build the CastPlayer to handle local vs remote handoff automatically
             // CastPlayer defaults to checking CastContext implicitly if available
@@ -159,9 +240,13 @@ class PlaybackService : MediaSessionService() {
                         castContext.sessionManager.addSessionManagerListener(
                             object : com.google.android.gms.cast.framework.SessionManagerListener<com.google.android.gms.cast.framework.CastSession> {
                                 override fun onSessionStarted(session: com.google.android.gms.cast.framework.CastSession, sessionId: String) {
+                                    lastAppliedStyleContentId = null
+                                    lastActivatedTrackContentId = null
                                     applyCastSubtitleStyle(session)
                                 }
                                 override fun onSessionResumed(session: com.google.android.gms.cast.framework.CastSession, wasSuspended: Boolean) {
+                                    lastAppliedStyleContentId = null
+                                    lastActivatedTrackContentId = null
                                     applyCastSubtitleStyle(session)
                                 }
                                 override fun onSessionStarting(session: com.google.android.gms.cast.framework.CastSession) {}
@@ -218,18 +303,50 @@ class PlaybackService : MediaSessionService() {
         client.registerCallback(object : com.google.android.gms.cast.framework.media.RemoteMediaClient.Callback() {
             override fun onStatusUpdated() {
                 if (client.hasMediaSession()) {
-                    sendTextTrackStyle(client)
+                    autoActivateSubtitlesAndApplyStyle(client)
                 }
             }
             override fun onQueueStatusUpdated() {
                 if (client.hasMediaSession()) {
-                    sendTextTrackStyle(client)
+                    autoActivateSubtitlesAndApplyStyle(client)
                 }
             }
         })
 
         if (client.hasMediaSession()) {
-            sendTextTrackStyle(client)
+            autoActivateSubtitlesAndApplyStyle(client)
+        }
+    }
+
+    private fun autoActivateSubtitlesAndApplyStyle(client: com.google.android.gms.cast.framework.media.RemoteMediaClient) {
+        val mediaStatus = client.mediaStatus ?: return
+        val currentContentId = mediaStatus.mediaInfo?.contentId ?: return
+
+        // Wait until playback actually begins to avoid Invalid Request errors on CAF receivers
+        if (mediaStatus.playerState == com.google.android.gms.cast.MediaStatus.PLAYER_STATE_PLAYING) {
+            val tracks = mediaStatus.mediaInfo?.mediaTracks.orEmpty()
+            val activeTrackIds = mediaStatus.activeTrackIds ?: longArrayOf()
+            val textTrack = tracks.firstOrNull { it.type == MediaTrack.TYPE_TEXT }
+
+            if (textTrack != null) {
+                val trackKey = "${currentContentId}_track_${textTrack.id}"
+                if (!activeTrackIds.contains(textTrack.id) && lastActivatedTrackContentId != trackKey) {
+                    lastActivatedTrackContentId = trackKey
+                    client.setActiveMediaTracks(longArrayOf(textTrack.id))
+                        .setResultCallback { result ->
+                            if (!result.status.isSuccess) {
+                                lastActivatedTrackContentId = null
+                            }
+                        }
+                    Log.i(TAG, "Automatically activated Cast text track ID: ${textTrack.id}")
+                }
+
+                val styleKey = "${currentContentId}_style_${textTrack.id}"
+                if (lastAppliedStyleContentId != styleKey) {
+                    lastAppliedStyleContentId = styleKey
+                    sendTextTrackStyle(client)
+                }
+            }
         }
     }
 

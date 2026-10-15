@@ -4,7 +4,6 @@ import android.content.ComponentName
 import android.content.Intent
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,11 +21,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.CastConnected
+import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.StopCircle
+import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -49,7 +55,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -60,7 +65,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import androidx.mediarouter.media.MediaControlIntent
 import androidx.mediarouter.media.MediaRouteSelector
 import androidx.mediarouter.media.MediaRouter
 import com.google.android.gms.cast.CastMediaControlIntent
@@ -182,7 +186,7 @@ fun TorrentDownloadsScreen(
                         ) {
                             Icon(
                                 imageVector = if (isCasting) Icons.Default.CastConnected else Icons.Default.Cast,
-                                contentDescription = "Cast",
+                                contentDescription = stringResource(R.string.cast_desc),
                                 tint = if (isCasting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                             )
                         }
@@ -237,7 +241,11 @@ fun TorrentDownloadsScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = if (isCasting) "Transmitiendo en ${selectedRoute.name}" else "Reproduciendo en teléfono",
+                                text = if (isCasting) {
+                                    stringResource(R.string.mini_player_casting, selectedRoute.name)
+                                } else {
+                                    stringResource(R.string.mini_player_local)
+                                },
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary,
                                 maxLines = 1,
@@ -251,7 +259,9 @@ fun TorrentDownloadsScreen(
                         ) {
                             Icon(
                                 imageVector = if (isMediaPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = if (isMediaPlaying) "Pausar" else "Reproducir"
+                                contentDescription = stringResource(
+                                    if (isMediaPlaying) R.string.pause_desc else R.string.play_desc
+                                )
                             )
                         }
                         IconButton(
@@ -261,7 +271,7 @@ fun TorrentDownloadsScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "Detener"
+                                contentDescription = stringResource(R.string.action_stop)
                             )
                         }
                     }
@@ -359,10 +369,15 @@ fun TorrentDownloadsScreen(
 }
 
 /**
- * Renders progress and controls for one local torrent.
+ * Renders progress and controls for one local torrent with separate Player and Torrent status rows.
  *
  * @param download Persisted transfer state.
  * @param isTv Whether to use native TV surfaces and actions.
+ * @param isActive Whether this item is currently selected or playing in the player.
+ * @param isPlaying Whether media is actively playing.
+ * @param isCasting Whether media is currently casting.
+ * @param activeRouteName Name of active cast route.
+ * @param onToggleActivePlayback Toggles play/pause for active playback.
  * @param onPauseResume Toggles the current transfer state.
  * @param onDelete Deletes the job and its private media files.
  * @param onPlay Starts verified local playback through the app's range-checked media server.
@@ -384,6 +399,70 @@ private fun TorrentDownloadItem(
     val playable = completed || download.state == TorrentDownloadService.STATE_READY
     val resumable = download.state == TorrentDownloadService.STATE_PAUSED ||
         download.state == TorrentDownloadService.STATE_FAILED
+
+    // Evaluate Player Status (Row 1)
+    val (playerIcon, playerText, playerColor) = when {
+        isActive && isCasting -> Triple(
+            Icons.Default.CastConnected,
+            stringResource(R.string.player_status_label, stringResource(R.string.player_status_casting, activeRouteName.ifBlank { stringResource(R.string.cast_desc) })),
+            MaterialTheme.colorScheme.primary
+        )
+        isActive && isPlaying -> Triple(
+            Icons.Default.PlayCircle,
+            stringResource(R.string.player_status_label, stringResource(R.string.player_status_playing_local)),
+            MaterialTheme.colorScheme.primary
+        )
+        isActive && !isPlaying -> Triple(
+            Icons.Default.PauseCircle,
+            stringResource(R.string.player_status_label, stringResource(R.string.player_status_paused)),
+            MaterialTheme.colorScheme.secondary
+        )
+        download.state == TorrentDownloadService.STATE_READY || download.state == TorrentDownloadService.STATE_COMPLETED -> Triple(
+            Icons.Default.CheckCircleOutline,
+            stringResource(R.string.player_status_label, stringResource(R.string.player_status_ready)),
+            MaterialTheme.colorScheme.tertiary
+        )
+        download.state == TorrentDownloadService.STATE_BUFFERING || download.state == TorrentDownloadService.STATE_QUEUED || (download.state == TorrentDownloadService.STATE_DOWNLOADING && download.progressPercent < 10) -> Triple(
+            Icons.Default.HourglassTop,
+            stringResource(R.string.player_status_label, stringResource(R.string.player_status_waiting)),
+            MaterialTheme.colorScheme.secondary
+        )
+        else -> Triple(
+            Icons.Default.StopCircle,
+            stringResource(R.string.player_status_label, stringResource(R.string.player_status_idle)),
+            MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    // Evaluate Torrent Download Status (Row 2)
+    val (torrentIcon, torrentText, torrentColor) = when {
+        download.state == TorrentDownloadService.STATE_PAUSED -> Triple(
+            Icons.Default.PauseCircle,
+            stringResource(R.string.torrent_status_label, stringResource(R.string.torrent_status_paused, download.progressPercent, download.numSeeds, download.numPeers)),
+            MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        download.state == TorrentDownloadService.STATE_FAILED -> Triple(
+            Icons.Default.ErrorOutline,
+            stringResource(R.string.torrent_status_label, stringResource(R.string.torrent_status_failed)),
+            MaterialTheme.colorScheme.error
+        )
+        download.state == TorrentDownloadService.STATE_COMPLETED || download.progressPercent == 100 -> Triple(
+            Icons.Default.TaskAlt,
+            stringResource(R.string.torrent_status_label, stringResource(R.string.torrent_status_completed, download.numSeeds, download.numPeers)),
+            MaterialTheme.colorScheme.primary
+        )
+        (download.state == TorrentDownloadService.STATE_DOWNLOADING || download.state == TorrentDownloadService.STATE_BUFFERING || download.state == TorrentDownloadService.STATE_QUEUED) && download.numSeeds == 0 && download.numPeers == 0 -> Triple(
+            Icons.Default.CloudOff,
+            stringResource(R.string.torrent_status_label, stringResource(R.string.torrent_status_stalled, download.numSeeds, download.numPeers)),
+            MaterialTheme.colorScheme.error
+        )
+        else -> Triple(
+            Icons.Default.CloudDownload,
+            stringResource(R.string.torrent_status_label, stringResource(R.string.torrent_status_downloading, download.progressPercent, download.numSeeds, download.numPeers)),
+            MaterialTheme.colorScheme.primary
+        )
+    }
+
     val cardContent: @Composable () -> Unit = {
         Column(
             modifier = Modifier
@@ -396,26 +475,48 @@ private fun TorrentDownloadItem(
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Text(
-                text = if (isActive) {
-                    if (isCasting) "🟢 Transmitiendo en $activeRouteName" else "🟢 En reproducción local"
-                } else {
-                    stringResource(
-                        R.string.torrent_download_status,
-                        when (download.state) {
-                            TorrentDownloadService.STATE_COMPLETED -> stringResource(R.string.torrent_download_state_complete)
-                            TorrentDownloadService.STATE_PAUSED -> stringResource(R.string.torrent_download_state_paused)
-                            TorrentDownloadService.STATE_FAILED -> stringResource(R.string.torrent_download_state_failed)
-                            TorrentDownloadService.STATE_READY -> stringResource(R.string.torrent_download_state_ready)
-                            else -> stringResource(R.string.torrent_download_state_active)
-                        },
-                        download.progressPercent
-                    )
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
-            )
+
+            // Line 1: Player Status
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = playerIcon,
+                    contentDescription = null,
+                    tint = playerColor,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    text = playerText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = playerColor,
+                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Line 2: Torrent Download Status
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = torrentIcon,
+                    contentDescription = null,
+                    tint = torrentColor,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    text = torrentText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = torrentColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
             if (!completed) {
                 LinearProgressIndicator(
                     progress = { download.progressPercent / 100f },
@@ -424,6 +525,7 @@ private fun TorrentDownloadItem(
                     trackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
@@ -548,7 +650,7 @@ private fun TorrentDownloadItemPreview() {
     com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
         androidx.compose.material3.Surface {
             TorrentDownloadItem(
-                download = com.martinrevert.latorrentola.model.torrent.TorrentDownload(
+                download = TorrentDownload(
                     infoHash = "HASH1",
                     magnetUri = "magnet:?",
                     title = "Inception (2010)",
@@ -556,7 +658,9 @@ private fun TorrentDownloadItemPreview() {
                     progressPercent = 50,
                     mediaPath = null,
                     castWhenReady = false,
-                    updatedAtMillis = System.currentTimeMillis()
+                    updatedAtMillis = System.currentTimeMillis(),
+                    numSeeds = 12,
+                    numPeers = 5
                 ),
                 isTv = false,
                 onPauseResume = {},

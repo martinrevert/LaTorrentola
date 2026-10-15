@@ -151,12 +151,11 @@ class OpenSubtitlesRepository @Inject constructor(
     suspend fun findLatestDownloaded(
         torrentInfoHash: String?
     ): DownloadedSubtitle? = withContext(Dispatchers.IO) {
-        val normalizedHash = torrentInfoHash?.trim()?.lowercase(Locale.ROOT)
-            ?.takeIf(String::isNotBlank)
+        val normalizedHash = normalizeTorrentInfoHash(torrentInfoHash)
 
         val candidateDirectories = mutableListOf<File>()
 
-        if (normalizedHash != null && TORRENT_INFO_HASH_PATTERN.matches(normalizedHash)) {
+        if (normalizedHash != null) {
             val torrentDirectory = File(context.filesDir, "$TORRENT_DIRECTORY/$normalizedHash").canonicalFile
             if (torrentDirectory.parentFile == File(context.filesDir, TORRENT_DIRECTORY).canonicalFile) {
                 val subtitleDirectory = File(torrentDirectory, SUBTITLE_DIRECTORY).canonicalFile
@@ -871,6 +870,31 @@ class OpenSubtitlesRepository @Inject constructor(
     }
 
     /**
+     * Normalizes a torrent identifier into a safe 40-character hexadecimal info hash.
+     *
+     * Accepts raw 40-character hex hashes, BTIH magnet URIs, or prefixed hashes. Returns `null` when
+     * no valid info hash is present so subtitles can still be saved in general app cache storage.
+     *
+     * @param rawHash Candidate info hash, magnet URI, or `null`.
+     * @return Normalized 40-character lowercase hexadecimal hash, or `null`.
+     */
+    private fun normalizeTorrentInfoHash(rawHash: String?): String? {
+        val trimmed = rawHash?.trim()?.lowercase(Locale.ROOT)
+            ?.takeIf(String::isNotBlank) ?: return null
+
+        if (TORRENT_INFO_HASH_PATTERN.matches(trimmed)) {
+            return trimmed
+        }
+
+        val magnetMatch = MAGNET_BTIH_PATTERN.find(trimmed)
+        if (magnetMatch != null) {
+            return magnetMatch.groupValues[1].lowercase(Locale.ROOT)
+        }
+
+        return null
+    }
+
+    /**
      * Stores a finished WebVTT file atomically in private app storage.
      *
      * @param fileId OpenSubtitles file identifier used to name the cache entry.
@@ -879,13 +903,7 @@ class OpenSubtitlesRepository @Inject constructor(
      * @return App-private subtitle file, in the torrent directory when an owner is supplied.
      */
     private fun saveSubtitle(fileId: Long, webVtt: String, torrentInfoHash: String?): File {
-        val normalizedHash = torrentInfoHash?.trim()?.lowercase(Locale.ROOT)
-        if (normalizedHash != null && !TORRENT_INFO_HASH_PATTERN.matches(normalizedHash)) {
-            throw OpenSubtitlesException(
-                OpenSubtitlesErrorCode.INVALID_SUBTITLE,
-                "The torrent identifier for subtitle storage is invalid"
-            )
-        }
+        val normalizedHash = normalizeTorrentInfoHash(torrentInfoHash)
         val ownerDirectory = normalizedHash?.let {
             File(context.filesDir, "$TORRENT_DIRECTORY/$it")
         }
@@ -990,6 +1008,8 @@ class OpenSubtitlesRepository @Inject constructor(
         const val SUPPORTED_LANGUAGE_CODES = "en,es"
         /** Expected hexadecimal SHA-1 info-hash format used to scope subtitle files. */
         val TORRENT_INFO_HASH_PATTERN = Regex("[a-f0-9]{40}")
+        /** Magnet URI BTIH extraction pattern for raw or prefixed magnet links. */
+        val MAGNET_BTIH_PATTERN = Regex("""(?:xt=urn:btih:|urn:btih:)([a-f0-9]{40})""", RegexOption.IGNORE_CASE)
         /** Minimum ZIP signature length inspected in a response. */
         const val ZIP_SIGNATURE_SIZE = 2
         /** First byte of a ZIP local-file signature. */
@@ -1040,5 +1060,5 @@ object OpenSubtitleFormatConverter {
     }
 
     /** Pattern matching SubRip millisecond separators in timestamps. */
-    private val SRT_TIMECODE_COMMA = Regex("""(?<=\d{2}:\d{2}:\d{2}),(?=\d{3})""")
+    private val SRT_TIMECODE_COMMA = Regex("""(?<=\d{1,2}:\d{2}:\d{2}),(?=\d{3})""")
 }

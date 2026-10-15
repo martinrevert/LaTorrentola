@@ -80,13 +80,21 @@ class VerifiedTorrentHttpServer(
 
             if (parts.isNotEmpty()) {
                 val base64Path = parts[0]
-                try {
-                    val decodedPath = String(android.util.Base64.decode(base64Path, android.util.Base64.URL_SAFE))
+                val decodedPath = try {
+                    String(android.util.Base64.decode(base64Path, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING))
+                } catch (_: Exception) {
+                    try {
+                        String(android.util.Base64.decode(base64Path, android.util.Base64.DEFAULT))
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+                if (decodedPath != null) {
                     val candidate = File(decodedPath)
                     if (candidate.exists() && candidate.isFile && (candidate.name.endsWith(".vtt", true) || candidate.name.endsWith(".srt", true))) {
                         subFile = candidate
                     }
-                } catch (_: Exception) {}
+                }
             }
 
             if (subFile == null) {
@@ -138,12 +146,7 @@ class VerifiedTorrentHttpServer(
             }
 
         val (rawStart, rawEnd) = rawRange
-        val activeFile = if (mediaFile.extension.equals("mkv", ignoreCase = true)) {
-            val mp4 = File(mediaFile.parentFile, "${mediaFile.nameWithoutExtension}.mp4")
-            if (mp4.isFile && mp4.length() > 0) mp4 else mediaFile
-        } else {
-            mediaFile
-        }
+        val activeFile = mediaFile
 
         val diskLength = activeFile.length()
         val start = rawStart.coerceIn(0L, maxOf(0L, expectedLength - 1L))
@@ -204,7 +207,8 @@ class VerifiedTorrentHttpServer(
 
     private fun addCorsHeaders(response: Response, session: IHTTPSession? = null) {
         val origin = session?.headers?.get("origin")
-        response.addHeader("Access-Control-Allow-Origin", if (!origin.isNullOrBlank()) origin else "*")
+        val safeOrigin = if (!origin.isNullOrBlank() && !origin.equals("null", ignoreCase = true)) origin else "*"
+        response.addHeader("Access-Control-Allow-Origin", safeOrigin)
         response.addHeader("Access-Control-Allow-Methods", "GET, OPTIONS, HEAD")
         val requestedHeaders = session?.headers?.get("access-control-request-headers")
         if (!requestedHeaders.isNullOrBlank()) {
@@ -242,16 +246,7 @@ class VerifiedTorrentHttpServer(
     }
 
     private fun convertSrtToVtt(srtText: String): String {
-        val text = srtText.replace("\r\n", "\n").replace("\r", "\n")
-        if (text.trimStart().startsWith("WEBVTT")) {
-            return text
-        }
-        val timestampRegex = Regex("""(\d{2}:\d{2}:\d{2}),(\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}),(\d{3})""")
-        val convertedBody = timestampRegex.replace(text) { matchResult ->
-            val (startHms, startMs, endHms, endMs) = matchResult.destructured
-            "$startHms.$startMs --> $endHms.$endMs"
-        }
-        return "WEBVTT\n\n$convertedBody"
+        return com.martinrevert.latorrentola.network.OpenSubtitleFormatConverter.toWebVtt(srtText)
     }
 
     private fun getResponseMimeType(): String {
@@ -259,6 +254,7 @@ class VerifiedTorrentHttpServer(
         val ext = mediaFile.extension.lowercase(java.util.Locale.ROOT)
         return when {
             mime.contains("webm", ignoreCase = true) || ext == "webm" -> "video/webm"
+            mime.contains("matroska", ignoreCase = true) || ext == "mkv" -> "video/x-matroska"
             mime.contains("avi", ignoreCase = true) || ext == "avi" -> "video/x-msvideo"
             else -> "video/mp4"
         }

@@ -89,11 +89,32 @@ When triggering a download/play action, read `TorrentHandlingMode` and execute:
 ### Data Sync Flow
 - **Watch History**: Write to Room DAO FIRST (Immediate UI update) -> Sync to Firestore in the background. Room is the Single Source of Truth.
 
-### Cast Subtitle Preloading Mandate (MANDATORY)
-When streaming via Google Cast (Chromecast / Nest Hub / Google TV):
-- **Subtitles MUST ALWAYS be preloaded and auto-activated** if subtitles (OpenSubtitles or local VTT files) exist for the video.
-- **NEVER remove or disable automatic subtitle activation on Cast.**
-- **Safe Activation Workflow**: To prevent initial `LOAD` socket connection errors on CAF Web Receivers, DO NOT pass `activeTrackIds` in the initial `MediaQueueItem` load payload. Instead, automatically activate the text track (`client.setActiveMediaTracks(longArrayOf(trackId))`) inside `RemoteMediaClient.Callback` (`onStatusUpdated` / `onQueueStatusUpdated`) as soon as the media session reaches `BUFFERING` or `PLAYING` state.
+### 📺 Google Cast Subtitle Architecture & Stability Mandate (STRICT - DO NOT MODIFY)
+When streaming media and subtitles to Google Cast receivers (Chromecast / Nest Hub / Google TV / Android TV):
+- **STRICT ARCHITECTURE FREEZE**: AI agents are **STRICTLY PROHIBITED** from modifying, refactoring, or simplifying the Google Cast native `MediaInfo`/`MediaTrack` construction in `PlaybackService.kt`, or changing CORS headers in `VerifiedTorrentHttpServer.kt`, unless Google or Media3 updates introduce an explicit breaking API change that prevents compilation.
+
+1. **Native `MediaInfo` & `MediaTrack` Construction**:
+   - In [`PlaybackService.kt`](file:///D:/AndroidProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/service/PlaybackService.kt), `toMediaQueueItem` MUST construct Google Cast SDK's native `MediaInfo` and `MediaQueueItem` objects directly using `MediaInfo.Builder` and `MediaTrack.Builder`.
+   - **PROHIBITION**: DO NOT replace native `MediaInfo` / `MediaTrack` construction with generic `defaultConverter.toMediaQueueItem(castMediaItem)` calls. Generic conversion strips or misformats native `MediaTrack` payloads required by Chromecast CAF Web Receivers.
+   - **Track Builder Pattern**: Text tracks MUST be built with `MediaTrack.Builder(index + 1L, MediaTrack.TYPE_TEXT)`, `.setSubtype(MediaTrack.SUBTYPE_SUBTITLES)`, `.setContentId(lanSubUrl)`, `.setContentType("text/vtt")`, `.setLanguage(lang)`, and `.setName(label)`.
+   - **Active Track Flags**: `queueItemBuilder.setActiveTrackIds(longArrayOf(1L))` MUST be set on the `MediaQueueItem.Builder` so Chromecast automatically loads and renders track 1 upon playback start.
+
+2. **HTTP LAN Subtitle Server & CORS (`VerifiedTorrentHttpServer`)**:
+   - [`VerifiedTorrentHttpServer.kt`](file:///D:/AndroidProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/service/VerifiedTorrentHttpServer.kt) MUST serve WebVTT subtitles with HTTP `200 OK`, `Content-Type: text/vtt`, and complete CORS headers:
+     - `Access-Control-Allow-Origin: *`
+     - `Access-Control-Allow-Methods: GET, OPTIONS, HEAD`
+     - `Access-Control-Allow-Headers: *`
+     - `Access-Control-Allow-Private-Network: true`
+   - Preflight `Method.OPTIONS` requests MUST return `200 OK` with these exact CORS headers.
+   - **NO DUPLICATE MP4 GENERATION**: DO NOT generate duplicate `.mp4` files or perform on-the-fly container remuxing in `TorrentDownloadService` or `VerifiedTorrentHttpServer`. Stream `.mkv`, `.webm`, or `.mp4` video files directly over HTTP with the matching MIME type (`video/x-matroska`, `video/webm`, or `video/mp4`).
+
+3. **OpenSubtitles File Storage & Co-located Cleanup**:
+   - Subtitles downloaded from OpenSubtitles MUST be saved inside `filesDir/torrent_downloads/<infoHash>/opensubtitles/<fileId>.vtt`.
+   - **PROHIBITION**: DO NOT save torrent subtitles in `cacheDir` when `infoHash` is available or extractable. When deleting a torrent, deleting `filesDir/torrent_downloads/<infoHash>` MUST delete all associated video files and subtitle files in one single operation.
+   - In [`LocalPlayerActivity.kt`](file:///D:/AndroidProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/ui/player/LocalPlayerActivity.kt), if `EXTRA_INFO_HASH` is blank, `torrentInfoHash` MUST be extracted automatically from the local file path or stream URL via regex (`[a-fA-F0-9]{40}`).
+
+4. **Startup Subtitle Preloading**:
+   - In [`LocalPlayerActivity.kt`](file:///D:/AndroidProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/ui/player/LocalPlayerActivity.kt), before calling `controller.setMediaItem(itemToPlay)`, check `openSubtitlesRepository.findLatestDownloaded(torrentInfoHash)`. If a cached subtitle exists, attach its `SubtitleConfiguration` to `itemToPlay` BEFORE starting playback so that the initial Cast `LOAD` request carries both the video and the subtitle track together.
 
 ### Previews
 - Every UI Component MUST include `@Preview` functions covering: Light Mode, Dark Mode, Mobile form-factor, and TV form-factor (using appropriate theme wrappers).

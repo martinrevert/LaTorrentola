@@ -766,6 +766,8 @@ class TorrentDownloadService : Service() {
                     continue
                 }
                 val progress = (status.progress() * 100).toInt().coerceIn(0, 100)
+                val numSeeds = status.numSeeds()
+                val numPeers = status.numPeers()
                 val readyIntent = readyPlayerIntent
                 if (readyIntent == null) {
                     updateNotification(buildProgressNotification(request.title, progress))
@@ -782,7 +784,9 @@ class TorrentDownloadService : Service() {
                         else -> STATE_BUFFERING
                     },
                     progress,
-                    mediaTarget?.file?.absolutePath
+                    mediaTarget?.file?.absolutePath,
+                    numSeeds,
+                    numPeers
                 )
                 if (!readyNotified && target != null && hasVerifiedBuffer(handle, target)) {
                     val server = VerifiedTorrentHttpServer(
@@ -849,7 +853,7 @@ class TorrentDownloadService : Service() {
                             buildReadyNotification(request.title, playerIntent, port)
                         )
                     }
-                    updateDownloadRecord(request, STATE_READY, progress, target.file.absolutePath)
+                    updateDownloadRecord(request, STATE_READY, progress, target.file.absolutePath, numSeeds, numPeers)
                     if (openWhenReadyHashes.remove(infoHash)) {
                         withContext(Dispatchers.Main) { startActivity(playerIntent) }
                     }
@@ -860,14 +864,15 @@ class TorrentDownloadService : Service() {
                         ?: findLargestVideoFile(downloadDirectory)
                         ?: throw IllegalStateException("The completed torrent contains no supported video file")
                     completed.set(true)
-                    updateDownloadRecord(request, STATE_COMPLETED, 100, playableFile.absolutePath)
+                    updateDownloadRecord(request, STATE_COMPLETED, 100, playableFile.absolutePath, numSeeds, numPeers)
 
                     if (playableFile.extension.equals("mkv", ignoreCase = true)) {
                         val mp4File = File(playableFile.parentFile, "${playableFile.nameWithoutExtension}.mp4")
-                        if (!mp4File.isFile || mp4File.length() == 0L) {
-                            serviceScope.launch(Dispatchers.IO) {
-                                com.martinrevert.latorrentola.utils.MkvToMp4Remuxer.remuxToMp4(playableFile, mp4File)
-                            }
+                        if (mp4File.isFile) {
+                            try {
+                                mp4File.delete()
+                                Log.i(TAG, "Deleted legacy remuxed MP4 file: ${mp4File.name}")
+                            } catch (_: Exception) {}
                         }
                     }
 
@@ -882,7 +887,7 @@ class TorrentDownloadService : Service() {
                     return
                 }
                 if (pausedInfoHash == infoHash) {
-                    updateDownloadRecord(request, STATE_PAUSED, progress, null)
+                    updateDownloadRecord(request, STATE_PAUSED, progress, null, numSeeds, numPeers)
                 }
             }
             delay(1_000)
@@ -1133,9 +1138,12 @@ class TorrentDownloadService : Service() {
      * @return Notification with a playback content action.
      */
     private fun buildCompletedNotification(title: String, file: File): Notification {
+        val hashPattern = Regex("(?i)[a-f0-9]{40}")
+        val extractedHash = hashPattern.find(file.absolutePath)?.value?.lowercase(java.util.Locale.ROOT).orEmpty()
         val playerIntent = Intent(this, LocalPlayerActivity::class.java)
             .putExtra(LocalPlayerActivity.EXTRA_FILE_PATH, file.absolutePath)
             .putExtra(LocalPlayerActivity.EXTRA_TITLE, title)
+            .putExtra(LocalPlayerActivity.EXTRA_INFO_HASH, extractedHash)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val pendingIntent = PendingIntent.getActivity(
             this,
@@ -1213,7 +1221,9 @@ class TorrentDownloadService : Service() {
         request: DownloadRequest,
         state: String,
         progress: Int,
-        mediaPath: String?
+        mediaPath: String?,
+        numSeeds: Int = 0,
+        numPeers: Int = 0
     ) {
         torrentDownloadDao.upsert(
             TorrentDownload(
@@ -1228,7 +1238,9 @@ class TorrentDownloadService : Service() {
                 seriesId = request.seriesId,
                 seasonNumber = request.seasonNumber,
                 episodeNumber = request.episodeNumber,
-                movieId = request.movieId
+                movieId = request.movieId,
+                numSeeds = numSeeds,
+                numPeers = numPeers
             )
         )
     }

@@ -632,9 +632,31 @@ class LocalPlayerActivity : FragmentActivity() {
 
         pendingMediaUri = mediaUri
 
+        if (castStreamUrl.isBlank() && file != null && file.isFile && file.canRead()) {
+            try {
+                val server = VerifiedTorrentHttpServer(file, file.length()) { _, _ -> true }
+                server.startServer()
+                SubtitleServerRegistry.retain(server)
+                castStreamUrl = server.lanUrl()
+                Log.i(TAG, "Started VerifiedTorrentHttpServer for local file Cast: $castStreamUrl")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to start VerifiedTorrentHttpServer for local file: ${e.message}")
+            }
+        }
+
         if (mediaUri != null) {
             mediaTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty()
-            torrentInfoHash = intent.getStringExtra(EXTRA_INFO_HASH).orEmpty()
+            val rawInfoHash = intent.getStringExtra(EXTRA_INFO_HASH).orEmpty()
+            torrentInfoHash = if (rawInfoHash.isNotBlank()) {
+                rawInfoHash
+            } else {
+                extractInfoHash(
+                    localStreamUrl,
+                    castStreamUrl,
+                    file?.absolutePath,
+                    mediaUri.toString()
+                )
+            }
             currentSeriesId = intent.getIntExtra(EXTRA_SERIES_ID, 0)
             currentSeasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
             currentEpisodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
@@ -736,7 +758,33 @@ class LocalPlayerActivity : FragmentActivity() {
                     .build()
                 controller.trackSelectionParameters = defaultTrackParams
 
-                controller.setMediaItem(newItem, startPosition)
+                var itemToPlay = newItem
+                if (itemToPlay.localConfiguration?.subtitleConfigurations.isNullOrEmpty() && torrentInfoHash.isNotBlank()) {
+                    try {
+                        val cachedSubtitle = openSubtitlesRepository.findLatestDownloaded(torrentInfoHash)
+                        if (cachedSubtitle != null) {
+                            val localUri = Uri.fromFile(cachedSubtitle.file)
+                            val displayLabel = cachedSubtitle.label.ifBlank { "OpenSubtitles (${cachedSubtitle.language.uppercase(Locale.ROOT)})" }
+                            val subConfig = MediaItem.SubtitleConfiguration.Builder(localUri)
+                                .setMimeType(MimeTypes.TEXT_VTT)
+                                .setLanguage(cachedSubtitle.language)
+                                .setLabel(displayLabel)
+                                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                                .setRoleFlags(C.ROLE_FLAG_CAPTION or C.ROLE_FLAG_SUBTITLE)
+                                .build()
+
+                            itemToPlay = itemToPlay.buildUpon()
+                                .setSubtitleConfigurations(listOf(subConfig))
+                                .build()
+                            currentMediaItem = itemToPlay
+                            Log.i(TAG, "Attached pre-downloaded subtitle on startup: ${cachedSubtitle.file.name}")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to check pre-downloaded subtitle: ${e.message}")
+                    }
+                }
+
+                controller.setMediaItem(itemToPlay, startPosition)
                 controller.prepare()
                 controller.playWhenReady = true
             } else if (activeItem != null) {
@@ -1054,6 +1102,18 @@ class LocalPlayerActivity : FragmentActivity() {
                                 fontGenericFamily = com.google.android.gms.cast.TextTrackStyle.FONT_FAMILY_SANS_SERIF
                             }
                             remoteMediaClient.setTextTrackStyle(textTrackStyle)
+
+                            val mediaStatus = remoteMediaClient.mediaStatus
+                            if (mediaStatus != null) {
+                                val tracks = mediaStatus.mediaInfo?.mediaTracks.orEmpty()
+                                val activeTrackIds = mediaStatus.activeTrackIds ?: longArrayOf()
+                                val textTrack = tracks.firstOrNull { it.type == MediaTrack.TYPE_TEXT }
+                                if (textTrack != null && !activeTrackIds.contains(textTrack.id)) {
+                                    remoteMediaClient.setActiveMediaTracks(longArrayOf(textTrack.id))
+                                    Log.i(TAG, "Activated Cast text track ID: ${textTrack.id}")
+                                }
+                            }
+
                             Log.i(TAG, "Live updated custom TextTrackStyle on active Cast session")
                         }
                     }
@@ -1472,6 +1532,18 @@ class LocalPlayerActivity : FragmentActivity() {
             .build()
         controller.trackSelectionParameters = params
         Log.i(TAG, "Attached subtitle: ${subtitle.file.name}, lang: ${subtitle.language}")
+    }
+
+    private fun extractInfoHash(vararg candidates: String?): String {
+        val hashPattern = Regex("(?i)[a-f0-9]{40}")
+        for (candidate in candidates) {
+            if (candidate.isNullOrBlank()) continue
+            val match = hashPattern.find(candidate)
+            if (match != null) {
+                return match.value.lowercase(Locale.ROOT)
+            }
+        }
+        return ""
     }
 
     override fun onPause() {
