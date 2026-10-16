@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package com.martinrevert.latorrentola.ui.home
 
 import androidx.compose.foundation.layout.Arrangement
@@ -126,6 +128,7 @@ fun TvGenreResultsScreen(
                     TvGenreResultsUiState.Loading -> MovieListPlaceholder(
                         contentPadding = PaddingValues(16.dp)
                     )
+
                     is TvGenreResultsUiState.Success -> TvSeriesGrid(
                         series = state.series,
                         genres = genres,
@@ -135,6 +138,7 @@ fun TvGenreResultsScreen(
                         onLoadMore = viewModel::loadMore,
                         contentPadding = PaddingValues(16.dp)
                     )
+
                     is TvGenreResultsUiState.Error -> Box(
                         modifier = Modifier
                             .fillMaxSize()

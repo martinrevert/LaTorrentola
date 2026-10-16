@@ -38,6 +38,7 @@ import java.io.File
 import java.util.Locale
 import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Duration.Companion.seconds
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -224,7 +225,7 @@ class TorrentDownloadService : Service() {
                     synchronized(sessionLock) {
                         sessionManager
                             ?.find(Sha1Hash.parseHex(requestedHash))
-                            ?.takeIf { it.isValid() }
+                            ?.takeIf { it.isValid }
                             ?.let { handle ->
                                 if (shouldPause) handle.pause() else handle.resume()
                             }
@@ -333,12 +334,12 @@ class TorrentDownloadService : Service() {
             try {
                 val existingRecord = runBlocking(Dispatchers.IO) { torrentDownloadDao.get(infoHash) }
                 if (existingRecord != null) {
-                    if (seriesId <= 0 && (existingRecord.seriesId ?: 0) > 0) {
+                    if ((existingRecord.seriesId ?: 0) > 0) {
                         seriesId = existingRecord.seriesId ?: 0
                         if (seasonNumber <= 0) seasonNumber = existingRecord.seasonNumber ?: 0
                         if (episodeNumber <= 0) episodeNumber = existingRecord.episodeNumber ?: 0
                     }
-                    if (movieId <= 0 && (existingRecord.movieId ?: 0) > 0) {
+                    if ((existingRecord.movieId ?: 0) > 0) {
                         movieId = existingRecord.movieId ?: 0
                     }
                 }
@@ -695,7 +696,7 @@ class TorrentDownloadService : Service() {
                     null
                 } else {
                     manager.find(Sha1Hash.parseHex(infoHash))
-                        ?.takeIf { it.isValid() }
+                        ?.takeIf { it.isValid }
                         ?.also { handle ->
                             if (pausedInfoHash == infoHash) handle.pause()
                             if (mediaTarget == null) {
@@ -751,7 +752,7 @@ class TorrentDownloadService : Service() {
                 // Deterministic startup buffer enforcement: while waiting for ready, continuously request missing head pieces (and tail pieces if MKV)
                 if (!readyNotified && target != null) {
                     synchronized(sessionLock) {
-                        if (sessionManager === manager && handle.isValid()) {
+                        if (sessionManager === manager && handle.isValid) {
                             val startupPieceEnd = ((target.fileOffset + minOf(target.length - 1, STARTUP_BUFFER_BYTES)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
                             for (p in target.firstPiece..startupPieceEnd) {
                                 if (!handle.havePiece(p)) {
@@ -776,10 +777,10 @@ class TorrentDownloadService : Service() {
                 }
 
                 val status = synchronized(sessionLock) {
-                    if (sessionManager === manager && handle.isValid()) handle.status() else null
+                    if (sessionManager === manager && handle.isValid) handle.status() else null
                 }
                 if (status == null) {
-                    delay(1_000)
+                    delay(1.seconds)
                     continue
                 }
                 val progress = (status.progress() * 100).toInt().coerceIn(0, 100)
@@ -813,7 +814,7 @@ class TorrentDownloadService : Service() {
                         onRangeRequested = { start, end ->
                             if (!completed.get()) {
                                 synchronized(sessionLock) {
-                                    if (sessionManager === manager && handle.isValid()) {
+                                    if (sessionManager === manager && handle.isValid) {
                                         val reqPiece = ((target.fileOffset + start) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
                                         val reqEndPiece = ((target.fileOffset + end) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
                                         val windowEnd = minOf(reqEndPiece + 16, target.lastPiece)
@@ -907,7 +908,7 @@ class TorrentDownloadService : Service() {
                     updateDownloadRecord(request, STATE_PAUSED, progress, null, numSeeds, numPeers)
                 }
             }
-            delay(1_000)
+            delay(1.seconds)
         }
     }
 
@@ -961,7 +962,7 @@ class TorrentDownloadService : Service() {
         directory: File,
         title: String = ""
     ): MediaTarget? {
-        val torrentInfo = handle.torrentFile()?.takeIf { it.isValid() } ?: return null
+        val torrentInfo = handle.torrentFile()?.takeIf { it.isValid } ?: return null
         val files = torrentInfo.files()
         val videoExtensions = setOf("mkv", "mp4", "m4v", "avi", "mov", "webm", "ts")
         val videoIndices = (0 until files.numFiles())
@@ -973,16 +974,15 @@ class TorrentDownloadService : Service() {
             matchesTitleEpisode(files.fileName(index), title)
         } ?: videoIndices.maxByOrNull(files::fileSize) ?: return null
 
-        val index = targetIndex
-        val path = File(files.filePath(index, directory.absolutePath))
-        val firstPiece = files.pieceIndexAtFile(index)
-        val lastPiece = files.lastPieceIndexAtFile(index)
+        val path = File(files.filePath(targetIndex, directory.absolutePath))
+        val firstPiece = files.pieceIndexAtFile(targetIndex)
+        val lastPiece = files.lastPieceIndexAtFile(targetIndex)
         return MediaTarget(
             file = path,
-            fileIndex = index,
+            fileIndex = targetIndex,
             fileCount = files.numFiles(),
-            length = files.fileSize(index),
-            fileOffset = files.fileOffset(index),
+            length = files.fileSize(targetIndex),
+            fileOffset = files.fileOffset(targetIndex),
             pieceLength = files.pieceLength(),
             firstPiece = firstPiece,
             lastPiece = lastPiece
@@ -1048,7 +1048,7 @@ class TorrentDownloadService : Service() {
         start: Long,
         end: Long
     ): Boolean = synchronized(sessionLock) {
-        if (start < 0 || end < start || end >= target.length || !handle.isValid()) {
+        if (start < 0 || end !in start until target.length || !handle.isValid) {
             return@synchronized false
         }
         val firstPiece = ((target.fileOffset + start) / target.pieceLength).toInt()

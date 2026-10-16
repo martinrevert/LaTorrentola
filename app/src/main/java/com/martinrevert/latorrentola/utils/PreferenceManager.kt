@@ -146,7 +146,7 @@ class PreferenceManager @Inject constructor(
 
     /** Persists a minimum rating clamped to the supported range and publishes it. */
     fun setMinimumRating(rating: Float) {
-        val roundedRating = (Math.round(rating * 10.0f) / 10.0f).coerceIn(MINIMUM_RATING_MIN, MINIMUM_RATING_MAX)
+        val roundedRating = (kotlin.math.round(rating * 10.0f) / 10.0f).coerceIn(MINIMUM_RATING_MIN, MINIMUM_RATING_MAX)
         sharedPreferences.edit { putFloat(KEY_MINIMUM_RATING, roundedRating) }
         _minimumRatingFlow.value = roundedRating
     }
@@ -172,7 +172,7 @@ class PreferenceManager @Inject constructor(
     /** Returns the configured torrent handling mode, defaulting to local playback/streaming. */
     fun getTorrentHandlingMode(): TorrentHandlingMode {
         val storedMode = sharedPreferences.getString(KEY_TORRENT_HANDLING_MODE, null)
-        return TorrentHandlingMode.values().firstOrNull { it.name == storedMode }
+        return TorrentHandlingMode.entries.firstOrNull { it.name == storedMode }
             ?: TorrentHandlingMode.LOCAL_PLAYBACK
     }
 
@@ -185,7 +185,7 @@ class PreferenceManager @Inject constructor(
     /** Returns the configured auto-play quality selection method, defaulting to OFF. */
     fun getAutoPlayQualitySelectionMethod(): AutoPlayQualitySelectionMethod {
         val storedMethod = sharedPreferences.getString(KEY_AUTO_PLAY_QUALITY_SELECTION_METHOD, null)
-        return AutoPlayQualitySelectionMethod.values().firstOrNull { it.name == storedMethod }
+        return AutoPlayQualitySelectionMethod.entries.firstOrNull { it.name == storedMethod }
             ?: AutoPlayQualitySelectionMethod.OFF
     }
 

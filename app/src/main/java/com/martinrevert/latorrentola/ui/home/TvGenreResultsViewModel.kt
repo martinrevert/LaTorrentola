@@ -94,9 +94,8 @@ class TvGenreResultsViewModel @Inject constructor(
             try {
                 _genres.value = tmdbRepository.getTvGenres()
             } catch (e: Exception) {
-                if (e !is CancellationException) {
-                    _genreCatalogError.value = e.localizedMessage ?: "Unable to load TV genres"
-                }
+                if (e is CancellationException) throw e
+                _genreCatalogError.value = e.localizedMessage ?: "Unable to load TV genres"
             }
         }
     }
@@ -170,7 +169,8 @@ class TvGenreResultsViewModel @Inject constructor(
                 TvGenreResultsUiState.Success(allSeries.toList())
             }
         } catch (e: Exception) {
-            if (generation == requestGeneration && e !is CancellationException && allSeries.isEmpty()) {
+            if (e is CancellationException) throw e
+            if (generation == requestGeneration && allSeries.isEmpty()) {
                 _uiState.value = TvGenreResultsUiState.Error(
                     UiText.DynamicString(e.localizedMessage ?: "Unable to load TV genre results")
                 )

@@ -35,7 +35,7 @@ class VoiceManager @Inject constructor(
         if (status == TextToSpeech.SUCCESS) {
             isInitialized = true
             // Pre-warm the engine with English as a safe baseline
-            tts?.setLanguage(Locale.US)
+            tts?.language = Locale.US
             pendingText?.let {
                 speak(it, Locale.US)
                 pendingText = null

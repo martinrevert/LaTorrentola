@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package com.martinrevert.latorrentola.ui.downloads
 
 import android.content.ComponentName
@@ -89,7 +91,7 @@ import com.martinrevert.latorrentola.utils.isTvDevice
  * @param viewModel Room-backed torrent download state and control actions.
  * @param onBackClick Returns to the previous destination.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TorrentDownloadsScreen(
     viewModel: TorrentDownloadsViewModel = hiltViewModel(),
@@ -453,7 +455,7 @@ private fun TorrentDownloadItem(
         )
         (download.state == TorrentDownloadService.STATE_DOWNLOADING || download.state == TorrentDownloadService.STATE_BUFFERING || download.state == TorrentDownloadService.STATE_QUEUED) && download.numSeeds == 0 && download.numPeers == 0 -> Triple(
             Icons.Default.CloudOff,
-            stringResource(R.string.torrent_status_label, stringResource(R.string.torrent_status_stalled, download.numSeeds, download.numPeers)),
+            stringResource(R.string.torrent_status_label, stringResource(R.string.torrent_status_stalled, 0, 0)),
             MaterialTheme.colorScheme.error
         )
         else -> Triple(

@@ -14,6 +14,7 @@ import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
 import com.martinrevert.latorrentola.utils.TorrentLaunchResult
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -57,7 +58,9 @@ class TvPlayerViewModel @Inject constructor(
             if (resolvedSeriesName.isBlank() && seriesId > 0) {
                 try {
                     resolvedSeriesName = tmdbRepository.getTvDetails(seriesId).name.orEmpty()
-                } catch (_: Exception) { }
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                }
             }
 
             _nextEpisodeData.value = NextEpisodeData(
@@ -74,6 +77,7 @@ class TvPlayerViewModel @Inject constructor(
                     val releases = eztvRepository.getTorrentsForEpisode(imdbId, seasonNumber, episodeNumber)
                     _nextEpisodeReleases.value = releases
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     _error.value = e.localizedMessage ?: "Unknown error"
                 }
             } else {
@@ -121,6 +125,7 @@ class TvPlayerViewModel @Inject constructor(
                     _error.value = "No next episode available"
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _error.value = e.localizedMessage ?: "Unknown error"
             }
             _isLoading.value = false
@@ -180,6 +185,7 @@ class TvPlayerViewModel @Inject constructor(
             }
             result
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             _error.value = e.localizedMessage ?: "Failed to download episode"
             TorrentLaunchResult.NoExternalClient
         }
@@ -197,7 +203,9 @@ class TvPlayerViewModel @Inject constructor(
             if (resolvedName.isBlank()) {
                 try {
                     resolvedName = tmdbRepository.getTvDetails(seriesId).name.orEmpty()
-                } catch (_: Exception) { }
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                }
             }
 
             val seasonDetails = tmdbRepository.getTvSeasonDetails(seriesId, seasonNumber)
@@ -228,11 +236,13 @@ class TvPlayerViewModel @Inject constructor(
                             firstEp.name.orEmpty()
                         )
                     } else null
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     null
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
             null
         }
     }

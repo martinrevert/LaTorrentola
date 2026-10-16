@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package com.martinrevert.latorrentola.ui.auth
 
 import android.widget.Toast
@@ -121,8 +123,8 @@ private fun LoginScreenContent(
     }
 }
 
-@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 /** Light and dark previews of the idle login screen across form factors. */
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 @Composable
 fun LoginScreenPreview() {
     LaTorrentolaTheme {
@@ -133,8 +135,8 @@ fun LoginScreenPreview() {
     }
 }
 
-@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 /** Light and dark previews of the login loading state across form factors. */
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 @Composable
 fun LoginScreenLoadingPreview() {
     LaTorrentolaTheme {

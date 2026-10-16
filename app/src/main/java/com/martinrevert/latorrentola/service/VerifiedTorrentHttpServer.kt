@@ -61,7 +61,10 @@ class VerifiedTorrentHttpServer(
      * @return Bounded file response, range response, subtitle file, or an explicit unavailable/error status.
      */
     override fun serve(session: IHTTPSession): Response {
-        Log.d(TAG, "HTTP ${session.method} ${session.uri} | Range: ${session.headers["range"]} | Origin: ${session.headers["origin"]}")
+        Log.d(
+            TAG,
+            "HTTP ${session.method} ${session.uri} | Range: ${session.headers["range"]} | Origin: ${session.headers["origin"]}"
+        )
 
         // Handle CORS preflight OPTIONS requests for Cast receivers
         if (session.method == Method.OPTIONS) {
@@ -81,7 +84,12 @@ class VerifiedTorrentHttpServer(
             if (parts.isNotEmpty()) {
                 val base64Path = parts[0]
                 val decodedPath = try {
-                    String(android.util.Base64.decode(base64Path, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING))
+                    String(
+                        android.util.Base64.decode(
+                            base64Path,
+                            android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
+                        )
+                    )
                 } catch (_: Exception) {
                     try {
                         String(android.util.Base64.decode(base64Path, android.util.Base64.DEFAULT))
@@ -91,7 +99,11 @@ class VerifiedTorrentHttpServer(
                 }
                 if (decodedPath != null) {
                     val candidate = File(decodedPath)
-                    if (candidate.exists() && candidate.isFile && (candidate.name.endsWith(".vtt", true) || candidate.name.endsWith(".srt", true))) {
+                    if (candidate.exists() && candidate.isFile && (candidate.name.endsWith(
+                            ".vtt",
+                            true
+                        ) || candidate.name.endsWith(".srt", true))
+                    ) {
                         subFile = candidate
                     }
                 }
@@ -112,35 +124,60 @@ class VerifiedTorrentHttpServer(
 
             if (subFile != null) {
                 return try {
-                    val rawText = try { subFile.readText(Charsets.UTF_8) } catch (_: Exception) { subFile.readText(Charsets.ISO_8859_1) }
+                    val rawText = try {
+                        subFile.readText(Charsets.UTF_8)
+                    } catch (_: Exception) {
+                        subFile.readText(Charsets.ISO_8859_1)
+                    }
                     val vttText = convertSrtToVtt(rawText)
                     val vttBytes = vttText.toByteArray(Charsets.UTF_8)
                     val bis = java.io.ByteArrayInputStream(vttBytes)
                     Log.d(TAG, "Serving subtitle VTT for $uri (${vttBytes.size} bytes)")
-                    newFixedLengthResponse(Response.Status.OK, "text/vtt; charset=utf-8", bis, vttBytes.size.toLong()).apply {
+                    newFixedLengthResponse(
+                        Response.Status.OK,
+                        "text/vtt; charset=utf-8",
+                        bis,
+                        vttBytes.size.toLong()
+                    ).apply {
                         addHeader("Accept-Ranges", "bytes")
                         addCorsHeaders(this, session)
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error serving subtitle VTT: ${e.message}")
-                    newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, e.message.orEmpty()).apply { addCorsHeaders(this, session) }
+                    newFixedLengthResponse(
+                        Response.Status.INTERNAL_ERROR,
+                        MIME_PLAINTEXT,
+                        e.message.orEmpty()
+                    ).apply { addCorsHeaders(this, session) }
                 }
             } else {
                 Log.w(TAG, "Subtitle file not found for URI $uri")
-                return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Subtitle file not found").apply { addCorsHeaders(this, session) }
+                return newFixedLengthResponse(
+                    Response.Status.NOT_FOUND,
+                    MIME_PLAINTEXT,
+                    "Subtitle file not found"
+                ).apply { addCorsHeaders(this, session) }
             }
         }
 
         val isMediaUri = uri.contains(accessToken) && !uri.contains("/subtitles/")
         if (!isMediaUri) {
             Log.w(TAG, "URI not matched: $uri (expected token: $accessToken)")
-            return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not found").apply { addCorsHeaders(this, session) }
+            return newFixedLengthResponse(
+                Response.Status.NOT_FOUND,
+                MIME_PLAINTEXT,
+                "Not found"
+            ).apply { addCorsHeaders(this, session) }
         }
 
         val rawRange = parseRange(session.headers["range"], expectedLength)
             ?: if (session.headers.containsKey("range")) {
                 Log.w(TAG, "Invalid Range requested: ${session.headers["range"]}")
-                return newFixedLengthResponse(Response.Status.RANGE_NOT_SATISFIABLE, MIME_PLAINTEXT, "").apply { addCorsHeaders(this, session) }
+                return newFixedLengthResponse(
+                    Response.Status.RANGE_NOT_SATISFIABLE,
+                    MIME_PLAINTEXT,
+                    ""
+                ).apply { addCorsHeaders(this, session) }
             } else {
                 0L to (expectedLength - 1L)
             }
@@ -173,24 +210,38 @@ class VerifiedTorrentHttpServer(
             }
         }
         if (expectedLength <= 0L) {
-            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "Invalid media length").apply { addCorsHeaders(this, session) }
+            return newFixedLengthResponse(
+                Response.Status.INTERNAL_ERROR,
+                MIME_PLAINTEXT,
+                "Invalid media length"
+            ).apply { addCorsHeaders(this, session) }
         }
 
         // Check if file is ready on disk. If file exists and has data, skip wait loop completely.
         if (!activeFile.isFile || activeFile.length() < 1000L) {
             var fileWaitAttempts = 0
             while ((!activeFile.isFile || activeFile.length() < 1000L) && fileWaitAttempts < 20) {
-                try { Thread.sleep(100) } catch (_: InterruptedException) {}
+                try {
+                    Thread.sleep(100)
+                } catch (_: InterruptedException) {
+                }
                 fileWaitAttempts++
             }
         }
 
         if (!activeFile.isFile || activeFile.length() == 0L) {
             Log.e(TAG, "File not ready on disk for $uri")
-            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "File not ready on disk").apply { addCorsHeaders(this, session) }
+            return newFixedLengthResponse(
+                Response.Status.INTERNAL_ERROR,
+                MIME_PLAINTEXT,
+                "File not ready on disk"
+            ).apply { addCorsHeaders(this, session) }
         }
 
-        Log.d(TAG, "Streaming GET $uri -> range $start-$end / $expectedLength (MIME: $httpMimeType, file: ${activeFile.name})")
+        Log.d(
+            TAG,
+            "Streaming GET $uri -> range $start-$end / $expectedLength (MIME: $httpMimeType, file: ${activeFile.name})"
+        )
         val input = FileInputStream(activeFile)
         skipFully(input, start)
         val body = VerifiedRangeInputStream(input, start, end, ::awaitVerified)
@@ -214,9 +265,15 @@ class VerifiedTorrentHttpServer(
         if (!requestedHeaders.isNullOrBlank()) {
             response.addHeader("Access-Control-Allow-Headers", requestedHeaders)
         } else {
-            response.addHeader("Access-Control-Allow-Headers", "Origin, Accept, Content-Type, Authorization, Range, Access-Control-Request-Private-Network")
+            response.addHeader(
+                "Access-Control-Allow-Headers",
+                "Origin, Accept, Content-Type, Authorization, Range, Access-Control-Request-Private-Network"
+            )
         }
-        response.addHeader("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges, Access-Control-Allow-Private-Network")
+        response.addHeader(
+            "Access-Control-Expose-Headers",
+            "Content-Length, Content-Range, Accept-Ranges, Access-Control-Allow-Private-Network"
+        )
         response.addHeader("Access-Control-Allow-Private-Network", "true")
         response.addHeader("Access-Control-Max-Age", "86400")
     }
@@ -284,7 +341,7 @@ class VerifiedTorrentHttpServer(
             start = requestedStart
             end = (requestedEnd ?: (length - 1L)).coerceAtMost(length - 1L)
         }
-        return if (start < 0 || start >= length || end < start) null else start to end
+        return if (start !in 0 until length || end < start) null else start to end
     }
 
     /**
@@ -321,6 +378,7 @@ class VerifiedTorrentHttpServer(
         private val waitForRangeVerified: (Long, Long) -> Boolean
     ) : FilterInputStream(input) {
         private var currentOffset = start
+
         // Start verifiedThrough before 'start' so the very first chunk is forced to verify
         private var verifiedThrough = start - 1L
 
@@ -388,8 +446,7 @@ class VerifiedTorrentHttpServer(
                     }
                     .flatMap { java.util.Collections.list(it.inetAddresses).asSequence() }
                     .filterIsInstance<java.net.Inet4Address>()
-                    .filter { !it.isLoopbackAddress && !it.isLinkLocalAddress && it.isSiteLocalAddress }
-                    .firstOrNull()
+                    .firstOrNull { !it.isLoopbackAddress && !it.isLinkLocalAddress && it.isSiteLocalAddress }
                     ?.hostAddress
 
                 if (primaryIp != null) return primaryIp
@@ -398,8 +455,7 @@ class VerifiedTorrentHttpServer(
                     .filter { it.isUp && !it.isLoopback }
                     .flatMap { java.util.Collections.list(it.inetAddresses).asSequence() }
                     .filterIsInstance<java.net.Inet4Address>()
-                    .filter { !it.isLoopbackAddress && !it.isLinkLocalAddress }
-                    .firstOrNull()
+                    .firstOrNull { !it.isLoopbackAddress && !it.isLinkLocalAddress }
                     ?.hostAddress
             } catch (_: Exception) {
                 null

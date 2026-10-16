@@ -165,7 +165,7 @@ class HomeViewModel @Inject constructor(
         combine(
             preferenceManager.filteredLanguagesFlow,
             preferenceManager.minimumRatingFlow
-        ) { _, _ -> Unit }
+        ) { _, _ -> }
             .onEach { refresh(force = true) }
             .launchIn(viewModelScope)
     }
@@ -256,7 +256,8 @@ class HomeViewModel @Inject constructor(
                     _uiState.value = HomeUiState.Error(UiText.StringResource(R.string.error_no_movies_filtered))
                 }
             } catch (e: Exception) {
-                if (e !is CancellationException && allMovies.isEmpty()) {
+                if (e is CancellationException) throw e
+                if (allMovies.isEmpty()) {
                     _uiState.value = HomeUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
                 }
             } finally {
@@ -328,7 +329,8 @@ class HomeViewModel @Inject constructor(
                     _uiState.value = HomeUiState.Error(UiText.StringResource(R.string.error_no_movies_filtered))
                 }
             } catch (e: Exception) {
-                if (e !is CancellationException && allMovies.isEmpty()) {
+                if (e is CancellationException) throw e
+                if (allMovies.isEmpty()) {
                     _uiState.value = HomeUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
                 }
             } finally {

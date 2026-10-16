@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package com.martinrevert.latorrentola.ui.settings
 
 import androidx.compose.foundation.clickable
@@ -54,7 +56,6 @@ import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.tv.material3.Button
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class, ExperimentalHazeApi::class)
 /** Collects settings state and presents the adaptive settings screen. */
 @Composable
 fun SettingsScreen(
@@ -96,8 +97,8 @@ fun SettingsScreen(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
 /** Renders account, appearance, filtering, and accessibility settings. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScreenContent(
     uiState: SettingsUiState,
@@ -152,7 +153,6 @@ private fun SettingsScreenContent(
             )
         }
     ) { padding ->
-        val unusedPadding = padding
         val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
         val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
@@ -160,7 +160,7 @@ private fun SettingsScreenContent(
             modifier = Modifier
                 .fillMaxSize()
                 .hazeSource(state = hazeState)
-                .consumeWindowInsets(unusedPadding)
+                .consumeWindowInsets(padding)
         ) {
         if (isWideScreen) {
             Row(
@@ -499,7 +499,6 @@ private fun TorrentModeSetting(
  * @param onClear Removes saved credentials.
  */
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
 private fun OpenSubtitlesCredentialsSetting(
     uiState: SettingsUiState,
     isTv: Boolean,
@@ -719,7 +718,6 @@ fun UserSection(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 /** Allows selection between system, light, and dark appearance modes. */
 @Composable
 fun ThemeSelector(
@@ -777,7 +775,7 @@ private fun MinimumRatingSetting(
         ) {
             IconButton(
                 onClick = {
-                    val next = (Math.round((value - 0.1f) * 10.0f) / 10.0f).coerceAtLeast(PreferenceManager.MINIMUM_RATING_MIN)
+                    val next = (kotlin.math.round((value - 0.1f) * 10.0f) / 10.0f).coerceAtLeast(PreferenceManager.MINIMUM_RATING_MIN)
                     onValueChange(next)
                 },
                 enabled = value > PreferenceManager.MINIMUM_RATING_MIN
@@ -795,7 +793,7 @@ private fun MinimumRatingSetting(
             )
             IconButton(
                 onClick = {
-                    val next = (Math.round((value + 0.1f) * 10.0f) / 10.0f).coerceAtMost(PreferenceManager.MINIMUM_RATING_MAX)
+                    val next = (kotlin.math.round((value + 0.1f) * 10.0f) / 10.0f).coerceAtMost(PreferenceManager.MINIMUM_RATING_MAX)
                     onValueChange(next)
                 },
                 enabled = value < PreferenceManager.MINIMUM_RATING_MAX
@@ -809,7 +807,6 @@ private fun MinimumRatingSetting(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 /** Renders a labeled settings toggle with device-appropriate focus behavior. */
 @Composable
 fun SettingsToggle(
@@ -938,9 +935,9 @@ private fun AutoPlayQualitySetting(
     }
 }
 
+/** TV preview of the settings screen. */
 @Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
-/** TV preview of the settings screen. */
 @Composable
 fun SettingsScreenTvPreview() {
     LaTorrentolaTheme {
@@ -974,8 +971,8 @@ fun SettingsScreenTvPreview() {
     }
 }
 
-@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 /** Light and dark previews of the settings screen across form factors. */
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 @Composable
 fun SettingsScreenPreview() {
     LaTorrentolaTheme {

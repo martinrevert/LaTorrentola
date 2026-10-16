@@ -28,6 +28,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 import java.io.File
 
@@ -211,7 +213,7 @@ class PlaybackService : MediaSessionService() {
                 override fun onCastSessionUnavailable() {
                     Log.i(TAG, "Cast session unavailable - restoring local playback on ExoPlayer")
                     serviceScope.launch {
-                        delay(200)
+                        delay(200.milliseconds)
                         localPlayer?.let { exo ->
                             if (exo.mediaItemCount > 0 && exo.playbackState == Player.STATE_IDLE) {
                                 exo.prepare()
@@ -415,7 +417,7 @@ class PlaybackService : MediaSessionService() {
         progressReportingJob?.cancel()
         progressReportingJob = serviceScope.launch {
             while (true) {
-                delay(10_000L)
+                delay(10.seconds)
                 if (player.isPlaying) {
                     saveCurrentProgress(player)
                 }

@@ -16,6 +16,7 @@ import com.martinrevert.latorrentola.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -49,51 +50,61 @@ class SearchViewModel @Inject constructor(
 
     /** Mutable backing state for the selected favorites filter. */
     private val _selectedFavoritesFilter = MutableStateFlow(FavoritesFilter.ALL)
+
     /** Currently selected filter for the favorites collection. */
     val selectedFavoritesFilter: StateFlow<FavoritesFilter> = _selectedFavoritesFilter.asStateFlow()
 
     /** Mutable backing state for current search results. */
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
+
     /** Current search or collection state. */
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
     /** Mutable backing state for TV mode toggle. */
     private val _isTvMode = MutableStateFlow(false)
+
     /** Whether TV mode is currently selected. */
     val isTvMode: StateFlow<Boolean> = _isTvMode.asStateFlow()
 
     /** Mutable backing state for current TV search results. */
     private val _tvUiState = MutableStateFlow<SearchTvUiState>(SearchTvUiState.Idle)
+
     /** Current TV search or collection state. */
     val tvUiState: StateFlow<SearchTvUiState> = _tvUiState.asStateFlow()
 
     /** Mutable backing state for TV-card focus restoration. */
     private val _lastClickedSeriesId = MutableStateFlow<Int?>(null)
+
     /** TV series identifier to refocus when returning to results. */
     val lastClickedSeriesId: StateFlow<Int?> = _lastClickedSeriesId.asStateFlow()
 
     /** Mutable backing state for the selected torrent quality. */
     private val _selectedQuality = MutableStateFlow<String?>(null)
+
     /** Selected torrent quality, or `null` for all qualities. */
     val selectedQuality: StateFlow<String?> = _selectedQuality.asStateFlow()
 
     /** Mutable backing state for pagination progress. */
     private val _isLoadingMore = MutableStateFlow(false)
+
     /** Whether another page is loading. */
     val isLoadingMore: StateFlow<Boolean> = _isLoadingMore.asStateFlow()
 
     /** Mutable backing state for movie-card focus restoration. */
     private val _lastClickedMovieId = MutableStateFlow<Int?>(null)
+
     /** Movie identifier to refocus when returning to results. */
     val lastClickedMovieId: StateFlow<Int?> = _lastClickedMovieId.asStateFlow()
 
     /** Mutable backing state for multi-selected favorite movie IDs. */
     private val _selectedFavoriteIds = MutableStateFlow<Set<Int>>(emptySet())
+
     /** IDs selected for bulk favorite removal. */
     val selectedFavoriteIds: StateFlow<Set<Int>> = _selectedFavoriteIds.asStateFlow()
 
     /** Mutable backing state for favorite TV series displayed alongside movies. */
     private val _favoriteTvSeries = MutableStateFlow<List<TmdbTvSummary>>(emptyList())
+
     /** Favorite TV series displayed in the mixed favorites collection. */
     val favoriteTvSeries: StateFlow<List<TmdbTvSummary>> = _favoriteTvSeries.asStateFlow()
 
@@ -130,7 +141,12 @@ class SearchViewModel @Inject constructor(
     /** All TMDB TV genres, ordered by local usage. */
     val tvGenres: StateFlow<List<TmdbTvGenre>> = tmdbRepository.observeTvGenreUsage()
         .map { usage ->
-            val catalog = try { tmdbRepository.getTvGenres() } catch (_: Exception) { emptyList() }
+            val catalog = try {
+                tmdbRepository.getTvGenres()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                emptyList()
+            }
             catalog.sortedByDescending { usage[it.id] ?: 0 }
         }
         .catch { emit(emptyList()) }
@@ -145,28 +161,40 @@ class SearchViewModel @Inject constructor(
 
     /** Accumulated results backing pagination and bulk selection. */
     private val allResults = mutableListOf<Movie>()
+
     /** Next page to request for a catalog search. */
     private var currentPage = 1
+
     /** Current text search term, if any. */
     private var lastQuery: String? = null
+
     /** Current genre search term, if any. */
     private var lastGenre: String? = null
+
     /** Whether the favorites collection is currently displayed. */
     private var isShowingFavorites = false
+
     /** Whether the downloads collection is currently displayed. */
     private var isShowingDownloads = false
+
     /** Whether the recent releases collection is currently displayed. */
     private var isShowingNew = false
+
     /** Whether a catalog page request is active. */
     private var isFetching = false
+
     /** Whether additional catalog pages may contain results. */
     private var canLoadMore = true
+
     /** Active favorites observation job. */
     private var favoritesJob: Job? = null
+
     /** Active downloads observation job. */
     private var downloadsJob: Job? = null
+
     /** Active recent-movies loading job. */
     private var newMoviesJob: Job? = null
+
     /** Active catalog search job. */
     private var searchJob: Job? = null
 
@@ -180,7 +208,7 @@ class SearchViewModel @Inject constructor(
         combine(
             preferenceManager.filteredLanguagesFlow,
             preferenceManager.minimumRatingFlow
-        ) { _, _ -> Unit }
+        ) { _, _ -> }
             .onEach {
                 if (isShowingFavorites) {
                     showFavorites(force = true)
@@ -191,7 +219,7 @@ class SearchViewModel @Inject constructor(
                 } else if (lastQuery != null || lastGenre != null) {
                     currentPage = 1
                     allResults.clear()
-                    loadMore(force = true) 
+                    loadMore(force = true)
                 }
             }
             .launchIn(viewModelScope)
@@ -203,7 +231,7 @@ class SearchViewModel @Inject constructor(
         if (_selectedQuality.value == q) return
         _selectedQuality.value = q
         clearLastClickedMovieId()
-        
+
         if (isShowingFavorites) {
             showFavorites(force = true)
         } else if (isShowingDownloads) {
@@ -285,6 +313,7 @@ class SearchViewModel @Inject constructor(
                     _tvUiState.value = SearchTvUiState.Success(results)
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _tvUiState.value = SearchTvUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
             }
         }
@@ -310,7 +339,9 @@ class SearchViewModel @Inject constructor(
                     try {
                         val series = tmdbRepository.getTvDetails(seriesId)
                         seriesList.add(series)
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                    }
                 }
                 if (seriesList.isEmpty()) {
                     _tvUiState.value = SearchTvUiState.Empty
@@ -334,6 +365,7 @@ class SearchViewModel @Inject constructor(
                     _tvUiState.value = SearchTvUiState.Success(results)
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _tvUiState.value = SearchTvUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
             }
         }
@@ -350,7 +382,7 @@ class SearchViewModel @Inject constructor(
             return
         }
         if (query == lastQuery && !isShowingFavorites && !isShowingDownloads && !isShowingNew) return
-        
+
         isShowingFavorites = false
         isShowingDownloads = false
         isShowingNew = false
@@ -360,7 +392,7 @@ class SearchViewModel @Inject constructor(
         downloadsJob?.cancel()
         newMoviesJob?.cancel()
         clearLastClickedMovieId()
-        
+
         resetAndLoad()
     }
 
@@ -394,7 +426,7 @@ class SearchViewModel @Inject constructor(
             return
         }
         if (genre == lastGenre && !isShowingFavorites && !isShowingDownloads && !isShowingNew) return
-        
+
         isShowingFavorites = false
         isShowingDownloads = false
         isShowingNew = false
@@ -404,7 +436,7 @@ class SearchViewModel @Inject constructor(
         downloadsJob?.cancel()
         newMoviesJob?.cancel()
         clearLastClickedMovieId()
-        
+
         resetAndLoad()
     }
 
@@ -432,15 +464,19 @@ class SearchViewModel @Inject constructor(
                 _selectedFavoritesFilter
             ) { favorites, series, watchHistory, filter ->
                 val watchMap = watchHistory.associateBy { it.mediaId }
-                
-                val missingSeriesIds = series.filter { (it.numberOfEpisodes == null || it.numberOfEpisodes == 0) && !seriesDetailsCache.containsKey(it.id) }.map { it.id }
+
+                val missingSeriesIds = series.filter {
+                    (it.numberOfEpisodes == null || it.numberOfEpisodes == 0) && !seriesDetailsCache.containsKey(it.id)
+                }.map { it.id }
                 if (missingSeriesIds.isNotEmpty()) {
                     viewModelScope.launch {
                         missingSeriesIds.forEach { seriesId ->
                             try {
                                 val details = tmdbRepository.getTvDetails(seriesId)
                                 seriesDetailsCache[seriesId] = details
-                            } catch (_: Exception) {}
+                            } catch (e: Exception) {
+                                if (e is CancellationException) throw e
+                            }
                         }
                         if (isShowingFavorites) {
                             showFavorites(force = true)
@@ -463,16 +499,33 @@ class SearchViewModel @Inject constructor(
                     FavoritesFilter.MOVIES -> favorites to emptyList()
                     FavoritesFilter.TV_SERIES -> emptyList<Movie>() to enrichedSeries
                     FavoritesFilter.WATCHED -> {
-                        favorites.filter { isMovieWatched(it, watchMap) } to enrichedSeries.filter { isTvSeriesWatched(it, watchHistory) }
+                        favorites.filter { isMovieWatched(it, watchMap) } to enrichedSeries.filter {
+                            isTvSeriesWatched(
+                                it,
+                                watchHistory
+                            )
+                        }
                     }
+
                     FavoritesFilter.UNWATCHED -> {
-                        favorites.filter { isMovieUnwatched(it, watchMap) } to enrichedSeries.filter { isTvSeriesUnwatched(it, watchHistory) }
+                        favorites.filter {
+                            isMovieUnwatched(
+                                it,
+                                watchMap
+                            )
+                        } to enrichedSeries.filter { isTvSeriesUnwatched(it, watchHistory) }
                     }
+
                     FavoritesFilter.IN_PROGRESS -> {
-                        favorites.filter { isMovieInProgress(it, watchMap) } to enrichedSeries.filter { isTvSeriesInProgress(it, watchHistory) }
+                        favorites.filter {
+                            isMovieInProgress(
+                                it,
+                                watchMap
+                            )
+                        } to enrichedSeries.filter { isTvSeriesInProgress(it, watchHistory) }
                     }
                 }
-                
+
                 val excludedLangs = preferenceManager.getFilteredLanguages()
                 val finalMovies = MovieFilter.filterMovies(
                     filteredMovies,
@@ -486,7 +539,7 @@ class SearchViewModel @Inject constructor(
                     _favoriteTvSeries.value = filteredSeries
                     allResults.clear()
                     allResults.addAll(filteredMovies)
-                    
+
                     if (allResults.isEmpty() && filteredSeries.isEmpty()) {
                         _uiState.value = SearchUiState.Empty
                     } else {
@@ -513,18 +566,21 @@ class SearchViewModel @Inject constructor(
         return percent == 0
     }
 
-    private fun getSeriesEpisodeProgresses(s: TmdbTvSummary, watchHistory: List<PlaybackProgress>): List<PlaybackProgress> {
+    private fun getSeriesEpisodeProgresses(
+        s: TmdbTvSummary,
+        watchHistory: List<PlaybackProgress>
+    ): List<PlaybackProgress> {
         val seriesIdStr = s.id.toString()
         return watchHistory.filter { item ->
             val isEpisodeMedia = item.isEpisode ||
-                item.mediaId.startsWith("media_") ||
-                (item.mediaId.contains("_s") && item.mediaId.contains("_e"))
+                    item.mediaId.startsWith("media_") ||
+                    (item.mediaId.contains("_s") && item.mediaId.contains("_e"))
 
             if (!isEpisodeMedia) return@filter false
 
             item.mediaId.startsWith("media_${seriesIdStr}_s") ||
-            item.mediaId.contains("_${seriesIdStr}_s") ||
-            item.mediaId.contains("_${seriesIdStr}_")
+                    item.mediaId.contains("_${seriesIdStr}_s") ||
+                    item.mediaId.contains("_${seriesIdStr}_")
         }
     }
 
@@ -588,9 +644,9 @@ class SearchViewModel @Inject constructor(
             _uiState.value = SearchUiState.Loading
             userLibraryRepository.getDownloadedMovies().collect { downloads ->
                 if (!isShowingDownloads) return@collect
-                
+
                 val excludedLangs = preferenceManager.getFilteredLanguages()
-                
+
                 // Keep track of movies we have metadata for
                 val moviesMap = mutableMapOf<Int, Movie>()
                 downloads.forEach { dl ->
@@ -607,7 +663,7 @@ class SearchViewModel @Inject constructor(
                     ).distinctBy { it.id }
                     allResults.clear()
                     allResults.addAll(filtered)
-                    
+
                     if (allResults.isEmpty()) {
                         if (downloads.isEmpty()) {
                             _uiState.value = SearchUiState.Empty
@@ -630,17 +686,20 @@ class SearchViewModel @Inject constructor(
                     .distinctBy { it.movieId }
                     .chunked(5)
                     .forEach { batch ->
-                        batch.map { dl ->
-                            launch {
-                                try {
-                                    val details = ytsRepository.getMovieSummary(dl.movieId)
-                                    details.data?.movie?.let { movie ->
-                                        moviesMap[dl.movieId] = movie
+                        coroutineScope {
+                            batch.map { dl ->
+                                launch {
+                                    try {
+                                        val details = ytsRepository.getMovieSummary(dl.movieId)
+                                        details.data?.movie?.let { movie ->
+                                            moviesMap[dl.movieId] = movie
+                                        }
+                                    } catch (e: Exception) {
+                                        if (e is CancellationException) throw e
                                     }
-                                } catch (_: Exception) {
                                 }
-                            }
-                        }.joinAll()
+                            }.joinAll()
+                        }
                         updateState()
                     }
             }
@@ -678,7 +737,7 @@ class SearchViewModel @Inject constructor(
                     ).distinctBy { it.id }
                     allResults.clear()
                     allResults.addAll(filtered)
-                    
+
                     if (allResults.isEmpty()) {
                         if (recentIds.isEmpty()) {
                             _uiState.value = SearchUiState.Empty
@@ -699,20 +758,24 @@ class SearchViewModel @Inject constructor(
 
                 // Optimization: Fetch all summaries in parallel but update state in batches
                 recentIds.chunked(5).forEach { batchIds ->
-                    batchIds.map { id ->
-                        launch {
-                            try {
-                                val details = ytsRepository.getMovieSummary(id)
-                                details.data?.movie?.let { movie ->
-                                    moviesMap[id] = movie
+                    coroutineScope {
+                        batchIds.map { id ->
+                            launch {
+                                try {
+                                    val details = ytsRepository.getMovieSummary(id)
+                                    details.data?.movie?.let { movie ->
+                                        moviesMap[id] = movie
+                                    }
+                                } catch (e: Exception) {
+                                    if (e is CancellationException) throw e
                                 }
-                            } catch (_: Exception) {
                             }
-                        }
-                    }.joinAll()
+                        }.joinAll()
+                    }
                     updateState()
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.value = SearchUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
             }
         }
@@ -779,10 +842,10 @@ class SearchViewModel @Inject constructor(
     /** Loads catalog pages until new filtered results are found or no pages remain. */
     fun loadMore(force: Boolean = false) {
         if ((isFetching && !force) || !canLoadMore || isShowingFavorites) return
-        
+
         val query = lastQuery
         val genre = lastGenre
-        
+
         if (query == null && genre == null) return
 
         searchJob?.cancel()
@@ -793,7 +856,7 @@ class SearchViewModel @Inject constructor(
         searchJob = viewModelScope.launch {
             try {
                 if (currentPage == 1) _uiState.value = SearchUiState.Loading
-                
+
                 val apiQuality = when (_selectedQuality.value) {
                     "1080p.x265" -> "1080p"
                     else -> _selectedQuality.value
@@ -808,13 +871,13 @@ class SearchViewModel @Inject constructor(
                     }
 
                     val moviesFromApi = result?.data?.movies
-                    
+
                     if (moviesFromApi.isNullOrEmpty()) {
                         canLoadMore = false
                     } else {
                         // Deduplicate API response first
                         val distinctFromApi = moviesFromApi.distinctBy { it.id }
-                        
+
                         // Filter movies based on user settings
                         val excludedLangs = preferenceManager.getFilteredLanguages()
                         val filteredMovies = MovieFilter.filterMovies(
@@ -827,19 +890,19 @@ class SearchViewModel @Inject constructor(
                                 null
                             }
                         )
-                        
+
                         // Filter duplicates against existing results
                         val newMovies = filteredMovies.filter { newMovie ->
                             allResults.none { it.id == newMovie.id }
                         }
-                        
+
                         if (newMovies.isNotEmpty()) {
                             allResults.addAll(newMovies)
                             _uiState.value = SearchUiState.Success(allResults.toList(), genre = lastGenre)
                             foundNewMovies = true
                         }
                     }
-                    
+
                     currentPage++
                 }
 
@@ -847,7 +910,8 @@ class SearchViewModel @Inject constructor(
                     _uiState.value = SearchUiState.Empty
                 }
             } catch (e: Exception) {
-                if (e !is CancellationException && allResults.isEmpty()) {
+                if (e is CancellationException) throw e
+                if (allResults.isEmpty()) {
                     _uiState.value = SearchUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
                 }
             } finally {
@@ -884,10 +948,13 @@ class SearchViewModel @Inject constructor(
 sealed interface SearchUiState {
     /** No search or collection is currently active. */
     object Idle : SearchUiState
+
     /** Results are being loaded. */
     object Loading : SearchUiState
+
     /** The active search or collection has no matching results. */
     object Empty : SearchUiState
+
     /**
      * Successfully loaded movies and the collection context for displaying them.
      *
@@ -898,12 +965,13 @@ sealed interface SearchUiState {
      * @property genre Genre associated with a catalog search, if applicable.
      */
     data class Success(
-        val movies: List<Movie>, 
+        val movies: List<Movie>,
         val isFavorites: Boolean = false,
         val isDownloads: Boolean = false,
         val isNew: Boolean = false,
         val genre: String? = null
     ) : SearchUiState
+
     /**
      * Search or collection loading failed.
      *
@@ -916,16 +984,20 @@ sealed interface SearchUiState {
 sealed interface SearchTvUiState {
     /** No search or collection is currently active. */
     object Idle : SearchTvUiState
+
     /** Results are being loaded. */
     object Loading : SearchTvUiState
+
     /** The active search or collection has no matching results. */
     object Empty : SearchTvUiState
+
     /**
      * Successfully loaded TV series.
      *
      * @property series Matching TV series entries.
      */
     data class Success(val series: List<TmdbTvSummary>) : SearchTvUiState
+
     /**
      * Search or collection loading failed.
      *

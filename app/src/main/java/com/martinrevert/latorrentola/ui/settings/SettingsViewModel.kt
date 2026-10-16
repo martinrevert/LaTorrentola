@@ -13,6 +13,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Maintains settings UI state and synchronizes account settings with Firebase.
@@ -35,11 +36,13 @@ class SettingsViewModel @Inject constructor(
 
     /** Mutable backing state for settings displayed by the screen. */
     private val _uiState = MutableStateFlow(SettingsUiState())
+
     /** Current settings values observed by the UI. */
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
-    
+
     /** Debounced remote language-filter save job. */
     private var syncJob: kotlinx.coroutines.Job? = null
+
     /** Debounced remote minimum-rating save job. */
     private var ratingSyncJob: kotlinx.coroutines.Job? = null
 
@@ -156,17 +159,17 @@ class SettingsViewModel @Inject constructor(
     fun setFilteredLanguages(languages: String) {
         preferenceManager.setFilteredLanguages(languages)
         _uiState.value = _uiState.value.copy(filteredLanguages = languages)
-        
+
         syncJob?.cancel()
         syncJob = viewModelScope.launch {
-            kotlinx.coroutines.delay(1000) // Debounce 1 second
+            kotlinx.coroutines.delay(1.seconds) // Debounce 1 second
             userLibraryRepository.saveFilteredLanguages(languages)
         }
     }
 
     /** Clamps, updates, and debounces saving the minimum rating to Firestore. */
     fun setMinimumRating(rating: Float) {
-        val boundedRating = (Math.round(rating * 10.0f) / 10.0f).coerceIn(
+        val boundedRating = (kotlin.math.round(rating * 10.0f) / 10.0f).coerceIn(
             PreferenceManager.MINIMUM_RATING_MIN,
             PreferenceManager.MINIMUM_RATING_MAX
         )
@@ -175,7 +178,7 @@ class SettingsViewModel @Inject constructor(
 
         ratingSyncJob?.cancel()
         ratingSyncJob = viewModelScope.launch {
-            kotlinx.coroutines.delay(1000)
+            kotlinx.coroutines.delay(1.seconds)
             userLibraryRepository.saveMinimumRating(boundedRating)
         }
     }

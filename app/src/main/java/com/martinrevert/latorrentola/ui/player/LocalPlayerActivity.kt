@@ -1,3 +1,4 @@
+@file:Suppress("FunctionName")
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 
@@ -189,6 +190,9 @@ import com.martinrevert.latorrentola.utils.TorrentLaunchResult
 import com.martinrevert.latorrentola.utils.mediaMimeType
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dagger.hilt.android.AndroidEntryPoint
+import kotlin.math.abs
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -287,7 +291,6 @@ val fontProvider = GoogleFont.Provider(
 )
 
 @androidx.annotation.OptIn(UnstableApi::class)
-@OptIn(ExperimentalMaterial3Api::class)
 @Suppress("OPT_IN_USAGE_ERROR")
 @AndroidEntryPoint
 class LocalPlayerActivity : FragmentActivity() {
@@ -649,9 +652,7 @@ class LocalPlayerActivity : FragmentActivity() {
         if (mediaUri != null) {
             mediaTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty()
             val rawInfoHash = intent.getStringExtra(EXTRA_INFO_HASH).orEmpty()
-            torrentInfoHash = if (rawInfoHash.isNotBlank()) {
-                rawInfoHash
-            } else {
+            torrentInfoHash = rawInfoHash.ifBlank {
                 extractInfoHash(
                     localStreamUrl,
                     castStreamUrl,
@@ -714,6 +715,7 @@ class LocalPlayerActivity : FragmentActivity() {
                             hasNextEpisodeInfo = true
                         }
                     } catch (e: Exception) {
+                        if (e is CancellationException) throw e
                         Log.w(TAG, "Failed to resolve next episode info asynchronously: ${e.message}")
                     }
                 }
@@ -823,6 +825,7 @@ class LocalPlayerActivity : FragmentActivity() {
                             Log.i(TAG, "Attached pre-downloaded subtitle on startup: ${cachedSubtitle.file.name}")
                         }
                     } catch (e: Exception) {
+                        if (e is CancellationException) throw e
                         Log.w(TAG, "Failed to check pre-downloaded subtitle: ${e.message}")
                     }
                 }
@@ -862,7 +865,7 @@ class LocalPlayerActivity : FragmentActivity() {
                         error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
                         error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED) {
                         lifecycleScope.launch {
-                            delay(1500L)
+                            delay(1500.milliseconds)
                             if (controller.playbackState == Player.STATE_IDLE) {
                                 Log.i(TAG, "Attempting auto-recovery for transient playback error")
                                 controller.prepare()
@@ -1004,7 +1007,9 @@ class LocalPlayerActivity : FragmentActivity() {
                 } else {
                     openSubtitlesRepository.warmUp()
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
         }
     }
 
@@ -1327,6 +1332,7 @@ class LocalPlayerActivity : FragmentActivity() {
                             }
                         }
                     } catch (e: Exception) {
+                        if (e is CancellationException) throw e
                         Log.w(TAG, "Failed to read download record for IMDb lookup: ${e.message}")
                     }
                 }
@@ -1340,6 +1346,7 @@ class LocalPlayerActivity : FragmentActivity() {
                         resolvedImdbId = tmdbRepository.getMovieImdbId(effectiveMovieId)
                     }
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     Log.w(TAG, "Failed to fetch IMDb ID from TMDB repository: ${e.message}")
                 }
 
@@ -1357,6 +1364,7 @@ class LocalPlayerActivity : FragmentActivity() {
                                 resolvedImdbId = tmdbRepository.getTvImdbId(firstTv.id)
                             }
                         } catch (e: Exception) {
+                            if (e is CancellationException) throw e
                             Log.w(TAG, "Failed to resolve IMDb ID via TMDB title search: ${e.message}")
                         }
                     }
@@ -1377,6 +1385,7 @@ class LocalPlayerActivity : FragmentActivity() {
                             openSubtitlesRepository.searchByImdbId(imdbId = resolvedImdbId)
                         }
                     } catch (e: Exception) {
+                        if (e is CancellationException) throw e
                         Log.w(TAG, "OpenSubtitles searchByImdbId failed: ${e.message}")
                     }
                 }
@@ -1409,12 +1418,13 @@ class LocalPlayerActivity : FragmentActivity() {
                     )
                 }
 
-                if (results.isNullOrEmpty()) {
+                if (results.isEmpty()) {
                     message = getString(R.string.opensubtitles_no_results)
                 }
             } catch (error: OpenSubtitlesException) {
                 message = error.message ?: getString(R.string.opensubtitles_request_failed)
             } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 message = getString(R.string.opensubtitles_request_failed)
             } finally {
                 subtitleOperationInProgress = false
@@ -1470,6 +1480,7 @@ class LocalPlayerActivity : FragmentActivity() {
             } catch (error: OpenSubtitlesException) {
                 errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
             } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 errorMessage = getString(R.string.opensubtitles_download_failed)
             } finally {
                 subtitleOperationInProgress = false
@@ -1803,10 +1814,10 @@ fun PlayerControlsOverlay(
     LaunchedEffect(controlsVisible) {
         if (controlsVisible) {
             if (isTv) {
-                delay(100)
+                delay(100.milliseconds)
                 try { playPauseFocusRequester.requestFocus() } catch (_: Exception) {}
             }
-            delay(5000L)
+            delay(5.seconds)
             controlsVisible = false
         }
     }
@@ -2010,7 +2021,7 @@ fun StatsForNerdsOverlay(
             audioText = "${aFormat?.sampleMimeType ?: "N/A"} (${aFormat?.channelCount ?: 0} ch)"
             val buf = (controller.bufferedPosition - controller.currentPosition).coerceAtLeast(0L) / 1000L
             bufferText = "${buf}s buffered"
-            delay(1000L)
+            delay(1.seconds)
         }
     }
 
@@ -2028,7 +2039,6 @@ fun StatsForNerdsOverlay(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerBottomSheetContent(
     state: PlayerBottomSheetState,
@@ -2108,11 +2118,10 @@ private fun BottomSheetInnerContent(
                             Text(state.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
                             val firstFocusRequester = remember { FocusRequester() }
-                            val isTvDevice = isTv
 
                             LaunchedEffect(Unit) {
-                                if (isTvDevice) {
-                                    delay(150)
+                                if (isTv) {
+                                    delay(150.milliseconds)
                                     try { firstFocusRequester.requestFocus() } catch (_: Exception) {}
                                 }
                             }
@@ -2213,11 +2222,10 @@ private fun BottomSheetInnerContent(
                             }
 
                             val firstStyleFocusRequester = remember { FocusRequester() }
-                            val isTvDevice = isTv
 
                             LaunchedEffect(Unit) {
-                                if (isTvDevice) {
-                                    delay(150)
+                                if (isTv) {
+                                    delay(150.milliseconds)
                                     try { firstStyleFocusRequester.requestFocus() } catch (_: Exception) {}
                                 }
                             }
@@ -2254,7 +2262,7 @@ private fun BottomSheetInnerContent(
                                         "X-Large" to 0.08f
                                     )
                                     sizes.forEach { (label, fraction) ->
-                                        val isSelected = Math.abs(selectedSizeFraction - fraction) < 0.005f
+                                        val isSelected = abs(selectedSizeFraction - fraction) < 0.005f
                                         AdaptiveChoiceChip(
                                             selected = isSelected,
                                             onClick = { selectedSizeFraction = fraction },
@@ -2273,7 +2281,7 @@ private fun BottomSheetInnerContent(
                                         "High" to 0.25f
                                     )
                                     items(offsets) { (label, offsetVal) ->
-                                        val isSelected = Math.abs(selectedBottomOffset - offsetVal) < 0.01f
+                                        val isSelected = abs(selectedBottomOffset - offsetVal) < 0.01f
                                         AdaptiveChoiceChip(
                                             selected = isSelected,
                                             onClick = { selectedBottomOffset = offsetVal },
@@ -2432,11 +2440,10 @@ private fun BottomSheetInnerContent(
                             }
 
                             val firstResultFocusRequester = remember { FocusRequester() }
-                            val isTvDevice = isTv
 
                             LaunchedEffect(Unit) {
-                                if (isTvDevice) {
-                                    delay(150)
+                                if (isTv) {
+                                    delay(150.milliseconds)
                                     try { firstResultFocusRequester.requestFocus() } catch (_: Exception) {}
                                 }
                             }

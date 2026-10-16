@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package com.martinrevert.latorrentola.ui.home
 
 import android.content.res.Configuration
@@ -39,7 +41,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
@@ -69,7 +70,6 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.glass.hazeGlass
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, ExperimentalTvMaterial3Api::class)
 /**
  * Connects movie and TV home state to the adaptive home layout.
  *
@@ -156,10 +156,10 @@ fun HomeScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, ExperimentalTvMaterial3Api::class)
 /**
  * Renders home feed content and controls, sizing handheld list padding to the measured header.
  */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 private fun HomeScreenContent(
     uiState: HomeUiState,
@@ -773,9 +773,9 @@ private fun HomeContent(
     }
 }
 
+/** TV preview of the home movie feed. */
 @Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
-/** TV preview of the home movie feed. */
 @Composable
 fun HomeScreenTvPreview() {
     val sampleMovies = listOf(
@@ -826,8 +826,8 @@ fun HomeScreenTvPreview() {
     }
 }
 
-@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 /** Light and dark previews of the home movie feed across form factors. */
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 @Composable
 fun HomeScreenPreview() {
     val sampleMovies = listOf(

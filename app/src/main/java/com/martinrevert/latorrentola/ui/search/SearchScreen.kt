@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package com.martinrevert.latorrentola.ui.search
 
 import android.app.Activity
@@ -70,7 +72,6 @@ import dev.chrisbanes.haze.glass.hazeGlass
 import dev.chrisbanes.haze.ExperimentalHazeApi
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalHazeApi::class)
 /**
  * Connects search fields, collection modes, and result actions to the search view model.
  *
@@ -251,7 +252,6 @@ fun SearchScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalHazeApi::class)
 /**
  * Renders the adaptive search interface and its current result collection.
  *
@@ -289,6 +289,7 @@ fun SearchScreen(
  * @param onFocusRestored Clears the pending movie focus target.
  * @param onTvFocusRestored Clears the pending TV focus target.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchScreenContent(
     uiState: SearchUiState,
@@ -502,14 +503,14 @@ private fun SearchScreenContent(
                             }
                         }
                     } else {
-                        when (val state = uiState) {
+                        when (uiState) {
                             is SearchUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(text = stringResource(R.string.start_searching))
                             }
                             is SearchUiState.Loading -> MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
-                            is SearchUiState.Success -> if (state.isFavorites) {
+                            is SearchUiState.Success -> if (uiState.isFavorites) {
                                 FavoriteItemsGrid(
-                                    movies = state.movies,
+                                    movies = uiState.movies,
                                     series = favoriteTvSeries,
                                     tvGenres = tvGenres,
                                     state = gridState,
@@ -528,15 +529,15 @@ private fun SearchScreenContent(
                                     modifier = Modifier.focusRequester(resultsFocusRequester)
                                 )
                             } else MovieList(
-                                movies = state.movies,
+                                movies = uiState.movies,
                                 state = gridState,
                                 downloadedMovieIds = downloadedMovieIds,
                                 watchHistoryMap = watchHistoryMap,
                                 selectedIds = selectedFavoriteIds,
                                 isLoadingMore = isLoadingMore,
                                 onMovieClick = onMovieClick,
-                                onLongClick = { id -> state.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick) },
-                                onLoadMore = { if (!state.isFavorites && !state.isDownloads && !state.isNew) onLoadMore() },
+                                onLongClick = { id -> uiState.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick) },
+                                onLoadMore = { if (!uiState.isDownloads && !uiState.isNew) onLoadMore() },
                                 initialFocusId = lastClickedMovieId,
                                 onFocusRestored = onFocusRestored,
                                 contentPadding = PaddingValues(16.dp),
@@ -546,7 +547,7 @@ private fun SearchScreenContent(
                                 Text(text = stringResource(R.string.no_results))
                             }
                             is SearchUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(text = state.message.asString())
+                                Text(text = uiState.message.asString())
                             }
                         }
                     }
@@ -592,14 +593,14 @@ private fun SearchScreenContent(
                         }
                     }
                 } else {
-                    when (val state = uiState) {
+                    when (uiState) {
                         is SearchUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(text = stringResource(R.string.start_searching))
                         }
                         is SearchUiState.Loading -> MovieListPlaceholder(contentPadding = searchContentPadding)
-                        is SearchUiState.Success -> if (state.isFavorites) {
+                        is SearchUiState.Success -> if (uiState.isFavorites) {
                             FavoriteItemsGrid(
-                                movies = state.movies,
+                                movies = uiState.movies,
                                 series = favoriteTvSeries,
                                 tvGenres = tvGenres,
                                 state = gridState,
@@ -617,15 +618,15 @@ private fun SearchScreenContent(
                                 contentPadding = searchContentPadding
                             )
                         } else MovieList(
-                            movies = state.movies,
+                            movies = uiState.movies,
                             state = gridState,
                             downloadedMovieIds = downloadedMovieIds,
                             watchHistoryMap = watchHistoryMap,
                             selectedIds = selectedFavoriteIds,
                             isLoadingMore = isLoadingMore,
                             onMovieClick = onMovieClick,
-                            onLongClick = { id -> state.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick) },
-                            onLoadMore = { if (!state.isFavorites && !state.isDownloads && !state.isNew) onLoadMore() },
+                            onLongClick = { id -> uiState.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick) },
+                            onLoadMore = { if (!uiState.isDownloads && !uiState.isNew) onLoadMore() },
                             initialFocusId = lastClickedMovieId,
                             onFocusRestored = onFocusRestored,
                             contentPadding = searchContentPadding
@@ -634,7 +635,7 @@ private fun SearchScreenContent(
                             Text(text = stringResource(R.string.no_results))
                         }
                         is SearchUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(text = state.message.asString())
+                            Text(text = uiState.message.asString())
                         }
                     }
                 }
@@ -697,7 +698,6 @@ private fun SearchScreenContent(
  * @param contentPadding Insets matching the containing screen.
  * @param modifier Modifier applied to the grid.
  */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun FavoriteItemsGrid(
     movies: List<Movie>,
@@ -818,9 +818,9 @@ private fun SearchTextField(
     )
 }
 
+/** TV preview of the movie search screen. */
 @Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
-/** TV preview of the movie search screen. */
 @Composable
 fun SearchScreenTvPreview() {
     val sampleMovies = listOf(
@@ -858,8 +858,8 @@ fun SearchScreenTvPreview() {
     }
 }
 
-@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 /** Light and dark previews of the movie search screen across form factors. */
+@com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 @Composable
 fun SearchScreenPreview() {
     val sampleMovies = listOf(
