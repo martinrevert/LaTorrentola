@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package com.martinrevert.latorrentola.ui.components
 
 import androidx.compose.foundation.background
@@ -8,7 +10,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,7 +32,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
@@ -55,7 +55,7 @@ import dev.chrisbanes.haze.glass.hazeGlass
  * @param hazeState Optional glass source used behind the handheld sheet.
  * @param onCreditClick Opens the selected TMDB movie or TV credit.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActorDetailBottomSheet(
     actorDetailState: Result<TmdbActorDetail>?,
@@ -179,7 +179,6 @@ fun ActorDetailBottomSheet(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 /**
  * Renders actor details using the TV-oriented content layout.
  *
@@ -355,7 +354,6 @@ private fun ActorDetailValue(
     )
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 /**
  * Renders one filmography entry with TV focus treatment.
  *

@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package com.martinrevert.latorrentola.ui.components
 
 import android.content.res.Configuration
@@ -50,7 +52,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface as TvSurface
 import androidx.compose.ui.tooling.preview.Preview
 import com.martinrevert.latorrentola.R
@@ -58,6 +59,7 @@ import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import kotlin.time.Duration.Companion.milliseconds
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import kotlinx.coroutines.delay
@@ -75,7 +77,6 @@ import kotlinx.coroutines.delay
  * @param onTorrentSelected Callback when user chooses a specific release.
  * @param onDismiss Callback when user cancels or dismisses the dialog.
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun NextEpisodeTorrentDialog(
     seriesName: String,
@@ -102,7 +103,7 @@ fun NextEpisodeTorrentDialog(
     // Ensure deterministic TV D-pad focus in all scenarios (Loading, Error, Empty, or Populated)
     if (isTv) {
         LaunchedEffect(isLoading, error, releases) {
-            delay(100)
+            delay(100.milliseconds)
             try {
                 if (!isLoading && releases.isNotEmpty()) {
                     firstItemFocusRequester.requestFocus()
@@ -335,7 +336,6 @@ fun NextEpisodeTorrentDialog(
 /**
  * Individual torrent card row within the next episode dialog.
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun TorrentOptionItem(
     torrent: EztvTorrent,
