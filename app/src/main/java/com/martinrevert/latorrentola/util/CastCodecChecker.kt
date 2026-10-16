@@ -116,7 +116,7 @@ object CastCodecChecker {
 
         return CodecWarning(
             deviceName = deviceName,
-            modelName = rawModel ?: "Cast",
+            modelName = rawModel.ifBlank { "Cast" },
             warnings = warnings
         )
     }
@@ -161,7 +161,7 @@ object CastCodecChecker {
 
         return CodecWarning(
             deviceName = deviceName,
-            modelName = rawModel ?: "Cast",
+            modelName = rawModel.ifBlank { "Cast" },
             warnings = warnings
         )
     }

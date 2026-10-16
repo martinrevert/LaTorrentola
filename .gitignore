@@ -367,6 +367,7 @@ keystore.properties
 /.kotlin/
 
 /.idea/kotlinc.xml
+/gradle/gradle-daemon-jvm.properties
 /.idea/deviceHardwareInput.xml
 /.artifacts/f735289c-7689-4a76-a580-57e6dd5fe0ca/implementation_plan.artifact.md
 /.android-studio/skills/wear/wear-compose-m3/references/material3/AlertDialogSample.kt.md
