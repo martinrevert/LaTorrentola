@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package com.martinrevert.latorrentola.ui.detail
 
 import android.content.Intent
@@ -89,7 +91,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface as TvSurface
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
@@ -123,7 +124,7 @@ import java.util.Locale
  * @param onBackClick Returns to the previous destination.
  * @param onFilmographyCreditClick Opens the selected movie or series from actor filmography.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TvDetailScreen(
     viewModel: TvDetailViewModel,
@@ -268,7 +269,12 @@ fun TvDetailScreen(
                                     )
                                     putExtra(Intent.EXTRA_TEXT, shareText)
                                 }
-                                context.startActivity(Intent.createChooser(shareIntent, resources.getString(R.string.share_movie_chooser)))
+                                context.startActivity(
+                                    Intent.createChooser(
+                                        shareIntent,
+                                        resources.getString(R.string.share_movie_chooser)
+                                    )
+                                )
                             },
                             modifier = Modifier
                                 .focusHighlight(shape = CircleShape)
@@ -314,6 +320,7 @@ fun TvDetailScreen(
                         bottom = 16.dp
                     )
                 )
+
                 is TvDetailUiState.Error -> Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -323,6 +330,7 @@ fun TvDetailScreen(
                 ) {
                     Text(state.message, color = MaterialTheme.colorScheme.error)
                 }
+
                 is TvDetailUiState.Success -> TvDetailContent(
                     series = state.series,
                     selectedSeasonNumber = selectedSeason?.seasonNumber,
@@ -403,7 +411,6 @@ fun TvDetailScreen(
  * @param topPadding Space reserved for the app bar and system insets.
  * @param scrollState Scroll state for managing vertical scroll offset during focus changes.
  */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun TvDetailContent(
     series: TmdbTvSummary,
@@ -535,12 +542,18 @@ private fun TvDetailContent(
                     val statusLabel = when {
                         downloadedCount > 0 && totalCount > 0 && downloadedCount >= totalCount ->
                             "$baseName · " + stringResource(R.string.tv_season_completed)
+
                         downloadedCount > 0 ->
                             if (totalCount > 0) {
                                 "$baseName · " + stringResource(R.string.tv_season_partial, downloadedCount, totalCount)
                             } else {
-                                "$baseName · " + stringResource(R.string.tv_season_partial, downloadedCount, downloadedCount)
+                                "$baseName · " + stringResource(
+                                    R.string.tv_season_partial,
+                                    downloadedCount,
+                                    downloadedCount
+                                )
                             }
+
                         else -> baseName
                     }
 
@@ -573,16 +586,17 @@ private fun TvDetailContent(
             style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onSurface
         )
-        when (val episodes = seasonState) {
+        when (seasonState) {
             TvSeasonUiState.Loading -> Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(24.dp),
                 contentAlignment = Alignment.Center
             ) { CircularProgressIndicator() }
-            is TvSeasonUiState.Error -> Text(episodes.message, color = MaterialTheme.colorScheme.error)
+
+            is TvSeasonUiState.Error -> Text(seasonState.message, color = MaterialTheme.colorScheme.error)
             is TvSeasonUiState.Success -> {
-                val episodeList = episodes.season.episodes.orEmpty()
+                val episodeList = seasonState.season.episodes.orEmpty()
                 if (episodeList.isEmpty()) {
                     Text(
                         stringResource(R.string.tv_no_episodes),
@@ -643,7 +657,6 @@ private fun TvDetailContent(
  * @param onClick Opens the cast member details.
  * @param modifier Focus and layout modifiers for this cast member.
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun TvCastMember(
     name: String,
@@ -823,7 +836,7 @@ private fun TvSeriesInformation(
         }
         if (!series.genres.isNullOrEmpty()) {
             Text(
-                series.genres.orEmpty().joinToString(", ") { it.name },
+                series.genres.joinToString(", ") { it.name },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp)
@@ -848,7 +861,6 @@ private fun TvSeriesInformation(
  * @param onClick Triggered when user taps the episode card.
  * @param modifier Layout and focus modifiers for the episode card.
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun TvEpisodeCard(
     episode: TmdbTvEpisode,

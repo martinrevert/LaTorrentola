@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package com.martinrevert.latorrentola.ui.detail
 
 import android.content.Intent
@@ -47,7 +49,6 @@ import dev.chrisbanes.haze.rememberHazeState
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.glass.hazeGlass
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import coil3.compose.AsyncImage
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -88,7 +89,6 @@ import com.martinrevert.latorrentola.utils.IntentAppsFinder
 import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
 import com.martinrevert.latorrentola.utils.TorrentLaunchResult
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
 /**
  * Connects movie detail state and user actions to the detail presentation.
  *
@@ -96,6 +96,7 @@ import com.martinrevert.latorrentola.utils.TorrentLaunchResult
  * @param onBackClick Returns to the previous destination.
  * @param onTvSeriesClick Opens a TV series selected from actor filmography.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MovieDetailScreen(
     viewModel: DetailViewModel,
@@ -183,13 +184,13 @@ fun MovieDetailScreen(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
 /**
  * Hosts the responsive detail screen, including app-bar and actor-sheet state.
  *
  * @param torrentHandlingMode Configured external or local torrent handling behavior.
  * @param onActorCreditClick Opens the selected movie or TV credit.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MovieDetailScreenContent(
     uiState: DetailUiState,
@@ -249,10 +250,9 @@ private fun MovieDetailScreenContent(
                     }
                 },
                 actions = {
-                    val state = uiState
-                    if (state is DetailUiState.Success) {
+                    if (uiState is DetailUiState.Success) {
                         IconButton(
-                            onClick = { onShareClick(state.movie) },
+                            onClick = { onShareClick(uiState.movie) },
                             modifier = Modifier
                                 .focusHighlight(shape = CircleShape)
                                 .focusProperties { down = contentFocusRequester }
@@ -268,7 +268,7 @@ private fun MovieDetailScreenContent(
                             )
                         }
                         IconButton(
-                            onClick = { onFavoriteToggle(state.movie) },
+                            onClick = { onFavoriteToggle(uiState.movie) },
                             modifier = Modifier
                                 .focusHighlight(shape = CircleShape)
                                 .focusProperties { down = contentFocusRequester }
@@ -279,7 +279,7 @@ private fun MovieDetailScreenContent(
                                 }
                         ) {
                             Icon(
-                                if (state.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                if (uiState.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                 contentDescription = stringResource(R.string.favorite_desc)
                             )
                         }
@@ -304,18 +304,18 @@ private fun MovieDetailScreenContent(
                 .consumeWindowInsets(padding),
             contentAlignment = Alignment.TopCenter
         ) {
-            when (val state = uiState) {
+            when (uiState) {
                 is DetailUiState.Loading, is DetailUiState.OpenTvDetail -> {
                     MovieDetailPlaceholder(contentPadding = detailContentPadding)
                 }
                 is DetailUiState.Success -> {
                     MovieDetailContent(
-                        movie = state.movie,
+                        movie = uiState.movie,
                         downloadedHashes = downloadedHashes,
                         torrentHandlingMode = torrentHandlingMode,
                         isWideScreen = isWideScreen,
                         isTv = isTv,
-                        onTorrentClick = { onTorrentClick(state.movie, it) },
+                        onTorrentClick = { onTorrentClick(uiState.movie, it) },
                         onAddLanguageToFilter = onAddLanguageToFilter,
                         onCastClick = onCastClick,
                         onInsufficientStorage = { available, required ->
@@ -328,7 +328,7 @@ private fun MovieDetailScreenContent(
                 }
                 is DetailUiState.Error -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(text = state.message.asString())
+                        Text(text = uiState.message.asString())
                     }
                 }
             }
@@ -415,9 +415,9 @@ fun MovieDetailContent(
                     MovieMetadata(
                         movie = movie,
                         onAddLanguageToFilter = onAddLanguageToFilter,
-                        focusRequester = if (movie.ytTrailerCode.isNullOrEmpty()) contentFocusRequester else null,
+                        focusRequester = if (movie.ytTrailerCode.isEmpty()) contentFocusRequester else null,
                         onFocused = {
-                            if (movie.ytTrailerCode.isNullOrEmpty()) {
+                            if (movie.ytTrailerCode.isEmpty()) {
                                 coroutineScope.launch { scrollState.animateScrollTo(0) }
                             }
                         }
@@ -671,7 +671,6 @@ fun YoutubePlayer(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 /** Displays the cast as a horizontally scrolling list. */
 @Composable
 fun CastSection(
@@ -703,7 +702,6 @@ fun CastSection(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 /** Displays an interactive cast member portrait and name. */
 @Composable
 fun CastItem(
@@ -955,10 +953,10 @@ fun TorrentItem(
     }
 }
 
+/** TV preview of the movie detail screen. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
-/** TV preview of the movie detail screen. */
 @Composable
 fun MovieDetailScreenTvPreview() {
     val sampleMovie = Movie(
@@ -1003,9 +1001,9 @@ fun MovieDetailScreenTvPreview() {
     }
 }
 
+/** Light and dark previews of the movie detail screen across form factors. */
 @OptIn(ExperimentalMaterial3Api::class)
 @com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
-/** Light and dark previews of the movie detail screen across form factors. */
 @Composable
 fun MovieDetailScreenPreview() {
     val sampleMovie = Movie(
@@ -1050,10 +1048,10 @@ fun MovieDetailScreenPreview() {
     }
 }
 
+/** Tablet preview of the movie detail screen. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Preview(name = "Tablet Light", showBackground = true, device = "spec:width=1280dp,height=800dp,dpi=240", uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Preview(name = "Tablet Dark", showBackground = true, device = "spec:width=1280dp,height=800dp,dpi=240", uiMode = Configuration.UI_MODE_NIGHT_YES)
-/** Tablet preview of the movie detail screen. */
 @Composable
 fun MovieDetailScreenTabletPreview() {
     val sampleMovie = Movie(

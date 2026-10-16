@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package com.martinrevert.latorrentola.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
@@ -81,11 +83,25 @@ fun CastBottomSheet(
 
     DisposableEffect(Unit) {
         val callback = object : MediaRouter.Callback() {
-            override fun onRouteAdded(router: MediaRouter, route: MediaRouter.RouteInfo) { updateState() }
-            override fun onRouteRemoved(router: MediaRouter, route: MediaRouter.RouteInfo) { updateState() }
-            override fun onRouteChanged(router: MediaRouter, route: MediaRouter.RouteInfo) { updateState() }
-            override fun onRouteSelected(router: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) { updateState() }
-            override fun onRouteUnselected(router: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) { updateState() }
+            override fun onRouteAdded(router: MediaRouter, route: MediaRouter.RouteInfo) {
+                updateState()
+            }
+
+            override fun onRouteRemoved(router: MediaRouter, route: MediaRouter.RouteInfo) {
+                updateState()
+            }
+
+            override fun onRouteChanged(router: MediaRouter, route: MediaRouter.RouteInfo) {
+                updateState()
+            }
+
+            override fun onRouteSelected(router: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) {
+                updateState()
+            }
+
+            override fun onRouteUnselected(router: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) {
+                updateState()
+            }
         }
         mediaRouter.addCallback(selector, callback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY)
         updateState()
@@ -359,8 +375,9 @@ private fun routeIcon(route: MediaRouter.RouteInfo?): ImageVector {
     if (route == null) return Icons.Default.Tv
     return when {
         route.deviceType == MediaRouter.RouteInfo.DEVICE_TYPE_SPEAKER ||
-        route.name.contains("Speaker", ignoreCase = true) ||
-        route.name.contains("Altavoz", ignoreCase = true) -> Icons.Default.Speaker
+                route.name.contains("Speaker", ignoreCase = true) ||
+                route.name.contains("Altavoz", ignoreCase = true) -> Icons.Default.Speaker
+
         else -> Icons.Default.Tv
     }
 }

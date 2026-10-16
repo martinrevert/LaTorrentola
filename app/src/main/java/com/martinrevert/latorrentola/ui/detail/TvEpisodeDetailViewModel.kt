@@ -143,7 +143,7 @@ class TvEpisodeDetailViewModel @Inject constructor(
                 // 2. Get season details for episode resolution and next episode calculation
                 val seasonDetails = tmdbRepository.getTvSeasonDetails(seriesId, seasonNumber)
                 currentSeasonDetails = seasonDetails
-                
+
                 if (episode == null) {
                     episode = seasonDetails.episodes.orEmpty().firstOrNull { it.episodeNumber == episodeNumber }
                         ?: TmdbTvEpisode(
@@ -161,12 +161,15 @@ class TvEpisodeDetailViewModel @Inject constructor(
                     try {
                         val series = tmdbRepository.getTvDetails(seriesId)
                         resolvedSeriesName = series.name.orEmpty()
-                    } catch (_: Exception) { }
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                    }
                 }
                 activeSeriesName = resolvedSeriesName
 
                 // 4. Resolve next episode info (same season or next season)
-                cachedNextEpisodeInfo = resolveNextEpisodeInfo(seriesId, resolvedSeriesName, seasonNumber, episode, seasonDetails)
+                cachedNextEpisodeInfo =
+                    resolveNextEpisodeInfo(seriesId, resolvedSeriesName, seasonNumber, episode, seasonDetails)
 
                 // 5. Resolve IMDb ID and fetch torrents
                 val imdbId = tmdbRepository.getTvImdbId(seriesId)
@@ -180,7 +183,12 @@ class TvEpisodeDetailViewModel @Inject constructor(
                     torrents = torrents
                 )
             } catch (e: Exception) {
-                // Error handling is intentional - we show the error in the UI
+                if (e is CancellationException) throw e
+                _rawUiState.value = TvEpisodeDetailRawUiState.Error(
+                    e.localizedMessage?.takeIf { it.isNotBlank() && it != "null" }
+                        ?: e.message?.takeIf { it.isNotBlank() && it != "null" }
+                        ?: "Unable to load episode details"
+                )
             }
         }
     }
@@ -223,7 +231,9 @@ class TvEpisodeDetailViewModel @Inject constructor(
                         firstEp.name.orEmpty()
                     )
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
         }
         return null
     }

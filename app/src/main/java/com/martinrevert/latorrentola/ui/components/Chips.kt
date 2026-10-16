@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package com.martinrevert.latorrentola.ui.components
 
 import androidx.compose.foundation.layout.*
@@ -17,7 +19,6 @@ import com.martinrevert.latorrentola.ui.search.FavoritesFilter
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.FocusRequester
@@ -26,7 +27,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
@@ -39,7 +39,6 @@ import androidx.compose.foundation.combinedClickable
  * Adaptive Chip component that renders `androidx.tv.material3.Surface` on Android TV
  * for native D-pad focus scaling, and falls back to Material 3 `FilterChip` on handheld devices.
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun AdaptiveChip(
     selected: Boolean,
@@ -129,7 +128,6 @@ fun TvChip(
 )
 
 /** Displays horizontally scrolling movie-quality filters. */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun QualityChips(
     options: List<String>,
@@ -161,7 +159,6 @@ fun QualityChips(
 }
 
 /** Displays horizontally scrolling favorite category and progress filters with Material icons. */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun FavoritesChips(
     selectedFilter: FavoritesFilter,
@@ -219,7 +216,6 @@ fun FavoritesChips(
  * @param firstFocusRequester Optional D-pad entry focus target.
  * @param modifier Modifier applied to the horizontal row.
  */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun GenreChips(
     genres: List<String>,

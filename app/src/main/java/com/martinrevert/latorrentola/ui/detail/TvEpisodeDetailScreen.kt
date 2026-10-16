@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package com.martinrevert.latorrentola.ui.detail
 
 import android.widget.Toast
@@ -61,7 +63,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.combinedClickable
 import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface as TvSurface
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
@@ -87,7 +88,7 @@ import com.martinrevert.latorrentola.utils.isTvDevice
  * @param episodeJson Serialized [TmdbTvEpisode] payload when available.
  * @param onBackClick Navigation callback to return to previous screen with the shared circular focus indicator.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TvEpisodeDetailScreen(
     viewModel: TvEpisodeDetailViewModel,
@@ -501,7 +502,6 @@ private fun EpisodeHeader(
 }
 
 /** Displays a torrent release with native TV focus behavior, release info, and download status. */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun TorrentReleaseCard(
     torrent: EztvTorrent,

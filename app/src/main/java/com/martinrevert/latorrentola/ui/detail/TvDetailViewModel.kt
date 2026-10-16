@@ -36,16 +36,19 @@ class TvDetailViewModel @Inject constructor(
 ) : ViewModel() {
     /** Mutable backing state for series details. */
     private val _uiState = MutableStateFlow<TvDetailUiState>(TvDetailUiState.Loading)
+
     /** Current series detail state. */
     val uiState: StateFlow<TvDetailUiState> = _uiState.asStateFlow()
 
     /** Mutable backing state for season selection. */
     private val _selectedSeason = MutableStateFlow<TmdbTvSeason?>(null)
+
     /** Season currently selected for episode display. */
     val selectedSeason: StateFlow<TmdbTvSeason?> = _selectedSeason.asStateFlow()
 
     /** Mutable backing state for season episode loading. */
     private val _seasonState = MutableStateFlow<TvSeasonUiState>(TvSeasonUiState.Loading)
+
     /** Current episode listing state. */
     val seasonState: StateFlow<TvSeasonUiState> = _seasonState.asStateFlow()
 
@@ -79,21 +82,25 @@ class TvDetailViewModel @Inject constructor(
 
     /** Mutable backing state for favorite write errors. */
     private val _favoriteActionError = MutableStateFlow<String?>(null)
+
     /** User-facing error from the latest favorite update. */
     val favoriteActionError: StateFlow<String?> = _favoriteActionError.asStateFlow()
 
     /** Mutable backing state for the selected cast member's TMDB detail result. */
     private val _selectedActorDetail = MutableStateFlow<Result<TmdbActorDetail>?>(null)
+
     /** Selected cast member details displayed in the shared actor sheet. */
     val selectedActorDetail: StateFlow<Result<TmdbActorDetail>?> = _selectedActorDetail.asStateFlow()
 
     /** Mutable backing state for cast member detail loading. */
     private val _isActorLoading = MutableStateFlow(false)
+
     /** Whether TMDB actor details are currently loading. */
     val isActorLoading: StateFlow<Boolean> = _isActorLoading.asStateFlow()
 
     /** Series ID whose details have been requested. */
     private var requestedSeriesId: Int? = null
+
     /** Active season request, canceled when a different season is selected. */
     private var seasonJob: Job? = null
 
@@ -115,13 +122,12 @@ class TvDetailViewModel @Inject constructor(
                 if (initialSeason != null) selectSeason(initialSeason)
                 else _seasonState.value = TvSeasonUiState.Error("No seasons available")
             } catch (e: Exception) {
-                if (e !is CancellationException) {
-                    _uiState.value = TvDetailUiState.Error(
-                        e.localizedMessage?.takeIf { it.isNotBlank() && it != "null" }
-                            ?: e.message?.takeIf { it.isNotBlank() && it != "null" }
-                            ?: "Unable to load series"
-                    )
-                }
+                if (e is CancellationException) throw e
+                _uiState.value = TvDetailUiState.Error(
+                    e.localizedMessage?.takeIf { it.isNotBlank() && it != "null" }
+                        ?: e.message?.takeIf { it.isNotBlank() && it != "null" }
+                        ?: "Unable to load series"
+                )
             }
         }
     }
@@ -138,13 +144,12 @@ class TvDetailViewModel @Inject constructor(
                     tmdbRepository.getTvSeasonDetails(seriesId, season.seasonNumber)
                 )
             } catch (e: Exception) {
-                if (e !is CancellationException) {
-                    _seasonState.value = TvSeasonUiState.Error(
-                        e.localizedMessage?.takeIf { it.isNotBlank() && it != "null" }
-                            ?: e.message?.takeIf { it.isNotBlank() && it != "null" }
-                            ?: "Unable to load episodes"
-                    )
-                }
+                if (e is CancellationException) throw e
+                _seasonState.value = TvSeasonUiState.Error(
+                    e.localizedMessage?.takeIf { it.isNotBlank() && it != "null" }
+                        ?: e.message?.takeIf { it.isNotBlank() && it != "null" }
+                        ?: "Unable to load episodes"
+                )
             }
         }
     }
@@ -160,11 +165,10 @@ class TvDetailViewModel @Inject constructor(
                     userLibraryRepository.addFavoriteTvSeries(series)
                 }
             } catch (e: Exception) {
-                if (e !is CancellationException) {
-                    _favoriteActionError.value = e.localizedMessage?.takeIf { it.isNotBlank() && it != "null" }
-                        ?: e.message?.takeIf { it.isNotBlank() && it != "null" }
-                        ?: "Unable to update TV favorites"
-                }
+                if (e is CancellationException) throw e
+                _favoriteActionError.value = e.localizedMessage?.takeIf { it.isNotBlank() && it != "null" }
+                    ?: e.message?.takeIf { it.isNotBlank() && it != "null" }
+                            ?: "Unable to update TV favorites"
             }
         }
     }
@@ -210,9 +214,8 @@ class TvDetailViewModel @Inject constructor(
                     seriesName = series.name.orEmpty()
                 )
             } catch (e: Exception) {
-                if (e !is CancellationException) {
-                    _favoriteActionError.value = e.localizedMessage ?: "Error updating season"
-                }
+                if (e is CancellationException) throw e
+                _favoriteActionError.value = e.localizedMessage ?: "Error updating season"
             }
         }
     }
@@ -236,9 +239,8 @@ class TvDetailViewModel @Inject constructor(
                     episodes = episodes
                 )
             } catch (e: Exception) {
-                if (e !is CancellationException) {
-                    _favoriteActionError.value = e.localizedMessage ?: "Error updating season"
-                }
+                if (e is CancellationException) throw e
+                _favoriteActionError.value = e.localizedMessage ?: "Error updating season"
             }
         }
     }
@@ -257,9 +259,8 @@ class TvDetailViewModel @Inject constructor(
                     stillPath = episode.stillPath
                 )
             } catch (e: Exception) {
-                if (e !is CancellationException) {
-                    _favoriteActionError.value = e.localizedMessage ?: "Error updating episode"
-                }
+                if (e is CancellationException) throw e
+                _favoriteActionError.value = e.localizedMessage ?: "Error updating episode"
             }
         }
     }
@@ -275,9 +276,8 @@ class TvDetailViewModel @Inject constructor(
                     episodeNumber = episode.episodeNumber
                 )
             } catch (e: Exception) {
-                if (e !is CancellationException) {
-                    _favoriteActionError.value = e.localizedMessage ?: "Error updating episode"
-                }
+                if (e is CancellationException) throw e
+                _favoriteActionError.value = e.localizedMessage ?: "Error updating episode"
             }
         }
     }

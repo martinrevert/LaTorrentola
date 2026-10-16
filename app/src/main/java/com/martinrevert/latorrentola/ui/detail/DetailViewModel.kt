@@ -139,6 +139,7 @@ class DetailViewModel @Inject constructor(
                     ytsRepository.recordGenreVisit(genre)
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 val imdbId = movie.imdbCode
                 val movieWithCast = if (!imdbId.isNullOrBlank()) {
                     val tmdbCast = tmdbRepository.getMovieCastByImdbId(imdbId)
@@ -187,6 +188,7 @@ class DetailViewModel @Inject constructor(
                     _uiState.value = DetailUiState.Error(UiText.StringResource(R.string.movie_not_found))
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.value = DetailUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
             }
         }
@@ -206,7 +208,8 @@ class DetailViewModel @Inject constructor(
                     setMovie(movie)
                     return@launch
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 // YTS search failed or returned no results; proceed to TMDB TV fallback
             }
 

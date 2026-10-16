@@ -1,6 +1,5 @@
 package com.martinrevert.latorrentola.ui.components
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.Modifier
@@ -16,7 +15,6 @@ import androidx.compose.ui.input.key.type
  * Intercepts D-pad Center / Enter repeat events on TV devices to trigger [onLongClick]
  * before key release triggers [onClick]. On touch screens, uses [combinedClickable].
  */
-@OptIn(ExperimentalFoundationApi::class)
 fun Modifier.adaptiveLongClickable(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,

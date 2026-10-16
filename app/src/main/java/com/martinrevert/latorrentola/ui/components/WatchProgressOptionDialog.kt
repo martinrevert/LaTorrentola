@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package com.martinrevert.latorrentola.ui.components
 
 import androidx.compose.foundation.layout.Column
@@ -15,7 +17,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -27,7 +32,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.Button as TvButton
 import androidx.tv.material3.ButtonDefaults as TvButtonDefaults
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 import androidx.tv.material3.Surface as TvSurface
 import com.martinrevert.latorrentola.R
@@ -35,10 +39,7 @@ import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
-
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 
 /**
@@ -54,7 +55,6 @@ import kotlinx.coroutines.delay
  * @param onDismissRequest Callback when dialog is dismissed/cancelled.
  * @param themeMode User's theme selection mode from [PreferenceManager], or null to resolve automatically.
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun WatchProgressOptionDialog(
     title: String,
@@ -77,7 +77,7 @@ fun WatchProgressOptionDialog(
             var isDialogReady by remember { mutableStateOf(false) }
 
             LaunchedEffect(Unit) {
-                delay(350)
+                delay(350.milliseconds)
                 isDialogReady = true
                 try {
                     option1FocusRequester.requestFocus()
