@@ -1,4 +1,4 @@
-package com.martinrevert.latorrentola.util
+package com.martinrevert.latorrentola.utils
 
 import androidx.media3.common.Format
 import com.google.android.gms.cast.CastDevice

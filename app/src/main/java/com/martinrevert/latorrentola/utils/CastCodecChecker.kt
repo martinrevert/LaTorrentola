@@ -1,10 +1,11 @@
-package com.martinrevert.latorrentola.util
+package com.martinrevert.latorrentola.utils
 
 import android.media.MediaMetadataRetriever
 import androidx.annotation.OptIn
 import androidx.media3.common.Format
 import androidx.media3.common.util.UnstableApi
 import com.google.android.gms.cast.CastDevice
+import com.martinrevert.latorrentola.model.YTS.Torrent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -36,8 +37,10 @@ object CastCodecChecker {
                 }
 
                 val videoMime = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
-                val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
-                val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+                val width =
+                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+                val height =
+                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
 
                 val videoFormat = if (videoMime != null || height > 0) {
                     Format.Builder()
@@ -53,7 +56,8 @@ object CastCodecChecker {
             } finally {
                 try {
                     retriever.release()
-                } catch (_: Exception) {}
+                } catch (_: Exception) {
+                }
             }
         }
     }
@@ -68,7 +72,8 @@ object CastCodecChecker {
         val deviceName = rawName.ifBlank { "Dispositivo Cast" }
 
         val isNestHub = model.contains("hub") || model.contains("display") || model.contains("nest")
-        val isLegacyChromecast = model.contains("chromecast") && !model.contains("ultra") && !model.contains("google tv")
+        val isLegacyChromecast =
+            model.contains("chromecast") && !model.contains("ultra") && !model.contains("google tv")
         val isChromecastUltra = model.contains("ultra")
 
         val warnings = mutableListOf<String>()
@@ -124,14 +129,15 @@ object CastCodecChecker {
     /**
      * Evalúa directamente los metadatos expuestos por la API de YTS antes de iniciar la descarga.
      */
-    fun checkCompatibility(castDevice: CastDevice, torrent: com.martinrevert.latorrentola.model.YTS.Torrent): CodecWarning? {
+    fun checkCompatibility(castDevice: CastDevice, torrent: Torrent): CodecWarning? {
         val rawModel = castDevice.modelName
         val rawName = castDevice.friendlyName
         val model = rawModel.lowercase()
         val deviceName = rawName.ifBlank { "Dispositivo Cast" }
 
         val isNestHub = model.contains("hub") || model.contains("display") || model.contains("nest")
-        val isLegacyChromecast = model.contains("chromecast") && !model.contains("ultra") && !model.contains("google tv")
+        val isLegacyChromecast =
+            model.contains("chromecast") && !model.contains("ultra") && !model.contains("google tv")
         val isChromecastUltra = model.contains("ultra")
 
         val warnings = mutableListOf<String>()

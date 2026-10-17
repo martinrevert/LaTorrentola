@@ -1,3 +1,5 @@
+@file:Suppress("FunctionName")
+
 package com.martinrevert.latorrentola.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
@@ -43,11 +45,12 @@ import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.SessionManager
 import com.google.android.gms.cast.framework.SessionManagerListener
-import com.martinrevert.latorrentola.util.CastCodecChecker
-import com.martinrevert.latorrentola.util.CodecWarning
+import com.martinrevert.latorrentola.utils.CastCodecChecker
+import com.martinrevert.latorrentola.utils.CodecWarning
 
 import androidx.compose.runtime.LaunchedEffect
 
+@Suppress("FunctionName")
 @Composable
 fun CastCodecWarningObserver(
     player: Player?,
@@ -67,7 +70,11 @@ fun CastCodecWarningObserver(
         val (vFormat, aFormat) = extractMediaFormats(player)
         if (vFormat == null && !streamUrl.isNullOrBlank()) {
             val (extractedVideo, extractedAudio) = CastCodecChecker.retrieveMediaFormats(streamUrl)
-            val castContext = try { CastContext.getSharedInstance(context) } catch (_: Exception) { null }
+            val castContext = try {
+                CastContext.getSharedInstance(context)
+            } catch (_: Exception) {
+                null
+            }
             val currentSession = castContext?.sessionManager?.currentCastSession
             if (currentSession != null && currentSession.isConnected) {
                 checkAndShowWarning(currentSession.castDevice, extractedVideo, extractedAudio)
@@ -83,18 +90,22 @@ fun CastCodecWarningObserver(
                 val (vFormat, aFormat) = extractMediaFormats(player)
                 checkAndShowWarning(session.castDevice, vFormat, aFormat)
             }
+
             override fun onSessionStartFailed(session: CastSession, error: Int) {}
             override fun onSessionEnding(session: CastSession) {
                 codecWarningState = null
             }
+
             override fun onSessionEnded(session: CastSession, error: Int) {
                 codecWarningState = null
             }
+
             override fun onSessionResuming(session: CastSession, sessionId: String) {}
             override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
                 val (vFormat, aFormat) = extractMediaFormats(player)
                 checkAndShowWarning(session.castDevice, vFormat, aFormat)
             }
+
             override fun onSessionResumeFailed(session: CastSession, error: Int) {}
             override fun onSessionSuspended(session: CastSession, reason: Int) {}
         }
@@ -113,12 +124,14 @@ fun CastCodecWarningObserver(
                         checkAndShowWarning(currentSession.castDevice, vFormat, aFormat)
                     }
                 }
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
 
         onDispose {
             try {
                 sessionManager?.removeSessionManagerListener(listener, CastSession::class.java)
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -132,6 +145,7 @@ fun CastCodecWarningObserver(
     }
 }
 
+@Suppress("FunctionName")
 @Composable
 fun CodecWarningSnackbar(
     warning: CodecWarning,
@@ -235,6 +249,7 @@ private fun extractMediaFormats(player: Player): Pair<Format?, Format?> {
                 }
             }
         }
-    } catch (_: Exception) {}
+    } catch (_: Exception) {
+    }
     return Pair(videoFormat, audioFormat)
 }
