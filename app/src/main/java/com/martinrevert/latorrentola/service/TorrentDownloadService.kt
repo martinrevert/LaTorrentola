@@ -40,6 +40,15 @@ import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.seconds
 import java.util.concurrent.atomic.AtomicBoolean
+import com.martinrevert.latorrentola.service.streaming.PlayerStreamingConfig
+import com.martinrevert.latorrentola.service.streaming.StreamingPiecePlanner
+import com.martinrevert.latorrentola.service.streaming.TorrentSessionConfig
+import com.martinrevert.latorrentola.service.streaming.VerifiedPieceTracker
+import com.martinrevert.latorrentola.utils.isTvDevice
+import org.libtorrent4j.AlertListener
+import org.libtorrent4j.alerts.Alert
+import org.libtorrent4j.alerts.PieceFinishedAlert
+import org.libtorrent4j.alerts.TorrentFinishedAlert
 
 /**
  * Downloads torrents in a foreground service and only serves byte ranges covered by verified
@@ -672,10 +681,32 @@ class TorrentDownloadService : Service() {
             throw IllegalStateException("Unable to create the private torrent directory")
         }
 
+        val isTv = isTvDevice()
+        val sessionParams = TorrentSessionConfig.buildSessionParams(isTv = isTv)
         val manager = SessionManager()
+        var pieceTracker: VerifiedPieceTracker? = null
+        var piecePlanner: StreamingPiecePlanner? = null
+
+        val alertListener = object : AlertListener {
+            override fun types(): IntArray? = null
+            override fun alert(alert: Alert<*>) {
+                when (alert) {
+                    is PieceFinishedAlert -> {
+                        pieceTracker?.markPieceVerified(alert.pieceIndex())
+                    }
+                    is TorrentFinishedAlert -> {
+                        pieceTracker?.setAllVerified()
+                    }
+                    else -> {}
+                }
+            }
+        }
+        manager.addListener(alertListener)
+
         synchronized(sessionLock) {
             sessionManager = manager
-            manager.start()
+            manager.start(sessionParams)
+            TorrentSessionConfig.applyRuntimeOptimizations(manager, isPlaybackActive = false, isTv = isTv)
             manager.download(
                 request.magnetUri,
                 downloadDirectory,
@@ -688,227 +719,349 @@ class TorrentDownloadService : Service() {
         var readyServerPort = 0
         val completed = AtomicBoolean(false)
 
-        while (true) {
-            if (request.infoHash in deletedActiveHashes) return
-            val targetWasMissing = mediaTarget == null
-            val handle = synchronized(sessionLock) {
-                if (sessionManager !== manager) {
-                    null
-                } else {
-                    manager.find(Sha1Hash.parseHex(infoHash))
-                        ?.takeIf { it.isValid }
-                        ?.also { handle ->
-                            if (pausedInfoHash == infoHash) handle.pause()
-                            if (mediaTarget == null) {
-                                mediaTarget = findMediaTarget(handle, downloadDirectory, request.title)
-                                mediaTarget?.let { target ->
-                                    for (index in 0 until target.fileCount) {
-                                        handle.filePriority(
-                                            index,
-                                            if (index == target.fileIndex) {
-                                                Priority.DEFAULT
-                                            } else {
-                                                Priority.IGNORE
-                                            }
+        var lastReportedProgress = -1
+        var lastReportedState = ""
+        var lastDbUpdateTime = 0L
+
+        try {
+            while (true) {
+                if (request.infoHash in deletedActiveHashes) return
+                val targetWasMissing = mediaTarget == null
+                val handle = synchronized(sessionLock) {
+                    if (sessionManager !== manager) {
+                        null
+                    } else {
+                        manager.find(Sha1Hash.parseHex(infoHash))
+                            ?.takeIf { it.isValid }
+                            ?.also { handle ->
+                                if (pausedInfoHash == infoHash) handle.pause()
+                                if (mediaTarget == null) {
+                                    mediaTarget = findMediaTarget(handle, downloadDirectory, request.title)
+                                    mediaTarget?.let { target ->
+                                        val tracker = VerifiedPieceTracker(
+                                            totalPieces = target.lastPiece + 1,
+                                            fileOffset = target.fileOffset,
+                                            pieceLength = target.pieceLength
                                         )
-                                    }
-                                    val resumePiece = if (request.resumePositionMs > 0L && request.durationMs > 0L) {
-                                        val fileBytes = target.length
-                                        val estimatedOffset = ((request.resumePositionMs.toDouble() / request.durationMs.toDouble()) * fileBytes).toLong()
-                                        val offsetInFile = estimatedOffset.coerceIn(0L, fileBytes)
-                                        ((target.fileOffset + offsetInFile) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
-                                    } else {
-                                        target.firstPiece
-                                    }
-                                    val startupPieceEnd = ((target.fileOffset + minOf(target.length - 1, STARTUP_BUFFER_BYTES)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
-                                    for (p in target.firstPiece..startupPieceEnd) {
-                                        handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                    }
+                                        for (p in target.firstPiece..target.lastPiece) {
+                                            if (handle.havePiece(p)) {
+                                                tracker.markPieceVerified(p)
+                                            }
+                                        }
+                                        pieceTracker = tracker
 
-                                    // Prioritize tail pieces (last 1.5MB) for MP4 moov atom / MKV cues
-                                    val tailBytes = 1_500_000L
-                                    val tailPieceStart = ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
-                                    for (p in tailPieceStart..target.lastPiece) {
-                                        handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                    }
+                                        val isMkv = target.file.extension.equals("mkv", ignoreCase = true)
+                                        val planner = StreamingPiecePlanner(
+                                            fileOffset = target.fileOffset,
+                                            fileLength = target.length,
+                                            pieceLength = target.pieceLength,
+                                            firstPiece = target.firstPiece,
+                                            lastPiece = target.lastPiece,
+                                            isMkv = isMkv
+                                        )
+                                        piecePlanner = planner
 
-                                    handle.setSequentialRange(resumePiece, target.lastPiece)
-                                    if (resumePiece > target.firstPiece) {
-                                        for (p in resumePiece..minOf(resumePiece + 32, target.lastPiece)) {
+                                        for (index in 0 until target.fileCount) {
+                                            handle.filePriority(
+                                                index,
+                                                if (index == target.fileIndex) {
+                                                    Priority.DEFAULT
+                                                } else {
+                                                    Priority.IGNORE
+                                                }
+                                            )
+                                        }
+
+                                        val resumePiece = planner.calculateResumePiece(request.resumePositionMs, request.durationMs)
+                                        val initialPlan = planner.planForRange(
+                                            requestedStart = 0L,
+                                            requestedEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES),
+                                            tracker = tracker
+                                        )
+                                        for (p in initialPlan.piecesToPrioritize) {
                                             handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                        }
+                                        handle.setSequentialRange(resumePiece, target.lastPiece)
+                                        if (resumePiece > target.firstPiece) {
+                                            for (p in resumePiece..minOf(resumePiece + 32, target.lastPiece)) {
+                                                handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
+                    }
                 }
-            }
-            if (handle != null) {
-                val target = mediaTarget
-                if (target != null && targetWasMissing) {
-                    updateDownloadRecord(request, STATE_BUFFERING, 0, target.file.absolutePath)
-                }
+                if (handle != null) {
+                    val target = mediaTarget
+                    if (target != null && targetWasMissing) {
+                        updateDownloadRecord(request, STATE_BUFFERING, 0, target.file.absolutePath)
+                    }
 
-                // Deterministic startup buffer enforcement: while waiting for ready, continuously request missing head pieces (and tail pieces if MKV)
-                if (!readyNotified && target != null) {
-                    synchronized(sessionLock) {
-                        if (sessionManager === manager && handle.isValid) {
-                            val startupPieceEnd = ((target.fileOffset + minOf(target.length - 1, STARTUP_BUFFER_BYTES)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
-                            for (p in target.firstPiece..startupPieceEnd) {
-                                if (!handle.havePiece(p)) {
-                                    handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                    try { handle.setPieceDeadline(p, 500) } catch (_: Exception) {}
-                                }
-                            }
-
-                            val isMkv = target.file.extension.equals("mkv", ignoreCase = true)
-                            if (isMkv) {
-                                val tailBytes = 5L * 1024L * 1024L
-                                val tailPieceStart = ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
-                                for (p in tailPieceStart..target.lastPiece) {
-                                    if (!handle.havePiece(p)) {
+                    // Deterministic startup buffer enforcement: continuously request missing startup pieces without polling JNI on verified pieces
+                    if (!readyNotified && target != null) {
+                        val tracker = pieceTracker
+                        val planner = piecePlanner
+                        if (tracker != null && planner != null) {
+                            synchronized(sessionLock) {
+                                if (sessionManager === manager && handle.isValid) {
+                                    val initialPlan = planner.planForRange(
+                                        requestedStart = 0L,
+                                        requestedEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES),
+                                        tracker = tracker
+                                    )
+                                    for (p in initialPlan.piecesToPrioritize) {
                                         handle.piecePriority(p, Priority.TOP_PRIORITY)
                                         try { handle.setPieceDeadline(p, 500) } catch (_: Exception) {}
                                     }
-                                }
-                            }
-                        }
-                    }
-                }
 
-                val status = synchronized(sessionLock) {
-                    if (sessionManager === manager && handle.isValid) handle.status() else null
-                }
-                if (status == null) {
-                    delay(1.seconds)
-                    continue
-                }
-                val progress = (status.progress() * 100).toInt().coerceIn(0, 100)
-                val numSeeds = status.numSeeds()
-                val numPeers = status.numPeers()
-                val readyIntent = readyPlayerIntent
-                if (readyIntent == null) {
-                    updateNotification(buildProgressNotification(request.title, progress))
-                } else {
-                    updateNotification(
-                        buildReadyNotification(request.title, readyIntent, readyServerPort)
-                    )
-                }
-                updateDownloadRecord(
-                    request,
-                    when {
-                        readyIntent != null -> STATE_READY
-                        mediaTarget == null -> STATE_DOWNLOADING
-                        else -> STATE_BUFFERING
-                    },
-                    progress,
-                    mediaTarget?.file?.absolutePath,
-                    numSeeds,
-                    numPeers
-                )
-                if (!readyNotified && target != null && hasVerifiedBuffer(handle, target)) {
-                    val server = VerifiedTorrentHttpServer(
-                        mediaFile = target.file,
-                        expectedLength = target.length,
-                        accessToken = infoHash,
-                        onRangeRequested = { start, end ->
-                            if (!completed.get()) {
-                                synchronized(sessionLock) {
-                                    if (sessionManager === manager && handle.isValid) {
-                                        val reqPiece = ((target.fileOffset + start) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
-                                        val reqEndPiece = ((target.fileOffset + end) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
-                                        val windowEnd = minOf(reqEndPiece + 16, target.lastPiece)
-                                        for (p in reqPiece..windowEnd) {
-                                            handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                            try {
-                                                handle.setPieceDeadline(p, 1000)
-                                            } catch (_: Exception) {}
+                                    val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
+                                        target.file.extension.equals("webm", ignoreCase = true) ||
+                                        target.file.extension.equals("mp4", ignoreCase = true)
+                                    if (isIndexedContainer) {
+                                        val tailBytes = minOf(target.length, 5L * 1024L * 1024L)
+                                        val tailPieceStart = ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
+                                        for (p in tailPieceStart..target.lastPiece) {
+                                            if (!tracker.isPieceVerified(p)) {
+                                                handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                                try { handle.setPieceDeadline(p, 500) } catch (_: Exception) {}
+                                            }
                                         }
-                                        handle.setSequentialRange(reqPiece, target.lastPiece)
                                     }
                                 }
                             }
-                        },
-                        isRangeVerified = { start, end ->
-                            completed.get() || synchronized(sessionLock) {
-                                sessionManager === manager &&
-                                    isVerifiedRange(handle, target, start, end)
-                            }
-                        }
-                    )
-                    val port = server.startServer()
-                    val castUrl = try {
-                        server.lanUrl()
-                    } catch (_: Exception) {
-                        null
-                    }
-                    streamServers[infoHash]?.stop()
-                    streamServers[infoHash] = server
-                    val playerIntent = Intent(this, LocalPlayerActivity::class.java)
-                        .putExtra(LocalPlayerActivity.EXTRA_STREAM_URL, server.localUrl())
-                        .putExtra(LocalPlayerActivity.EXTRA_CAST_URL, castUrl)
-                        .putExtra(LocalPlayerActivity.EXTRA_INFO_HASH, infoHash)
-                        .putExtra(LocalPlayerActivity.EXTRA_FILE_PATH, target.file.absolutePath)
-                        .putExtra(LocalPlayerActivity.EXTRA_PARTIAL_TORRENT_STREAM, true)
-                        .putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, request.castWhenReady)
-                        .putExtra(LocalPlayerActivity.EXTRA_MIME_TYPE, target.file.mediaMimeType())
-                        .putExtra(LocalPlayerActivity.EXTRA_TITLE, request.title)
-                        .putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, request.seriesId)
-                        .putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, request.seasonNumber)
-                        .putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, request.episodeNumber)
-                        .putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, request.movieId)
-                        .apply {
-                            if (request.nextEpisodeInfo != null) {
-                                putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, request.nextEpisodeInfo)
-                            }
-                        }
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    readyPlayerIntent = playerIntent
-                    readyPlayerIntents[infoHash] = playerIntent
-                    readyServerPort = port
-                    withContext(Dispatchers.Main.immediate) {
-                        startForegroundForPlayback(
-                            buildReadyNotification(request.title, playerIntent, port)
-                        )
-                    }
-                    updateDownloadRecord(request, STATE_READY, progress, target.file.absolutePath, numSeeds, numPeers)
-                    if (openWhenReadyHashes.remove(infoHash)) {
-                        withContext(Dispatchers.Main) { startActivity(playerIntent) }
-                    }
-                    readyNotified = true
-                }
-                if (progress == 100 && status.totalWantedDone() >= status.totalWanted()) {
-                    val playableFile = target?.file
-                        ?: findLargestVideoFile(downloadDirectory)
-                        ?: throw IllegalStateException("The completed torrent contains no supported video file")
-                    completed.set(true)
-                    updateDownloadRecord(request, STATE_COMPLETED, 100, playableFile.absolutePath, numSeeds, numPeers)
-
-                    if (playableFile.extension.equals("mkv", ignoreCase = true)) {
-                        val mp4File = File(playableFile.parentFile, "${playableFile.nameWithoutExtension}.mp4")
-                        if (mp4File.isFile) {
-                            try {
-                                mp4File.delete()
-                                Log.i(TAG, "Deleted legacy remuxed MP4 file: ${mp4File.name}")
-                            } catch (_: Exception) {}
                         }
                     }
 
-                    val playerIntent = readyPlayerIntent
-                    if (playerIntent != null) {
-                        updateNotification(
-                            buildReadyNotification(request.title, playerIntent, readyServerPort)
-                        )
-                    } else {
-                        updateNotification(buildCompletedNotification(request.title, playableFile))
+                    val status = synchronized(sessionLock) {
+                        if (sessionManager === manager && handle.isValid) handle.status() else null
                     }
-                    return
+                    if (status == null) {
+                        delay(1.seconds)
+                        continue
+                    }
+                    val progress = (status.progress() * 100).toInt().coerceIn(0, 100)
+                    val numSeeds = status.numSeeds()
+                    val numPeers = status.numPeers()
+                    val readyIntent = readyPlayerIntent
+
+                    val currentState = when {
+                        readyIntent != null -> STATE_READY
+                        mediaTarget == null -> STATE_DOWNLOADING
+                        else -> STATE_BUFFERING
+                    }
+                    val now = System.currentTimeMillis()
+                    val shouldUpdateDb = currentState != lastReportedState ||
+                        progress != lastReportedProgress ||
+                        (now - lastDbUpdateTime >= 5000L)
+
+                    if (shouldUpdateDb) {
+                        lastReportedState = currentState
+                        lastReportedProgress = progress
+                        lastDbUpdateTime = now
+                        if (readyIntent == null) {
+                            updateNotification(buildProgressNotification(request.title, progress))
+                        } else {
+                            updateNotification(
+                                buildReadyNotification(request.title, readyIntent, readyServerPort)
+                            )
+                        }
+                        updateDownloadRecord(
+                            request,
+                            currentState,
+                            progress,
+                            mediaTarget?.file?.absolutePath,
+                            numSeeds,
+                            numPeers
+                        )
+                    }
+
+                    val tracker = pieceTracker
+                    if (target != null && tracker != null) {
+                        synchronized(sessionLock) {
+                            if (sessionManager === manager && handle.isValid) {
+                                for (p in target.firstPiece..target.lastPiece) {
+                                    if (!tracker.isPieceVerified(p) && handle.havePiece(p)) {
+                                        tracker.markPieceVerified(p)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    val isReady = !readyNotified && target != null && tracker != null && run {
+                        val startupEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES - 1)
+                        val headVerified = tracker.isRangeVerified(0, startupEnd) { p ->
+                            synchronized(sessionLock) {
+                                sessionManager === manager && handle.isValid && handle.havePiece(p)
+                            }
+                        }
+                        val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
+                            target.file.extension.equals("webm", ignoreCase = true) ||
+                            target.file.extension.equals("mp4", ignoreCase = true)
+                        val tailVerified = if (isIndexedContainer) {
+                            val tailBytes = minOf(target.length, 2L * 1024L * 1024L)
+                            val tailStart = maxOf(0L, target.length - tailBytes)
+                            tracker.isRangeVerified(tailStart, target.length - 1L) { p ->
+                                synchronized(sessionLock) {
+                                    sessionManager === manager && handle.isValid && handle.havePiece(p)
+                                }
+                            }
+                        } else {
+                            true
+                        }
+                        val resumePiece = piecePlanner?.calculateResumePiece(request.resumePositionMs, request.durationMs) ?: target.firstPiece
+                        val resumeVerified = if (resumePiece > target.firstPiece) {
+                            (resumePiece until minOf(resumePiece + 3, target.lastPiece + 1)).all { p ->
+                                tracker.isPieceVerified(p) || synchronized(sessionLock) {
+                                    sessionManager === manager && handle.isValid && handle.havePiece(p)
+                                }
+                            }
+                        } else {
+                            true
+                        }
+                        headVerified && tailVerified && resumeVerified
+                    }
+
+                    if (isReady) {
+                        val server = VerifiedTorrentHttpServer(
+                            mediaFile = target.file,
+                            expectedLength = target.length,
+                            accessToken = infoHash,
+                            onRangeRequested = { start, end ->
+                                if (!completed.get()) {
+                                    val plan = piecePlanner?.planForRange(
+                                        requestedStart = start,
+                                        requestedEnd = end,
+                                        tracker = tracker
+                                    )
+                                    if (plan != null) {
+                                        synchronized(sessionLock) {
+                                            if (sessionManager === manager && handle.isValid) {
+                                                if (plan.isSeekJump) {
+                                                    for (p in target.firstPiece..target.lastPiece) {
+                                                        try { handle.resetPieceDeadline(p) } catch (_: Exception) {}
+                                                    }
+                                                }
+                                                if (!plan.isTailProbe) {
+                                                    handle.setSequentialRange(plan.sequentialRangeStart, target.lastPiece)
+                                                }
+                                                for (p in plan.piecesToPrioritize) {
+                                                    handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                                    val deadline = plan.deadlines[p] ?: 1000
+                                                    try {
+                                                        handle.setPieceDeadline(p, deadline)
+                                                    } catch (_: Exception) {}
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            isRangeVerified = { start, end ->
+                                completed.get() || tracker.isRangeVerified(start, end) { p ->
+                                    synchronized(sessionLock) {
+                                        sessionManager === manager && handle.isValid && handle.havePiece(p)
+                                    }
+                                }
+                            },
+                            awaitRangeVerified = { start, end, timeoutMs ->
+                                completed.get() || tracker.awaitRange(start, end, timeoutMs) { p ->
+                                    synchronized(sessionLock) {
+                                        sessionManager === manager && handle.isValid && handle.havePiece(p)
+                                    }
+                                }
+                            }
+                        )
+                        val port = server.startServer()
+                        val castUrl = try {
+                            server.lanUrl()
+                        } catch (_: Exception) {
+                            null
+                        }
+                        streamServers[infoHash]?.stop()
+                        streamServers[infoHash] = server
+
+                        // Throttle upload bandwidth now that playback is starting to prioritize disk read throughput
+                        synchronized(sessionLock) {
+                            if (sessionManager === manager) {
+                                TorrentSessionConfig.applyRuntimeOptimizations(manager, isPlaybackActive = true, isTv = isTv)
+                            }
+                        }
+
+                        val playerIntent = Intent(this, LocalPlayerActivity::class.java)
+                            .putExtra(LocalPlayerActivity.EXTRA_STREAM_URL, server.localUrl())
+                            .putExtra(LocalPlayerActivity.EXTRA_CAST_URL, castUrl)
+                            .putExtra(LocalPlayerActivity.EXTRA_INFO_HASH, infoHash)
+                            .putExtra(LocalPlayerActivity.EXTRA_FILE_PATH, target.file.absolutePath)
+                            .putExtra(LocalPlayerActivity.EXTRA_PARTIAL_TORRENT_STREAM, true)
+                            .putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, request.castWhenReady)
+                            .putExtra(LocalPlayerActivity.EXTRA_MIME_TYPE, target.file.mediaMimeType())
+                            .putExtra(LocalPlayerActivity.EXTRA_TITLE, request.title)
+                            .putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, request.seriesId)
+                            .putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, request.seasonNumber)
+                            .putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, request.episodeNumber)
+                            .putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, request.movieId)
+                            .apply {
+                                if (request.nextEpisodeInfo != null) {
+                                    putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, request.nextEpisodeInfo)
+                                }
+                            }
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        readyPlayerIntent = playerIntent
+                        readyPlayerIntents[infoHash] = playerIntent
+                        readyServerPort = port
+                        withContext(Dispatchers.Main.immediate) {
+                            startForegroundForPlayback(
+                                buildReadyNotification(request.title, playerIntent, port)
+                            )
+                        }
+                        updateDownloadRecord(request, STATE_READY, progress, target.file.absolutePath, numSeeds, numPeers)
+                        if (openWhenReadyHashes.remove(infoHash)) {
+                            withContext(Dispatchers.Main) { startActivity(playerIntent) }
+                        }
+                        readyNotified = true
+                    }
+                    if (progress == 100 && status.totalWantedDone() >= status.totalWanted()) {
+                        val playableFile = target?.file
+                            ?: findLargestVideoFile(downloadDirectory)
+                            ?: throw IllegalStateException("The completed torrent contains no supported video file")
+                        completed.set(true)
+                        pieceTracker?.setAllVerified()
+                        updateDownloadRecord(request, STATE_COMPLETED, 100, playableFile.absolutePath, 0, 0)
+
+                        if (playableFile.extension.equals("mkv", ignoreCase = true)) {
+                            val mp4File = File(playableFile.parentFile, "${playableFile.nameWithoutExtension}.mp4")
+                            if (mp4File.isFile) {
+                                try {
+                                    mp4File.delete()
+                                    Log.i(TAG, "Deleted legacy remuxed MP4 file: ${mp4File.name}")
+                                } catch (_: Exception) {}
+                            }
+                        }
+
+                        // ZERO SEEDING MANDATE: completely terminate native torrent session
+                        manager.removeListener(alertListener)
+                        stopSessionManager()
+
+                        val playerIntent = readyPlayerIntent
+                        if (playerIntent != null) {
+                            updateNotification(
+                                buildReadyNotification(request.title, playerIntent, readyServerPort)
+                            )
+                        } else {
+                            updateNotification(buildCompletedNotification(request.title, playableFile))
+                        }
+                        return
+                    }
+                    if (pausedInfoHash == infoHash) {
+                        updateDownloadRecord(request, STATE_PAUSED, progress, null, numSeeds, numPeers)
+                    }
                 }
-                if (pausedInfoHash == infoHash) {
-                    updateDownloadRecord(request, STATE_PAUSED, progress, null, numSeeds, numPeers)
-                }
+                delay(1.seconds)
             }
-            delay(1.seconds)
+        } finally {
+            try { manager.removeListener(alertListener) } catch (_: Exception) {}
         }
     }
 

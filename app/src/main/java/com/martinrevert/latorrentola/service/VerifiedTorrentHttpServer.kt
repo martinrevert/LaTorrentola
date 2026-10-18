@@ -3,10 +3,9 @@ package com.martinrevert.latorrentola.service
 import android.util.Log
 import fi.iki.elonen.NanoHTTPD
 import java.io.File
-import java.io.FileInputStream
-import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
+import java.io.RandomAccessFile
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.util.Collections
@@ -26,6 +25,7 @@ class VerifiedTorrentHttpServer(
     private val expectedLength: Long,
     val accessToken: String = UUID.randomUUID().toString(),
     private val onRangeRequested: ((Long, Long) -> Unit)? = null,
+    private val awaitRangeVerified: ((Long, Long, Long) -> Boolean)? = null,
     private val isRangeVerified: (Long, Long) -> Boolean
 ) : NanoHTTPD("0.0.0.0", 0) {
 
@@ -185,13 +185,8 @@ class VerifiedTorrentHttpServer(
         val (rawStart, rawEnd) = rawRange
         val activeFile = mediaFile
 
-        val diskLength = activeFile.length()
         val start = rawStart.coerceIn(0L, maxOf(0L, expectedLength - 1L))
-        val end = if (rawEnd >= expectedLength - 1L && diskLength > 0L) {
-            minOf(expectedLength - 1L, maxOf(start, diskLength - 1L))
-        } else {
-            rawEnd
-        }
+        val end = rawEnd.coerceIn(start, maxOf(start, expectedLength - 1L))
         val length = maxOf(0L, end - start + 1L)
         val httpMimeType = getResponseMimeType()
 
@@ -242,9 +237,7 @@ class VerifiedTorrentHttpServer(
             TAG,
             "Streaming GET $uri -> range $start-$end / $expectedLength (MIME: $httpMimeType, file: ${activeFile.name})"
         )
-        val input = FileInputStream(activeFile)
-        skipFully(input, start)
-        val body = VerifiedRangeInputStream(input, start, end, ::awaitVerified)
+        val body = VerifiedRangeInputStream(activeFile, start, end, ::awaitVerified)
         val response = newFixedLengthResponse(status, httpMimeType, body, length)
         response.addHeader("Accept-Ranges", "bytes")
         response.addHeader("Content-Length", length.toString())
@@ -279,9 +272,9 @@ class VerifiedTorrentHttpServer(
     }
 
     /**
-     * Waits briefly for every byte in a receiver-requested range to become verified.
-     * Blocks for up to 30 seconds to allow libtorrent to download the required pieces,
-     * which prevents HTML5 video elements (like Chromecast) from fatally aborting on 503 errors.
+     * Waits for every byte in a receiver-requested range to become verified before serving.
+     * Delegates to awaitRangeVerified if provided, or blocks for up to RANGE_WAIT_TIMEOUT_MS
+     * to allow libtorrent to download the required pieces without aborting the client socket.
      *
      * @param start Inclusive byte offset.
      * @param end Inclusive byte offset.
@@ -289,7 +282,10 @@ class VerifiedTorrentHttpServer(
      */
     private fun awaitVerified(start: Long, end: Long): Boolean {
         onRangeRequested?.invoke(start, end)
-        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(500)
+        if (awaitRangeVerified != null) {
+            return awaitRangeVerified.invoke(start, end, RANGE_WAIT_TIMEOUT_MS)
+        }
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(RANGE_WAIT_TIMEOUT_MS)
         while (System.nanoTime() < deadline) {
             if (isRangeVerified(start, end)) return true
             try {
@@ -345,48 +341,40 @@ class VerifiedTorrentHttpServer(
     }
 
     /**
-     * Advances a file stream exactly to [offset], failing if the backing file ends early.
-     *
-     * @param input Media file stream.
-     * @param offset Number of bytes to advance.
-     */
-    private fun skipFully(input: InputStream, offset: Long) {
-        var remaining = offset
-        while (remaining > 0) {
-            val skipped = input.skip(remaining)
-            if (skipped <= 0) {
-                if (input.read() == -1) error("Media file ended before the requested range")
-                remaining--
-            } else {
-                remaining -= skipped
-            }
-        }
-    }
-
-    /**
      * Streams only bounded chunks after their backing torrent pieces have been hash-verified.
+     * Uses RandomAccessFile to seek to arbitrary offsets without allocating or skipping intermediate bytes.
      *
-     * @param input Backing media file stream positioned at the selected range start.
+     * @param file Backing media file on disk.
      * @param start Inclusive absolute offset of the HTTP range.
      * @param end Inclusive absolute offset of the HTTP range.
      * @param waitForRangeVerified Waits until complete torrent pieces cover a byte interval.
      */
     private class VerifiedRangeInputStream(
-        input: InputStream,
+        private val file: File,
         private val start: Long,
         private val end: Long,
         private val waitForRangeVerified: (Long, Long) -> Boolean
-    ) : FilterInputStream(input) {
+    ) : InputStream() {
         private var currentOffset = start
-
-        // Start verifiedThrough before 'start' so the very first chunk is forced to verify
         private var verifiedThrough = start - 1L
+        private var raf: RandomAccessFile? = null
+
+        private fun getOrOpenRaf(): RandomAccessFile {
+            var r = raf
+            if (r == null) {
+                r = RandomAccessFile(file, "r")
+                raf = r
+            }
+            return r
+        }
 
         /** Reads one byte after verifying the bounded piece range containing it. */
         override fun read(): Int {
             if (currentOffset > end) return -1
             ensureVerified()
-            val value = super.read()
+            val r = getOrOpenRaf()
+            r.seek(currentOffset)
+            val value = r.read()
             if (value >= 0) currentOffset++
             return value
         }
@@ -400,7 +388,9 @@ class VerifiedTorrentHttpServer(
                 verifiedThrough - currentOffset + 1L,
                 end - currentOffset + 1L
             ).toInt()
-            val count = super.read(buffer, offset, safeLength)
+            val r = getOrOpenRaf()
+            r.seek(currentOffset)
+            val count = r.read(buffer, offset, safeLength)
             if (count > 0) currentOffset += count
             return count
         }
@@ -415,6 +405,13 @@ class VerifiedTorrentHttpServer(
             }
             verifiedThrough = nextChunkEnd
         }
+
+        override fun close() {
+            try {
+                raf?.close()
+            } catch (_: Exception) {}
+            raf = null
+        }
     }
 
     companion object {
@@ -422,6 +419,9 @@ class VerifiedTorrentHttpServer(
 
         /** NanoHTTPD socket timeout used while a receiver requests media. */
         const val SOCKET_READ_TIMEOUT = 30_000
+
+        /** Maximum timeout in ms to wait for a requested piece range to verify before failing. */
+        const val RANGE_WAIT_TIMEOUT_MS = 25_000L
 
         /** Maximum byte interval verified before the response stream advances. */
         const val VERIFIED_CHUNK_BYTES = 256L * 1024L

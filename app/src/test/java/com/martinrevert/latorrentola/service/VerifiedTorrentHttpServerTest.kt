@@ -1,6 +1,12 @@
 package com.martinrevert.latorrentola.service
 
+import android.util.Log
 import com.google.common.truth.Truth.assertThat
+import io.mockk.every
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
+import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -9,6 +15,21 @@ class VerifiedTorrentHttpServerTest {
 
     @get:Rule
     val tempFolder = TemporaryFolder()
+
+    @Before
+    fun setUp() {
+        mockkStatic(Log::class)
+        every { Log.d(any(), any()) } returns 0
+        every { Log.i(any(), any()) } returns 0
+        every { Log.w(any(), any<String>()) } returns 0
+        every { Log.e(any(), any()) } returns 0
+        every { Log.e(any(), any(), any()) } returns 0
+    }
+
+    @After
+    fun tearDown() {
+        unmockkStatic(Log::class)
+    }
 
     @Test
     fun `localUrl returns 127_0_0_1 format with access token and filename`() {
@@ -70,6 +91,11 @@ class VerifiedTorrentHttpServerTest {
     }
 
     @Test
+    fun `range wait timeout is at least 8 seconds to prevent premature socket aborts`() {
+        assertThat(VerifiedTorrentHttpServer.RANGE_WAIT_TIMEOUT_MS).isAtLeast(8_000L)
+    }
+
+    @Test
     fun `subtitle base path is properly stripped from video cast url`() {
         val castUrl = "http://192.168.1.50:52341/test-token-123/movie%20title.mp4"
         val baseCastUrl = castUrl.substringBeforeLast('/')
@@ -79,5 +105,33 @@ class VerifiedTorrentHttpServerTest {
 
         assertThat(castSubUri).isEqualTo("http://192.168.1.50:52341/test-token-123/subtitles/cGF0aA==/spanish.vtt")
         assertThat(castSubUri).doesNotContain("movie%20title.mp4")
+    }
+
+    @Test
+    fun `serve returns full requested range even when start is near end of file`() {
+        val dummyFile = tempFolder.newFile("test_video.mkv")
+        val data = ByteArray(1000) { (it % 128).toByte() }
+        dummyFile.writeBytes(data)
+
+        val server = VerifiedTorrentHttpServer(
+            mediaFile = dummyFile,
+            expectedLength = 1000L,
+            isRangeVerified = { _, _ -> true }
+        )
+        val port = server.startServer()
+        try {
+            val url = java.net.URL(server.localUrl())
+            val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.setRequestProperty("Range", "bytes=900-999")
+            conn.connect()
+            assertThat(conn.responseCode).isEqualTo(206)
+            assertThat(conn.getHeaderField("Content-Range")).isEqualTo("bytes 900-999/1000")
+            assertThat(conn.contentLength).isEqualTo(100)
+            val body = conn.inputStream.readBytes()
+            assertThat(body.size).isEqualTo(100)
+            assertThat(body[0]).isEqualTo((900 % 128).toByte())
+        } finally {
+            server.stop()
+        }
     }
 }

@@ -20,7 +20,9 @@ import com.google.android.gms.cast.MediaTrack
 import com.google.android.gms.cast.framework.CastContext
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.network.UserLibraryRepository
+import com.martinrevert.latorrentola.service.streaming.PlayerStreamingConfig
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.utils.isTvDevice
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,8 +64,18 @@ class PlaybackService : MediaSessionService() {
         super.onCreate()
 
         try {
+            val isTv = isTvDevice()
+            val loadControl = PlayerStreamingConfig.buildLoadControl(isTv)
+            val loadErrorHandlingPolicy = PlayerStreamingConfig.buildLoadErrorHandlingPolicy()
+            val dataSourceFactory = PlayerStreamingConfig.buildDataSourceFactory(this)
+            val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
+                .setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
+
             // Build the local player
-            val exoPlayer = ExoPlayer.Builder(this).build()
+            val exoPlayer = ExoPlayer.Builder(this)
+                .setLoadControl(loadControl)
+                .setMediaSourceFactory(mediaSourceFactory)
+                .build()
             localPlayer = exoPlayer
 
             val trackSelector = object : CastTrackSelector() {
