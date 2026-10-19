@@ -74,3 +74,17 @@
 
 # Keep the HiltViewModel annotation usage for safety
 -keep @dagger.hilt.android.lifecycle.HiltViewModel class * extends androidx.lifecycle.ViewModel
+
+# SMB / Kerberos / RMI / Expression Language (smbj / ASN.1 / BouncyCastle dependencies)
+-dontwarn java.rmi.UnmarshalException
+-dontwarn javax.el.**
+-dontwarn org.ietf.jgss.**
+-dontwarn com.hierynomus.**
+-dontwarn org.bouncycastle.**
+
+# libnfs native JNI entry points
+-keep class com.martinrevert.latorrentola.service.storage.remote.LibNfsNative { *; }
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+
