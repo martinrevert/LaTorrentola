@@ -1,0 +1,87 @@
+package com.martinrevert.latorrentola.service.storage
+
+import android.content.Context
+import android.content.SharedPreferences
+import com.google.common.truth.Truth.assertThat
+import io.mockk.*
+import org.junit.After
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import java.io.File
+
+class TorrentStorageResolverTest {
+
+    @get:Rule
+    val tempFolder = TemporaryFolder()
+
+    private val context: Context = mockk(relaxed = true)
+    private val sharedPreferences: SharedPreferences = mockk(relaxed = true)
+    private lateinit var internalDir: File
+
+    @Before
+    fun setUp() {
+        internalDir = tempFolder.newFolder("internal_files")
+        every { context.filesDir } returns internalDir
+        every { context.getSharedPreferences("latorrentola_prefs", Context.MODE_PRIVATE) } returns sharedPreferences
+        every { sharedPreferences.getString("storage_location", "internal") } returns "internal"
+    }
+
+    @After
+    fun tearDown() {
+        unmockkAll()
+    }
+
+    @Test
+    fun `resolveStorageDirectory returns internal filesDir when location is internal`() {
+        val resolved = TorrentStorageResolver.resolveStorageDirectory(context, TorrentStorageResolver.LOCATION_INTERNAL)
+        assertThat(resolved).isEqualTo(internalDir)
+    }
+
+    @Test
+    fun `resolveStorageDirectory falls back to internal filesDir when configured drive missing`() {
+        val nonExistentPath = File(tempFolder.root, "missing_usb_drive").absolutePath
+        val resolved = TorrentStorageResolver.resolveStorageDirectory(context, nonExistentPath)
+        assertThat(resolved).isEqualTo(internalDir)
+    }
+
+    @Test
+    fun `resolveTorrentDirectory constructs correct relative path`() {
+        val hash = "0123456789abcdef0123456789abcdef01234567"
+        val torrentDir = TorrentStorageResolver.resolveTorrentDirectory(context, hash, TorrentStorageResolver.LOCATION_INTERNAL)
+        assertThat(torrentDir.name).isEqualTo(hash)
+        assertThat(torrentDir.parentFile?.name).isEqualTo(TorrentStorageResolver.TORRENT_DIRECTORY)
+        assertThat(torrentDir.parentFile?.parentFile).isEqualTo(internalDir)
+    }
+
+    @Test
+    fun `findTorrentDirectory returns directory if it exists on disk`() {
+        val hash = "abcdef1234567890abcdef1234567890abcdef12"
+        val torrentDir = File(internalDir, "${TorrentStorageResolver.TORRENT_DIRECTORY}/$hash")
+        torrentDir.mkdirs()
+
+        val found = TorrentStorageResolver.findTorrentDirectory(context, hash)
+        assertThat(found).isNotNull()
+        assertThat(found?.absolutePath).isEqualTo(torrentDir.absolutePath)
+    }
+
+    @Test
+    fun `findTorrentDirectory returns null if directory does not exist anywhere`() {
+        val hash = "nonexistent_hash_12345"
+        val found = TorrentStorageResolver.findTorrentDirectory(context, hash)
+        assertThat(found).isNull()
+    }
+
+    @Test
+    fun `isValidTorrentDirectory returns true for directory within torrent_downloads`() {
+        val validDir = File(internalDir, "${TorrentStorageResolver.TORRENT_DIRECTORY}/target_hash")
+        assertThat(TorrentStorageResolver.isValidTorrentDirectory(context, validDir)).isTrue()
+    }
+
+    @Test
+    fun `isValidTorrentDirectory returns false for arbitrary directory outside torrent_downloads`() {
+        val rogueDir = File(tempFolder.root, "arbitrary_folder")
+        assertThat(TorrentStorageResolver.isValidTorrentDirectory(context, rogueDir)).isFalse()
+    }
+}

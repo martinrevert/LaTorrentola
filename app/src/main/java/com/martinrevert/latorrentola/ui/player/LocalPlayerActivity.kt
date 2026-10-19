@@ -76,6 +76,7 @@ import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.SessionManager
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.martinrevert.latorrentola.ui.components.CastCodecWarningObserver
+import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -183,7 +184,9 @@ import com.martinrevert.latorrentola.ui.components.InsufficientStorageDialog
 import com.martinrevert.latorrentola.ui.components.NextEpisodeTorrentDialog
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
-import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.service.storage.remote.RemoteStorageManager
+import com.martinrevert.latorrentola.service.storage.remote.RemoteFileItem
+import com.martinrevert.latorrentola.service.storage.TorrentStorageResolver
 import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TorrentLaunchResult
@@ -309,6 +312,9 @@ class LocalPlayerActivity : FragmentActivity() {
 
     @Inject
     lateinit var tmdbRepository: TmdbRepository
+
+    @Inject
+    lateinit var remoteStorageManager: RemoteStorageManager
 
     private val tvPlayerViewModel: TvPlayerViewModel by viewModels()
 
@@ -624,6 +630,21 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     private fun handleIntent(intent: Intent) {
+        val serverJson = intent.getStringExtra(EXTRA_REMOTE_SERVER_JSON)
+        if (!serverJson.isNullOrBlank()) {
+            try {
+                val serverConfig = com.google.gson.Gson().fromJson(
+                    serverJson,
+                    com.martinrevert.latorrentola.service.storage.remote.RemoteServerConfig::class.java
+                )
+                if (serverConfig != null) {
+                    remoteStorageManager.registerServer(serverConfig)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to deserialize remote server JSON: ${e.message}")
+            }
+        }
+
         localStreamUrl = intent.getStringExtra(EXTRA_STREAM_URL).orEmpty()
         castStreamUrl = intent.getStringExtra(EXTRA_CAST_URL).orEmpty()
         val file = intent.getStringExtra(EXTRA_FILE_PATH)?.let(::File)
@@ -646,6 +667,58 @@ class LocalPlayerActivity : FragmentActivity() {
                 Log.i(TAG, "Started VerifiedTorrentHttpServer for local file Cast: $castStreamUrl")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to start VerifiedTorrentHttpServer for local file: ${e.message}")
+            }
+        } else if (castStreamUrl.isBlank() && mediaUri?.scheme == com.martinrevert.latorrentola.service.storage.remote.RemoteMediaDataSource.SCHEME_REMOTE) {
+            val serverId = intent.getStringExtra(EXTRA_REMOTE_SERVER_ID).orEmpty().ifBlank { mediaUri.host.orEmpty() }
+            val remotePath = intent.getStringExtra(EXTRA_REMOTE_FILE_PATH).orEmpty().ifBlank { mediaUri.getQueryParameter(com.martinrevert.latorrentola.service.storage.remote.RemoteMediaDataSource.PARAM_PATH).orEmpty() }
+            if (serverId.isNotBlank() && remotePath.isNotBlank()) {
+                var serverConfig = remoteStorageManager.getServer(serverId)
+                if (serverConfig == null) {
+                    val typeStr = mediaUri.getQueryParameter(com.martinrevert.latorrentola.service.storage.remote.RemoteMediaDataSource.PARAM_TYPE)
+                    val host = mediaUri.getQueryParameter(com.martinrevert.latorrentola.service.storage.remote.RemoteMediaDataSource.PARAM_HOST)
+                    if (!typeStr.isNullOrBlank() && !host.isNullOrBlank()) {
+                        val type = try {
+                            com.martinrevert.latorrentola.service.storage.remote.RemoteServerType.valueOf(typeStr)
+                        } catch (_: Exception) {
+                            com.martinrevert.latorrentola.service.storage.remote.RemoteServerType.NFS
+                        }
+                        val port = mediaUri.getQueryParameter(com.martinrevert.latorrentola.service.storage.remote.RemoteMediaDataSource.PARAM_PORT)?.toIntOrNull()
+                            ?: if (type == com.martinrevert.latorrentola.service.storage.remote.RemoteServerType.SMB) 445 else 2049
+                        val share = mediaUri.getQueryParameter(com.martinrevert.latorrentola.service.storage.remote.RemoteMediaDataSource.PARAM_SHARE).orEmpty()
+                        val user = mediaUri.getQueryParameter(com.martinrevert.latorrentola.service.storage.remote.RemoteMediaDataSource.PARAM_USER).takeUnless { it.isNullOrBlank() }
+                        val pass = mediaUri.getQueryParameter(com.martinrevert.latorrentola.service.storage.remote.RemoteMediaDataSource.PARAM_PASS).takeUnless { it.isNullOrBlank() }
+                        serverConfig = com.martinrevert.latorrentola.service.storage.remote.RemoteServerConfig(
+                            id = serverId,
+                            name = serverId,
+                            type = type,
+                            host = host,
+                            port = port,
+                            shareOrExport = share,
+                            username = user,
+                            password = pass
+                        )
+                        remoteStorageManager.registerServer(serverConfig)
+                    }
+                }
+                if (serverConfig != null) {
+                    try {
+                        val fileItem = com.martinrevert.latorrentola.service.storage.remote.RemoteFileItem(
+                            path = remotePath,
+                            name = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { remotePath.substringAfterLast('/') },
+                            isDirectory = false,
+                            sizeBytes = 0L,
+                            lastModified = 0L,
+                            serverConfigId = serverId
+                        )
+                        val server = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                            remoteStorageManager.startRemoteStreamServer(serverConfig, fileItem)
+                        }
+                        castStreamUrl = server.lanUrl()
+                        Log.i(TAG, "Started RemoteMediaHttpServer for remote Cast: $castStreamUrl")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to start RemoteMediaHttpServer for remote Cast: ${e.message}")
+                    }
+                }
             }
         }
 
@@ -745,10 +818,15 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
             }
 
+            val inferredMimeType = intent.getStringExtra(EXTRA_MIME_TYPE)
+                ?: file?.mediaMimeType()
+                ?: intent.getStringExtra(EXTRA_REMOTE_FILE_PATH)?.mediaMimeType()
+                ?: intent.getStringExtra(EXTRA_TITLE)?.mediaMimeType()
+
             pendingMediaItem = MediaItem.Builder()
                 .setMediaId(mediaId)
                 .setUri(mediaUri)
-                .setMimeType(intent.getStringExtra(EXTRA_MIME_TYPE) ?: file?.mediaMimeType())
+                .setMimeType(inferredMimeType)
                 .setMediaMetadata(
                     MediaMetadata.Builder()
                         .setTitle(mediaTitle)
@@ -785,8 +863,9 @@ class LocalPlayerActivity : FragmentActivity() {
         lifecycleScope.launch {
             val activeItem = controller.currentMediaItem
             val newItem = pendingMediaItem
+            Log.i(TAG, "setupControllerMedia: activeItem=${activeItem?.mediaId}, newItem=${newItem?.mediaId}, state=${controller.playbackState}")
 
-            if (newItem != null && (activeItem == null || activeItem.mediaId != newItem.mediaId)) {
+            if (newItem != null && (activeItem == null || activeItem.mediaId != newItem.mediaId || controller.playbackState == Player.STATE_IDLE || controller.playbackState == Player.STATE_ENDED)) {
                 val savedProgress = userLibraryRepository.getPlaybackProgress(newItem.mediaId)
                 val startPosition = if (savedProgress != null && savedProgress.positionMs > 5000L && !savedProgress.isCompleted) {
                     Log.i(TAG, "Restoring playback position: ${savedProgress.positionMs}ms for ${newItem.mediaId}")
@@ -863,7 +942,9 @@ class LocalPlayerActivity : FragmentActivity() {
                     if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
                         error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
                         error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
-                        error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED) {
+                        error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED ||
+                        error.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE ||
+                        error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED) {
                         lifecycleScope.launch {
                             delay(1500.milliseconds)
                             if (controller.playbackState == Player.STATE_IDLE) {
@@ -1476,6 +1557,41 @@ class LocalPlayerActivity : FragmentActivity() {
             try {
                 val subtitle = openSubtitlesRepository.download(result, torrentInfoHash)
                 attachSubtitle(subtitle)
+
+                // Co-locate downloaded subtitle if playing external USB or remote SMB/NFS media
+                val remoteServerId = intent.getStringExtra(EXTRA_REMOTE_SERVER_ID)
+                val remoteFilePath = intent.getStringExtra(EXTRA_REMOTE_FILE_PATH)
+                val localFile = intent.getStringExtra(EXTRA_FILE_PATH)?.let(::File)
+                if (!remoteServerId.isNullOrBlank() && !remoteFilePath.isNullOrBlank()) {
+                    try {
+                        val vttText = subtitle.file.readText()
+                        val item = RemoteFileItem(
+                            path = remoteFilePath,
+                            name = remoteFilePath.substringAfterLast('/'),
+                            isDirectory = false,
+                            serverConfigId = remoteServerId
+                        )
+                        remoteStorageManager.saveColocatedSubtitle(item, vttText, subtitle.language)
+                        Log.i(TAG, "Saved co-located subtitle to remote server: $remoteFilePath")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to co-locate subtitle on remote server: ${e.message}")
+                    }
+                } else if (localFile != null && localFile.exists() && !TorrentStorageResolver.isValidTorrentDirectory(this@LocalPlayerActivity, localFile.parentFile ?: localFile)) {
+                    try {
+                        val vttText = subtitle.file.readText()
+                        val item = RemoteFileItem(
+                            path = localFile.absolutePath,
+                            name = localFile.name,
+                            isDirectory = false,
+                            serverConfigId = "usb"
+                        )
+                        remoteStorageManager.saveColocatedSubtitle(item, vttText, subtitle.language)
+                        Log.i(TAG, "Saved co-located subtitle to USB storage: ${localFile.name}")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to co-locate subtitle on USB drive: ${e.message}")
+                    }
+                }
+
                 playerBottomSheetState = null
             } catch (error: OpenSubtitlesException) {
                 errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
@@ -1662,6 +1778,9 @@ class LocalPlayerActivity : FragmentActivity() {
         const val EXTRA_EPISODE_NUMBER = "extra_episode_number"
         const val EXTRA_MOVIE_ID = "extra_movie_id"
         const val EXTRA_NEXT_EPISODE_INFO = "extra_next_episode_info"
+        const val EXTRA_REMOTE_SERVER_ID = "extra_remote_server_id"
+        const val EXTRA_REMOTE_FILE_PATH = "extra_remote_file_path"
+        const val EXTRA_REMOTE_SERVER_JSON = "extra_remote_server_json"
         private const val TAG = "LocalPlayerActivity"
     }
 }

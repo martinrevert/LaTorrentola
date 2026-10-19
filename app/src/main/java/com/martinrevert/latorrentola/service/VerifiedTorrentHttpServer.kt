@@ -374,7 +374,15 @@ class VerifiedTorrentHttpServer(
             ensureVerified()
             val r = getOrOpenRaf()
             r.seek(currentOffset)
-            val value = r.read()
+            var value = r.read()
+            if (value < 0 && currentOffset <= end) {
+                for (retry in 1..5) {
+                    try { Thread.sleep(50) } catch (_: InterruptedException) { break }
+                    r.seek(currentOffset)
+                    value = r.read()
+                    if (value >= 0) break
+                }
+            }
             if (value >= 0) currentOffset++
             return value
         }
@@ -390,7 +398,15 @@ class VerifiedTorrentHttpServer(
             ).toInt()
             val r = getOrOpenRaf()
             r.seek(currentOffset)
-            val count = r.read(buffer, offset, safeLength)
+            var count = r.read(buffer, offset, safeLength)
+            if (count < 0 && currentOffset <= end) {
+                for (retry in 1..5) {
+                    try { Thread.sleep(50) } catch (_: InterruptedException) { break }
+                    r.seek(currentOffset)
+                    count = r.read(buffer, offset, safeLength)
+                    if (count > 0) break
+                }
+            }
             if (count > 0) currentOffset += count
             return count
         }

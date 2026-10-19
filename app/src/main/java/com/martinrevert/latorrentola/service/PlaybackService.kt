@@ -56,6 +56,9 @@ class PlaybackService : MediaSessionService() {
     @Inject
     lateinit var preferenceManager: PreferenceManager
 
+    @Inject
+    lateinit var remoteStorageManager: com.martinrevert.latorrentola.service.storage.remote.RemoteStorageManager
+
     private var lastAppliedStyleContentId: String? = null
     private var lastActivatedTrackContentId: String? = null
 
@@ -67,7 +70,7 @@ class PlaybackService : MediaSessionService() {
             val isTv = isTvDevice()
             val loadControl = PlayerStreamingConfig.buildLoadControl(isTv)
             val loadErrorHandlingPolicy = PlayerStreamingConfig.buildLoadErrorHandlingPolicy()
-            val dataSourceFactory = PlayerStreamingConfig.buildDataSourceFactory(this)
+            val dataSourceFactory = PlayerStreamingConfig.buildDataSourceFactory(this, remoteStorageManager)
             val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
                 .setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
 
@@ -136,10 +139,35 @@ class PlaybackService : MediaSessionService() {
                         val lanIp = VerifiedTorrentHttpServer.getLanIpAddress().orEmpty()
 
                         val candidateUrl = castUrl.ifBlank { uriStr }
-                        val targetUrl = if (lanIp.isNotBlank() && (candidateUrl.contains("127.0.0.1") || candidateUrl.contains("localhost"))) {
+                        var targetUrl = if (lanIp.isNotBlank() && (candidateUrl.contains("127.0.0.1") || candidateUrl.contains("localhost"))) {
                             candidateUrl.replace("127.0.0.1", lanIp).replace("localhost", lanIp)
                         } else {
                             candidateUrl
+                        }
+
+                        if (targetUrl.startsWith("remote://")) {
+                            try {
+                                val parsedUri = android.net.Uri.parse(targetUrl)
+                                val serverId = parsedUri.host.orEmpty()
+                                val remotePath = parsedUri.getQueryParameter(com.martinrevert.latorrentola.service.storage.remote.RemoteMediaDataSource.PARAM_PATH).orEmpty()
+                                val serverConfig = remoteStorageManager.getServer(serverId)
+                                if (serverConfig != null && remotePath.isNotBlank()) {
+                                    val fileItem = com.martinrevert.latorrentola.service.storage.remote.RemoteFileItem(
+                                        path = remotePath,
+                                        name = remotePath.substringAfterLast('/'),
+                                        isDirectory = false,
+                                        sizeBytes = 0L,
+                                        serverConfigId = serverId
+                                    )
+                                    val proxy = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                                        remoteStorageManager.startRemoteStreamServer(serverConfig, fileItem)
+                                    }
+                                    targetUrl = proxy.lanUrl()
+                                    Log.i(TAG, "Converted remote URI to HTTP LAN URL for Cast: $targetUrl")
+                                }
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed to resolve HTTP proxy for remote Cast: ${e.message}")
+                            }
                         }
 
                         Log.d(TAG, "Converting MediaItem for Cast: targetUrl=$targetUrl")

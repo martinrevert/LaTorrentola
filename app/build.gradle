@@ -166,6 +166,19 @@ android {
         buildConfigField "String", "WEB_CLIENT_ID", "\"${localProperties.getProperty('FIREBASE_WEB_CLIENT_ID', '')}\""
         buildConfigField "String", "TMDB_API_KEY", "\"${localProperties.getProperty('TMDB_API_KEY', '')}\""
         buildConfigField "String", "OPEN_SUBTITLES_API_KEY", "\"${localProperties.getProperty('OPEN_SUBTITLES_API_KEY', '')}\""
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_shared"
+            }
+        }
+    }
+
+    ndkVersion "30.0.16248370"
+
+    externalNativeBuild {
+        cmake {
+            path file("src/main/cpp/CMakeLists.txt")
+        }
     }
 
     buildFeatures {
@@ -181,6 +194,7 @@ android {
             keepDebugSymbols.add('**/libandroidx.graphics.path.so')
             keepDebugSymbols.add('**/libtranslate_jni.so')
             keepDebugSymbols.add('**/libtorrent4j.so')
+            keepDebugSymbols.add('**/liblatorrentola_nfs.so')
         }
     }
 
@@ -329,6 +343,13 @@ dependencies {
     implementation libs.haze.blur
     implementation libs.haze.glass
     implementation libs.haze.blur.materials
+
+    // SMB & NFS Network Storage Clients (NFS is native via libnfs NDK)
+    implementation libs.smbj
+    implementation(libs.dcerpc) {
+        exclude group: 'org.bouncycastle', module: 'bcprov-jdk15on'
+        exclude group: 'org.bouncycastle', module: 'bcpkix-jdk15on'
+    }
 
     // Testing
     testImplementation libs.junit

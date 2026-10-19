@@ -122,4 +122,38 @@ class VerifiedPieceTrackerTest {
         assertThat(tracker.isPieceVerified(5)).isTrue()
         assertThat(tracker.verifiedPieceCount()).isEqualTo(3)
     }
+
+    @Test
+    fun `markPiecesVerified with Collection updates multiple pieces`() {
+        val tracker = VerifiedPieceTracker(totalPieces = 10)
+        tracker.markPiecesVerified(listOf(2, 4, 6))
+
+        assertThat(tracker.isPieceVerified(2)).isTrue()
+        assertThat(tracker.isPieceVerified(3)).isFalse()
+        assertThat(tracker.isPieceVerified(4)).isTrue()
+        assertThat(tracker.isPieceVerified(6)).isTrue()
+        assertThat(tracker.verifiedPieceCount()).isEqualTo(3)
+    }
+
+    @Test
+    fun `getUnverifiedPieces returns only unverified piece indices`() {
+        val tracker = VerifiedPieceTracker(totalPieces = 10)
+        tracker.markPiecesVerified(listOf(0, 1, 2, 5))
+
+        val unverified = tracker.getUnverifiedPieces(0, 5)
+        assertThat(unverified).containsExactly(3, 4).inOrder()
+    }
+
+    @Test
+    fun `fallbackChecker correctly verifies and caches missing pieces`() {
+        val tracker = VerifiedPieceTracker(totalPieces = 10)
+        val verifiedByLibtorrent = setOf(1, 2)
+
+        val verified = tracker.isRangeVerified(1024L, 2048L, 0L, 1024) { p ->
+            p in verifiedByLibtorrent
+        }
+        assertThat(verified).isTrue()
+        assertThat(tracker.isPieceVerified(1)).isTrue()
+        assertThat(tracker.isPieceVerified(2)).isTrue()
+    }
 }

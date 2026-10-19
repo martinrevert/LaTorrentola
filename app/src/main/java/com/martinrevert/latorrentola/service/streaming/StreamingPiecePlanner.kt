@@ -19,7 +19,7 @@ class StreamingPiecePlanner(
         const val MP4_TAIL_BYTES = 1_500_000L // 1.5 MB
         const val MKV_TAIL_BYTES = 5_000_000L // 5 MB
         const val LOOKAHEAD_PIECES_DEFAULT = 32
-        const val SEEK_JUMP_THRESHOLD_PIECES = 4
+        const val SEEK_JUMP_THRESHOLD_PIECES = 16
     }
 
     private var lastPlannedPiece: Int = -1
@@ -68,6 +68,7 @@ class StreamingPiecePlanner(
         lookaheadPieces: Int = LOOKAHEAD_PIECES_DEFAULT
     ): StreamingPlan {
         val isTail = isTailProbe(requestedStart, requestedEnd)
+        val isHead = requestedStart < STARTUP_BUFFER_BYTES
         val currentPiece = ((fileOffset + requestedStart) / pieceLength).toInt().coerceIn(firstPiece, lastPiece)
 
         val isSeekJump = if (lastPlannedPiece != -1 && !isTail) {
@@ -84,19 +85,23 @@ class StreamingPiecePlanner(
         val prioritizedPieces = mutableListOf<Int>()
         val deadlines = mutableMapOf<Int, Int>()
 
-        // 1. Ensure startup/head pieces are verified (for container headers)
-        for (p in firstPiece..startupPieceEnd) {
-            if (!tracker.isPieceVerified(p)) {
-                prioritizedPieces.add(p)
-                deadlines[p] = 500
+        // 1. Ensure startup/head pieces are verified ONLY when starting up or probing container headers
+        if (isHead) {
+            for (p in firstPiece..startupPieceEnd) {
+                if (!tracker.isPieceVerified(p)) {
+                    prioritizedPieces.add(p)
+                    deadlines[p] = 500
+                }
             }
         }
 
-        // 2. Ensure tail pieces are prioritized (for MKV Cues or MP4 moov atom)
-        for (p in tailPieceStart..lastPiece) {
-            if (!tracker.isPieceVerified(p)) {
-                prioritizedPieces.add(p)
-                deadlines[p] = 500
+        // 2. Ensure tail pieces are prioritized ONLY when probing container index (Cues/moov)
+        if (isTail) {
+            for (p in tailPieceStart..lastPiece) {
+                if (!tracker.isPieceVerified(p)) {
+                    prioritizedPieces.add(p)
+                    deadlines[p] = 500
+                }
             }
         }
 

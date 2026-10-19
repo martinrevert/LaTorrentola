@@ -51,6 +51,19 @@
             android:name="androidx.mediarouter.media.MediaTransferReceiver"
             android:exported="true" />
 
+        <receiver
+            android:name=".service.storage.StorageMountReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_MOUNTED" />
+                <action android:name="android.intent.action.MEDIA_UNMOUNTED" />
+                <action android:name="android.intent.action.MEDIA_EJECT" />
+                <action android:name="android.intent.action.MEDIA_BAD_REMOVAL" />
+                <action android:name="android.intent.action.MEDIA_REMOVED" />
+                <data android:scheme="file" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".service.PlaybackService"
             android:exported="true"

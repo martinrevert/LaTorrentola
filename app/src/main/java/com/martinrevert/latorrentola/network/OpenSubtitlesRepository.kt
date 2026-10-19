@@ -5,6 +5,7 @@ import android.util.Log
 import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
 import com.martinrevert.latorrentola.BuildConfig
+import com.martinrevert.latorrentola.service.storage.TorrentStorageResolver
 import com.martinrevert.latorrentola.utils.OpenSubtitlesCredentialStore
 import com.martinrevert.latorrentola.utils.OpenSubtitlesCredentials
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -156,8 +157,9 @@ class OpenSubtitlesRepository @Inject constructor(
         val candidateDirectories = mutableListOf<File>()
 
         if (normalizedHash != null) {
-            val torrentDirectory = File(context.filesDir, "$TORRENT_DIRECTORY/$normalizedHash").canonicalFile
-            if (torrentDirectory.parentFile == File(context.filesDir, TORRENT_DIRECTORY).canonicalFile) {
+            val torrentDirectory = TorrentStorageResolver.findTorrentDirectory(context, normalizedHash)?.canonicalFile
+                ?: File(context.filesDir, "$TORRENT_DIRECTORY/$normalizedHash").canonicalFile
+            if (TorrentStorageResolver.isValidTorrentDirectory(context, torrentDirectory)) {
                 val subtitleDirectory = File(torrentDirectory, SUBTITLE_DIRECTORY).canonicalFile
                 if (subtitleDirectory.parentFile == torrentDirectory && subtitleDirectory.isDirectory) {
                     candidateDirectories.add(subtitleDirectory)
@@ -905,7 +907,8 @@ class OpenSubtitlesRepository @Inject constructor(
     private fun saveSubtitle(fileId: Long, webVtt: String, torrentInfoHash: String?): File {
         val normalizedHash = normalizeTorrentInfoHash(torrentInfoHash)
         val ownerDirectory = normalizedHash?.let {
-            File(context.filesDir, "$TORRENT_DIRECTORY/$it")
+            TorrentStorageResolver.findTorrentDirectory(context, it)
+                ?: TorrentStorageResolver.resolveTorrentDirectory(context, it)
         }
         val directory = if (ownerDirectory != null) {
             File(ownerDirectory, SUBTITLE_DIRECTORY)
@@ -920,7 +923,7 @@ class OpenSubtitlesRepository @Inject constructor(
             val canonicalDirectory = directory.canonicalFile
             val expectedParent = (ownerDirectory ?: context.cacheDir).canonicalFile
             if (ownerDirectory != null &&
-                expectedParent.parentFile != File(context.filesDir, TORRENT_DIRECTORY).canonicalFile
+                !TorrentStorageResolver.isValidTorrentDirectory(context, expectedParent)
             ) {
                 throw IOException("Torrent subtitle owner is outside private torrent storage")
             }

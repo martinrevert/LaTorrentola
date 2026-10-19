@@ -15,20 +15,20 @@ import java.io.IOException
 @OptIn(UnstableApi::class)
 object PlayerStreamingConfig {
 
-    const val TV_MIN_BUFFER_MS = 30_000
-    const val TV_MAX_BUFFER_MS = 90_000
-    const val TV_BUFFER_FOR_PLAYBACK_MS = 2_500
-    const val TV_BUFFER_AFTER_REBUFFER_MS = 5_000
-    const val TV_TARGET_BUFFER_BYTES = 48 * 1024 * 1024 // 48 MB
+    const val TV_MIN_BUFFER_MS = 15_000
+    const val TV_MAX_BUFFER_MS = 45_000
+    const val TV_BUFFER_FOR_PLAYBACK_MS = 2_000
+    const val TV_BUFFER_AFTER_REBUFFER_MS = 2_500
+    const val TV_TARGET_BUFFER_BYTES = 32 * 1024 * 1024 // 32 MB
 
-    const val MOBILE_MIN_BUFFER_MS = 20_000
-    const val MOBILE_MAX_BUFFER_MS = 60_000
+    const val MOBILE_MIN_BUFFER_MS = 15_000
+    const val MOBILE_MAX_BUFFER_MS = 30_000
     const val MOBILE_BUFFER_FOR_PLAYBACK_MS = 1_500
-    const val MOBILE_BUFFER_AFTER_REBUFFER_MS = 3_000
-    const val MOBILE_TARGET_BUFFER_BYTES = 32 * 1024 * 1024 // 32 MB
+    const val MOBILE_BUFFER_AFTER_REBUFFER_MS = 2_000
+    const val MOBILE_TARGET_BUFFER_BYTES = 24 * 1024 * 1024 // 24 MB
 
     /**
-     * Builds a LoadControl that buffers further ahead to absorb disk I/O latency on Android TV eMMC.
+     * Builds a LoadControl that buffers smoothly and recovers quickly from buffer underflows.
      */
     fun buildLoadControl(isTv: Boolean): LoadControl {
         val minBuffer = if (isTv) TV_MIN_BUFFER_MS else MOBILE_MIN_BUFFER_MS
@@ -40,8 +40,8 @@ object PlayerStreamingConfig {
         return DefaultLoadControl.Builder()
             .setBufferDurationsMs(minBuffer, maxBuffer, forPlayback, afterRebuffer)
             .setTargetBufferBytes(targetBytes)
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .setBackBuffer(10_000, true)
+            .setPrioritizeTimeOverSizeThresholds(false)
+            .setBackBuffer(5_000, true)
             .build()
     }
 
@@ -67,15 +67,26 @@ object PlayerStreamingConfig {
 
     /**
      * Builds a DataSource.Factory with generous read timeouts for local torrent streaming,
-     * preventing premature SocketTimeoutExceptions while pieces verify in the background.
+     * and optional [com.martinrevert.latorrentola.service.storage.remote.RemoteMediaDataSource]
+     * support for direct SMB/NFS playback without an HTTP proxy server.
      */
-    fun buildDataSourceFactory(context: android.content.Context): androidx.media3.datasource.DataSource.Factory {
+    fun buildDataSourceFactory(
+        context: android.content.Context,
+        remoteStorageManager: com.martinrevert.latorrentola.service.storage.remote.RemoteStorageManager? = null
+    ): androidx.media3.datasource.DataSource.Factory {
         val httpFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
             .setConnectTimeoutMs(HTTP_CONNECT_TIMEOUT_MS)
             .setReadTimeoutMs(HTTP_READ_TIMEOUT_MS)
             .setAllowCrossProtocolRedirects(true)
             .setKeepPostFor302Redirects(true)
 
-        return androidx.media3.datasource.DefaultDataSource.Factory(context, httpFactory)
+        val defaultFactory = androidx.media3.datasource.DefaultDataSource.Factory(context, httpFactory)
+        if (remoteStorageManager != null) {
+            return androidx.media3.datasource.DataSource.Factory {
+                val base = defaultFactory.createDataSource()
+                com.martinrevert.latorrentola.service.storage.remote.RemoteMediaDataSource(remoteStorageManager, base)
+            }
+        }
+        return defaultFactory
     }
 }

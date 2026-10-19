@@ -244,6 +244,11 @@ fun TvEpisodeDetailScreen(
                                 is TorrentLaunchResult.InsufficientStorage -> {
                                     insufficientStorageState.value = Pair(result.availableBytes, result.requiredBytes)
                                 }
+                                TorrentLaunchResult.Fat32LimitExceeded -> Toast.makeText(
+                                    context,
+                                    context.resources.getString(R.string.toast_fat32_limit),
+                                    Toast.LENGTH_LONG
+                                ).show()
                             }
                         }
                     }

@@ -44,6 +44,7 @@ import com.martinrevert.latorrentola.service.streaming.PlayerStreamingConfig
 import com.martinrevert.latorrentola.service.streaming.StreamingPiecePlanner
 import com.martinrevert.latorrentola.service.streaming.TorrentSessionConfig
 import com.martinrevert.latorrentola.service.streaming.VerifiedPieceTracker
+import com.martinrevert.latorrentola.service.storage.TorrentStorageResolver
 import com.martinrevert.latorrentola.utils.isTvDevice
 import org.libtorrent4j.AlertListener
 import org.libtorrent4j.alerts.Alert
@@ -281,6 +282,25 @@ class TorrentDownloadService : Service() {
             }
             return START_STICKY
         }
+        if (intent?.action == ACTION_STORAGE_UNMOUNTED) {
+            Log.w(TAG, "Storage volume unmounted or ejected. Pausing active transfers.")
+            val activeHash = synchronized(queueLock) { activeInfoHash }
+            if (activeHash != null) {
+                pausedInfoHash = activeHash
+                synchronized(sessionLock) {
+                    sessionManager
+                        ?.find(Sha1Hash.parseHex(activeHash))
+                        ?.takeIf { it.isValid }
+                        ?.pause()
+                }
+                serviceScope.launch {
+                    updateDownloadState(activeHash, STATE_PAUSED)
+                    val activeTitle = activeRequest?.title ?: getString(R.string.torrent_download_title)
+                    updateNotification(buildFailedNotification(activeTitle))
+                }
+            }
+            return START_STICKY
+        }
         if (intent?.action == ACTION_DELETE) {
             val requestedHash = intent.getStringExtra(EXTRA_INFO_HASH).orEmpty()
             if (requestedHash.isNotBlank()) {
@@ -304,6 +324,7 @@ class TorrentDownloadService : Service() {
                             }
                         }
                     } else {
+                        TorrentStorageResolver.findTorrentDirectory(this@TorrentDownloadService, requestedHash)?.deleteRecursively()
                         File(filesDir, "$TORRENT_DIRECTORY/$requestedHash").deleteRecursively()
                         torrentDownloadDao.delete(requestedHash)
                         if (!workerStarted && streamServers.isEmpty()) {
@@ -630,6 +651,7 @@ class TorrentDownloadService : Service() {
             } finally {
                 stopSessionManager()
                 if (deletedActiveHashes.remove(request.infoHash)) {
+                    TorrentStorageResolver.findTorrentDirectory(this@TorrentDownloadService, request.infoHash)?.deleteRecursively()
                     File(filesDir, "$TORRENT_DIRECTORY/${request.infoHash}").deleteRecursively()
                     torrentDownloadDao.delete(request.infoHash)
                 }
@@ -676,7 +698,7 @@ class TorrentDownloadService : Service() {
      */
     private suspend fun downloadAndAwaitVerification(request: DownloadRequest) {
         val infoHash = request.infoHash
-        val downloadDirectory = File(filesDir, "$TORRENT_DIRECTORY/$infoHash")
+        val downloadDirectory = TorrentStorageResolver.resolveTorrentDirectory(this, infoHash)
         if (!downloadDirectory.exists() && !downloadDirectory.mkdirs()) {
             throw IllegalStateException("Unable to create the private torrent directory")
         }
@@ -878,13 +900,20 @@ class TorrentDownloadService : Service() {
 
                     val tracker = pieceTracker
                     if (target != null && tracker != null) {
-                        synchronized(sessionLock) {
-                            if (sessionManager === manager && handle.isValid) {
-                                for (p in target.firstPiece..target.lastPiece) {
-                                    if (!tracker.isPieceVerified(p) && handle.havePiece(p)) {
-                                        tracker.markPieceVerified(p)
+                        val unverified = tracker.getUnverifiedPieces(target.firstPiece, target.lastPiece)
+                        if (unverified.isNotEmpty()) {
+                            val newlyVerified = mutableListOf<Int>()
+                            synchronized(sessionLock) {
+                                if (sessionManager === manager && handle.isValid) {
+                                    for (p in unverified) {
+                                        if (handle.havePiece(p)) {
+                                            newlyVerified.add(p)
+                                        }
                                     }
                                 }
+                            }
+                            if (newlyVerified.isNotEmpty()) {
+                                tracker.markPiecesVerified(newlyVerified)
                             }
                         }
                     }
@@ -924,6 +953,9 @@ class TorrentDownloadService : Service() {
                     }
 
                     if (isReady) {
+                        var lastPrioritizedWindowStart = -1
+                        var lastPrioritizedWindowEnd = -1
+
                         val server = VerifiedTorrentHttpServer(
                             mediaFile = target.file,
                             expectedLength = target.length,
@@ -936,22 +968,36 @@ class TorrentDownloadService : Service() {
                                         tracker = tracker
                                     )
                                     if (plan != null) {
-                                        synchronized(sessionLock) {
-                                            if (sessionManager === manager && handle.isValid) {
-                                                if (plan.isSeekJump) {
-                                                    for (p in target.firstPiece..target.lastPiece) {
-                                                        try { handle.resetPieceDeadline(p) } catch (_: Exception) {}
+                                        val windowStart = plan.sequentialRangeStart
+                                        val needsUpdate = plan.isSeekJump || plan.isTailProbe ||
+                                            lastPrioritizedWindowStart == -1 ||
+                                            kotlin.math.abs(windowStart - lastPrioritizedWindowStart) >= 4 ||
+                                            plan.piecesToPrioritize.isNotEmpty()
+
+                                        if (needsUpdate) {
+                                            val oldWindowStart = lastPrioritizedWindowStart
+                                            val oldWindowEnd = lastPrioritizedWindowEnd
+                                            lastPrioritizedWindowStart = windowStart
+                                            lastPrioritizedWindowEnd = windowStart + 32
+
+                                            synchronized(sessionLock) {
+                                                if (sessionManager === manager && handle.isValid) {
+                                                    if (plan.isSeekJump && oldWindowStart != -1) {
+                                                        // Only reset deadlines on the previously prioritized window, NOT all 10,000 pieces!
+                                                        for (p in oldWindowStart..minOf(oldWindowEnd, target.lastPiece)) {
+                                                            try { handle.resetPieceDeadline(p) } catch (_: Exception) {}
+                                                        }
                                                     }
-                                                }
-                                                if (!plan.isTailProbe) {
-                                                    handle.setSequentialRange(plan.sequentialRangeStart, target.lastPiece)
-                                                }
-                                                for (p in plan.piecesToPrioritize) {
-                                                    handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                                    val deadline = plan.deadlines[p] ?: 1000
-                                                    try {
-                                                        handle.setPieceDeadline(p, deadline)
-                                                    } catch (_: Exception) {}
+                                                    if (!plan.isTailProbe) {
+                                                        handle.setSequentialRange(plan.sequentialRangeStart, target.lastPiece)
+                                                    }
+                                                    for (p in plan.piecesToPrioritize) {
+                                                        handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                                        val deadline = plan.deadlines[p] ?: 1000
+                                                        try {
+                                                            handle.setPieceDeadline(p, deadline)
+                                                        } catch (_: Exception) {}
+                                                    }
                                                 }
                                             }
                                         }
@@ -1550,6 +1596,8 @@ class TorrentDownloadService : Service() {
         const val ACTION_PLAY_STREAM = "com.martinrevert.latorrentola.action.PLAY_TORRENT_STREAM"
         /** Remove a local transfer command. */
         const val ACTION_DELETE = "com.martinrevert.latorrentola.action.DELETE_TORRENT"
+        /** Storage volume unmounted or ejected while transfers may be active. */
+        const val ACTION_STORAGE_UNMOUNTED = "com.martinrevert.latorrentola.action.STORAGE_UNMOUNTED"
         /** Magnet URI intent extra. */
         const val EXTRA_MAGNET_URI = "torrent_magnet_uri"
         /** User-visible content title intent extra. */

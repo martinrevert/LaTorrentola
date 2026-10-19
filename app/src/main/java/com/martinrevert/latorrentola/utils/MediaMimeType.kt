@@ -9,12 +9,17 @@ import java.util.Locale
  * @receiver File whose extension identifies its content type.
  * @return MIME type for HTTP and media playback.
  */
-fun File.mediaMimeType(): String = when (extension.lowercase(Locale.ROOT)) {
-    "mp4", "m4v" -> "video/mp4"
-    "webm" -> "video/webm"
-    "ts" -> "video/mp2t"
-    "avi" -> "video/x-msvideo"
-    "mov" -> "video/quicktime"
-    "vtt" -> "text/vtt"
-    else -> "video/x-matroska"
+fun File.mediaMimeType(): String = name.mediaMimeType()
+
+fun String.mediaMimeType(): String {
+    val ext = substringAfterLast('.', "").lowercase(Locale.ROOT)
+    return when (ext) {
+        "mp4", "m4v" -> "video/mp4"
+        "webm" -> "video/webm"
+        "ts" -> "video/mp2t"
+        "avi" -> "video/x-msvideo"
+        "mov" -> "video/quicktime"
+        "vtt" -> "text/vtt"
+        else -> "video/x-matroska"
+    }
 }

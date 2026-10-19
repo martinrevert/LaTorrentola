@@ -1,0 +1,97 @@
+{
+  "buildFiles": [
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\src\\main\\cpp\\CMakeLists.txt",
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\src\\main\\cpp\\libnfs\\CMakeLists.txt",
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\src\\main\\cpp\\libnfs\\cmake\\config.h.cmake",
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\src\\main\\cpp\\libnfs\\cmake\\ConfigureChecks.cmake",
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\src\\main\\cpp\\libnfs\\cmake\\GNUInstallDirs.cmake",
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\src\\main\\cpp\\libnfs\\cmake\\libnfs.pc.cmake",
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\src\\main\\cpp\\libnfs\\cmake\\Macros.cmake",
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\src\\main\\cpp\\libnfs\\doc\\CMakeLists.txt",
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\src\\main\\cpp\\libnfs\\lib\\CMakeLists.txt",
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\src\\main\\cpp\\libnfs\\mount\\CMakeLists.txt",
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\src\\main\\cpp\\libnfs\\nfs4\\CMakeLists.txt",
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\src\\main\\cpp\\libnfs\\nfs\\CMakeLists.txt",
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\src\\main\\cpp\\libnfs\\nlm\\CMakeLists.txt",
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\src\\main\\cpp\\libnfs\\nsm\\CMakeLists.txt",
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\src\\main\\cpp\\libnfs\\portmap\\CMakeLists.txt",
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\src\\main\\cpp\\libnfs\\rquota\\CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "C:\\Users\\marti\\AppData\\Local\\Android\\Sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+      "-C",
+      "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\.cxx\\Debug\\1g2m4g2t\\arm64-v8a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "C:\\Users\\marti\\AppData\\Local\\Android\\Sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+    "-C",
+    "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\.cxx\\Debug\\1g2m4g2t\\arm64-v8a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "latorrentola_nfs::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "latorrentola_nfs",
+      "output": "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\build\\intermediates\\cxx\\Debug\\1g2m4g2t\\obj\\arm64-v8a\\liblatorrentola_nfs.so",
+      "runtimeFiles": [
+        "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\build\\intermediates\\cxx\\Debug\\1g2m4g2t\\obj\\arm64-v8a\\libnfs.so"
+      ]
+    },
+    "nfs::@b3471e1376807a6955fd": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "nfs",
+      "output": "C:\\Users\\marti\\StudioProjects\\LaTorrentola\\app\\build\\intermediates\\cxx\\Debug\\1g2m4g2t\\obj\\arm64-v8a\\libnfs.so",
+      "runtimeFiles": []
+    },
+    "nfs_mount::@1c3cb17b03957dca5fe3": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "nfs_mount"
+    },
+    "nfs_nfs::@42316c8be4d2bcdd1ad9": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "nfs_nfs"
+    },
+    "nfs_nfs4::@5f6beb51ef07519b4981": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "nfs_nfs4"
+    },
+    "nfs_nlm::@bd1c1313b3cb8bf6110c": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "nfs_nlm"
+    },
+    "nfs_nsm::@9f4708c4ba3fc0263312": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "nfs_nsm"
+    },
+    "nfs_portmap::@98faeaccc579cc1e95f4": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "nfs_portmap"
+    },
+    "nfs_rquota::@0f93d700a14fa27be785": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "nfs_rquota"
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "C:\\Users\\marti\\AppData\\Local\\Android\\Sdk\\ndk\\30.0.16248370\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang.exe",
+      "cppCompilerExecutable": "C:\\Users\\marti\\AppData\\Local\\Android\\Sdk\\ndk\\30.0.16248370\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang++.exe"
+    }
+  },
+  "cFileExtensions": [
+    "c"
+  ],
+  "cppFileExtensions": []
+}

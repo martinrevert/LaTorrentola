@@ -8,6 +8,10 @@ import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
 import com.martinrevert.latorrentola.utils.OpenSubtitlesCredentialStore
 import com.martinrevert.latorrentola.utils.OpenSubtitlesCredentials
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.service.storage.StorageLocation
+import com.martinrevert.latorrentola.service.storage.TorrentStorageResolver
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
@@ -31,7 +35,8 @@ class SettingsViewModel @Inject constructor(
     private val openSubtitlesCredentialStore: OpenSubtitlesCredentialStore,
     private val firebaseMessagingInitializer: FirebaseMessagingInitializer,
     private val userLibraryRepository: com.martinrevert.latorrentola.network.UserLibraryRepository,
-    private val authRepository: com.martinrevert.latorrentola.network.AuthRepository
+    private val authRepository: com.martinrevert.latorrentola.network.AuthRepository,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     /** Mutable backing state for settings displayed by the screen. */
@@ -50,6 +55,11 @@ class SettingsViewModel @Inject constructor(
     init {
         val localFiltered = preferenceManager.getFilteredLanguages()
         val openSubtitlesCredentials = openSubtitlesCredentialStore.load()
+        val availableLocations = try {
+            TorrentStorageResolver.getAvailableStorageLocations(context)
+        } catch (_: Exception) {
+            emptyList()
+        }
         _uiState.value = SettingsUiState(
             voiceSystem = preferenceManager.getVoiceSystem(),
             voiceSummary = preferenceManager.getVoiceSummary(),
@@ -61,7 +71,10 @@ class SettingsViewModel @Inject constructor(
             minimumRating = preferenceManager.getMinimumRating(),
             torrentHandlingMode = preferenceManager.getTorrentHandlingMode(),
             autoPlayQualitySelectionMethod = preferenceManager.getAutoPlayQualitySelectionMethod(),
+            storageLocation = preferenceManager.getStorageLocation(),
+            availableStorageLocations = availableLocations,
             openSubtitlesUsername = openSubtitlesCredentials?.username.orEmpty(),
+            openSubtitlesPassword = openSubtitlesCredentials?.password.orEmpty(),
             openSubtitlesCredentialsConfigured = openSubtitlesCredentials != null
         )
         syncSettings()
@@ -88,6 +101,13 @@ class SettingsViewModel @Inject constructor(
             preferenceManager.autoPlayQualitySelectionFlow.collect { method ->
                 if (_uiState.value.autoPlayQualitySelectionMethod != method) {
                     _uiState.value = _uiState.value.copy(autoPlayQualitySelectionMethod = method)
+                }
+            }
+        }
+        viewModelScope.launch {
+            preferenceManager.storageLocationFlow.collect { location ->
+                if (_uiState.value.storageLocation != location) {
+                    _uiState.value = _uiState.value.copy(storageLocation = location)
                 }
             }
         }
@@ -213,6 +233,7 @@ class SettingsViewModel @Inject constructor(
         openSubtitlesCredentialStore.save(OpenSubtitlesCredentials(username, password))
         _uiState.value = _uiState.value.copy(
             openSubtitlesUsername = username,
+            openSubtitlesPassword = password,
             openSubtitlesCredentialsConfigured = true
         )
     }
@@ -222,8 +243,25 @@ class SettingsViewModel @Inject constructor(
         openSubtitlesCredentialStore.clear()
         _uiState.value = _uiState.value.copy(
             openSubtitlesUsername = "",
+            openSubtitlesPassword = "",
             openSubtitlesCredentialsConfigured = false
         )
+    }
+
+    /** Persists the user's selected torrent download storage location. */
+    fun setStorageLocation(location: String) {
+        preferenceManager.setStorageLocation(location)
+        _uiState.value = _uiState.value.copy(storageLocation = location)
+    }
+
+    /** Refreshes the list of mounted storage locations (e.g. after USB connect/disconnect). */
+    fun refreshStorageLocations() {
+        val availableLocations = try {
+            TorrentStorageResolver.getAvailableStorageLocations(context)
+        } catch (_: Exception) {
+            emptyList()
+        }
+        _uiState.value = _uiState.value.copy(availableStorageLocations = availableLocations)
     }
 
 }
@@ -242,6 +280,7 @@ class SettingsViewModel @Inject constructor(
  * @property torrentHandlingMode How selected torrents are handed off or played.
  * @property autoPlayQualitySelectionMethod How quality is selected when auto-playing next episode.
  * @property openSubtitlesUsername Username stored for OpenSubtitles authentication.
+ * @property openSubtitlesPassword Password stored for OpenSubtitles authentication.
  * @property openSubtitlesCredentialsConfigured Whether both OpenSubtitles credentials are saved.
  */
 data class SettingsUiState(
@@ -255,6 +294,9 @@ data class SettingsUiState(
     val minimumRating: Float = PreferenceManager.DEFAULT_MINIMUM_RATING,
     val torrentHandlingMode: TorrentHandlingMode = TorrentHandlingMode.LOCAL_PLAYBACK,
     val autoPlayQualitySelectionMethod: AutoPlayQualitySelectionMethod = AutoPlayQualitySelectionMethod.OFF,
+    val storageLocation: String = TorrentStorageResolver.LOCATION_INTERNAL,
+    val availableStorageLocations: List<StorageLocation> = emptyList(),
     val openSubtitlesUsername: String = "",
+    val openSubtitlesPassword: String = "",
     val openSubtitlesCredentialsConfigured: Boolean = false
 )

@@ -47,6 +47,11 @@ class PreferenceManager @Inject constructor(
     val autoPlayQualitySelectionFlow: StateFlow<AutoPlayQualitySelectionMethod> =
         _autoPlayQualitySelectionFlow.asStateFlow()
 
+    /** Mutable backing stream for the configured download storage location. */
+    private val _storageLocationFlow = MutableStateFlow(getStorageLocation())
+    /** Observable storage location identifier. */
+    val storageLocationFlow: StateFlow<String> = _storageLocationFlow.asStateFlow()
+
     /** Persists whether voice guidance is enabled. */
     fun setVoiceSystem(enabled: Boolean) {
         sharedPreferences.edit { putBoolean(KEY_VOICE_SYSTEM, enabled) }
@@ -207,6 +212,18 @@ class PreferenceManager @Inject constructor(
     fun getSubtitleBottomOffset(): Float = sharedPreferences.getFloat(KEY_SUBTITLE_BOTTOM_OFFSET, 0.08f)
     fun setSubtitleBottomOffset(offset: Float) { sharedPreferences.edit { putFloat(KEY_SUBTITLE_BOTTOM_OFFSET, offset) } }
 
+    /** Persists and publishes the configured download storage location. */
+    fun setStorageLocation(location: String) {
+        sharedPreferences.edit { putString(KEY_STORAGE_LOCATION, location) }
+        _storageLocationFlow.value = location
+    }
+
+    /** Returns the configured download storage location, defaulting to internal storage. */
+    fun getStorageLocation(): String {
+        val value = sharedPreferences.getString(KEY_STORAGE_LOCATION, "internal") ?: "internal"
+        return if (value.isBlank() || value.startsWith("remote:")) "internal" else value
+    }
+
     companion object {
         /** Preference key controlling general voice guidance. */
         private const val KEY_VOICE_SYSTEM = "voice_system"
@@ -236,6 +253,8 @@ class PreferenceManager @Inject constructor(
         private const val KEY_TORRENT_HANDLING_MODE = "torrent_handling_mode"
         /** Preference key for the auto-play quality selection method. */
         private const val KEY_AUTO_PLAY_QUALITY_SELECTION_METHOD = "auto_play_quality_selection_method"
+        /** Preference key for the download storage location. */
+        private const val KEY_STORAGE_LOCATION = "storage_location"
         private const val KEY_SUBTITLE_FONT_NAME = "subtitle_font_name"
         private const val KEY_SUBTITLE_SIZE_FRACTION = "subtitle_size_fraction"
         private const val KEY_SUBTITLE_FG_COLOR = "subtitle_fg_color"

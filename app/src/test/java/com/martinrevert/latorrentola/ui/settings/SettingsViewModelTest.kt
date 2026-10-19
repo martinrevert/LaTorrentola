@@ -8,6 +8,7 @@ import com.martinrevert.latorrentola.rules.MainDispatcherRule
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.OpenSubtitlesCredentialStore
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
+import android.content.Context
 import io.mockk.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +29,7 @@ class SettingsViewModelTest {
     private val firebaseMessagingInitializer: FirebaseMessagingInitializer = mockk(relaxed = true)
     private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
     private val authRepository: AuthRepository = mockk(relaxed = true)
+    private val context: Context = mockk(relaxed = true)
     private lateinit var viewModel: SettingsViewModel
 
     @Before
@@ -42,9 +44,11 @@ class SettingsViewModelTest {
         every { preferenceManager.getMinimumRating() } returns PreferenceManager.DEFAULT_MINIMUM_RATING
         every { preferenceManager.getTorrentHandlingMode() } returns TorrentHandlingMode.EXTERNAL_CLIENT
         every { preferenceManager.getAutoPlayQualitySelectionMethod() } returns com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod.OFF
+        every { preferenceManager.getStorageLocation() } returns "internal"
         every { preferenceManager.filteredLanguagesFlow } returns MutableStateFlow("es")
         every { preferenceManager.minimumRatingFlow } returns MutableStateFlow(PreferenceManager.DEFAULT_MINIMUM_RATING)
         every { preferenceManager.autoPlayQualitySelectionFlow } returns MutableStateFlow(com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod.OFF)
+        every { preferenceManager.storageLocationFlow } returns MutableStateFlow("internal")
         every { authRepository.authStateFlow } returns MutableStateFlow(null)
         
         viewModel = SettingsViewModel(
@@ -52,7 +56,8 @@ class SettingsViewModelTest {
             openSubtitlesCredentialStore,
             firebaseMessagingInitializer,
             userLibraryRepository,
-            authRepository
+            authRepository,
+            context
         )
     }
 
@@ -96,12 +101,14 @@ class SettingsViewModelTest {
 
         verify { openSubtitlesCredentialStore.save(match { it.username == "user" && it.password == "password" }) }
         assertThat(viewModel.uiState.value.openSubtitlesUsername).isEqualTo("user")
+        assertThat(viewModel.uiState.value.openSubtitlesPassword).isEqualTo("password")
         assertThat(viewModel.uiState.value.openSubtitlesCredentialsConfigured).isTrue()
 
         viewModel.clearOpenSubtitlesCredentials()
 
         verify { openSubtitlesCredentialStore.clear() }
         assertThat(viewModel.uiState.value.openSubtitlesUsername).isEmpty()
+        assertThat(viewModel.uiState.value.openSubtitlesPassword).isEmpty()
         assertThat(viewModel.uiState.value.openSubtitlesCredentialsConfigured).isFalse()
     }
 
@@ -134,5 +141,12 @@ class SettingsViewModelTest {
 
         testScheduler.advanceTimeBy(1100)
         coVerify { userLibraryRepository.saveMinimumRating(8f) }
+    }
+
+    @Test
+    fun `setStorageLocation should update preference and state`() {
+        viewModel.setStorageLocation("/storage/usb1")
+        verify { preferenceManager.setStorageLocation("/storage/usb1") }
+        assertThat(viewModel.uiState.value.storageLocation).isEqualTo("/storage/usb1")
     }
 }

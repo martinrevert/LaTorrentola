@@ -12,9 +12,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.tv.material3.IconButton as TvIconButton
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -40,6 +50,8 @@ import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.BuildConfig
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
+import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
+import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
@@ -54,6 +66,9 @@ import dev.chrisbanes.haze.glass.hazeGlass
 import dev.chrisbanes.haze.ExperimentalHazeApi
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.tv.material3.Button
+import com.martinrevert.latorrentola.service.storage.StorageLocation
+import com.martinrevert.latorrentola.service.storage.TorrentStorageResolver
+import com.martinrevert.latorrentola.ui.media.formatMediaSize
 import java.util.Locale
 
 /** Collects settings state and presents the adaptive settings screen. */
@@ -63,38 +78,59 @@ fun SettingsScreen(
     userPhotoUrl: String?,
     userName: String?,
     userEmail: String?,
+    themeMode: Int? = null,
     onBackClick: () -> Unit,
     onLogoutClick: () -> Unit,
-    onDownloadsClick: () -> Unit
+    onDownloadsClick: () -> Unit,
+    onExternalMediaClick: () -> Unit = {}
 ) {
-    val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val preferenceManager = remember(context) { PreferenceManager(context) }
+    val currentObservedTheme by preferenceManager.themeFlow.collectAsState(initial = preferenceManager.getTheme())
+    val effectiveThemeMode = remember(context, themeMode, currentObservedTheme) {
+        themeMode ?: currentObservedTheme
+    }
+    val uiState by viewModel.uiState.collectAsState()
     val isTv = remember(context) { context.isTvDevice() }
-    
-    SettingsScreenContent(
-        uiState = uiState,
-        userPhotoUrl = userPhotoUrl,
-        userName = userName,
-        userEmail = userEmail,
-        isTv = isTv,
-        onBackClick = onBackClick,
-        onLogoutClick = onLogoutClick,
-        onDownloadsClick = onDownloadsClick,
-        onToggleVoiceSystem = { viewModel.toggleVoiceSystem(it) },
-        onToggleVoiceSummary = { viewModel.toggleVoiceSummary(it) },
-        onToggleVoiceTranslation = { viewModel.toggleVoiceTranslation(it) },
-        onToggleVibrator = { viewModel.toggleVibrator(it) },
-        onTogglePushEnabled = { viewModel.togglePushEnabled(it) },
-        onSetTheme = { viewModel.setTheme(it) },
-        onSetFilteredLanguages = { viewModel.setFilteredLanguages(it) },
-        onSetMinimumRating = { viewModel.setMinimumRating(it) },
-        onSetTorrentHandlingMode = { viewModel.setTorrentHandlingMode(it) },
-        onSetAutoPlayQualitySelectionMethod = { viewModel.setAutoPlayQualitySelectionMethod(it) },
-        onSaveOpenSubtitlesCredentials = { username, password ->
-            viewModel.saveOpenSubtitlesCredentials(username, password)
-        },
-        onClearOpenSubtitlesCredentials = { viewModel.clearOpenSubtitlesCredentials() }
-    )
+
+    val content: @Composable () -> Unit = {
+        SettingsScreenContent(
+            uiState = uiState,
+            userPhotoUrl = userPhotoUrl,
+            userName = userName,
+            userEmail = userEmail,
+            isTv = isTv,
+            onBackClick = onBackClick,
+            onLogoutClick = onLogoutClick,
+            onDownloadsClick = onDownloadsClick,
+            onExternalMediaClick = onExternalMediaClick,
+            onToggleVoiceSystem = { viewModel.toggleVoiceSystem(it) },
+            onToggleVoiceSummary = { viewModel.toggleVoiceSummary(it) },
+            onToggleVoiceTranslation = { viewModel.toggleVoiceTranslation(it) },
+            onToggleVibrator = { viewModel.toggleVibrator(it) },
+            onTogglePushEnabled = { viewModel.togglePushEnabled(it) },
+            onSetTheme = { viewModel.setTheme(it) },
+            onSetFilteredLanguages = { viewModel.setFilteredLanguages(it) },
+            onSetMinimumRating = { viewModel.setMinimumRating(it) },
+            onSetTorrentHandlingMode = { viewModel.setTorrentHandlingMode(it) },
+            onSetAutoPlayQualitySelectionMethod = { viewModel.setAutoPlayQualitySelectionMethod(it) },
+            onSetStorageLocation = { viewModel.setStorageLocation(it) },
+            onSaveOpenSubtitlesCredentials = { username, password ->
+                viewModel.saveOpenSubtitlesCredentials(username, password)
+            },
+            onClearOpenSubtitlesCredentials = { viewModel.clearOpenSubtitlesCredentials() }
+        )
+    }
+
+    if (isTv) {
+        TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
+            content()
+        }
+    } else {
+        LaTorrentolaTheme(themeMode = effectiveThemeMode) {
+            content()
+        }
+    }
 }
 
 /** Renders account, appearance, filtering, and accessibility settings. */
@@ -109,6 +145,7 @@ private fun SettingsScreenContent(
     onBackClick: () -> Unit,
     onLogoutClick: () -> Unit,
     onDownloadsClick: () -> Unit,
+    onExternalMediaClick: () -> Unit,
     onToggleVoiceSystem: (Boolean) -> Unit,
     onToggleVoiceSummary: (Boolean) -> Unit,
     onToggleVoiceTranslation: (Boolean) -> Unit,
@@ -119,6 +156,7 @@ private fun SettingsScreenContent(
     onSetMinimumRating: (Float) -> Unit,
     onSetTorrentHandlingMode: (TorrentHandlingMode) -> Unit,
     onSetAutoPlayQualitySelectionMethod: (AutoPlayQualitySelectionMethod) -> Unit,
+    onSetStorageLocation: (String) -> Unit,
     onSaveOpenSubtitlesCredentials: (String, String) -> Unit,
     onClearOpenSubtitlesCredentials: () -> Unit
 ) {
@@ -188,8 +226,15 @@ private fun SettingsScreenContent(
                     }
 
                     Text(text = stringResource(R.string.settings_theme), style = MaterialTheme.typography.titleMedium)
-                    ThemeSelector(selectedTheme = uiState.theme, onThemeSelected = onSetTheme)
+                    ThemeSelector(selectedTheme = uiState.theme, isTv = isTv, onThemeSelected = onSetTheme)
                     DownloadsManagerButton(isTv = isTv, onClick = onDownloadsClick)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    ExternalMediaManagerButton(
+                        isTv = isTv,
+                        storageLocation = uiState.storageLocation,
+                        availableLocations = uiState.availableStorageLocations,
+                        onClick = onExternalMediaClick
+                    )
 
                     Spacer(modifier = Modifier.weight(1f))
 
@@ -332,9 +377,17 @@ private fun SettingsScreenContent(
                 
                 ThemeSelector(
                     selectedTheme = uiState.theme,
+                    isTv = isTv,
                     onThemeSelected = onSetTheme
                 )
                 DownloadsManagerButton(isTv = isTv, onClick = onDownloadsClick)
+                Spacer(modifier = Modifier.height(8.dp))
+                ExternalMediaManagerButton(
+                    isTv = isTv,
+                    storageLocation = uiState.storageLocation,
+                    availableLocations = uiState.availableStorageLocations,
+                    onClick = onExternalMediaClick
+                )
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
@@ -402,8 +455,10 @@ private fun DownloadsManagerButton(isTv: Boolean, onClick: () -> Unit) {
             onClick = onClick,
             modifier = Modifier.fillMaxWidth(),
             colors = androidx.tv.material3.ButtonDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                contentColor = TvMaterialTheme.colorScheme.onSurfaceVariant,
+                focusedContainerColor = TvMaterialTheme.colorScheme.primaryContainer,
+                focusedContentColor = TvMaterialTheme.colorScheme.onPrimaryContainer
             )
         ) {
             androidx.tv.material3.Text(stringResource(R.string.torrent_downloads_title))
@@ -416,6 +471,120 @@ private fun DownloadsManagerButton(isTv: Boolean, onClick: () -> Unit) {
                 .focusHighlight(shape = ButtonDefaults.shape)
         ) {
             Text(stringResource(R.string.torrent_downloads_title))
+        }
+    }
+}
+
+@Composable
+private fun ExternalMediaManagerButton(
+    isTv: Boolean,
+    storageLocation: String,
+    availableLocations: List<StorageLocation>,
+    onClick: () -> Unit
+) {
+    val activeLabel = remember(storageLocation, availableLocations) {
+        if (storageLocation == TorrentStorageResolver.LOCATION_INTERNAL || storageLocation.startsWith("remote:")) {
+            val internalLoc = availableLocations.firstOrNull { it.id == TorrentStorageResolver.LOCATION_INTERNAL }
+            val spaceText = internalLoc?.let { " (${formatMediaSize(it.availableBytes)} libres)" } ?: ""
+            "Interno$spaceText"
+        } else {
+            val match = availableLocations.firstOrNull { it.id == storageLocation }
+            val spaceText = match?.let { " (${formatMediaSize(it.availableBytes)} libres)" } ?: ""
+            "${match?.displayName ?: "USB"}$spaceText"
+        }
+    }
+
+    if (isTv) {
+        androidx.tv.material3.Surface(
+            onClick = onClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusHighlight(shape = RoundedCornerShape(12.dp)),
+            shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(TvMaterialTheme.shapes.medium),
+            colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
+                containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                contentColor = TvMaterialTheme.colorScheme.onSurfaceVariant,
+                focusedContainerColor = TvMaterialTheme.colorScheme.primaryContainer,
+                focusedContentColor = TvMaterialTheme.colorScheme.onPrimaryContainer
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                androidx.tv.material3.Icon(
+                    imageVector = Icons.Default.Storage,
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                    tint = TvMaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    androidx.tv.material3.Text(
+                        text = stringResource(R.string.external_media_title),
+                        style = TvMaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = TvMaterialTheme.colorScheme.onSurface
+                    )
+                    androidx.tv.material3.Text(
+                        text = stringResource(R.string.settings_storage_card_subtitle, activeLabel),
+                        style = TvMaterialTheme.typography.bodySmall,
+                        color = TvMaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                androidx.tv.material3.Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = TvMaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    } else {
+        OutlinedCard(
+            onClick = onClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusHighlight(shape = RoundedCornerShape(12.dp)),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.outlinedCardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Storage,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.external_media_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_storage_card_subtitle, activeLabel),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 }
@@ -508,7 +677,10 @@ private fun OpenSubtitlesCredentialsSetting(
     var username by remember(uiState.openSubtitlesUsername) {
         mutableStateOf(uiState.openSubtitlesUsername)
     }
-    var password by remember { mutableStateOf("") }
+    var password by remember(uiState.openSubtitlesPassword) {
+        mutableStateOf(uiState.openSubtitlesPassword)
+    }
+    var passwordVisible by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -545,7 +717,29 @@ private fun OpenSubtitlesCredentialsSetting(
                 .fillMaxWidth()
                 .focusHighlight(shape = OutlinedTextFieldDefaults.shape),
             label = { Text(stringResource(R.string.opensubtitles_password)) },
-            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            trailingIcon = {
+                val image = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility
+                val description = stringResource(if (passwordVisible) R.string.hide_password else R.string.show_password)
+                if (isTv) {
+                    TvIconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            imageVector = image,
+                            contentDescription = description,
+                            tint = TvMaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            imageVector = image,
+                            contentDescription = description,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            },
             singleLine = true
         )
         Row(
@@ -556,7 +750,6 @@ private fun OpenSubtitlesCredentialsSetting(
                 androidx.tv.material3.Button(
                     onClick = {
                         onSave(username.trim(), password)
-                        password = ""
                     },
                     enabled = username.isNotBlank() && password.isNotBlank()
                 ) {
@@ -568,10 +761,13 @@ private fun OpenSubtitlesCredentialsSetting(
                             onClear()
                             username = ""
                             password = ""
+                            passwordVisible = false
                         },
                         colors = androidx.tv.material3.ButtonDefaults.colors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = TvMaterialTheme.colorScheme.onSurfaceVariant,
+                            focusedContainerColor = TvMaterialTheme.colorScheme.primaryContainer,
+                            focusedContentColor = TvMaterialTheme.colorScheme.onPrimaryContainer
                         )
                     ) {
                         androidx.tv.material3.Text(stringResource(R.string.opensubtitles_clear))
@@ -581,7 +777,6 @@ private fun OpenSubtitlesCredentialsSetting(
                 androidx.compose.material3.Button(
                     onClick = {
                         onSave(username.trim(), password)
-                        password = ""
                     },
                     enabled = username.isNotBlank() && password.isNotBlank(),
                     modifier = Modifier.focusHighlight(shape = ButtonDefaults.shape)
@@ -594,6 +789,7 @@ private fun OpenSubtitlesCredentialsSetting(
                             onClear()
                             username = ""
                             password = ""
+                            passwordVisible = false
                         },
                         modifier = Modifier.focusHighlight(shape = ButtonDefaults.shape)
                     ) {
@@ -613,8 +809,8 @@ private fun LogoutButton(isTv: Boolean, onClick: () -> Unit) {
             onClick = onClick,
             modifier = Modifier.fillMaxWidth(),
             colors = androidx.tv.material3.ButtonDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.errorContainer,
-                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                containerColor = TvMaterialTheme.colorScheme.errorContainer,
+                contentColor = TvMaterialTheme.colorScheme.onErrorContainer
             )
         ) {
             androidx.tv.material3.Text(
@@ -719,9 +915,11 @@ fun UserSection(
 }
 
 /** Allows selection between system, light, and dark appearance modes. */
+@OptIn(androidx.tv.material3.ExperimentalTvMaterial3Api::class)
 @Composable
 fun ThemeSelector(
     selectedTheme: Int,
+    isTv: Boolean = false,
     onThemeSelected: (Int) -> Unit
 ) {
     val options = listOf(
@@ -735,18 +933,48 @@ fun ThemeSelector(
         PreferenceManager.THEME_DARK
     )
 
-    SingleChoiceSegmentedButtonRow(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        options.forEachIndexed { index, label ->
-            val shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
-            SegmentedButton(
-                shape = shape,
-                onClick = { onThemeSelected(themeValues[index]) },
-                selected = selectedTheme == themeValues[index],
-                modifier = Modifier.focusHighlight(shape = shape)
-            ) {
-                Text(label)
+    if (isTv) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            options.forEachIndexed { index, label ->
+                val isSelected = selectedTheme == themeValues[index]
+                androidx.tv.material3.FilterChip(
+                    selected = isSelected,
+                    onClick = { onThemeSelected(themeValues[index]) },
+                    modifier = Modifier.weight(1f),
+                    colors = androidx.tv.material3.FilterChipDefaults.colors(
+                        containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = TvMaterialTheme.colorScheme.onSurfaceVariant,
+                        focusedContainerColor = TvMaterialTheme.colorScheme.primaryContainer,
+                        focusedContentColor = TvMaterialTheme.colorScheme.onPrimaryContainer,
+                        selectedContainerColor = TvMaterialTheme.colorScheme.primary,
+                        selectedContentColor = TvMaterialTheme.colorScheme.onPrimary
+                    )
+                ) {
+                    androidx.tv.material3.Text(
+                        text = label,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+    } else {
+        SingleChoiceSegmentedButtonRow(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            options.forEachIndexed { index, label ->
+                val shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
+                SegmentedButton(
+                    shape = shape,
+                    onClick = { onThemeSelected(themeValues[index]) },
+                    selected = selectedTheme == themeValues[index],
+                    modifier = Modifier.focusHighlight(shape = shape)
+                ) {
+                    Text(label)
+                }
             }
         }
     }
@@ -935,12 +1163,14 @@ private fun AutoPlayQualitySetting(
     }
 }
 
+
+
 /** TV preview of the settings screen. */
 @Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun SettingsScreenTvPreview() {
-    LaTorrentolaTheme {
+    TvLaTorrentolaTheme(themeMode = PreferenceManager.THEME_DARK) {
         SettingsScreenContent(
             uiState = SettingsUiState(
                 voiceSystem = true,
@@ -955,6 +1185,7 @@ fun SettingsScreenTvPreview() {
             onBackClick = {},
             onLogoutClick = {},
             onDownloadsClick = {},
+            onExternalMediaClick = {},
             onToggleVoiceSystem = {},
             onToggleVoiceSummary = {},
             onToggleVoiceTranslation = {},
@@ -965,6 +1196,7 @@ fun SettingsScreenTvPreview() {
             onSetMinimumRating = {},
             onSetTorrentHandlingMode = {},
             onSetAutoPlayQualitySelectionMethod = {},
+            onSetStorageLocation = {},
             onSaveOpenSubtitlesCredentials = { _, _ -> },
             onClearOpenSubtitlesCredentials = {}
         )
@@ -990,6 +1222,7 @@ fun SettingsScreenPreview() {
             onBackClick = {},
             onLogoutClick = {},
             onDownloadsClick = {},
+            onExternalMediaClick = {},
             onToggleVoiceSystem = {},
             onToggleVoiceSummary = {},
             onToggleVoiceTranslation = {},
@@ -1000,6 +1233,7 @@ fun SettingsScreenPreview() {
             onSetMinimumRating = {},
             onSetTorrentHandlingMode = {},
             onSetAutoPlayQualitySelectionMethod = {},
+            onSetStorageLocation = {},
             onSaveOpenSubtitlesCredentials = { _, _ -> },
             onClearOpenSubtitlesCredentials = {}
         )

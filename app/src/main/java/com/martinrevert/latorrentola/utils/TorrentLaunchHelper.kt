@@ -17,18 +17,13 @@ object TorrentLaunchHelper {
     const val MIN_REQUIRED_STORAGE_BYTES = 1_000_000_000L
 
     /**
-     * Returns the available storage space in bytes for the private app directory.
+     * Returns the available storage space in bytes for the active storage directory.
      *
-     * @param context App context used to locate internal storage.
+     * @param context App context used to locate active storage.
      * @return Free disk space in bytes.
      */
     fun getAvailableStorageBytes(context: Context): Long {
-        return try {
-            val stat = StatFs(context.filesDir.absolutePath)
-            stat.availableBytes
-        } catch (_: Exception) {
-            0L
-        }
+        return com.martinrevert.latorrentola.service.storage.TorrentStorageResolver.getAvailableStorageBytes(context)
     }
 
     /**
@@ -146,6 +141,12 @@ object TorrentLaunchHelper {
             if (available < required) {
                 return TorrentLaunchResult.InsufficientStorage(availableBytes = available, requiredBytes = required)
             }
+            if (requiredSizeBytes != null) {
+                val targetDir = com.martinrevert.latorrentola.service.storage.TorrentStorageResolver.resolveStorageDirectory(context)
+                if (!com.martinrevert.latorrentola.service.storage.StorageVolumeInspector.canStoreFileSize(targetDir, requiredSizeBytes)) {
+                    return TorrentLaunchResult.Fat32LimitExceeded
+                }
+            }
         }
         return when (mode) {
             TorrentHandlingMode.EXTERNAL_CLIENT ->
@@ -173,4 +174,6 @@ sealed interface TorrentLaunchResult {
     data object CastUnavailable : TorrentLaunchResult
     /** Free storage space is lower than required (1 GB minimum). */
     data class InsufficientStorage(val availableBytes: Long, val requiredBytes: Long) : TorrentLaunchResult
+    /** Target volume is formatted with FAT32 and the file size exceeds 4 GiB. */
+    data object Fat32LimitExceeded : TorrentLaunchResult
 }

@@ -4,7 +4,12 @@ package com.martinrevert.latorrentola.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
@@ -27,6 +32,7 @@ import com.martinrevert.latorrentola.ui.search.SearchViewModel
 import com.martinrevert.latorrentola.ui.settings.SettingsScreen
 import com.martinrevert.latorrentola.ui.settings.SettingsViewModel
 import com.martinrevert.latorrentola.ui.downloads.TorrentDownloadsScreen
+import com.martinrevert.latorrentola.ui.media.ExternalMediaBrowserScreen
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
 import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
 import com.martinrevert.latorrentola.model.YTS.Movie
@@ -60,6 +66,8 @@ sealed interface Route : NavKey {
     @Serializable object Settings : Route
     /** App-managed torrent download list. */
     @Serializable object Downloads : Route
+    /** External and network storage media browser (USB, SMB, NFS). */
+    @Serializable object ExternalMedia : Route
     /**
      * Search destination with optional genre or text query.
      *
@@ -113,6 +121,9 @@ fun AppNavigation(
 ) {
     val authViewModel: AuthViewModel = hiltViewModel()
     val isLoggedIn = authViewModel.currentUser != null
+    val context = LocalContext.current
+    val preferenceManager = remember(context) { PreferenceManager(context) }
+    val themeMode by preferenceManager.themeFlow.collectAsState(initial = preferenceManager.getTheme())
     
     val backStack = rememberNavBackStack(if (isLoggedIn) Route.Home else Route.Login)
 
@@ -220,17 +231,25 @@ fun AppNavigation(
                     userPhotoUrl = user?.photoUrl?.toString(),
                     userName = user?.displayName,
                     userEmail = user?.email,
+                    themeMode = themeMode,
                     onBackClick = { backStack.removeLastOrNull() },
                     onLogoutClick = {
                         authViewModel.signOut()
                         backStack.clear()
                         backStack.add(Route.Login)
                     },
-                    onDownloadsClick = { backStack.add(Route.Downloads) }
+                    onDownloadsClick = { backStack.add(Route.Downloads) },
+                    onExternalMediaClick = { backStack.add(Route.ExternalMedia) }
                 )
             }
             entry<Route.Downloads> {
                 TorrentDownloadsScreen(
+                    onBackClick = { backStack.removeLastOrNull() }
+                )
+            }
+            entry<Route.ExternalMedia> {
+                ExternalMediaBrowserScreen(
+                    themeMode = themeMode,
                     onBackClick = { backStack.removeLastOrNull() }
                 )
             }

@@ -102,6 +102,8 @@
     <string name="opensubtitles_loaded">Subtítulos cargados</string>
     <string name="opensubtitles_username">Nombre de usuario</string>
     <string name="opensubtitles_password">Contraseña</string>
+    <string name="show_password">Mostrar contraseña</string>
+    <string name="hide_password">Ocultar contraseña</string>
     <string name="opensubtitles_save">Guardar credenciales</string>
     <string name="opensubtitles_clear">Borrar credenciales</string>
     <string name="torrent_download_title">Descarga de torrent</string>
@@ -271,4 +273,69 @@
     <string name="mark_movie_completed">Marcar completada</string>
     <string name="mark_movie_uncompleted">Marcar no completada</string>
     <string name="cancel">Cancelar</string>
+
+    <!-- FAT32 Limit Dialog -->
+    <string name="fat32_limit_dialog_title">El archivo supera el límite de FAT32</string>
+    <string name="fat32_limit_dialog_message">Este archivo supera los 4 GB y no puede guardarse en una unidad USB formateada en FAT32. Por favor selecciona el almacenamiento interno o una unidad exFAT en Ajustes.</string>
+    <string name="toast_fat32_limit">El archivo supera el límite de 4 GB de las unidades FAT32.</string>
+
+    <!-- Storage Location Settings -->
+    <string name="settings_storage_title">Ubicación de almacenamiento de descargas</string>
+    <string name="settings_storage_support">Selecciona dónde guardar los archivos descargados de torrent.</string>
+    <string name="settings_storage_internal">Almacenamiento interno</string>
+    <string name="storage_space_available">%1$s disponible</string>
+
+    <!-- External & Network Media Browser -->
+    <string name="external_media_title">Almacenamiento externo y de red</string>
+    <string name="external_media_tab_usb">USB y Local</string>
+    <string name="external_media_tab_network">Red compartida (SMB / NFS)</string>
+    <string name="external_media_server_type">Protocolo</string>
+    <string name="external_media_add_server">Agregar servidor</string>
+    <string name="external_media_edit_server">Editar servidor</string>
+    <string name="external_media_delete_server">Eliminar servidor</string>
+    <string name="external_media_server_name">Nombre del servidor</string>
+    <string name="external_media_server_host">Host o Dirección IP</string>
+    <string name="external_media_server_port">Puerto</string>
+    <string name="external_media_server_share">Carpeta compartida</string>
+    <string name="external_media_server_share_nfs">Ruta exportada (ej. /volume1/movies)</string>
+    <string name="external_media_server_user">Usuario / UID (opcional)</string>
+    <string name="external_media_server_pass">Contraseña (opcional)</string>
+    <string name="external_media_server_domain">Dominio / Grupo de trabajo (opcional)</string>
+    <string name="external_media_save">Guardar</string>
+    <string name="external_media_empty_network">No hay servidores de red configurados. Pulsa \'Agregar servidor\' para conectar a tu NAS o carpeta compartida.</string>
+    <string name="external_media_empty_usb">No se encontraron unidades externas ni archivos multimedia.</string>
+    <string name="external_media_empty_folder">No se encontraron archivos multimedia ni carpetas en este directorio.</string>
+    <string name="external_media_parent_folder">.. (Carpeta anterior)</string>
+    <string name="external_media_play">Reproducir</string>
+    <string name="external_media_open_button">Almacenamiento externo y de red</string>
+    <string name="external_media_auth_required">Autenticación requerida</string>
+    <string name="external_media_auth_subtitle">Ingresa las credenciales para acceder a %1$s en %2$s</string>
+    <string name="external_media_auth_connect">Conectar</string>
+    <string name="external_media_auth_remember">Recordar credenciales</string>
+    <string name="external_media_auth_clear_credentials">Borrar credenciales guardadas</string>
+    <string name="external_media_entry_points">Puntos de entrada / Carpetas compartidas</string>
+    <string name="external_media_server_share_optional">Carpeta compartida (opcional)</string>
+    <string name="external_media_server_share_nfs_optional">Ruta exportada (opcional, dejar vacío para explorar)</string>
+    <string name="active_download_storage_title">Almacenamiento de descargas activo</string>
+    <string name="active_download_storage_subtitle">Los torrents y subtítulos descargados por la app se guardan y reproducen desde aquí.</string>
+    <string name="active_download_storage_badge">Almacenamiento activo</string>
+    <string name="active_download_storage_set_button">Usar para descargas</string>
+    <string name="active_download_storage_internal_desc">Memoria interna del dispositivo (eMMC / UFS)</string>
+    <string name="active_download_storage_usb_desc">Almacenamiento extraíble USB o tarjeta SD</string>
+    <string name="active_download_storage_network_desc">Carpeta compartida en red (%1$s)</string>
+    <string name="external_media_browse_action">Explorar archivos</string>
+    <string name="settings_storage_card_subtitle">Descargas en: %1$s</string>
+    <string name="external_media_scanning_network">Buscando servidores y carpetas en red local (SMB / NFS)...</string>
+    <string name="external_media_scan_button">Buscar en red</string>
+    <string name="external_media_use_folder_for_downloads">Usar esta carpeta para descargas</string>
+    <string name="active_download_storage_exact_path">Ruta: %1$s</string>
+    <string name="active_download_storage_reset_internal">Usar almacenamiento interno</string>
+    <string name="external_media_empty_network_auto">No se detectaron recursos en la red local. Si tu servidor requiere configuración o credenciales privadas, puedes agregarlo manualmente.</string>
+
+    <!-- Playback Mode Options Dialog -->
+    <string name="play_media_dialog_title">Reproducir archivo</string>
+    <string name="play_mode_exoplayer">ExoPlayer (Directo)</string>
+    <string name="play_mode_exoplayer_desc">Reproducir directamente en este dispositivo sin servidor HTTP</string>
+    <string name="play_mode_cast">Google Cast (Chromecast)</string>
+    <string name="play_mode_cast_desc">Transmitir a Chromecast mediante servidor HTTP de red local</string>
 </resources>

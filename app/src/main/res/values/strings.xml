@@ -102,6 +102,8 @@
     <string name="opensubtitles_loaded">Subtitles loaded</string>
     <string name="opensubtitles_username">Username</string>
     <string name="opensubtitles_password">Password</string>
+    <string name="show_password">Show password</string>
+    <string name="hide_password">Hide password</string>
     <string name="opensubtitles_save">Save credentials</string>
     <string name="opensubtitles_clear">Clear credentials</string>
     <string name="torrent_download_title">Torrent download</string>
@@ -271,6 +273,71 @@
     <string name="mark_movie_completed">Mark as completed</string>
     <string name="mark_movie_uncompleted">Mark as uncompleted</string>
     <string name="cancel">Cancel</string>
+
+    <!-- FAT32 Limit Dialog -->
+    <string name="fat32_limit_dialog_title">File exceeds FAT32 limit</string>
+    <string name="fat32_limit_dialog_message">This file is larger than 4 GB and cannot be saved on a FAT32-formatted USB drive. Please choose internal storage or an exFAT drive in Settings.</string>
+    <string name="toast_fat32_limit">File exceeds the 4 GB limit of FAT32 drives.</string>
+
+    <!-- Storage Location Settings -->
+    <string name="settings_storage_title">Download Storage Location</string>
+    <string name="settings_storage_support">Select where to store downloaded torrent files.</string>
+    <string name="settings_storage_internal">Internal Storage</string>
+    <string name="storage_space_available">%1$s available</string>
+
+    <!-- External & Network Media Browser -->
+    <string name="external_media_title">External &amp; Network Media</string>
+    <string name="external_media_tab_usb">USB &amp; Local</string>
+    <string name="external_media_tab_network">Network Shares (SMB / NFS)</string>
+    <string name="external_media_server_type">Protocol</string>
+    <string name="external_media_add_server">Add Server</string>
+    <string name="external_media_edit_server">Edit Server</string>
+    <string name="external_media_delete_server">Delete Server</string>
+    <string name="external_media_server_name">Server Name</string>
+    <string name="external_media_server_host">Host or IP Address</string>
+    <string name="external_media_server_port">Port</string>
+    <string name="external_media_server_share">Share Name</string>
+    <string name="external_media_server_share_nfs">Export Path (e.g. /volume1/movies)</string>
+    <string name="external_media_server_user">Username / UID (optional)</string>
+    <string name="external_media_server_pass">Password (optional)</string>
+    <string name="external_media_server_domain">Domain / Workgroup (optional)</string>
+    <string name="external_media_save">Save</string>
+    <string name="external_media_empty_network">No network servers configured. Click \'Add Server\' to connect to your NAS or shared folder.</string>
+    <string name="external_media_empty_usb">No external drives or media files found.</string>
+    <string name="external_media_empty_folder">No media files or folders found in this directory.</string>
+    <string name="external_media_parent_folder">.. (Parent folder)</string>
+    <string name="external_media_play">Play</string>
+    <string name="external_media_open_button">External &amp; Network Media</string>
+    <string name="external_media_auth_required">Authentication Required</string>
+    <string name="external_media_auth_subtitle">Enter credentials to access %1$s on %2$s</string>
+    <string name="external_media_auth_connect">Connect</string>
+    <string name="external_media_auth_remember">Remember credentials</string>
+    <string name="external_media_auth_clear_credentials">Clear saved credentials</string>
+    <string name="external_media_entry_points">Entry Points / Shares</string>
+    <string name="external_media_server_share_optional">Share Name (optional)</string>
+    <string name="external_media_server_share_nfs_optional">Export Path (optional, leave blank to browse)</string>
+    <string name="active_download_storage_title">Active Download Storage</string>
+    <string name="active_download_storage_subtitle">Torrents and subtitles downloaded by the app are stored and played from here.</string>
+    <string name="active_download_storage_badge">Active Storage</string>
+    <string name="active_download_storage_set_button">Use for Downloads</string>
+    <string name="active_download_storage_internal_desc">Built-in device memory (eMMC / UFS)</string>
+    <string name="active_download_storage_usb_desc">Removable USB or SD Card storage</string>
+    <string name="active_download_storage_network_desc">Network shared folder (%1$s)</string>
+    <string name="external_media_browse_action">Browse Files</string>
+    <string name="settings_storage_card_subtitle">Active storage: %1$s</string>
+    <string name="external_media_scanning_network">Searching for local network shares (SMB / NFS)...</string>
+    <string name="external_media_scan_button">Scan Network</string>
+    <string name="external_media_use_folder_for_downloads">Use this folder for downloads</string>
+    <string name="active_download_storage_exact_path">Path: %1$s</string>
+    <string name="active_download_storage_reset_internal">Use internal storage</string>
+    <string name="external_media_empty_network_auto">No shares detected on the local network. If your server requires special setup or credentials, you can add it manually.</string>
+
+    <!-- Playback Mode Options Dialog -->
+    <string name="play_media_dialog_title">Play Media</string>
+    <string name="play_mode_exoplayer">ExoPlayer (Direct)</string>
+    <string name="play_mode_exoplayer_desc">Play directly on this device without HTTP server</string>
+    <string name="play_mode_cast">Google Cast (Chromecast)</string>
+    <string name="play_mode_cast_desc">Stream to TV via local network HTTP server</string>
 
     <string name="asset_statements" translatable="false">[]</string>
 </resources>

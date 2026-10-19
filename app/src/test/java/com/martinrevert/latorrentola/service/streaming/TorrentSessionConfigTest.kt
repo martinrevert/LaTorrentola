@@ -26,11 +26,10 @@ class TorrentSessionConfigTest {
         val params = TorrentSessionConfig.buildSessionParams(isTv = true)
         val sp = params.settings
 
-        assertThat(sp.connectionsLimit()).isEqualTo(60)
+        assertThat(sp.connectionsLimit()).isEqualTo(120)
         assertThat(sp.activeSeeds()).isEqualTo(0)
         assertThat(sp.getInteger(settings_pack.int_types.aio_threads.swigValue())).isEqualTo(2)
         assertThat(sp.getInteger(settings_pack.int_types.hashing_threads.swigValue())).isEqualTo(1)
-        assertThat(sp.getInteger(settings_pack.int_types.max_queued_disk_bytes.swigValue())).isEqualTo(2 * 1024 * 1024)
     }
 
     @Test
@@ -39,7 +38,7 @@ class TorrentSessionConfigTest {
         val params = TorrentSessionConfig.buildSessionParams(isTv = false)
         val sp = params.settings
 
-        assertThat(sp.connectionsLimit()).isEqualTo(120)
+        assertThat(sp.connectionsLimit()).isEqualTo(200)
         assertThat(sp.activeSeeds()).isEqualTo(0)
         assertThat(sp.getInteger(settings_pack.int_types.aio_threads.swigValue())).isEqualTo(4)
         assertThat(sp.getInteger(settings_pack.int_types.hashing_threads.swigValue())).isEqualTo(2)

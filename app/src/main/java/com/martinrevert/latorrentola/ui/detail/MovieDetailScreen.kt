@@ -859,6 +859,11 @@ fun TorrentItem(
                     is TorrentLaunchResult.InsufficientStorage -> {
                         onInsufficientStorage(result.availableBytes, result.requiredBytes)
                     }
+                    TorrentLaunchResult.Fat32LimitExceeded -> Toast.makeText(
+                        context,
+                        resources.getString(R.string.toast_fat32_limit),
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             } catch (e: IllegalArgumentException) {
                 Toast.makeText(context, resources.getString(R.string.toast_magnet_error), Toast.LENGTH_SHORT).show()

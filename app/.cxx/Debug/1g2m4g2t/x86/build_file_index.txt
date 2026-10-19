@@ -1,0 +1,16 @@
+C:\Users\marti\StudioProjects\LaTorrentola\app\src\main\cpp\CMakeLists.txt
+C:\Users\marti\StudioProjects\LaTorrentola\app\src\main\cpp\libnfs\CMakeLists.txt
+C:\Users\marti\StudioProjects\LaTorrentola\app\src\main\cpp\libnfs\cmake\config.h.cmake
+C:\Users\marti\StudioProjects\LaTorrentola\app\src\main\cpp\libnfs\cmake\ConfigureChecks.cmake
+C:\Users\marti\StudioProjects\LaTorrentola\app\src\main\cpp\libnfs\cmake\GNUInstallDirs.cmake
+C:\Users\marti\StudioProjects\LaTorrentola\app\src\main\cpp\libnfs\cmake\libnfs.pc.cmake
+C:\Users\marti\StudioProjects\LaTorrentola\app\src\main\cpp\libnfs\cmake\Macros.cmake
+C:\Users\marti\StudioProjects\LaTorrentola\app\src\main\cpp\libnfs\doc\CMakeLists.txt
+C:\Users\marti\StudioProjects\LaTorrentola\app\src\main\cpp\libnfs\lib\CMakeLists.txt
+C:\Users\marti\StudioProjects\LaTorrentola\app\src\main\cpp\libnfs\mount\CMakeLists.txt
+C:\Users\marti\StudioProjects\LaTorrentola\app\src\main\cpp\libnfs\nfs4\CMakeLists.txt
+C:\Users\marti\StudioProjects\LaTorrentola\app\src\main\cpp\libnfs\nfs\CMakeLists.txt
+C:\Users\marti\StudioProjects\LaTorrentola\app\src\main\cpp\libnfs\nlm\CMakeLists.txt
+C:\Users\marti\StudioProjects\LaTorrentola\app\src\main\cpp\libnfs\nsm\CMakeLists.txt
+C:\Users\marti\StudioProjects\LaTorrentola\app\src\main\cpp\libnfs\portmap\CMakeLists.txt
+C:\Users\marti\StudioProjects\LaTorrentola\app\src\main\cpp\libnfs\rquota\CMakeLists.txt
