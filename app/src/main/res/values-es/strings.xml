@@ -338,4 +338,10 @@
     <string name="play_mode_exoplayer_desc">Reproducir directamente en este dispositivo sin servidor HTTP</string>
     <string name="play_mode_cast">Google Cast (Chromecast)</string>
     <string name="play_mode_cast_desc">Transmitir a Chromecast mediante servidor HTTP de red local</string>
+
+    <!-- USB Storage Permissions & Actions -->
+    <string name="usb_permission_banner_title">Acceso a almacenamiento USB</string>
+    <string name="usb_permission_banner_desc">Para explorar todas las carpetas y películas de unidades USB conectadas en Android 11+, concede permiso de acceso a archivos.</string>
+    <string name="usb_permission_grant_button">Conceder permiso</string>
+    <string name="external_media_refresh_usb">Actualizar unidades</string>
 </resources>

@@ -84,4 +84,23 @@ class TorrentStorageResolverTest {
         val rogueDir = File(tempFolder.root, "arbitrary_folder")
         assertThat(TorrentStorageResolver.isValidTorrentDirectory(context, rogueDir)).isFalse()
     }
+
+    @Test
+    fun `getAvailableStorageLocations includes internal storage location`() {
+        val locations = TorrentStorageResolver.getAvailableStorageLocations(context)
+        assertThat(locations).isNotEmpty()
+        val internal = locations.firstOrNull { it.id == TorrentStorageResolver.LOCATION_INTERNAL }
+        assertThat(internal).isNotNull()
+        assertThat(internal?.isRemovable).isFalse()
+    }
+
+    @Test
+    fun `isWritableDirectory returns true for writable folder and false for impossible path`() {
+        val writable = tempFolder.newFolder("test_writable")
+        assertThat(TorrentStorageResolver.isWritableDirectory(writable)).isTrue()
+
+        val regularFile = tempFolder.newFile("regular_file.txt")
+        val impossibleDir = File(regularFile, "invalid_child_dir")
+        assertThat(TorrentStorageResolver.isWritableDirectory(impossibleDir)).isFalse()
+    }
 }

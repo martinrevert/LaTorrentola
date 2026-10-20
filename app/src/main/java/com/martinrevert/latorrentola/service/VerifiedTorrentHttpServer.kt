@@ -417,6 +417,10 @@ class VerifiedTorrentHttpServer(
             val nextChunkEnd =
                 minOf(end, currentOffset + VerifiedTorrentHttpServer.VERIFIED_CHUNK_BYTES - 1L)
             if (!waitForRangeVerified(currentOffset, nextChunkEnd)) {
+                Log.w(
+                    TAG,
+                    "Range $currentOffset-$nextChunkEnd not verified within timeout (${RANGE_WAIT_TIMEOUT_MS}ms). Closing stream chunk; client will retry."
+                )
                 throw IOException("Torrent pieces did not verify before the stream timed out")
             }
             verifiedThrough = nextChunkEnd
@@ -434,10 +438,10 @@ class VerifiedTorrentHttpServer(
         const val TAG = "VerifiedTorrentHttpServer"
 
         /** NanoHTTPD socket timeout used while a receiver requests media. */
-        const val SOCKET_READ_TIMEOUT = 30_000
+        const val SOCKET_READ_TIMEOUT = 45_000
 
         /** Maximum timeout in ms to wait for a requested piece range to verify before failing. */
-        const val RANGE_WAIT_TIMEOUT_MS = 25_000L
+        const val RANGE_WAIT_TIMEOUT_MS = 30_000L
 
         /** Maximum byte interval verified before the response stream advances. */
         const val VERIFIED_CHUNK_BYTES = 256L * 1024L

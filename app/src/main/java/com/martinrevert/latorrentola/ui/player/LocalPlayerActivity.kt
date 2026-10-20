@@ -176,6 +176,7 @@ import com.martinrevert.latorrentola.network.OpenSubtitleResult
 import com.martinrevert.latorrentola.network.OpenSubtitlesException
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
+import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.service.PlaybackService
 import com.martinrevert.latorrentola.service.TorrentDownloadService
 import com.martinrevert.latorrentola.service.VerifiedTorrentHttpServer
@@ -316,6 +317,9 @@ class LocalPlayerActivity : FragmentActivity() {
     @Inject
     lateinit var remoteStorageManager: RemoteStorageManager
 
+    @Inject
+    lateinit var ytsRepository: YtsRepository
+
     private val tvPlayerViewModel: TvPlayerViewModel by viewModels()
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
@@ -356,6 +360,8 @@ class LocalPlayerActivity : FragmentActivity() {
 
     private var pendingMediaUri: Uri? = null
     private var pendingMediaItem: MediaItem? = null
+    private var lastKnownPlaybackPositionMs = 0L
+    private var lastStreamRecoveryAttemptMillis = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -865,13 +871,23 @@ class LocalPlayerActivity : FragmentActivity() {
             val newItem = pendingMediaItem
             Log.i(TAG, "setupControllerMedia: activeItem=${activeItem?.mediaId}, newItem=${newItem?.mediaId}, state=${controller.playbackState}")
 
-            if (newItem != null && (activeItem == null || activeItem.mediaId != newItem.mediaId || controller.playbackState == Player.STATE_IDLE || controller.playbackState == Player.STATE_ENDED)) {
+            val activeUri = activeItem?.localConfiguration?.uri
+            val newUri = newItem?.localConfiguration?.uri
+            val uriChanged = activeUri != null && newUri != null && activeUri != newUri
+
+            if (newItem != null && (activeItem == null || activeItem.mediaId != newItem.mediaId || uriChanged || controller.playbackState == Player.STATE_IDLE || controller.playbackState == Player.STATE_ENDED)) {
                 val savedProgress = userLibraryRepository.getPlaybackProgress(newItem.mediaId)
-                val startPosition = if (savedProgress != null && savedProgress.positionMs > 5000L && !savedProgress.isCompleted) {
-                    Log.i(TAG, "Restoring playback position: ${savedProgress.positionMs}ms for ${newItem.mediaId}")
+                val currentPos = lastKnownPlaybackPositionMs.takeIf { it > 5000L }
+                    ?: controller.currentPosition.takeIf { it > 5000L }
+                    ?: 0L
+                val dbPos = if (savedProgress != null && savedProgress.positionMs > 5000L && !savedProgress.isCompleted) {
                     savedProgress.positionMs
                 } else {
                     0L
+                }
+                val startPosition = maxOf(currentPos, dbPos)
+                if (startPosition > 0L) {
+                    Log.i(TAG, "Restoring playback position: ${startPosition}ms for ${newItem.mediaId}")
                 }
 
                 val deviceLang = Locale.getDefault().language
@@ -939,12 +955,31 @@ class LocalPlayerActivity : FragmentActivity() {
 
                 override fun onPlayerError(error: PlaybackException) {
                     Log.e(TAG, "Player error encountered: ${error.errorCodeName} (${error.errorCode}): ${error.message}", error)
+                    if (controller.currentPosition > 5000L) {
+                        lastKnownPlaybackPositionMs = controller.currentPosition
+                    }
                     if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
                         error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
                         error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
                         error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED ||
                         error.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE ||
                         error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED) {
+
+                        val isLocalStream = localStreamUrl.contains("127.0.0.1") || localStreamUrl.contains("localhost")
+                        if (error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED && isLocalStream && torrentInfoHash.isNotBlank()) {
+                            val now = System.currentTimeMillis()
+                            if (now - lastStreamRecoveryAttemptMillis > 3000L) {
+                                lastStreamRecoveryAttemptMillis = now
+                                Log.w(TAG, "Local stream connection failed for hash $torrentInfoHash, requesting stream server restart")
+                                val playIntent = Intent(this@LocalPlayerActivity, TorrentDownloadService::class.java).apply {
+                                    action = TorrentDownloadService.ACTION_PLAY_STREAM
+                                    putExtra(TorrentDownloadService.EXTRA_INFO_HASH, torrentInfoHash)
+                                }
+                                ContextCompat.startForegroundService(this@LocalPlayerActivity, playIntent)
+                            }
+                            return
+                        }
+
                         lifecycleScope.launch {
                             delay(1500.milliseconds)
                             if (controller.playbackState == Player.STATE_IDLE) {
@@ -1390,15 +1425,28 @@ class LocalPlayerActivity : FragmentActivity() {
             var message: String? = null
             var dbRecord: com.martinrevert.latorrentola.model.torrent.TorrentDownload? = null
             try {
-                val isEpisode = EPISODE_PATTERN.containsMatchIn(mediaTitle) || currentSeasonNumber > 0
-                val mediaType = if (isEpisode) "episode" else "movie"
-
                 var effectiveSeriesId = currentSeriesId
                 var effectiveMovieId = currentMovieId
                 var effectiveSeason = currentSeasonNumber
                 var effectiveEpisode = currentEpisodeNumber
 
-                // 1. Recover IDs from Room DB if not present in Intent
+                val filePath = intent.getStringExtra(EXTRA_FILE_PATH)
+                val fileName = filePath?.let { File(it).name }
+
+                // 1. Recover season and episode numbers if not provided in Intent
+                if (effectiveSeason <= 0 || effectiveEpisode <= 0) {
+                    val (extractedSeason, extractedEpisode) = extractSeasonAndEpisode(mediaTitle, fileName)
+                    if (effectiveSeason <= 0) effectiveSeason = extractedSeason
+                    if (effectiveEpisode <= 0) effectiveEpisode = extractedEpisode
+                }
+
+                val isEpisode = (effectiveSeason > 0 && effectiveEpisode > 0) ||
+                        EPISODE_PATTERN.containsMatchIn(mediaTitle) ||
+                        (fileName != null && EPISODE_PATTERN.containsMatchIn(fileName)) ||
+                        currentSeasonNumber > 0
+                val mediaType = if (isEpisode) "episode" else "movie"
+
+                // 2. Recover IDs from Room DB if not present in Intent
                 if (torrentInfoHash.isNotBlank()) {
                     try {
                         dbRecord = torrentDownloadDao.get(torrentInfoHash)
@@ -1408,8 +1456,8 @@ class LocalPlayerActivity : FragmentActivity() {
                             }
                             if (dbRecord.seriesId != null && dbRecord.seriesId > 0 && effectiveSeriesId <= 0) {
                                 effectiveSeriesId = dbRecord.seriesId
-                                effectiveSeason = dbRecord.seasonNumber ?: effectiveSeason
-                                effectiveEpisode = dbRecord.episodeNumber ?: effectiveEpisode
+                                if (effectiveSeason <= 0) effectiveSeason = dbRecord.seasonNumber ?: 0
+                                if (effectiveEpisode <= 0) effectiveEpisode = dbRecord.episodeNumber ?: 0
                             }
                         }
                     } catch (e: Exception) {
@@ -1418,35 +1466,68 @@ class LocalPlayerActivity : FragmentActivity() {
                     }
                 }
 
-                // 2. Fetch IMDb ID from TMDB repository
+                // 3. PRIORITY #1: Resolve IMDb ID
                 var resolvedImdbId: String? = null
-                try {
-                    if (effectiveSeriesId > 0 && isEpisode) {
-                        resolvedImdbId = tmdbRepository.getTvImdbId(effectiveSeriesId)
-                    } else if (effectiveMovieId > 0) {
-                        resolvedImdbId = tmdbRepository.getMovieImdbId(effectiveMovieId)
-                    }
-                } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                    Log.w(TAG, "Failed to fetch IMDb ID from TMDB repository: ${e.message}")
+
+                // 3a. Direct 'tt' identifier in title or filename/path
+                val ttMatch = Regex("""\btt\d{7,8}\b""", RegexOption.IGNORE_CASE).find(mediaTitle)
+                    ?: fileName?.let { Regex("""\btt\d{7,8}\b""", RegexOption.IGNORE_CASE).find(it) }
+                if (ttMatch != null) {
+                    resolvedImdbId = ttMatch.value
                 }
 
-                // 3. Fallback: Search TMDB by clean title to get the exact IMDb ID if not found
+                // 3b. Fetch IMDb ID from known TMDB ID
                 if (resolvedImdbId.isNullOrBlank()) {
-                    val ttMatch = Regex("""tt\d{7,8}""", RegexOption.IGNORE_CASE).find(mediaTitle)
-                    if (ttMatch != null) {
-                        resolvedImdbId = ttMatch.value
-                    } else if (isEpisode) {
-                        try {
-                            val cleanTitle = mediaTitle.replace(EPISODE_PATTERN, "").trim()
-                            val tvPage = tmdbRepository.searchTvSeries(cleanTitle)
-                            val firstTv = tvPage.results?.firstOrNull()
-                            if (firstTv != null && firstTv.id > 0) {
-                                resolvedImdbId = tmdbRepository.getTvImdbId(firstTv.id)
+                    try {
+                        if (effectiveSeriesId > 0 && isEpisode) {
+                            resolvedImdbId = tmdbRepository.getTvImdbId(effectiveSeriesId)
+                        } else if (effectiveMovieId > 0) {
+                            resolvedImdbId = tmdbRepository.getMovieImdbId(effectiveMovieId)
+                        }
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                        Log.w(TAG, "Failed to fetch IMDb ID from TMDB repository: ${e.message}")
+                    }
+                }
+
+                // 3c. Search TMDB/YTS by clean title to find the IMDb ID if still unknown
+                if (resolvedImdbId.isNullOrBlank()) {
+                    val searchCandidates = extractCleanSearchTitles(mediaTitle).ifEmpty {
+                        fileName?.let { extractCleanSearchTitles(it) }.orEmpty()
+                    }
+                    for (candidate in searchCandidates) {
+                        if (isEpisode) {
+                            try {
+                                val tvPage = tmdbRepository.searchTvSeries(candidate)
+                                val firstTv = tvPage.results?.firstOrNull()
+                                if (firstTv != null && firstTv.id > 0) {
+                                    val imdb = tmdbRepository.getTvImdbId(firstTv.id)
+                                    if (!imdb.isNullOrBlank()) {
+                                        resolvedImdbId = imdb
+                                        if (effectiveSeriesId <= 0) effectiveSeriesId = firstTv.id
+                                        Log.i(TAG, "Resolved TV IMDb ID $resolvedImdbId from TMDB for '$candidate'")
+                                        break
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                if (e is CancellationException) throw e
+                                Log.w(TAG, "Failed to resolve TV IMDb ID via TMDB for '$candidate': ${e.message}")
                             }
-                        } catch (e: Exception) {
-                            if (e is CancellationException) throw e
-                            Log.w(TAG, "Failed to resolve IMDb ID via TMDB title search: ${e.message}")
+                        } else {
+                            try {
+                                val movieSearch = ytsRepository.searchMovies(candidate, 1)
+                                val firstMovie = movieSearch.data?.movies?.firstOrNull()
+                                val imdb = firstMovie?.imdbCode
+                                if (!imdb.isNullOrBlank()) {
+                                    resolvedImdbId = imdb
+                                    if (effectiveMovieId <= 0) effectiveMovieId = firstMovie.id
+                                    Log.i(TAG, "Resolved Movie IMDb ID $resolvedImdbId from YTS for '$candidate'")
+                                    break
+                                }
+                            } catch (e: Exception) {
+                                if (e is CancellationException) throw e
+                                Log.w(TAG, "Failed to resolve Movie IMDb ID via YTS for '$candidate': ${e.message}")
+                            }
                         }
                     }
                 }
@@ -1469,6 +1550,26 @@ class LocalPlayerActivity : FragmentActivity() {
                         if (e is CancellationException) throw e
                         Log.w(TAG, "OpenSubtitles searchByImdbId failed: ${e.message}")
                     }
+
+                    // If episode-specific search returned nothing, try parent show IMDb ID search as secondary attempt
+                    if (imdbResults.isNullOrEmpty() && isEpisode && effectiveSeason > 0 && effectiveEpisode > 0) {
+                        try {
+                            Log.i(TAG, "No episode-specific subtitles returned. Retrying parent IMDb ID without season filter: $resolvedImdbId")
+                            val parentResults = openSubtitlesRepository.searchByImdbId(imdbId = resolvedImdbId)
+                            if (parentResults.isNotEmpty()) {
+                                imdbResults = filterFallbackResults(
+                                    rawResults = parentResults,
+                                    expectedTitle = "",
+                                    expectedYear = null,
+                                    expectedSeason = effectiveSeason,
+                                    expectedEpisode = effectiveEpisode
+                                ).ifEmpty { parentResults }
+                            }
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                            Log.w(TAG, "Parent IMDb ID search retry failed: ${e.message}")
+                        }
+                    }
                 }
 
                 // 5. String query search ONLY as a last resort
@@ -1478,7 +1579,8 @@ class LocalPlayerActivity : FragmentActivity() {
                     Log.w(TAG, "No IMDb ID results found. Falling back to text query search for: $mediaTitle")
                     val yearMatch = Regex("""\b(19\d\d|20\d\d)\b""").find(mediaTitle)
                     val expectedYear = yearMatch?.value?.toIntOrNull()
-                    val cleanTitle = mediaTitle
+                    val cleanTitles = extractCleanSearchTitles(mediaTitle)
+                    val primaryQuery = cleanTitles.firstOrNull() ?: mediaTitle
                         .replace(Regex("""\b(19\d\d|20\d\d)\b"""), "")
                         .replace(Regex("""[()\[\]]"""), "")
                         .replace(EPISODE_PATTERN, "")
@@ -1486,16 +1588,18 @@ class LocalPlayerActivity : FragmentActivity() {
                         .ifBlank { mediaTitle }
 
                     val rawResults = openSubtitlesRepository.search(
-                        query = cleanTitle,
+                        query = primaryQuery,
                         seasonNumber = effectiveSeason.takeIf { it > 0 },
                         episodeNumber = effectiveEpisode.takeIf { it > 0 },
                         type = mediaType
                     )
 
-                    results = filterStringFallbackResults(
+                    results = filterFallbackResults(
                         rawResults = rawResults,
-                        expectedTitle = cleanTitle,
-                        expectedYear = expectedYear
+                        expectedTitle = primaryQuery,
+                        expectedYear = expectedYear,
+                        expectedSeason = effectiveSeason.takeIf { it > 0 },
+                        expectedEpisode = effectiveEpisode.takeIf { it > 0 }
                     )
                 }
 
@@ -1612,64 +1716,6 @@ class LocalPlayerActivity : FragmentActivity() {
         }
     }
 
-    private fun filterStringFallbackResults(
-        rawResults: List<OpenSubtitleResult>,
-        expectedTitle: String,
-        expectedYear: Int?
-    ): List<OpenSubtitleResult> {
-        if (rawResults.isEmpty()) return emptyList()
-
-        val normalizedExpectedTitle = normalizeTitleForComparison(expectedTitle)
-        if (normalizedExpectedTitle.isBlank()) return rawResults
-
-        return rawResults.filter { result ->
-            val rawResultTitle = result.featureTitle
-                ?: extractTitleFromRelease(result.release.ifBlank { result.fileName })
-            val normalizedResultTitle = normalizeTitleForComparison(rawResultTitle)
-
-            val isTitleMatch = normalizedResultTitle == normalizedExpectedTitle
-            if (!isTitleMatch) {
-                Log.d(TAG, "Fallback subtitle search filtered out result: title '$normalizedResultTitle' != '$normalizedExpectedTitle'")
-                return@filter false
-            }
-
-            val resultYear = result.featureYear
-                ?: extractYearFromRelease(result.release.ifBlank { result.fileName })
-
-            if (resultYear != null && expectedYear != null && resultYear != expectedYear) {
-                Log.d(TAG, "Fallback subtitle search filtered out result: year $resultYear != $expectedYear")
-                return@filter false
-            }
-
-            true
-        }
-    }
-
-    private fun normalizeTitleForComparison(title: String): String {
-        return title
-            .lowercase(Locale.ROOT)
-            .replace(Regex("""\b(19\d\d|20\d\d)\b"""), " ")
-            .replace(Regex("""[^a-z0-9]"""), " ")
-            .replace(Regex("""\s+"""), " ")
-            .trim()
-    }
-
-    private fun extractYearFromRelease(release: String): Int? {
-        return Regex("""\b(19\d\d|20\d\d)\b""").find(release)?.value?.toIntOrNull()
-    }
-
-    private fun extractTitleFromRelease(release: String): String {
-        val yearMatch = Regex("""\b(19\d\d|20\d\d)\b""").find(release)
-        if (yearMatch != null) {
-            return release.substring(0, yearMatch.range.first)
-        }
-        val qualityMatch = Regex("""\b(1080p|720p|480p|2160p|4k|bluray|web-dl|webrip|dvdrip|h264|x264|hevc|x265)\b""", RegexOption.IGNORE_CASE).find(release)
-        if (qualityMatch != null) {
-            return release.substring(0, qualityMatch.range.first)
-        }
-        return release.substringBeforeLast('.')
-    }
-
     private fun attachSubtitle(subtitle: DownloadedSubtitle) {
         val controller = mediaController ?: return
         val localUri = Uri.fromFile(subtitle.file)
@@ -1731,6 +1777,9 @@ class LocalPlayerActivity : FragmentActivity() {
         val pos = p.currentPosition
         val dur = p.duration
         if (dur <= 0L) return
+        if (pos > 5000L) {
+            lastKnownPlaybackPositionMs = pos
+        }
 
         val item = p.currentMediaItem ?: return
         val mediaId = item.mediaId
@@ -1782,6 +1831,145 @@ class LocalPlayerActivity : FragmentActivity() {
         const val EXTRA_REMOTE_FILE_PATH = "extra_remote_file_path"
         const val EXTRA_REMOTE_SERVER_JSON = "extra_remote_server_json"
         private const val TAG = "LocalPlayerActivity"
+
+        fun extractSeasonAndEpisode(vararg candidates: String?): Pair<Int, Int> {
+            for (candidate in candidates) {
+                if (candidate.isNullOrBlank()) continue
+                val sMatch = Regex("""\bS(\d{1,2})[\s.]?E(\d{1,2})\b""", RegexOption.IGNORE_CASE).find(candidate)
+                    ?: Regex("""\b(\d{1,2})x(\d{1,2})\b""", RegexOption.IGNORE_CASE).find(candidate)
+                if (sMatch != null) {
+                    val season = sMatch.groupValues[1].toIntOrNull() ?: 0
+                    val episode = sMatch.groupValues[2].toIntOrNull() ?: 0
+                    if (season > 0 && episode > 0) {
+                        return Pair(season, episode)
+                    }
+                }
+            }
+            return Pair(0, 0)
+        }
+
+        fun extractCleanSearchTitles(rawTitle: String): List<String> {
+            if (rawTitle.isBlank()) return emptyList()
+
+            // 1. Strip video extensions
+            var text = rawTitle.replace(Regex("""\.(mp4|mkv|avi|mov|wmv|webm|ts|m4v)$""", RegexOption.IGNORE_CASE), "")
+
+            // 2. Strip quality, codec, release tags and everything that follows them
+            text = text.replace(
+                Regex(
+                    """\b(1080p|720p|480p|2160p|4k|uhd|bluray|blu-ray|web-dl|webrip|web|dvdrip|dvd|hdtv|h264|x264|h265|x265|hevc|avc|10bit|aac|ac3|dts|ddp5\.?1|cakes|eztv|yts|yify|rarbg|ettv|galaxytv|tgx)\b.*$""",
+                    RegexOption.IGNORE_CASE
+                ),
+                ""
+            )
+
+            // 3. Strip bracketed release tags
+            text = text.replace(Regex("""\[.*?\]|\(.*?\)|[\{\}]"""), " ")
+
+            // 4. Split by episode tags (e.g. S38E01, 38x01) or major title separators (- or /)
+            val chunks = text.split(Regex("""\bS\d{1,2}[\s.]?E\d{1,2}\b|\b\d{1,2}x\d{1,2}\b|[-/]""", RegexOption.IGNORE_CASE))
+
+            val results = mutableListOf<String>()
+            for (chunk in chunks) {
+                val cleanChunk = chunk
+                    .replace(Regex("""\b(19\d\d|20\d\d)\b.*$"""), "")
+                    .replace(Regex("""[._]"""), " ")
+                    .replace(Regex("""\s+"""), " ")
+                    .trim()
+                if (cleanChunk.length >= 2 && !results.contains(cleanChunk)) {
+                    results.add(cleanChunk)
+                }
+            }
+
+            // Also include the full string without episode tags if not already present
+            val fullClean = text
+                .replace(Regex("""\bS\d{1,2}[\s.]?E\d{1,2}\b|\b\d{1,2}x\d{1,2}\b""", RegexOption.IGNORE_CASE), " ")
+                .replace(Regex("""[._]"""), " ")
+                .replace(Regex("""\s+"""), " ")
+                .trim()
+            if (fullClean.length >= 2 && !results.contains(fullClean)) {
+                results.add(fullClean)
+            }
+
+            return results
+        }
+
+        fun normalizeTitleForComparison(title: String): String {
+            return title
+                .lowercase(Locale.ROOT)
+                .replace(Regex("""\b(19\d\d|20\d\d)\b"""), " ")
+                .replace(Regex("""[^a-z0-9]"""), " ")
+                .replace(Regex("""\s+"""), " ")
+                .trim()
+        }
+
+        fun extractYearFromRelease(release: String): Int? {
+            return Regex("""\b(19\d\d|20\d\d)\b""").find(release)?.value?.toIntOrNull()
+        }
+
+        fun extractTitleFromRelease(release: String): String {
+            val yearMatch = Regex("""\b(19\d\d|20\d\d)\b""").find(release)
+            if (yearMatch != null) {
+                return release.substring(0, yearMatch.range.first)
+            }
+            val qualityMatch = Regex("""\b(1080p|720p|480p|2160p|4k|bluray|web-dl|webrip|dvdrip|h264|x264|hevc|x265)\b""", RegexOption.IGNORE_CASE).find(release)
+            if (qualityMatch != null) {
+                return release.substring(0, qualityMatch.range.first)
+            }
+            return release.substringBeforeLast('.')
+        }
+
+        fun filterFallbackResults(
+            rawResults: List<OpenSubtitleResult>,
+            expectedTitle: String,
+            expectedYear: Int?,
+            expectedSeason: Int? = null,
+            expectedEpisode: Int? = null
+        ): List<OpenSubtitleResult> {
+            if (rawResults.isEmpty()) return emptyList()
+
+            val normalizedExpectedTitle = normalizeTitleForComparison(expectedTitle)
+
+            return rawResults.filter { result ->
+                val rawResultTitle = result.featureTitle
+                    ?: extractTitleFromRelease(result.release.ifBlank { result.fileName })
+                val normalizedResultTitle = normalizeTitleForComparison(rawResultTitle)
+
+                if (normalizedExpectedTitle.isNotBlank()) {
+                    val isTitleMatch = normalizedResultTitle == normalizedExpectedTitle ||
+                            normalizedResultTitle.contains(normalizedExpectedTitle) ||
+                            normalizedExpectedTitle.contains(normalizedResultTitle)
+                    if (!isTitleMatch) {
+                        Log.d(TAG, "Fallback subtitle search filtered out result: title '$normalizedResultTitle' != '$normalizedExpectedTitle'")
+                        return@filter false
+                    }
+                }
+
+                if (expectedSeason != null && expectedEpisode != null) {
+                    val fullReleaseText = "${result.release} ${result.fileName} ${result.featureTitle.orEmpty()}"
+                    val sMatch = Regex("""\bS(\d{1,2})[\s.]?E(\d{1,2})\b""", RegexOption.IGNORE_CASE).find(fullReleaseText)
+                        ?: Regex("""\b(\d{1,2})x(\d{1,2})\b""", RegexOption.IGNORE_CASE).find(fullReleaseText)
+                    if (sMatch != null) {
+                        val s = sMatch.groupValues[1].toIntOrNull()
+                        val e = sMatch.groupValues[2].toIntOrNull()
+                        if (s != null && e != null && (s != expectedSeason || e != expectedEpisode)) {
+                            Log.d(TAG, "Fallback subtitle search filtered out result: episode S${s}E${e} != S${expectedSeason}E${expectedEpisode}")
+                            return@filter false
+                        }
+                    }
+                }
+
+                val resultYear = result.featureYear
+                    ?: extractYearFromRelease(result.release.ifBlank { result.fileName })
+
+                if (resultYear != null && expectedYear != null && kotlin.math.abs(resultYear - expectedYear) > 1) {
+                    Log.d(TAG, "Fallback subtitle search filtered out result: year $resultYear != $expectedYear")
+                    return@filter false
+                }
+
+                true
+            }
+        }
     }
 }
 

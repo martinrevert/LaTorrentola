@@ -244,9 +244,7 @@ android {
     }
 }
 
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
-tasks.withType(KotlinCompile).configureEach {
+tasks.matching { it.name.startsWith("compile") && it.name.contains("Kotlin") }.configureEach {
     compilerOptions {
         freeCompilerArgs.add("-opt-in=dev.chrisbanes.haze.ExperimentalHazeApi")
     }

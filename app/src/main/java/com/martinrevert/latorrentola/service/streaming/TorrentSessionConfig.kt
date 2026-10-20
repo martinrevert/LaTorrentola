@@ -31,6 +31,7 @@ object TorrentSessionConfig {
 
         // 3. ZERO SEEDING MANDATE: never seed in background once complete
         pack.activeSeeds(0)
+        pack.uploadRateLimit(0)
 
         // 4. Memory watermark limits
         pack.setInteger(settings_pack.int_types.send_buffer_watermark.swigValue(), 256 * 1024)
@@ -46,14 +47,12 @@ object TorrentSessionConfig {
     }
 
     fun createOptimizedAlertMask(): alert_category_t {
-        val mask = alert.all_categories
-        val logMask = alert.session_log_notification
-            .or_(alert.torrent_log_notification)
-            .or_(alert.peer_log_notification)
-            .or_(alert.dht_log_notification)
-            .or_(alert.port_mapping_log_notification)
-            .or_(alert.picker_log_notification)
-        return mask.and_(logMask.inv())
+        // Only listen for status (piece/torrent finished), error, and storage alerts.
+        // NEVER enable all_categories or picker/block notifications, which emit hundreds of thousands of
+        // block_finished_alert instances that exhaust and corrupt native JNI memory in Scudo.
+        return alert.status_notification
+            .or_(alert.error_notification)
+            .or_(alert.storage_notification)
     }
 
     /**

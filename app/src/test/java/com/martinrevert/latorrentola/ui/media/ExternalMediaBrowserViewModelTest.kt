@@ -568,6 +568,57 @@ class ExternalMediaBrowserViewModelTest {
         // Storage manager must NOT have started an HTTP stream server for ExoPlayer direct playback
         coVerify(exactly = 0) { storageManager.startRemoteStreamServer(any(), any(), any()) }
     }
+
+    @Test
+    fun `navigateUpUsb navigates up until root is reached`() = runTest {
+        val rootDir = tempFolder.newFolder("usb_root")
+        val subDir = File(rootDir, "sub_folder").apply { mkdirs() }
+        val loc = StorageLocation(
+            id = rootDir.absolutePath,
+            displayName = "USB Drive",
+            rootDirectory = rootDir,
+            isRemovable = true,
+            availableBytes = 1000L,
+            totalBytes = 2000L
+        )
+
+        viewModel.selectUsbLocation(loc)
+        viewModel.browseUsbDirectory(subDir)
+        advanceUntilIdle()
+
+        assertThat(viewModel.uiState.value.currentUsbFolder?.absolutePath).isEqualTo(subDir.absolutePath)
+
+        viewModel.navigateUpUsb()
+        advanceUntilIdle()
+
+        assertThat(viewModel.uiState.value.currentUsbFolder?.absolutePath).isEqualTo(rootDir.absolutePath)
+
+        // Calling again should not navigate higher than root
+        viewModel.navigateUpUsb()
+        advanceUntilIdle()
+
+        assertThat(viewModel.uiState.value.currentUsbFolder?.absolutePath).isEqualTo(rootDir.absolutePath)
+    }
+
+    @Test
+    fun `storage mount events reload USB locations`() = runTest {
+        com.martinrevert.latorrentola.service.storage.StorageEvents.notifyMounted("/storage/new_usb")
+        advanceUntilIdle()
+
+        assertThat(viewModel.uiState.value.usbLocations).isNotEmpty()
+    }
+
+    @Test
+    fun `selectTab USB reloads USB locations`() = runTest {
+        viewModel.selectTab(ExternalMediaTab.NETWORK)
+        advanceUntilIdle()
+        assertThat(viewModel.uiState.value.selectedTab).isEqualTo(ExternalMediaTab.NETWORK)
+
+        viewModel.selectTab(ExternalMediaTab.USB)
+        advanceUntilIdle()
+        assertThat(viewModel.uiState.value.selectedTab).isEqualTo(ExternalMediaTab.USB)
+        assertThat(viewModel.uiState.value.usbLocations).isNotEmpty()
+    }
 }
 
 

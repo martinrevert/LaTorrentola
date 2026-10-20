@@ -339,5 +339,11 @@
     <string name="play_mode_cast">Google Cast (Chromecast)</string>
     <string name="play_mode_cast_desc">Stream to TV via local network HTTP server</string>
 
+    <!-- USB Storage Permissions & Actions -->
+    <string name="usb_permission_banner_title">USB Storage Access</string>
+    <string name="usb_permission_banner_desc">To browse all folders and media files on connected USB drives in Android 11+, grant all files access permission.</string>
+    <string name="usb_permission_grant_button">Grant Permission</string>
+    <string name="external_media_refresh_usb">Refresh Drives</string>
+
     <string name="asset_statements" translatable="false">[]</string>
 </resources>

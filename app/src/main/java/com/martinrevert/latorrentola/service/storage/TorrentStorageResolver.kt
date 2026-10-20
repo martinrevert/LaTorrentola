@@ -5,19 +5,21 @@ import android.os.Build
 import android.os.Environment
 import android.os.StatFs
 import android.os.storage.StorageManager
+import android.util.Log
 import androidx.core.content.ContextCompat
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import java.io.File
 
 /**
- * Metadata for an internal or external storage volume available for torrent downloads.
+ * Metadata for an internal or external storage volume available for torrent downloads and media browsing.
  *
  * @property id Unique volume identifier used for persistence (e.g., [TorrentStorageResolver.LOCATION_INTERNAL] or root path).
  * @property displayName Human-readable label (e.g. "Internal Storage" or "USB Drive (64 GB)").
- * @property rootDirectory Top-level writable directory for this app on the volume.
+ * @property rootDirectory Top-level directory for browsing files on this volume.
  * @property isRemovable True if the storage medium is removable (e.g. USB flash drive or SD card).
  * @property availableBytes Currently available free bytes on this volume.
  * @property totalBytes Total capacity in bytes of this volume.
+ * @property downloadDirectory Target directory to store downloaded torrents (defaults to [rootDirectory] or app-specific directory if root is read-only).
  */
 data class StorageLocation(
     val id: String,
@@ -25,91 +27,279 @@ data class StorageLocation(
     val rootDirectory: File,
     val isRemovable: Boolean,
     val availableBytes: Long,
-    val totalBytes: Long
+    val totalBytes: Long,
+    val downloadDirectory: File = rootDirectory
 )
 
 /**
- * Resolves and validates torrent download and subtitle directories across internal eMMC and USB storage.
+ * Resolves and validates torrent download, subtitle directories, and removable USB media across Android devices.
  */
 object TorrentStorageResolver {
 
+    private const val TAG = "TorrentStorageResolver"
     const val LOCATION_INTERNAL = "internal"
     const val TORRENT_DIRECTORY = "torrent_downloads"
 
+    private fun logI(msg: String) {
+        try {
+            Log.i(TAG, msg)
+        } catch (_: Throwable) {}
+    }
+
+    private fun logW(msg: String, tr: Throwable? = null) {
+        try {
+            if (tr != null) Log.w(TAG, msg, tr) else Log.w(TAG, msg)
+        } catch (_: Throwable) {}
+    }
+
+    private data class DiscoveredVolume(
+        val mountRoot: File,
+        val appDir: File? = null,
+        val description: String? = null,
+        val isRemovable: Boolean = true
+    )
+
     /**
-     * Enumerates all writable storage volumes currently accessible to the application.
+     * Enumerates all storage volumes (Internal shared/private, Removable USB, External SD)
+     * currently accessible on the device using a 5-tier detection engine.
      */
     fun getAvailableStorageLocations(context: Context): List<StorageLocation> {
         val locations = mutableListOf<StorageLocation>()
+        val seenPaths = mutableSetOf<String>()
 
         // 1. Always include Internal Storage
         val internalFilesDir = context.filesDir
         val internalStat = getStatFs(internalFilesDir)
+        val internalSharedDir = try {
+            Environment.getExternalStorageDirectory()
+        } catch (_: Throwable) {
+            null
+        }
+        val internalBrowseDir = if (internalSharedDir != null && internalSharedDir.exists() && internalSharedDir.canRead()) {
+            internalSharedDir
+        } else {
+            internalFilesDir
+        }
+
         locations.add(
             StorageLocation(
                 id = LOCATION_INTERNAL,
                 displayName = "Internal Storage",
-                rootDirectory = internalFilesDir,
+                rootDirectory = internalBrowseDir,
                 isRemovable = false,
                 availableBytes = getStatAvailableBytes(internalStat),
-                totalBytes = getStatTotalBytes(internalStat)
+                totalBytes = getStatTotalBytes(internalStat),
+                downloadDirectory = internalFilesDir
             )
         )
 
-        // 2. Discover external volumes via getExternalFilesDirs(null)
-        val externalDirs = try {
-            ContextCompat.getExternalFilesDirs(context, null)
+        try {
+            seenPaths.add(internalFilesDir.canonicalPath)
+            if (internalSharedDir != null && internalSharedDir.exists()) {
+                seenPaths.add(internalSharedDir.canonicalPath)
+            }
         } catch (_: Throwable) {
-            emptyArray()
+            seenPaths.add(internalFilesDir.absolutePath)
         }
+
+        val discoveredVolumes = mutableListOf<DiscoveredVolume>()
+
+        // 2. Discover via StorageManager.storageVolumes (API 24+)
         val storageManager = try {
             context.getSystemService(Context.STORAGE_SERVICE) as? StorageManager
         } catch (_: Throwable) {
             null
         }
 
-        externalDirs.filterNotNull().forEachIndexed { index, dir ->
-            if (dir.exists() && dir.canWrite()) {
-                val isRemovable = try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && storageManager != null) {
-                        val storageVolume = storageManager.getStorageVolume(dir)
-                        storageVolume?.isRemovable ?: Environment.isExternalStorageRemovable(dir)
-                    } else {
-                        Environment.isExternalStorageRemovable(dir)
-                    }
-                } catch (_: Throwable) {
-                    false
-                }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && storageManager != null) {
+            try {
+                for (volume in storageManager.storageVolumes) {
+                    if (volume.isPrimary) continue
 
-                // If it's a removable USB/SD drive or secondary volume
-                if (isRemovable || index > 0) {
-                    val stat = getStatFs(dir)
-                    val available = getStatAvailableBytes(stat)
-                    val total = getStatTotalBytes(stat)
-                    val volumeName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && storageManager != null) {
+                    val state = volume.state
+                    if (state != Environment.MEDIA_MOUNTED && state != Environment.MEDIA_MOUNTED_READ_ONLY) {
+                        continue
+                    }
+
+                    val dir: File? = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        volume.directory
+                    } else {
                         try {
-                            storageManager.getStorageVolume(dir)?.getDescription(context)
+                            val getPath = volume.javaClass.getMethod("getPath")
+                            (getPath.invoke(volume) as? String)?.let { File(it) }
                         } catch (_: Throwable) {
                             null
                         }
-                    } else null
+                    }) ?: volume.uuid?.let { File("/storage", it) }
 
-                    val label = volumeName ?: if (isRemovable) "USB Drive (${formatSizeSimple(total)})" else "External Storage ($index)"
-
-                    locations.add(
-                        StorageLocation(
-                            id = dir.absolutePath,
-                            displayName = label,
-                            rootDirectory = dir,
-                            isRemovable = isRemovable,
-                            availableBytes = available,
-                            totalBytes = total
+                    if (dir != null) {
+                        val desc = try {
+                            volume.getDescription(context)
+                        } catch (_: Throwable) {
+                            null
+                        }
+                        logI("StorageVolumes: found volume dir=${dir.absolutePath}, state=$state, desc=$desc, removable=${volume.isRemovable}")
+                        discoveredVolumes.add(
+                            DiscoveredVolume(
+                                mountRoot = dir,
+                                description = desc,
+                                isRemovable = volume.isRemovable
+                            )
                         )
-                    )
+                    }
+                }
+            } catch (e: Throwable) {
+                logW("Error enumerating storageVolumes", e)
+            }
+        }
+
+        // 3. Discover via ContextCompat.getExternalFilesDirs(null)
+        val externalDirs = try {
+            ContextCompat.getExternalFilesDirs(context, null)
+        } catch (_: Throwable) {
+            emptyArray()
+        }
+
+        for (extDir in externalDirs) {
+            if (extDir == null) continue
+            if (!extDir.exists()) {
+                try { extDir.mkdirs() } catch (_: Throwable) {}
+            }
+            val path = extDir.absolutePath
+            val androidDataIdx = path.indexOf("/Android/data", ignoreCase = true)
+            val volumeRoot = if (androidDataIdx > 0) {
+                File(path.substring(0, androidDataIdx))
+            } else {
+                extDir
+            }
+
+            val isRemovable = try {
+                if (storageManager != null) {
+                    storageManager.getStorageVolume(volumeRoot)?.isRemovable
+                        ?: Environment.isExternalStorageRemovable(volumeRoot)
+                } else {
+                    Environment.isExternalStorageRemovable(volumeRoot)
+                }
+            } catch (_: Throwable) {
+                true
+            }
+            val desc = try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && storageManager != null) {
+                    storageManager.getStorageVolume(volumeRoot)?.getDescription(context)
+                } else null
+            } catch (_: Throwable) {
+                null
+            }
+            logI("getExternalFilesDirs: found extDir=${extDir.absolutePath}, volumeRoot=${volumeRoot.absolutePath}, removable=$isRemovable")
+            discoveredVolumes.add(
+                DiscoveredVolume(
+                    mountRoot = volumeRoot,
+                    appDir = extDir,
+                    description = desc,
+                    isRemovable = isRemovable
+                )
+            )
+        }
+
+        // 4. Discover via direct filesystem scans (/storage, /mnt/media_rw, /mnt)
+        val candidateMountParents = listOf(File("/storage"), File("/mnt/media_rw"), File("/mnt"))
+        for (parent in candidateMountParents) {
+            if (parent.exists() && parent.isDirectory) {
+                val children = try { parent.listFiles() } catch (_: Throwable) { null }
+                if (children != null) {
+                    for (child in children) {
+                        val name = child.name.lowercase()
+                        if (name in setOf("emulated", "self", "knox", "sdcard", "secure", "asec", "obb")) continue
+                        if (child.isDirectory && child.canRead() && child.exists()) {
+                            logI("Filesystem scan: found candidate ${child.absolutePath}")
+                            discoveredVolumes.add(
+                                DiscoveredVolume(
+                                    mountRoot = child,
+                                    description = null,
+                                    isRemovable = true
+                                )
+                            )
+                        }
+                    }
                 }
             }
         }
 
+        // 5. Discover via /proc/mounts inspection
+        try {
+            val mountsFile = File("/proc/mounts")
+            if (mountsFile.exists() && mountsFile.canRead()) {
+                val lines = mountsFile.readLines()
+                for (line in lines) {
+                    val parts = line.split("\\s+".toRegex())
+                    if (parts.size >= 3) {
+                        val mountPoint = parts[1]
+                        val fsType = parts[2].lowercase()
+                        if ((mountPoint.startsWith("/storage/") && !mountPoint.startsWith("/storage/emulated") && !mountPoint.startsWith("/storage/self")) ||
+                            mountPoint.startsWith("/mnt/media_rw/")
+                        ) {
+                            if (fsType in setOf("vfat", "fat32", "exfat", "ntfs", "fuse", "ext4", "f2fs", "esdfs", "sdcardfs")) {
+                                val mountDir = File(mountPoint)
+                                if (mountDir.exists() && mountDir.isDirectory && mountDir.canRead()) {
+                                    logI("/proc/mounts: found candidate ${mountDir.absolutePath} ($fsType)")
+                                    discoveredVolumes.add(
+                                        DiscoveredVolume(
+                                            mountRoot = mountDir,
+                                            description = null,
+                                            isRemovable = true
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
+
+        // Deduplicate and assemble StorageLocations
+        for (vol in discoveredVolumes) {
+            val canonical = try { vol.mountRoot.canonicalPath } catch (_: Throwable) { vol.mountRoot.absolutePath }
+            if (seenPaths.contains(canonical)) continue
+            seenPaths.add(canonical)
+
+            val stat = getStatFs(vol.mountRoot)
+            val available = getStatAvailableBytes(stat)
+            val total = getStatTotalBytes(stat)
+
+            val label = vol.description
+                ?: if (vol.isRemovable) {
+                    if (total > 0L) "USB Drive (${formatSizeSimple(total)})" else "USB Drive (${vol.mountRoot.name})"
+                } else {
+                    "External Storage (${vol.mountRoot.name})"
+                }
+
+            val appDirCandidate = vol.appDir ?: File(vol.mountRoot, "Android/data/${context.packageName}/files")
+            val downloadDir = if (isWritableDirectory(vol.mountRoot)) {
+                vol.mountRoot
+            } else {
+                try { appDirCandidate.mkdirs() } catch (_: Throwable) {}
+                if (isWritableDirectory(appDirCandidate)) {
+                    appDirCandidate
+                } else {
+                    vol.mountRoot
+                }
+            }
+
+            locations.add(
+                StorageLocation(
+                    id = vol.mountRoot.absolutePath,
+                    displayName = label,
+                    rootDirectory = vol.mountRoot,
+                    isRemovable = vol.isRemovable,
+                    availableBytes = available,
+                    totalBytes = total,
+                    downloadDirectory = downloadDir
+                )
+            )
+        }
+
+        logI("getAvailableStorageLocations: returning ${locations.size} locations: ${locations.map { "${it.displayName} [${it.rootDirectory.absolutePath}]" }}")
         return locations
     }
 
@@ -129,8 +319,14 @@ object TorrentStorageResolver {
 
         val availableLocations = getAvailableStorageLocations(context)
         val selected = availableLocations.firstOrNull { it.id == targetId }
-        if (selected != null && selected.rootDirectory.exists() && selected.rootDirectory.canWrite()) {
-            return selected.rootDirectory
+        if (selected != null) {
+            val downloadDir = selected.downloadDirectory
+            if (isWritableDirectory(downloadDir)) {
+                return downloadDir
+            }
+            if (isWritableDirectory(selected.rootDirectory)) {
+                return selected.rootDirectory
+            }
         }
 
         // Fallback to internal storage if configured volume is unavailable
@@ -160,17 +356,18 @@ object TorrentStorageResolver {
         val internalDir = File(context.filesDir, "$TORRENT_DIRECTORY/$infoHash")
         if (internalDir.isDirectory) return internalDir
 
-        // 3. Search all external files dirs
-        val externalDirs = try {
-            ContextCompat.getExternalFilesDirs(context, null)
+        // 3. Search all available storage locations
+        val locations = try {
+            getAvailableStorageLocations(context)
         } catch (_: Throwable) {
-            emptyArray()
+            emptyList()
         }
-        for (ext in externalDirs) {
-            if (ext != null && ext.isDirectory) {
-                val candidate = File(ext, "$TORRENT_DIRECTORY/$infoHash")
-                if (candidate.isDirectory) return candidate
-            }
+        for (loc in locations) {
+            val candidateDownload = File(loc.downloadDirectory, "$TORRENT_DIRECTORY/$infoHash")
+            if (candidateDownload.isDirectory) return candidateDownload
+
+            val candidateRoot = File(loc.rootDirectory, "$TORRENT_DIRECTORY/$infoHash")
+            if (candidateRoot.isDirectory) return candidateRoot
         }
 
         return null
@@ -189,17 +386,18 @@ object TorrentStorageResolver {
             val internalParent = File(context.filesDir, TORRENT_DIRECTORY).canonicalFile
             if (canonicalParent == internalParent) return true
 
-            // Check external storage parents
-            val externalDirs = try {
-                ContextCompat.getExternalFilesDirs(context, null)
+            // Check all available locations
+            val locations = try {
+                getAvailableStorageLocations(context)
             } catch (_: Throwable) {
-                emptyArray()
+                emptyList()
             }
-            for (ext in externalDirs) {
-                if (ext != null) {
-                    val extParent = File(ext, TORRENT_DIRECTORY).canonicalFile
-                    if (canonicalParent == extParent) return true
-                }
+            for (loc in locations) {
+                val dlParent = File(loc.downloadDirectory, TORRENT_DIRECTORY).canonicalFile
+                if (canonicalParent == dlParent) return true
+
+                val rootParent = File(loc.rootDirectory, TORRENT_DIRECTORY).canonicalFile
+                if (canonicalParent == rootParent) return true
             }
 
             false
@@ -218,6 +416,28 @@ object TorrentStorageResolver {
             stat.availableBytes
         } catch (_: Throwable) {
             0L
+        }
+    }
+
+    /**
+     * Safely verifies if an application can write to [dir].
+     */
+    fun isWritableDirectory(dir: File): Boolean {
+        return try {
+            if (!dir.exists()) {
+                dir.mkdirs()
+            }
+            if (!dir.exists()) return false
+            val testFile = File(dir, ".torrent_test_${System.currentTimeMillis()}.tmp")
+            val created = testFile.createNewFile()
+            if (created || testFile.exists()) {
+                testFile.delete()
+                true
+            } else {
+                dir.canWrite()
+            }
+        } catch (_: Throwable) {
+            try { dir.canWrite() } catch (_: Throwable) { false }
         }
     }
 

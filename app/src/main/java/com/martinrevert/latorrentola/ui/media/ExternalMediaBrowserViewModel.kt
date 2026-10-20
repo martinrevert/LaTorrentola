@@ -3,6 +3,9 @@ package com.martinrevert.latorrentola.ui.media
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.os.Build
+import android.os.Environment
+import com.martinrevert.latorrentola.service.storage.StorageEvents
 import com.martinrevert.latorrentola.service.storage.StorageLocation
 import com.martinrevert.latorrentola.service.storage.TorrentStorageResolver
 import com.martinrevert.latorrentola.service.storage.remote.NetworkStorageScanner
@@ -59,7 +62,8 @@ data class ExternalMediaUiState(
     val activeStorageDisplayName: String = "",
     val activeStorageExactPath: String = "",
     val activeStorageAvailableBytes: Long = 0L,
-    val activeStorageType: String = "INTERNAL"
+    val activeStorageType: String = "INTERNAL",
+    val hasAllFilesAccess: Boolean = true
 )
 
 sealed interface ExternalMediaEvent {
@@ -96,20 +100,57 @@ class ExternalMediaBrowserViewModel @Inject constructor(
     private val _events = MutableSharedFlow<ExternalMediaEvent>()
     val events: SharedFlow<ExternalMediaEvent> = _events.asSharedFlow()
 
+    private var storageVolumeCallback: Any? = null
+
     init {
         loadUsbLocations()
         observeRemoteServers()
         observeStorageLocation()
         scanNetworkShares()
+        observeStorageEvents()
+        registerStorageVolumeCallback()
+    }
+
+    private fun registerStorageVolumeCallback() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val sm = context.getSystemService(Context.STORAGE_SERVICE) as? android.os.storage.StorageManager
+            val cb = object : android.os.storage.StorageManager.StorageVolumeCallback() {
+                override fun onStateChanged(volume: android.os.storage.StorageVolume) {
+                    android.util.Log.i(
+                        "ExternalMediaBrowser",
+                        "StorageVolumeCallback state changed: ${volume.directory} (state=${volume.state})"
+                    )
+                    loadUsbLocations()
+                }
+            }
+            try {
+                sm?.registerStorageVolumeCallback(context.mainExecutor, cb)
+                storageVolumeCallback = cb
+            } catch (e: Exception) {
+                android.util.Log.w("ExternalMediaBrowser", "Could not register StorageVolumeCallback", e)
+            }
+        }
+    }
+
+    private fun observeStorageEvents() {
+        viewModelScope.launch {
+            StorageEvents.events.collect {
+                loadUsbLocations()
+            }
+        }
     }
 
     fun selectTab(tab: ExternalMediaTab) {
         _uiState.update { it.copy(selectedTab = tab, errorMessage = null) }
-        if (tab == ExternalMediaTab.USB && _uiState.value.usbLocations.isEmpty()) {
+        if (tab == ExternalMediaTab.USB) {
             loadUsbLocations()
         } else if (tab == ExternalMediaTab.NETWORK) {
             scanNetworkShares()
         }
+    }
+
+    fun refreshUsbLocations() {
+        loadUsbLocations()
     }
 
     fun loadUsbLocations() {
@@ -120,17 +161,33 @@ class ExternalMediaBrowserViewModel @Inject constructor(
             } catch (e: Exception) {
                 emptyList()
             }
-            val initial = locations.firstOrNull { it.isRemovable } ?: locations.firstOrNull()
+            val hasRemovable = locations.any { it.isRemovable }
+            val currentSelectedId = _uiState.value.selectedUsbLocation?.id
+            val stillAvailable = locations.firstOrNull { it.id == currentSelectedId }
+            val target = stillAvailable
+                ?: (if (hasRemovable) locations.firstOrNull { it.isRemovable } else locations.firstOrNull())
+
+            val hasAllFilesAccess = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    Environment.isExternalStorageManager()
+                } catch (_: Throwable) {
+                    true
+                }
+            } else {
+                true
+            }
+
             _uiState.update {
                 it.copy(
                     usbLocations = locations,
-                    selectedUsbLocation = initial,
-                    currentUsbFolder = initial?.rootDirectory,
-                    isLoading = false
+                    selectedUsbLocation = target,
+                    currentUsbFolder = target?.rootDirectory,
+                    isLoading = false,
+                    hasAllFilesAccess = hasAllFilesAccess
                 )
             }
             updateActiveStorageInfo(preferenceManager.getStorageLocation(), _uiState.value.remoteServers, locations)
-            initial?.rootDirectory?.let { browseUsbDirectory(it) }
+            target?.rootDirectory?.let { browseUsbDirectory(it) }
         }
     }
 
@@ -251,7 +308,9 @@ class ExternalMediaBrowserViewModel @Inject constructor(
     fun navigateUpUsb() {
         val current = _uiState.value.currentUsbFolder ?: return
         val root = _uiState.value.selectedUsbLocation?.rootDirectory ?: return
-        if (current.absolutePath != root.absolutePath && current.parentFile != null) {
+        val currentCanon = try { current.canonicalPath } catch (_: Throwable) { current.absolutePath }
+        val rootCanon = try { root.canonicalPath } catch (_: Throwable) { root.absolutePath }
+        if (currentCanon != rootCanon && current.parentFile != null) {
             browseUsbDirectory(current.parentFile!!)
         }
     }
@@ -637,5 +696,17 @@ class ExternalMediaBrowserViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val sm = context.getSystemService(Context.STORAGE_SERVICE) as? android.os.storage.StorageManager
+            (storageVolumeCallback as? android.os.storage.StorageManager.StorageVolumeCallback)?.let {
+                try {
+                    sm?.unregisterStorageVolumeCallback(it)
+                } catch (_: Exception) {}
+            }
+        }
     }
 }

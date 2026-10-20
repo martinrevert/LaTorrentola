@@ -199,7 +199,7 @@ class TorrentDownloadService : Service() {
                     )
                 )
             } else {
-                startForegroundForDownload(
+                startForegroundForPlayback(
                     buildProgressNotification(getString(R.string.torrent_download_title), 0)
                 )
             }
@@ -558,34 +558,85 @@ class TorrentDownloadService : Service() {
      */
     private suspend fun openReadyPlayer(infoHash: String) {
         val readyIntent = readyPlayerIntents[infoHash]
-        if (readyIntent != null) {
-            val server = streamServers[infoHash]
+        val server = streamServers[infoHash]
+        if (readyIntent != null && server != null) {
             val title = readyIntent.getStringExtra(LocalPlayerActivity.EXTRA_TITLE).orEmpty()
             withContext(Dispatchers.Main.immediate) {
-                server?.let {
-                    startForegroundForPlayback(
-                        buildReadyNotification(title, readyIntent, it.listeningPort)
-                    )
-                }
+                startForegroundForPlayback(
+                    buildReadyNotification(title, readyIntent, server.listeningPort)
+                )
                 startActivity(Intent(readyIntent))
             }
             return
         }
-        openWhenReadyHashes.add(infoHash)
-        readyPlayerIntents[infoHash]?.let { intent ->
-            if (openWhenReadyHashes.remove(infoHash)) {
-                val server = streamServers[infoHash]
-                val title = intent.getStringExtra(LocalPlayerActivity.EXTRA_TITLE).orEmpty()
-                withContext(Dispatchers.Main.immediate) {
-                    server?.let {
-                        startForegroundForPlayback(
-                            buildReadyNotification(title, intent, it.listeningPort)
+
+        // The stream server is not currently running for this hash (e.g. after service restart).
+        // Check if the torrent exists in our local Room database to resurrect streaming automatically.
+        val stored = torrentDownloadDao.get(infoHash)
+        if (stored != null) {
+            val completedFile = stored.mediaPath?.let(::File)?.takeIf { it.isFile && it.canRead() }
+            if (stored.state == STATE_COMPLETED && completedFile != null) {
+                openWhenReadyHashes.remove(infoHash)
+                startCompletedPlayback(
+                    infoHash = infoHash,
+                    title = stored.title,
+                    file = completedFile,
+                    castWhenReady = stored.castWhenReady,
+                    seriesId = stored.seriesId ?: 0,
+                    seasonNumber = stored.seasonNumber ?: 0,
+                    episodeNumber = stored.episodeNumber ?: 0,
+                    movieId = stored.movieId ?: 0
+                )
+                return
+            }
+
+            openWhenReadyHashes.add(infoHash)
+            if (infoHash == activeInfoHash) {
+                return
+            }
+
+            val mediaId = if ((stored.seriesId ?: 0) > 0) {
+                MediaIdHelper.forEpisode(
+                    seriesId = stored.seriesId ?: 0,
+                    seasonNumber = stored.seasonNumber ?: 0,
+                    episodeNumber = stored.episodeNumber ?: 0,
+                    infoHash = infoHash,
+                    title = stored.title
+                )
+            } else {
+                MediaIdHelper.forMovie(
+                    movieId = stored.movieId ?: 0,
+                    infoHash = infoHash,
+                    title = stored.title
+                )
+            }
+            val playbackProgress = userLibraryRepository.getPlaybackProgress(mediaId)
+            val resumePos = if (playbackProgress != null && playbackProgress.positionMs > 5000L && !playbackProgress.isCompleted) playbackProgress.positionMs else 0L
+            val dur = if (playbackProgress != null && playbackProgress.positionMs > 5000L && !playbackProgress.isCompleted) playbackProgress.durationMs else 0L
+
+            synchronized(queueLock) {
+                if (downloadQueue.none { it.infoHash == infoHash }) {
+                    downloadQueue.addFirst(
+                        DownloadRequest(
+                            infoHash = infoHash,
+                            magnetUri = stored.magnetUri,
+                            title = stored.title,
+                            castWhenReady = stored.castWhenReady,
+                            seriesId = stored.seriesId ?: 0,
+                            seasonNumber = stored.seasonNumber ?: 0,
+                            episodeNumber = stored.episodeNumber ?: 0,
+                            movieId = stored.movieId ?: 0,
+                            resumePositionMs = resumePos,
+                            durationMs = dur
                         )
-                    }
-                    startActivity(Intent(intent))
+                    )
                 }
             }
+            startQueueWorker(stored.title)
+            return
         }
+
+        openWhenReadyHashes.add(infoHash)
     }
 
     /**
@@ -710,7 +761,11 @@ class TorrentDownloadService : Service() {
         var piecePlanner: StreamingPiecePlanner? = null
 
         val alertListener = object : AlertListener {
-            override fun types(): IntArray? = null
+            override fun types(): IntArray = intArrayOf(
+                org.libtorrent4j.alerts.AlertType.PIECE_FINISHED.swig(),
+                org.libtorrent4j.alerts.AlertType.TORRENT_FINISHED.swig(),
+                org.libtorrent4j.alerts.AlertType.TORRENT_ERROR.swig()
+            )
             override fun alert(alert: Alert<*>) {
                 when (alert) {
                     is PieceFinishedAlert -> {
@@ -728,7 +783,6 @@ class TorrentDownloadService : Service() {
         synchronized(sessionLock) {
             sessionManager = manager
             manager.start(sessionParams)
-            TorrentSessionConfig.applyRuntimeOptimizations(manager, isPlaybackActive = false, isTv = isTv)
             manager.download(
                 request.magnetUri,
                 downloadDirectory,
@@ -969,10 +1023,11 @@ class TorrentDownloadService : Service() {
                                     )
                                     if (plan != null) {
                                         val windowStart = plan.sequentialRangeStart
-                                        val needsUpdate = plan.isSeekJump || plan.isTailProbe ||
+                                        val isCurrentRangeUnverified = !tracker.isRangeVerified(start, end)
+                                        val needsUpdate = isCurrentRangeUnverified ||
+                                            plan.isSeekJump || plan.isTailProbe ||
                                             lastPrioritizedWindowStart == -1 ||
-                                            kotlin.math.abs(windowStart - lastPrioritizedWindowStart) >= 4 ||
-                                            plan.piecesToPrioritize.isNotEmpty()
+                                            kotlin.math.abs(windowStart - lastPrioritizedWindowStart) >= 2
 
                                         if (needsUpdate) {
                                             val oldWindowStart = lastPrioritizedWindowStart
@@ -982,21 +1037,25 @@ class TorrentDownloadService : Service() {
 
                                             synchronized(sessionLock) {
                                                 if (sessionManager === manager && handle.isValid) {
-                                                    if (plan.isSeekJump && oldWindowStart != -1) {
-                                                        // Only reset deadlines on the previously prioritized window, NOT all 10,000 pieces!
-                                                        for (p in oldWindowStart..minOf(oldWindowEnd, target.lastPiece)) {
-                                                            try { handle.resetPieceDeadline(p) } catch (_: Exception) {}
+                                                    try {
+                                                        if (plan.isSeekJump && oldWindowStart != -1) {
+                                                            // Only reset deadlines on the previously prioritized window, NOT all pieces
+                                                            for (p in oldWindowStart..minOf(oldWindowEnd, target.lastPiece)) {
+                                                                try { handle.resetPieceDeadline(p) } catch (_: Throwable) {}
+                                                            }
                                                         }
-                                                    }
-                                                    if (!plan.isTailProbe) {
-                                                        handle.setSequentialRange(plan.sequentialRangeStart, target.lastPiece)
-                                                    }
-                                                    for (p in plan.piecesToPrioritize) {
-                                                        handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                                        val deadline = plan.deadlines[p] ?: 1000
-                                                        try {
-                                                            handle.setPieceDeadline(p, deadline)
-                                                        } catch (_: Exception) {}
+                                                        if (!plan.isTailProbe) {
+                                                            try { handle.setSequentialRange(plan.sequentialRangeStart, target.lastPiece) } catch (_: Throwable) {}
+                                                        }
+                                                        for (p in plan.piecesToPrioritize) {
+                                                            try { handle.piecePriority(p, Priority.TOP_PRIORITY) } catch (_: Throwable) {}
+                                                            val deadline = plan.deadlines[p] ?: 1000
+                                                            try {
+                                                                handle.setPieceDeadline(p, deadline)
+                                                            } catch (_: Throwable) {}
+                                                        }
+                                                    } catch (e: Throwable) {
+                                                        Log.w(TAG, "Error updating piece deadlines in libtorrent", e)
                                                     }
                                                 }
                                             }
@@ -1028,12 +1087,6 @@ class TorrentDownloadService : Service() {
                         streamServers[infoHash]?.stop()
                         streamServers[infoHash] = server
 
-                        // Throttle upload bandwidth now that playback is starting to prioritize disk read throughput
-                        synchronized(sessionLock) {
-                            if (sessionManager === manager) {
-                                TorrentSessionConfig.applyRuntimeOptimizations(manager, isPlaybackActive = true, isTv = isTv)
-                            }
-                        }
 
                         val playerIntent = Intent(this, LocalPlayerActivity::class.java)
                             .putExtra(LocalPlayerActivity.EXTRA_STREAM_URL, server.localUrl())
@@ -1318,14 +1371,33 @@ class TorrentDownloadService : Service() {
         includePlayback: Boolean
     ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val foregroundType = type or (if (includePlayback) {
+            val isPlayback = includePlayback || streamServers.isNotEmpty()
+            val foregroundType = if (isPlayback) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
             } else {
-                0
-            })
-            startForeground(NOTIFICATION_ID, notification, foregroundType)
+                type
+            }
+
+            try {
+                startForeground(NOTIFICATION_ID, notification, foregroundType)
+            } catch (e: Exception) {
+                Log.w(TAG, "startForeground with type $foregroundType failed, attempting fallback to MEDIA_PLAYBACK", e)
+                try {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                    )
+                } catch (e2: Exception) {
+                    Log.e(TAG, "All startForeground attempts failed", e2)
+                }
+            }
         } else {
-            startForeground(NOTIFICATION_ID, notification)
+            try {
+                startForeground(NOTIFICATION_ID, notification)
+            } catch (e: Exception) {
+                Log.e(TAG, "startForeground legacy failed", e)
+            }
         }
     }
 
@@ -1496,16 +1568,16 @@ class TorrentDownloadService : Service() {
 
     /** Stops and clears the active native session without racing service teardown. */
     private suspend fun stopSessionManager() {
-        val manager = synchronized(sessionLock) { sessionManager } ?: return
+        val manager = synchronized(sessionLock) {
+            val m = sessionManager
+            sessionManager = null
+            m
+        } ?: return
         withContext(Dispatchers.IO) {
-            synchronized(sessionLock) {
-                if (sessionManager === manager) {
-                    try {
-                        manager.stop()
-                    } finally {
-                        sessionManager = null
-                    }
-                }
+            try {
+                manager.stop()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error stopping SessionManager", e)
             }
         }
     }

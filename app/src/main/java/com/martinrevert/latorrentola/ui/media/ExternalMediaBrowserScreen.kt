@@ -4,6 +4,9 @@ package com.martinrevert.latorrentola.ui.media
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import com.martinrevert.latorrentola.service.storage.TorrentStorageResolver
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -130,6 +133,7 @@ fun ExternalMediaBrowserScreen(
                 themeMode = effectiveThemeMode,
                 onBackClick = onBackClick,
                 onSelectTab = { viewModel.selectTab(it) },
+                onRefreshUsb = { viewModel.refreshUsbLocations() },
                 onSetActiveStorage = { viewModel.setActiveDownloadStorage(it) },
                 onSelectUsbLocation = { viewModel.selectUsbLocation(it) },
                 onNavigateUpUsb = { viewModel.navigateUpUsb() },
@@ -149,6 +153,7 @@ fun ExternalMediaBrowserScreen(
                 themeMode = effectiveThemeMode,
                 onBackClick = onBackClick,
                 onSelectTab = { viewModel.selectTab(it) },
+                onRefreshUsb = { viewModel.refreshUsbLocations() },
                 onSetActiveStorage = { viewModel.setActiveDownloadStorage(it) },
                 onSelectUsbLocation = { viewModel.selectUsbLocation(it) },
                 onNavigateUpUsb = { viewModel.navigateUpUsb() },
@@ -428,6 +433,7 @@ private fun MobileExternalMediaContent(
     themeMode: Int? = null,
     onBackClick: () -> Unit,
     onSelectTab: (ExternalMediaTab) -> Unit,
+    onRefreshUsb: () -> Unit = {},
     onSetActiveStorage: (String) -> Unit,
     onSelectUsbLocation: (StorageLocation) -> Unit,
     onNavigateUpUsb: () -> Unit,
@@ -458,7 +464,14 @@ private fun MobileExternalMediaContent(
                     }
                 },
                 actions = {
-                    if (uiState.selectedTab == ExternalMediaTab.NETWORK && uiState.selectedServer == null) {
+                    if (uiState.selectedTab == ExternalMediaTab.USB) {
+                        IconButton(onClick = onRefreshUsb) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = stringResource(R.string.external_media_refresh_usb)
+                            )
+                        }
+                    } else if (uiState.selectedTab == ExternalMediaTab.NETWORK && uiState.selectedServer == null) {
                         IconButton(onClick = onScanNetworkClick) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
@@ -564,7 +577,67 @@ private fun UsbMediaView(
     onNavigateUp: () -> Unit,
     onItemClick: (RemoteFileItem) -> Unit
 ) {
+    val context = LocalContext.current
     Column(modifier = Modifier.fillMaxSize()) {
+        if (!uiState.hasAllFilesAccess) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FolderShared,
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.usb_permission_banner_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.usb_permission_banner_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                try {
+                                    Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                                        data = Uri.parse("package:${context.packageName}")
+                                    }
+                                } catch (_: Exception) {
+                                    Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                                }
+                            } else {
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.parse("package:${context.packageName}")
+                                }
+                            }
+                            context.startActivity(intent)
+                        }
+                    ) {
+                        Text(stringResource(R.string.usb_permission_grant_button))
+                    }
+                }
+            }
+        }
+
         if (uiState.usbLocations.isNotEmpty()) {
             LazyRow(
                 modifier = Modifier
@@ -653,7 +726,8 @@ private fun UsbMediaView(
 
         val canNavigateUp = uiState.currentUsbFolder != null &&
                 uiState.selectedUsbLocation?.rootDirectory != null &&
-                uiState.currentUsbFolder.absolutePath != uiState.selectedUsbLocation.rootDirectory.absolutePath
+                (try { uiState.currentUsbFolder.canonicalPath } catch (_: Throwable) { uiState.currentUsbFolder.absolutePath }) !=
+                (try { uiState.selectedUsbLocation.rootDirectory.canonicalPath } catch (_: Throwable) { uiState.selectedUsbLocation.rootDirectory.absolutePath })
 
         if (canNavigateUp) {
             Surface(
@@ -988,6 +1062,7 @@ private fun TvExternalMediaContent(
     themeMode: Int? = null,
     onBackClick: () -> Unit,
     onSelectTab: (ExternalMediaTab) -> Unit,
+    onRefreshUsb: () -> Unit = {},
     onSetActiveStorage: (String) -> Unit,
     onSelectUsbLocation: (StorageLocation) -> Unit,
     onNavigateUpUsb: () -> Unit,
@@ -1031,7 +1106,17 @@ private fun TvExternalMediaContent(
                     color = TvMaterialTheme.colorScheme.onBackground
                 )
                 Spacer(modifier = Modifier.weight(1f))
-                if (uiState.selectedTab == ExternalMediaTab.NETWORK && uiState.selectedServer == null) {
+                if (uiState.selectedTab == ExternalMediaTab.USB) {
+                    TvIconButton(
+                        onClick = onRefreshUsb,
+                        modifier = Modifier.focusHighlight(shape = RoundedCornerShape(12.dp))
+                    ) {
+                        TvIcon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = stringResource(R.string.external_media_refresh_usb)
+                        )
+                    }
+                } else if (uiState.selectedTab == ExternalMediaTab.NETWORK && uiState.selectedServer == null) {
                     TvIconButton(
                         onClick = onScanNetworkClick,
                         modifier = Modifier.focusHighlight(shape = RoundedCornerShape(12.dp))
@@ -1122,7 +1207,70 @@ private fun TvUsbMediaView(
     onNavigateUp: () -> Unit,
     onItemClick: (RemoteFileItem) -> Unit
 ) {
+    val context = LocalContext.current
     Column(modifier = Modifier.fillMaxSize()) {
+        if (!uiState.hasAllFilesAccess) {
+            TvSurface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = TvSurfaceDefaults.colors(
+                    containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = TvMaterialTheme.colorScheme.onSurfaceVariant
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TvIcon(
+                        imageVector = Icons.Default.FolderShared,
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                        tint = TvMaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        TvText(
+                            text = stringResource(R.string.usb_permission_banner_title),
+                            style = TvMaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = TvMaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        TvText(
+                            text = stringResource(R.string.usb_permission_banner_desc),
+                            style = TvMaterialTheme.typography.bodySmall,
+                            color = TvMaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    TvButton(
+                        onClick = {
+                            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                try {
+                                    Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                                        data = Uri.parse("package:${context.packageName}")
+                                    }
+                                } catch (_: Exception) {
+                                    Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                                }
+                            } else {
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.parse("package:${context.packageName}")
+                                }
+                            }
+                            context.startActivity(intent)
+                        },
+                        modifier = Modifier.focusHighlight(shape = RoundedCornerShape(8.dp))
+                    ) {
+                        TvText(stringResource(R.string.usb_permission_grant_button))
+                    }
+                }
+            }
+        }
+
         if (uiState.usbLocations.isNotEmpty()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1130,11 +1278,33 @@ private fun TvUsbMediaView(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 uiState.usbLocations.forEach { loc ->
-                    TvOutlinedButton(
-                        onClick = { onSelectLocation(loc) },
-                        modifier = Modifier.focusHighlight(shape = RoundedCornerShape(8.dp))
-                    ) {
-                        TvText(loc.displayName)
+                    val isSelected = uiState.selectedUsbLocation?.id == loc.id
+                    if (isSelected) {
+                        TvButton(
+                            onClick = { onSelectLocation(loc) },
+                            modifier = Modifier.focusHighlight(shape = RoundedCornerShape(8.dp))
+                        ) {
+                            TvIcon(
+                                if (loc.isRemovable) Icons.Default.Usb else Icons.Default.Folder,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            TvText(loc.displayName)
+                        }
+                    } else {
+                        TvOutlinedButton(
+                            onClick = { onSelectLocation(loc) },
+                            modifier = Modifier.focusHighlight(shape = RoundedCornerShape(8.dp))
+                        ) {
+                            TvIcon(
+                                if (loc.isRemovable) Icons.Default.Usb else Icons.Default.Folder,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            TvText(loc.displayName)
+                        }
                     }
                 }
             }
@@ -1205,7 +1375,8 @@ private fun TvUsbMediaView(
 
         val canNavigateUp = uiState.currentUsbFolder != null &&
                 uiState.selectedUsbLocation?.rootDirectory != null &&
-                uiState.currentUsbFolder.absolutePath != uiState.selectedUsbLocation.rootDirectory.absolutePath
+                (try { uiState.currentUsbFolder.canonicalPath } catch (_: Throwable) { uiState.currentUsbFolder.absolutePath }) !=
+                (try { uiState.selectedUsbLocation.rootDirectory.canonicalPath } catch (_: Throwable) { uiState.selectedUsbLocation.rootDirectory.absolutePath })
 
         if (canNavigateUp) {
             TvButton(

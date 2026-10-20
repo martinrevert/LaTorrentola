@@ -28,4 +28,12 @@ class TorrentDownloadServiceTest {
         assertThat(download.episodeNumber).isEqualTo(5)
         assertThat(download.movieId).isEqualTo(0)
     }
+
+    @Test
+    fun `ACTION_PLAY_STREAM and EXTRA_INFO_HASH constants match expected values`() {
+        assertThat(TorrentDownloadService.ACTION_PLAY_STREAM)
+            .isEqualTo("com.martinrevert.latorrentola.action.PLAY_TORRENT_STREAM")
+        assertThat(TorrentDownloadService.EXTRA_INFO_HASH)
+            .isEqualTo("torrent_info_hash")
+    }
 }

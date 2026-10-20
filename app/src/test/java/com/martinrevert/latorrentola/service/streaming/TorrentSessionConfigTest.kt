@@ -28,6 +28,7 @@ class TorrentSessionConfigTest {
 
         assertThat(sp.connectionsLimit()).isEqualTo(120)
         assertThat(sp.activeSeeds()).isEqualTo(0)
+        assertThat(sp.uploadRateLimit()).isEqualTo(0)
         assertThat(sp.getInteger(settings_pack.int_types.aio_threads.swigValue())).isEqualTo(2)
         assertThat(sp.getInteger(settings_pack.int_types.hashing_threads.swigValue())).isEqualTo(1)
     }
@@ -40,6 +41,7 @@ class TorrentSessionConfigTest {
 
         assertThat(sp.connectionsLimit()).isEqualTo(200)
         assertThat(sp.activeSeeds()).isEqualTo(0)
+        assertThat(sp.uploadRateLimit()).isEqualTo(0)
         assertThat(sp.getInteger(settings_pack.int_types.aio_threads.swigValue())).isEqualTo(4)
         assertThat(sp.getInteger(settings_pack.int_types.hashing_threads.swigValue())).isEqualTo(2)
     }
