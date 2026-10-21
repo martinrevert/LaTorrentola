@@ -84,6 +84,13 @@ class SettingsViewModel @Inject constructor(
     /** Mirrors changes from reactive preferences into [uiState]. */
     private fun observeSettingsChanges() {
         viewModelScope.launch {
+            preferenceManager.themeFlow.collect { theme ->
+                if (_uiState.value.theme != theme) {
+                    _uiState.value = _uiState.value.copy(theme = theme)
+                }
+            }
+        }
+        viewModelScope.launch {
             preferenceManager.filteredLanguagesFlow.collect { languages ->
                 if (_uiState.value.filteredLanguages != languages) {
                     _uiState.value = _uiState.value.copy(filteredLanguages = languages)

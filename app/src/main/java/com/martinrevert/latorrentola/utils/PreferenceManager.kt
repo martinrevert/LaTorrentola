@@ -20,37 +20,45 @@ class PreferenceManager @Inject constructor(
     private val sharedPreferences: SharedPreferences =
         context.getSharedPreferences("latorrentola_prefs", Context.MODE_PRIVATE)
 
-    /** Mutable backing stream for the selected theme. */
-    private val _themeFlow = MutableStateFlow(getTheme())
     /** Observable selected theme mode. */
-    val themeFlow: StateFlow<Int> = _themeFlow.asStateFlow()
+    val themeFlow: StateFlow<Int> get() = _themeFlow.asStateFlow()
 
-    /** Mutable backing stream for excluded movie languages. */
-    private val _filteredLanguagesFlow = MutableStateFlow(getFilteredLanguages())
     /** Observable comma-separated excluded language codes. */
-    val filteredLanguagesFlow: StateFlow<String> = _filteredLanguagesFlow.asStateFlow()
+    val filteredLanguagesFlow: StateFlow<String> get() = _filteredLanguagesFlow.asStateFlow()
 
-    /** Mutable backing stream for the minimum movie rating. */
-    private val _minimumRatingFlow = MutableStateFlow(getMinimumRating())
     /** Observable minimum movie rating. */
-    val minimumRatingFlow: StateFlow<Float> = _minimumRatingFlow.asStateFlow()
+    val minimumRatingFlow: StateFlow<Float> get() = _minimumRatingFlow.asStateFlow()
 
-    /** Mutable backing stream for the configured torrent handling mode. */
-    private val _torrentHandlingModeFlow = MutableStateFlow(getTorrentHandlingMode())
     /** Observable torrent handling mode. */
-    val torrentHandlingModeFlow: StateFlow<TorrentHandlingMode> =
-        _torrentHandlingModeFlow.asStateFlow()
+    val torrentHandlingModeFlow: StateFlow<TorrentHandlingMode> get() = _torrentHandlingModeFlow.asStateFlow()
 
-    /** Mutable backing stream for the auto-play quality selection method. */
-    private val _autoPlayQualitySelectionFlow = MutableStateFlow(getAutoPlayQualitySelectionMethod())
     /** Observable auto-play quality selection method. */
-    val autoPlayQualitySelectionFlow: StateFlow<AutoPlayQualitySelectionMethod> =
-        _autoPlayQualitySelectionFlow.asStateFlow()
+    val autoPlayQualitySelectionFlow: StateFlow<AutoPlayQualitySelectionMethod> get() = _autoPlayQualitySelectionFlow.asStateFlow()
 
-    /** Mutable backing stream for the configured download storage location. */
-    private val _storageLocationFlow = MutableStateFlow(getStorageLocation())
     /** Observable storage location identifier. */
-    val storageLocationFlow: StateFlow<String> = _storageLocationFlow.asStateFlow()
+    val storageLocationFlow: StateFlow<String> get() = _storageLocationFlow.asStateFlow()
+
+    /** Listener to mirror changes from SharedPreferences directly into reactive StateFlows. */
+    private val preferenceChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        when (key) {
+            KEY_THEME -> _themeFlow.value = getTheme()
+            KEY_FILTERED_LANGUAGES -> _filteredLanguagesFlow.value = getFilteredLanguages()
+            KEY_MINIMUM_RATING -> _minimumRatingFlow.value = getMinimumRating()
+            KEY_TORRENT_HANDLING_MODE -> _torrentHandlingModeFlow.value = getTorrentHandlingMode()
+            KEY_AUTO_PLAY_QUALITY_SELECTION_METHOD -> _autoPlayQualitySelectionFlow.value = getAutoPlayQualitySelectionMethod()
+            KEY_STORAGE_LOCATION -> _storageLocationFlow.value = getStorageLocation()
+        }
+    }
+
+    init {
+        _themeFlow.value = getTheme()
+        _filteredLanguagesFlow.value = getFilteredLanguages()
+        _minimumRatingFlow.value = getMinimumRating()
+        _torrentHandlingModeFlow.value = getTorrentHandlingMode()
+        _autoPlayQualitySelectionFlow.value = getAutoPlayQualitySelectionMethod()
+        _storageLocationFlow.value = getStorageLocation()
+        sharedPreferences.registerOnSharedPreferenceChangeListener(preferenceChangeListener)
+    }
 
     /** Persists whether voice guidance is enabled. */
     fun setVoiceSystem(enabled: Boolean) {
@@ -276,6 +284,19 @@ class PreferenceManager @Inject constructor(
         const val MINIMUM_RATING_MAX = 10.0f
         /** Step increment for adjusting minimum rating. */
         const val MINIMUM_RATING_STEP = 0.1f
+
+        /** Mutable backing stream for the selected theme shared across instances. */
+        private val _themeFlow = MutableStateFlow(THEME_SYSTEM)
+        /** Mutable backing stream for excluded movie languages shared across instances. */
+        private val _filteredLanguagesFlow = MutableStateFlow("")
+        /** Mutable backing stream for the minimum movie rating shared across instances. */
+        private val _minimumRatingFlow = MutableStateFlow(DEFAULT_MINIMUM_RATING)
+        /** Mutable backing stream for the configured torrent handling mode shared across instances. */
+        private val _torrentHandlingModeFlow = MutableStateFlow(TorrentHandlingMode.LOCAL_PLAYBACK)
+        /** Mutable backing stream for the auto-play quality selection method shared across instances. */
+        private val _autoPlayQualitySelectionFlow = MutableStateFlow(AutoPlayQualitySelectionMethod.OFF)
+        /** Mutable backing stream for the configured download storage location shared across instances. */
+        private val _storageLocationFlow = MutableStateFlow("internal")
     }
 }
 

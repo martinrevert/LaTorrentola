@@ -19,6 +19,10 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.BrightnessAuto
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -87,11 +91,9 @@ fun SettingsScreen(
     val context = LocalContext.current
     val preferenceManager = remember(context) { PreferenceManager(context) }
     val currentObservedTheme by preferenceManager.themeFlow.collectAsState(initial = preferenceManager.getTheme())
-    val effectiveThemeMode = remember(context, themeMode, currentObservedTheme) {
-        themeMode ?: currentObservedTheme
-    }
     val uiState by viewModel.uiState.collectAsState()
     val isTv = remember(context) { context.isTvDevice() }
+    val effectiveThemeMode = uiState.theme
 
     val content: @Composable () -> Unit = {
         SettingsScreenContent(
@@ -178,14 +180,40 @@ private fun SettingsScreenContent(
             TopAppBar(
                 modifier = Modifier.hazeGlass(input = HazeInput.Sources(hazeState)),
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
-                title = { Text(stringResource(R.string.settings_title)) },
+                title = {
+                    if (isTv) {
+                        androidx.tv.material3.Text(
+                            text = stringResource(R.string.settings_title),
+                            style = TvMaterialTheme.typography.titleLarge,
+                            color = TvMaterialTheme.colorScheme.onSurface
+                        )
+                    } else {
+                        Text(
+                            text = stringResource(R.string.settings_title),
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    }
+                },
                 navigationIcon = {
-                    IconButton(
-                        onClick = onBackClick,
-                        modifier = Modifier.focusHighlight(shape = CircleShape)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(
-                            R.string.back_desc))
+                    if (isTv) {
+                        TvIconButton(
+                            onClick = onBackClick
+                        ) {
+                            androidx.tv.material3.Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.back_desc)
+                            )
+                        }
+                    } else {
+                        IconButton(
+                            onClick = onBackClick,
+                            modifier = Modifier.focusHighlight(shape = CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.back_desc)
+                            )
+                        }
                     }
                 }
             )
@@ -220,12 +248,15 @@ private fun SettingsScreenContent(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     if (userPhotoUrl != null || userName != null) {
-                        UserSection(userPhotoUrl, userName, userEmail)
+                        UserSection(userPhotoUrl, userName, userEmail, isTv = isTv)
                         LogoutButton(isTv = isTv, onClick = onLogoutClick)
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     }
 
-                    Text(text = stringResource(R.string.settings_theme), style = MaterialTheme.typography.titleMedium)
+                    SettingsSectionTitle(
+                        title = stringResource(R.string.settings_theme),
+                        isTv = isTv
+                    )
                     ThemeSelector(selectedTheme = uiState.theme, isTv = isTv, onThemeSelected = onSetTheme)
                     DownloadsManagerButton(isTv = isTv, onClick = onDownloadsClick)
                     Spacer(modifier = Modifier.height(8.dp))
@@ -238,7 +269,7 @@ private fun SettingsScreenContent(
 
                     Spacer(modifier = Modifier.weight(1f))
 
-                    AppVersionInfo()
+                    AppVersionInfo(isTv = isTv)
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
@@ -289,7 +320,8 @@ private fun SettingsScreenContent(
                     )
                     AutoPlayQualitySetting(
                         selectedMethod = uiState.autoPlayQualitySelectionMethod,
-                        onMethodSelected = onSetAutoPlayQualitySelectionMethod
+                        onMethodSelected = onSetAutoPlayQualitySelectionMethod,
+                        isTv = isTv
                     )
                     OpenSubtitlesCredentialsSetting(
                         uiState = uiState,
@@ -302,6 +334,7 @@ private fun SettingsScreenContent(
 
                     MinimumRatingSetting(
                         value = uiState.minimumRating,
+                        isTv = isTv,
                         onValueChange = onSetMinimumRating
                     )
 
@@ -335,7 +368,7 @@ private fun SettingsScreenContent(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 if (userPhotoUrl != null || userName != null) {
-                    UserSection(userPhotoUrl, userName, userEmail)
+                    UserSection(userPhotoUrl, userName, userEmail, isTv = isTv)
                     LogoutButton(isTv = isTv, onClick = onLogoutClick)
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 }
@@ -373,7 +406,10 @@ private fun SettingsScreenContent(
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-                Text(text = stringResource(R.string.settings_theme), style = MaterialTheme.typography.titleMedium)
+                SettingsSectionTitle(
+                    title = stringResource(R.string.settings_theme),
+                    isTv = isTv
+                )
                 
                 ThemeSelector(
                     selectedTheme = uiState.theme,
@@ -398,7 +434,8 @@ private fun SettingsScreenContent(
                 )
                 AutoPlayQualitySetting(
                     selectedMethod = uiState.autoPlayQualitySelectionMethod,
-                    onMethodSelected = onSetAutoPlayQualitySelectionMethod
+                    onMethodSelected = onSetAutoPlayQualitySelectionMethod,
+                    isTv = isTv
                 )
                 OpenSubtitlesCredentialsSetting(
                     uiState = uiState,
@@ -411,6 +448,7 @@ private fun SettingsScreenContent(
 
                 MinimumRatingSetting(
                     value = uiState.minimumRating,
+                    isTv = isTv,
                     onValueChange = onSetMinimumRating
                 )
 
@@ -433,7 +471,7 @@ private fun SettingsScreenContent(
 
                 Spacer(modifier = Modifier.height(24.dp))
                 
-                AppVersionInfo()
+                AppVersionInfo(isTv = isTv)
                 
                 Spacer(modifier = Modifier.height(32.dp))
             }
@@ -617,42 +655,71 @@ private fun TorrentModeSetting(
             .fillMaxWidth()
             .selectableGroup()
     ) {
-        Text(
-            text = stringResource(R.string.torrent_mode_title),
-            style = MaterialTheme.typography.titleMedium
+        SettingsSectionTitle(
+            title = stringResource(R.string.torrent_mode_title),
+            isTv = isTv
         )
+        Spacer(modifier = Modifier.height(4.dp))
         options.forEach { (mode, title, support) ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusHighlight(shape = MaterialTheme.shapes.small)
-                    .selectable(
-                        selected = selectedMode == mode,
-                        enabled = true,
-                        onClick = { onModeSelected(mode) },
-                        role = Role.RadioButton
-                    )
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RadioButton(
-                    selected = selectedMode == mode,
-                    onClick = null,
-                    colors = RadioButtonDefaults.colors(
-                        selectedColor = MaterialTheme.colorScheme.primary
-                    )
+            val isSelected = selectedMode == mode
+            if (isTv) {
+                androidx.tv.material3.ListItem(
+                    selected = isSelected,
+                    enabled = true,
+                    onClick = { onModeSelected(mode) },
+                    headlineContent = {
+                        androidx.tv.material3.Text(
+                            text = stringResource(title),
+                            style = TvMaterialTheme.typography.bodyLarge
+                        )
+                    },
+                    supportingContent = {
+                        androidx.tv.material3.Text(
+                            text = stringResource(support),
+                            style = TvMaterialTheme.typography.bodySmall
+                        )
+                    },
+                    trailingContent = {
+                        androidx.tv.material3.RadioButton(
+                            selected = isSelected,
+                            onClick = null
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
                 )
-                Column(modifier = Modifier.padding(start = 8.dp)) {
-                    Text(
-                        text = stringResource(title),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusHighlight(shape = MaterialTheme.shapes.small)
+                        .selectable(
+                            selected = isSelected,
+                            enabled = true,
+                            onClick = { onModeSelected(mode) },
+                            role = Role.RadioButton
+                        )
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = null,
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = MaterialTheme.colorScheme.primary
+                        )
                     )
-                    Text(
-                        text = stringResource(support),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Column(modifier = Modifier.padding(start = 8.dp)) {
+                        Text(
+                            text = stringResource(title),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = stringResource(support),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
@@ -686,21 +753,35 @@ private fun OpenSubtitlesCredentialsSetting(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
-            text = stringResource(R.string.opensubtitles_title),
-            style = MaterialTheme.typography.titleMedium
+        SettingsSectionTitle(
+            title = stringResource(R.string.opensubtitles_title),
+            isTv = isTv
         )
-        Text(
-            text = stringResource(
-                if (uiState.openSubtitlesCredentialsConfigured) {
-                    R.string.opensubtitles_configured
-                } else {
-                    R.string.opensubtitles_support
-                }
-            ),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        if (isTv) {
+            androidx.tv.material3.Text(
+                text = stringResource(
+                    if (uiState.openSubtitlesCredentialsConfigured) {
+                        R.string.opensubtitles_configured
+                    } else {
+                        R.string.opensubtitles_support
+                    }
+                ),
+                style = TvMaterialTheme.typography.bodySmall,
+                color = TvMaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            Text(
+                text = stringResource(
+                    if (uiState.openSubtitlesCredentialsConfigured) {
+                        R.string.opensubtitles_configured
+                    } else {
+                        R.string.opensubtitles_support
+                    }
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         OutlinedTextField(
             value = username,
             onValueChange = { username = it },
@@ -837,32 +918,62 @@ private fun LogoutButton(isTv: Boolean, onClick: () -> Unit) {
 
 /** Displays the installed application version. */
 @Composable
-private fun AppVersionInfo() {
+private fun AppVersionInfo(isTv: Boolean = false) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = stringResource(R.string.app_version, BuildConfig.VERSION_NAME),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = stringResource(R.string.app_build, BuildConfig.VERSION_CODE),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-        )
+        if (isTv) {
+            androidx.tv.material3.Text(
+                text = stringResource(R.string.app_version, BuildConfig.VERSION_NAME),
+                style = TvMaterialTheme.typography.labelMedium,
+                color = TvMaterialTheme.colorScheme.onSurfaceVariant
+            )
+            androidx.tv.material3.Text(
+                text = stringResource(R.string.app_build, BuildConfig.VERSION_CODE),
+                style = TvMaterialTheme.typography.labelSmall,
+                color = TvMaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
+        } else {
+            Text(
+                text = stringResource(R.string.app_version, BuildConfig.VERSION_NAME),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = stringResource(R.string.app_build, BuildConfig.VERSION_CODE),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
+        }
     }
 }
 
-
+/** Section title with device-appropriate typography and colors. */
+@Composable
+private fun SettingsSectionTitle(title: String, isTv: Boolean) {
+    if (isTv) {
+        androidx.tv.material3.Text(
+            text = title,
+            style = TvMaterialTheme.typography.titleMedium,
+            color = TvMaterialTheme.colorScheme.onSurface
+        )
+    } else {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
 
 /** Presents the signed-in user's profile and account information. */
 @Composable
 fun UserSection(
     photoUrl: String?,
     name: String?,
-    email: String?
+    email: String?,
+    isTv: Boolean = false
 ) {
     Row(
         modifier = Modifier
@@ -875,22 +986,30 @@ fun UserSection(
                 model = photoUrl,
                 contentDescription = stringResource(R.string.user_profile_desc),
                 modifier = Modifier
-                    .size(64.dp)
+                    .size(if (isTv) 56.dp else 64.dp)
                     .clip(CircleShape),
                 contentScale = ContentScale.Crop
             )
         } else {
             Surface(
-                modifier = Modifier.size(64.dp),
+                modifier = Modifier.size(if (isTv) 56.dp else 64.dp),
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer
+                color = if (isTv) TvMaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.primaryContainer
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = name?.firstOrNull()?.uppercase() ?: "?",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
+                    if (isTv) {
+                        androidx.tv.material3.Text(
+                            text = name?.firstOrNull()?.uppercase() ?: "?",
+                            style = TvMaterialTheme.typography.headlineMedium,
+                            color = TvMaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    } else {
+                        Text(
+                            text = name?.firstOrNull()?.uppercase() ?: "?",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
                 }
             }
         }
@@ -898,17 +1017,34 @@ fun UserSection(
         Spacer(modifier = Modifier.width(16.dp))
         
         Column {
-            Text(
-                text = name ?: stringResource(com.martinrevert.latorrentola.R.string.default_user_name),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            if (email != null) {
-                Text(
-                    text = email,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            if (isTv) {
+                androidx.tv.material3.Text(
+                    text = name ?: stringResource(com.martinrevert.latorrentola.R.string.default_user_name),
+                    style = TvMaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = TvMaterialTheme.colorScheme.onSurface
                 )
+                if (email != null) {
+                    androidx.tv.material3.Text(
+                        text = email,
+                        style = TvMaterialTheme.typography.bodyMedium,
+                        color = TvMaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                Text(
+                    text = name ?: stringResource(com.martinrevert.latorrentola.R.string.default_user_name),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (email != null) {
+                    Text(
+                        text = email,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
@@ -923,14 +1059,9 @@ fun ThemeSelector(
     onThemeSelected: (Int) -> Unit
 ) {
     val options = listOf(
-        stringResource(R.string.theme_system),
-        stringResource(R.string.theme_light),
-        stringResource(R.string.theme_dark)
-    )
-    val themeValues = listOf(
-        PreferenceManager.THEME_SYSTEM,
-        PreferenceManager.THEME_LIGHT,
-        PreferenceManager.THEME_DARK
+        Triple(PreferenceManager.THEME_SYSTEM, stringResource(R.string.theme_system), Icons.Default.BrightnessAuto),
+        Triple(PreferenceManager.THEME_LIGHT, stringResource(R.string.theme_light), Icons.Default.LightMode),
+        Triple(PreferenceManager.THEME_DARK, stringResource(R.string.theme_dark), Icons.Default.DarkMode)
     )
 
     if (isTv) {
@@ -938,11 +1069,11 @@ fun ThemeSelector(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            options.forEachIndexed { index, label ->
-                val isSelected = selectedTheme == themeValues[index]
+            options.forEach { (themeValue, label, icon) ->
+                val isSelected = selectedTheme == themeValue
                 androidx.tv.material3.FilterChip(
                     selected = isSelected,
-                    onClick = { onThemeSelected(themeValues[index]) },
+                    onClick = { onThemeSelected(themeValue) },
                     modifier = Modifier.weight(1f),
                     colors = androidx.tv.material3.FilterChipDefaults.colors(
                         containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
@@ -950,13 +1081,23 @@ fun ThemeSelector(
                         focusedContainerColor = TvMaterialTheme.colorScheme.primaryContainer,
                         focusedContentColor = TvMaterialTheme.colorScheme.onPrimaryContainer,
                         selectedContainerColor = TvMaterialTheme.colorScheme.primary,
-                        selectedContentColor = TvMaterialTheme.colorScheme.onPrimary
-                    )
+                        selectedContentColor = TvMaterialTheme.colorScheme.onPrimary,
+                        focusedSelectedContainerColor = TvMaterialTheme.colorScheme.primaryContainer,
+                        focusedSelectedContentColor = TvMaterialTheme.colorScheme.onPrimaryContainer
+                    ),
+                    leadingIcon = {
+                        androidx.tv.material3.Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 ) {
                     androidx.tv.material3.Text(
                         text = label,
                         modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
+                        style = TvMaterialTheme.typography.labelLarge
                     )
                 }
             }
@@ -965,15 +1106,36 @@ fun ThemeSelector(
         SingleChoiceSegmentedButtonRow(
             modifier = Modifier.fillMaxWidth()
         ) {
-            options.forEachIndexed { index, label ->
+            options.forEachIndexed { index, (themeValue, label, icon) ->
                 val shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
+                val isSelected = selectedTheme == themeValue
                 SegmentedButton(
                     shape = shape,
-                    onClick = { onThemeSelected(themeValues[index]) },
-                    selected = selectedTheme == themeValues[index],
+                    onClick = { onThemeSelected(themeValue) },
+                    selected = isSelected,
+                    icon = {
+                        SegmentedButtonDefaults.Icon(active = isSelected) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(SegmentedButtonDefaults.IconSize)
+                            )
+                        }
+                    },
+                    colors = SegmentedButtonDefaults.colors(
+                        activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        inactiveContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        inactiveContentColor = MaterialTheme.colorScheme.onSurface,
+                        activeBorderColor = MaterialTheme.colorScheme.outline,
+                        inactiveBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    ),
                     modifier = Modifier.focusHighlight(shape = shape)
                 ) {
-                    Text(label)
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge
+                    )
                 }
             }
         }
@@ -984,52 +1146,101 @@ fun ThemeSelector(
 @Composable
 private fun MinimumRatingSetting(
     value: Float,
+    isTv: Boolean = false,
     onValueChange: (Float) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = stringResource(R.string.minimum_imdb_rating),
-            style = MaterialTheme.typography.titleMedium
+        SettingsSectionTitle(
+            title = stringResource(R.string.minimum_imdb_rating),
+            isTv = isTv
         )
-        Text(
-            text = stringResource(R.string.minimum_imdb_rating_support),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        if (isTv) {
+            androidx.tv.material3.Text(
+                text = stringResource(R.string.minimum_imdb_rating_support),
+                style = TvMaterialTheme.typography.bodySmall,
+                color = TvMaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            Text(
+                text = stringResource(R.string.minimum_imdb_rating_support),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(
-                onClick = {
-                    val next = (kotlin.math.round((value - 0.1f) * 10.0f) / 10.0f).coerceAtLeast(PreferenceManager.MINIMUM_RATING_MIN)
-                    onValueChange(next)
-                },
-                enabled = value > PreferenceManager.MINIMUM_RATING_MIN
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Remove,
-                    contentDescription = stringResource(R.string.decrease_minimum_rating)
-                )
+            if (isTv) {
+                TvIconButton(
+                    onClick = {
+                        val next = (kotlin.math.round((value - 0.1f) * 10.0f) / 10.0f).coerceAtLeast(PreferenceManager.MINIMUM_RATING_MIN)
+                        onValueChange(next)
+                    },
+                    enabled = value > PreferenceManager.MINIMUM_RATING_MIN
+                ) {
+                    androidx.tv.material3.Icon(
+                        imageVector = Icons.Default.Remove,
+                        contentDescription = stringResource(R.string.decrease_minimum_rating)
+                    )
+                }
+            } else {
+                IconButton(
+                    onClick = {
+                        val next = (kotlin.math.round((value - 0.1f) * 10.0f) / 10.0f).coerceAtLeast(PreferenceManager.MINIMUM_RATING_MIN)
+                        onValueChange(next)
+                    },
+                    enabled = value > PreferenceManager.MINIMUM_RATING_MIN
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Remove,
+                        contentDescription = stringResource(R.string.decrease_minimum_rating)
+                    )
+                }
             }
             val formattedValue = String.format(Locale.US, "%.1f", value)
-            Text(
-                text = stringResource(R.string.minimum_imdb_rating_value, formattedValue),
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-            IconButton(
-                onClick = {
-                    val next = (kotlin.math.round((value + 0.1f) * 10.0f) / 10.0f).coerceAtMost(PreferenceManager.MINIMUM_RATING_MAX)
-                    onValueChange(next)
-                },
-                enabled = value < PreferenceManager.MINIMUM_RATING_MAX
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = stringResource(R.string.increase_minimum_rating)
+            if (isTv) {
+                androidx.tv.material3.Text(
+                    text = stringResource(R.string.minimum_imdb_rating_value, formattedValue),
+                    style = TvMaterialTheme.typography.titleLarge,
+                    color = TvMaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 16.dp)
                 )
+            } else {
+                Text(
+                    text = stringResource(R.string.minimum_imdb_rating_value, formattedValue),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+            if (isTv) {
+                TvIconButton(
+                    onClick = {
+                        val next = (kotlin.math.round((value + 0.1f) * 10.0f) / 10.0f).coerceAtMost(PreferenceManager.MINIMUM_RATING_MAX)
+                        onValueChange(next)
+                    },
+                    enabled = value < PreferenceManager.MINIMUM_RATING_MAX
+                ) {
+                    androidx.tv.material3.Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(R.string.increase_minimum_rating)
+                    )
+                }
+            } else {
+                IconButton(
+                    onClick = {
+                        val next = (kotlin.math.round((value + 0.1f) * 10.0f) / 10.0f).coerceAtMost(PreferenceManager.MINIMUM_RATING_MAX)
+                        onValueChange(next)
+                    },
+                    enabled = value < PreferenceManager.MINIMUM_RATING_MAX
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(R.string.increase_minimum_rating)
+                    )
+                }
             }
         }
     }
@@ -1087,11 +1298,13 @@ fun SettingsToggle(
  *
  * @param selectedMethod Currently configured auto-play method.
  * @param onMethodSelected Persists a user-selected method.
+ * @param isTv Whether to use TV-appropriate selectable ListItems.
  */
 @Composable
 private fun AutoPlayQualitySetting(
     selectedMethod: AutoPlayQualitySelectionMethod,
-    onMethodSelected: (AutoPlayQualitySelectionMethod) -> Unit
+    onMethodSelected: (AutoPlayQualitySelectionMethod) -> Unit,
+    isTv: Boolean = false
 ) {
     val options = listOf(
         Triple(
@@ -1121,61 +1334,92 @@ private fun AutoPlayQualitySetting(
             .fillMaxWidth()
             .selectableGroup()
     ) {
-        Text(
-            text = stringResource(R.string.next_episode_autoplay_title),
-            style = MaterialTheme.typography.titleMedium
+        SettingsSectionTitle(
+            title = stringResource(R.string.next_episode_autoplay_title),
+            isTv = isTv
         )
+        Spacer(modifier = Modifier.height(4.dp))
         options.forEach { (method, title, support) ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusHighlight(shape = MaterialTheme.shapes.small)
-                    .selectable(
-                        selected = selectedMethod == method,
-                        enabled = true,
-                        onClick = { onMethodSelected(method) },
-                        role = Role.RadioButton
-                    )
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RadioButton(
-                    selected = selectedMethod == method,
-                    onClick = null,
-                    colors = RadioButtonDefaults.colors(
-                        selectedColor = MaterialTheme.colorScheme.primary
-                    )
+            val isSelected = selectedMethod == method
+            if (isTv) {
+                androidx.tv.material3.ListItem(
+                    selected = isSelected,
+                    enabled = true,
+                    onClick = { onMethodSelected(method) },
+                    headlineContent = {
+                        androidx.tv.material3.Text(
+                            text = title,
+                            style = TvMaterialTheme.typography.bodyLarge
+                        )
+                    },
+                    supportingContent = {
+                        androidx.tv.material3.Text(
+                            text = support,
+                            style = TvMaterialTheme.typography.bodySmall
+                        )
+                    },
+                    trailingContent = {
+                        androidx.tv.material3.RadioButton(
+                            selected = isSelected,
+                            onClick = null
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.width(16.dp))
-                Column {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.bodyLarge
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusHighlight(shape = MaterialTheme.shapes.small)
+                        .selectable(
+                            selected = isSelected,
+                            enabled = true,
+                            onClick = { onMethodSelected(method) },
+                            role = Role.RadioButton
+                        )
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = null,
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = MaterialTheme.colorScheme.primary
+                        )
                     )
-                    Text(
-                        text = support,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = support,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-
-
 /** TV preview of the settings screen. */
 @Preview(name = "TV Light", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_NO)
 @Preview(name = "TV Dark", showBackground = true, device = "id:tv_720p", uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun SettingsScreenTvPreview() {
-    TvLaTorrentolaTheme(themeMode = PreferenceManager.THEME_DARK) {
+    val isDark = isSystemInDarkTheme()
+    val previewTheme = if (isDark) PreferenceManager.THEME_DARK else PreferenceManager.THEME_LIGHT
+    TvLaTorrentolaTheme(themeMode = previewTheme) {
         SettingsScreenContent(
             uiState = SettingsUiState(
                 voiceSystem = true,
                 voiceSummary = true,
                 voiceTranslation = false,
+                theme = previewTheme,
                 filteredLanguages = "en, es"
             ),
             userPhotoUrl = null,
@@ -1207,12 +1451,15 @@ fun SettingsScreenTvPreview() {
 @com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 @Composable
 fun SettingsScreenPreview() {
-    LaTorrentolaTheme {
+    val isDark = isSystemInDarkTheme()
+    val previewTheme = if (isDark) PreferenceManager.THEME_DARK else PreferenceManager.THEME_LIGHT
+    LaTorrentolaTheme(themeMode = previewTheme) {
         SettingsScreenContent(
             uiState = SettingsUiState(
                 voiceSystem = true,
                 voiceSummary = true,
                 voiceTranslation = false,
+                theme = previewTheme,
                 filteredLanguages = "en, es"
             ),
             userPhotoUrl = null,

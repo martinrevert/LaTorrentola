@@ -31,9 +31,11 @@ class SettingsViewModelTest {
     private val authRepository: AuthRepository = mockk(relaxed = true)
     private val context: Context = mockk(relaxed = true)
     private lateinit var viewModel: SettingsViewModel
+    private val themeFlow = MutableStateFlow(PreferenceManager.THEME_DARK)
 
     @Before
     fun setUp() {
+        themeFlow.value = PreferenceManager.THEME_DARK
         every { preferenceManager.getFilteredLanguages() } returns "es"
         every { preferenceManager.getVoiceSystem() } returns true
         every { preferenceManager.getVoiceSummary() } returns true
@@ -45,6 +47,7 @@ class SettingsViewModelTest {
         every { preferenceManager.getTorrentHandlingMode() } returns TorrentHandlingMode.EXTERNAL_CLIENT
         every { preferenceManager.getAutoPlayQualitySelectionMethod() } returns com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod.OFF
         every { preferenceManager.getStorageLocation() } returns "internal"
+        every { preferenceManager.themeFlow } returns themeFlow
         every { preferenceManager.filteredLanguagesFlow } returns MutableStateFlow("es")
         every { preferenceManager.minimumRatingFlow } returns MutableStateFlow(PreferenceManager.DEFAULT_MINIMUM_RATING)
         every { preferenceManager.autoPlayQualitySelectionFlow } returns MutableStateFlow(com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod.OFF)
@@ -81,6 +84,13 @@ class SettingsViewModelTest {
     fun `setTheme should update preference and state`() {
         viewModel.setTheme(PreferenceManager.THEME_LIGHT)
         verify { preferenceManager.setTheme(PreferenceManager.THEME_LIGHT) }
+        assertThat(viewModel.uiState.value.theme).isEqualTo(PreferenceManager.THEME_LIGHT)
+    }
+
+    @Test
+    fun `themeFlow updates should reflect in uiState`() = runTest {
+        assertThat(viewModel.uiState.value.theme).isEqualTo(PreferenceManager.THEME_DARK)
+        themeFlow.value = PreferenceManager.THEME_LIGHT
         assertThat(viewModel.uiState.value.theme).isEqualTo(PreferenceManager.THEME_LIGHT)
     }
 
