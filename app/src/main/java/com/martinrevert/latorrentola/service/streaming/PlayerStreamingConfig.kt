@@ -19,13 +19,13 @@ object PlayerStreamingConfig {
     const val TV_MAX_BUFFER_MS = 45_000
     const val TV_BUFFER_FOR_PLAYBACK_MS = 2_000
     const val TV_BUFFER_AFTER_REBUFFER_MS = 2_500
-    const val TV_TARGET_BUFFER_BYTES = 32 * 1024 * 1024 // 32 MB
-
+    const val TV_TARGET_BUFFER_BYTES = 48 * 1024 * 1024 // 48 MB
+ 
     const val MOBILE_MIN_BUFFER_MS = 15_000
     const val MOBILE_MAX_BUFFER_MS = 30_000
     const val MOBILE_BUFFER_FOR_PLAYBACK_MS = 1_500
     const val MOBILE_BUFFER_AFTER_REBUFFER_MS = 2_000
-    const val MOBILE_TARGET_BUFFER_BYTES = 24 * 1024 * 1024 // 24 MB
+    const val MOBILE_TARGET_BUFFER_BYTES = 32 * 1024 * 1024 // 32 MB
 
     /**
      * Builds a LoadControl that buffers smoothly and recovers quickly from buffer underflows.
@@ -40,8 +40,8 @@ object PlayerStreamingConfig {
         return DefaultLoadControl.Builder()
             .setBufferDurationsMs(minBuffer, maxBuffer, forPlayback, afterRebuffer)
             .setTargetBufferBytes(targetBytes)
-            .setPrioritizeTimeOverSizeThresholds(false)
-            .setBackBuffer(5_000, true)
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .setBackBuffer(10_000, true)
             .build()
     }
 

@@ -40,6 +40,57 @@ class SmbStorageClientTest {
     }
 
     @Test
+    fun `SmbPrefetchInputStream asynchronously reads data and handles EOF cleanly`() {
+        val mockFile: com.hierynomus.smbj.share.File = io.mockk.mockk(relaxed = true)
+        val sampleData = "Hello Antigravity SMB High Performance Prefetch Streaming!".toByteArray(Charsets.UTF_8)
+        
+        io.mockk.every { mockFile.fileName } returns "test_video.mkv"
+        io.mockk.every { mockFile.path } returns "test_video.mkv"
+        io.mockk.every { mockFile.read(any(), any(), any(), any()) } answers {
+            val buf = firstArg<ByteArray>()
+            val fileOffset = secondArg<Long>()
+            val arrayOffset = thirdArg<Int>()
+            val len = it.invocation.args[3] as Int
+
+            if (fileOffset >= sampleData.size) {
+                -1
+            } else {
+                val toRead = minOf(len, (sampleData.size - fileOffset).toInt())
+                System.arraycopy(sampleData, fileOffset.toInt(), buf, arrayOffset, toRead)
+                toRead
+            }
+        }
+
+        val prefetchStream = SmbPrefetchInputStream(
+            file = mockFile,
+            startOffset = 0L,
+            totalSize = sampleData.size.toLong(),
+            chunkSize = 64,
+            maxBufferBytes = 256
+        )
+
+        val destination = ByteArray(sampleData.size)
+        var totalRead = 0
+        val buffer = ByteArray(16)
+        while (totalRead < sampleData.size) {
+            val read = prefetchStream.read(buffer, 0, buffer.size)
+            if (read == -1) break
+            System.arraycopy(buffer, 0, destination, totalRead, read)
+            totalRead += read
+        }
+
+        assertThat(totalRead).isEqualTo(sampleData.size)
+        assertThat(String(destination, Charsets.UTF_8)).isEqualTo("Hello Antigravity SMB High Performance Prefetch Streaming!")
+
+        // Verify next read returns -1 (EOF)
+        val eofRead = prefetchStream.read(buffer, 0, buffer.size)
+        assertThat(eofRead).isEqualTo(-1)
+
+        prefetchStream.close()
+        io.mockk.verify { mockFile.close() }
+    }
+
+    @Test
     fun `dcerpc classes and srvsvc transport are available for dynamic share discovery`() {
         val serverServiceClass = Class.forName("com.rapid7.client.dcerpc.mssrvs.ServerService")
         assertThat(serverServiceClass).isNotNull()

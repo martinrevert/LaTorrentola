@@ -121,7 +121,6 @@ class RemoteMediaDataSource(
         }
 
         val bytesRead = stream.read(buffer, offset, bytesToRead)
-        Log.d(TAG, "read(length=$length, bytesToRead=$bytesToRead) -> bytesRead=$bytesRead")
         if (bytesRead == -1) {
             return C.RESULT_END_OF_INPUT
         }

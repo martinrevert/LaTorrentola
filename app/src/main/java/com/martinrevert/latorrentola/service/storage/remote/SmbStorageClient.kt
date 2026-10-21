@@ -153,58 +153,104 @@ class SmbStorageClient @Inject constructor(
             }
         }
 
-    override suspend fun openInputStream(config: RemoteServerConfig, filePath: String, offsetBytes: Long): InputStream =
-        withContext(Dispatchers.IO) {
+    private class SmbSession(
+        val connection: com.hierynomus.smbj.connection.Connection,
+        val session: com.hierynomus.smbj.session.Session,
+        val share: DiskShare,
+        val lock: Any = Any()
+    ) {
+        val isAlive: Boolean
+            get() = try {
+                connection.isConnected && session.connection.isConnected && share.isConnected
+            } catch (_: Exception) {
+                false
+            }
+
+        fun closeSilently() {
+            try { share.close() } catch (_: Exception) {}
+            try { session.close() } catch (_: Exception) {}
+            try { connection.close() } catch (_: Exception) {}
+        }
+    }
+
+    private val sessionCache = ConcurrentHashMap<String, SmbSession>()
+    private val sessionLock = Any()
+
+    private fun getOrCreateShare(config: RemoteServerConfig): SmbSession {
+        val cleanShare = config.shareOrExport.trim().trim('/', '\\')
+        val cacheKey = "${config.id}:${config.host}:${config.port}/$cleanShare"
+
+        sessionCache[cacheKey]?.let { cached ->
+            if (cached.isAlive) {
+                return cached
+            } else {
+                sessionCache.remove(cacheKey)?.closeSilently()
+            }
+        }
+
+        synchronized(sessionLock) {
+            sessionCache[cacheKey]?.let { cached ->
+                if (cached.isAlive) return cached
+                sessionCache.remove(cacheKey)?.closeSilently()
+            }
+
             val connection = smbClient.connect(config.host, config.port)
             val auth = buildAuthContext(config)
             val session = authenticateSession(connection, auth)
-            val cleanShare = config.shareOrExport.trim().trim('/', '\\')
             val share = session.connectShare(cleanShare) as DiskShare
+            val newSession = SmbSession(connection, session, share)
+            sessionCache[cacheKey] = newSession
+            return newSession
+        }
+    }
 
+    override suspend fun openInputStream(config: RemoteServerConfig, filePath: String, offsetBytes: Long): InputStream =
+        withContext(Dispatchers.IO) {
+            val cleanShare = config.shareOrExport.trim().trim('/', '\\')
+            val cacheKey = "${config.id}:${config.host}:${config.port}/$cleanShare"
             val cleanPath = filePath.trim().trim('/', '\\').replace('/', '\\')
-            val file = share.openFile(
-                cleanPath,
-                EnumSet.of(AccessMask.FILE_READ_DATA),
-                null,
-                SMB2ShareAccess.ALL,
-                SMB2CreateDisposition.FILE_OPEN,
-                null
-            )
 
-            var currentOffset = offsetBytes
-
-            // Wrap file to close resources when closed
-            val rawStream = object : InputStream() {
-                private var isClosed = false
-
-                override fun read(): Int {
-                    val b = ByteArray(1)
-                    val readBytes = read(b, 0, 1)
-                    return if (readBytes > 0) b[0].toInt() and 0xFF else -1
+            var smbSession = getOrCreateShare(config)
+            var file: com.hierynomus.smbj.share.File? = null
+            try {
+                file = synchronized(smbSession.lock) {
+                    smbSession.share.openFile(
+                        cleanPath,
+                        EnumSet.of(AccessMask.FILE_READ_DATA),
+                        null,
+                        SMB2ShareAccess.ALL,
+                        SMB2CreateDisposition.FILE_OPEN,
+                        null
+                    )
                 }
-
-                override fun read(b: ByteArray, off: Int, len: Int): Int {
-                    if (isClosed) return -1
-                    if (len == 0) return 0
-                    val bytesRead = file.read(b, currentOffset, off, len)
-                    if (bytesRead > 0) {
-                        currentOffset += bytesRead
-                        return bytesRead
-                    }
-                    return -1
-                }
-
-                override fun close() {
-                    if (!isClosed) {
-                        isClosed = true
-                        try { file.close() } catch (_: Exception) {}
-                        try { share.close() } catch (_: Exception) {}
-                        try { session.close() } catch (_: Exception) {}
-                        try { connection.close() } catch (_: Exception) {}
-                    }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to open $cleanPath on cached SMB share, retrying with fresh connection: ${e.message}")
+                sessionCache.remove(cacheKey)?.closeSilently()
+                smbSession = getOrCreateShare(config)
+                file = synchronized(smbSession.lock) {
+                    smbSession.share.openFile(
+                        cleanPath,
+                        EnumSet.of(AccessMask.FILE_READ_DATA),
+                        null,
+                        SMB2ShareAccess.ALL,
+                        SMB2CreateDisposition.FILE_OPEN,
+                        null
+                    )
                 }
             }
-            java.io.BufferedInputStream(rawStream, 131072)
+
+            val finalFile = file ?: throw java.io.IOException("Could not open remote SMB file: $cleanPath")
+            val totalSize = try {
+                finalFile.fileInformation.standardInformation.endOfFile
+            } catch (_: Exception) {
+                -1L
+            }
+
+            SmbPrefetchInputStream(
+                file = finalFile,
+                startOffset = offsetBytes,
+                totalSize = totalSize
+            )
         }
 
     override suspend fun getFileSize(config: RemoteServerConfig, filePath: String): Long =
@@ -262,23 +308,19 @@ class SmbStorageClient @Inject constructor(
         }
 
     private fun <T> withDiskShare(config: RemoteServerConfig, block: (DiskShare) -> T): T {
-        val connection = smbClient.connect(config.host, config.port)
+        val smbSession = getOrCreateShare(config)
         return try {
-            val auth = buildAuthContext(config)
-            val session = authenticateSession(connection, auth)
-            try {
-                val cleanShare = config.shareOrExport.trim().trim('/', '\\')
-                val share = session.connectShare(cleanShare) as DiskShare
-                try {
-                    block(share)
-                } finally {
-                    try { share.close() } catch (_: Exception) {}
-                }
-            } finally {
-                try { session.close() } catch (_: Exception) {}
+            synchronized(smbSession.lock) {
+                block(smbSession.share)
             }
-        } finally {
-            try { connection.close() } catch (_: Exception) {}
+        } catch (e: Exception) {
+            val cleanShare = config.shareOrExport.trim().trim('/', '\\')
+            val cacheKey = "${config.id}:${config.host}:${config.port}/$cleanShare"
+            sessionCache.remove(cacheKey)?.closeSilently()
+            val freshSession = getOrCreateShare(config)
+            synchronized(freshSession.lock) {
+                block(freshSession.share)
+            }
         }
     }
 
