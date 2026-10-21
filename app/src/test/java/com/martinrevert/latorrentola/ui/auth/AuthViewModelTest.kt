@@ -105,4 +105,15 @@ class AuthViewModelTest {
         
         assertThat(viewModel.currentUser).isEqualTo(mockUser)
     }
+
+    @Test
+    fun `resetAuthState sets state back to Idle`() {
+        viewModel.resetAuthState()
+        assertThat(viewModel.authState.value).isEqualTo(AuthState.Idle)
+    }
+
+    @Test
+    fun `currentUserFlow exposes repository authStateFlow`() {
+        assertThat(viewModel.currentUserFlow).isEqualTo(authRepository.authStateFlow)
+    }
 }

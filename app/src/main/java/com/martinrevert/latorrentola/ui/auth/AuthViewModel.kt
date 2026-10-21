@@ -36,8 +36,16 @@ class AuthViewModel @Inject constructor(
     /** Observable authentication progress and outcome. */
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
+    /** Observable user authentication state from repository. */
+    val currentUserFlow: StateFlow<FirebaseUser?> = authRepository.authStateFlow
+
     /** Currently authenticated Firebase account, if signed in. */
     val currentUser: FirebaseUser? get() = authRepository.currentUser
+
+    /** Resets the authentication UI state back to [AuthState.Idle]. */
+    fun resetAuthState() {
+        _authState.value = AuthState.Idle
+    }
 
     /** Signs in with Google, syncs the user's language filter, and publishes the outcome. */
     fun signInWithGoogle(context: Context) {
@@ -74,6 +82,7 @@ class AuthViewModel @Inject constructor(
 
     /** Signs out and resets the view-model authentication state. */
     fun signOut() {
+        _authState.value = AuthState.Idle
         viewModelScope.launch {
             authRepository.signOut()
             _authState.value = AuthState.Idle

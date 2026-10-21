@@ -120,7 +120,8 @@ fun AppNavigation(
     onInitialDataHandled: () -> Unit = {}
 ) {
     val authViewModel: AuthViewModel = hiltViewModel()
-    val isLoggedIn = authViewModel.currentUser != null
+    val currentUser by authViewModel.currentUserFlow.collectAsState()
+    val isLoggedIn = remember { authViewModel.currentUser != null }
     val context = LocalContext.current
     val preferenceManager = remember(context) { PreferenceManager(context) }
     val themeMode by preferenceManager.themeFlow.collectAsState(initial = preferenceManager.getTheme())
@@ -128,9 +129,12 @@ fun AppNavigation(
     val backStack = rememberNavBackStack(if (isLoggedIn) Route.Home else Route.Login)
 
     // Handle session expiry or logout from other parts of the app
-    LaunchedEffect(authViewModel.currentUser) {
-        if (authViewModel.currentUser == null && backStack.firstOrNull() != Route.Login) {
-            backStack.clear()
+    LaunchedEffect(currentUser) {
+        if (currentUser == null && backStack.firstOrNull() != Route.Login) {
+            authViewModel.resetAuthState()
+            while (backStack.isNotEmpty()) {
+                backStack.removeLastOrNull()
+            }
             backStack.add(Route.Login)
         }
     }
@@ -159,7 +163,9 @@ fun AppNavigation(
             entry<Route.Login> {
                 LoginScreen(
                     viewModel = authViewModel,
+                    themeMode = themeMode,
                     onLoginSuccess = {
+                        authViewModel.resetAuthState()
                         while (backStack.isNotEmpty()) {
                             backStack.removeLastOrNull()
                         }
@@ -235,7 +241,9 @@ fun AppNavigation(
                     onBackClick = { backStack.removeLastOrNull() },
                     onLogoutClick = {
                         authViewModel.signOut()
-                        backStack.clear()
+                        while (backStack.isNotEmpty()) {
+                            backStack.removeLastOrNull()
+                        }
                         backStack.add(Route.Login)
                     },
                     onDownloadsClick = { backStack.add(Route.Downloads) },

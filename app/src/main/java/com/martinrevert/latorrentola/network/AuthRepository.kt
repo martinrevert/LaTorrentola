@@ -33,12 +33,17 @@ import javax.inject.Singleton
  * @property context Application context used to create Credential Manager.
  */
 @Singleton
-class AuthRepository @Inject constructor(
+class AuthRepository internal constructor(
     private val firebaseAuth: FirebaseAuth,
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val credentialManager: CredentialManager
 ) {
-    /** Credential Manager configured for the application context. */
-    private val credentialManager = CredentialManager.create(context)
+    @Inject
+    constructor(
+        firebaseAuth: FirebaseAuth,
+        @ApplicationContext context: Context
+    ) : this(firebaseAuth, context, CredentialManager.create(context))
+
     /** Mutable backing stream updated whenever Firebase authentication changes. */
     private val _currentUserFlow = MutableStateFlow(firebaseAuth.currentUser)
     /** Observable Firebase user state. */
@@ -57,6 +62,14 @@ class AuthRepository @Inject constructor(
     /**
      * Starts Google sign-in and exchanges the returned ID token for Firebase credentials.
      *
+     * In accordance with Google Identity standards:
+     * 1. Uses [GetSignInWithGoogleOption] in an isolated request as the standard explicit button flow.
+     *    Per Google Credential Manager specifications, [GetSignInWithGoogleOption] cannot be combined with
+     *    other options in the same request.
+     * 2. If [GetSignInWithGoogleOption] fails due to an exception on certain devices or Android TV builds,
+     *    falls back gracefully to [GetGoogleIdOption] in its own isolated request.
+     * 3. Explicit user cancellations ([GetCredentialCancellationException]) are honored immediately without fallback.
+     *
      * @param activityContext Context required to present the credential UI (unwrapped to Activity if needed).
      * @return Success when Firebase accepts the credential, otherwise the originating failure.
      */
@@ -64,26 +77,40 @@ class AuthRepository @Inject constructor(
         return try {
             val targetActivity = activityContext.findActivity() ?: activityContext
 
-            val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(
-                serverClientId = Constants.WEB_CLIENT_ID
-            ).build()
+            val result = try {
+                val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(
+                    serverClientId = Constants.WEB_CLIENT_ID
+                ).build()
 
-            val googleIdOption = GetGoogleIdOption.Builder()
-                .setFilterByAuthorizedAccounts(false)
-                .setServerClientId(Constants.WEB_CLIENT_ID)
-                .setAutoSelectEnabled(false)
-                .build()
+                val request = GetCredentialRequest.Builder()
+                    .addCredentialOption(signInWithGoogleOption)
+                    .build()
 
-            val request = GetCredentialRequest.Builder()
-                .addCredentialOption(signInWithGoogleOption)
-                .addCredentialOption(googleIdOption)
-                .build()
+                Log.d("AuthRepository", "Requesting credential via GetSignInWithGoogleOption with WEB_CLIENT_ID=${Constants.WEB_CLIENT_ID}")
+                credentialManager.getCredential(
+                    request = request,
+                    context = targetActivity
+                )
+            } catch (e: GetCredentialCancellationException) {
+                // User explicitly dismissed or cancelled the account picker; do not trigger fallback
+                throw e
+            } catch (e: Exception) {
+                Log.w("AuthRepository", "GetSignInWithGoogleOption failed (${e.message}), attempting fallback to GetGoogleIdOption", e)
+                val googleIdOption = GetGoogleIdOption.Builder()
+                    .setFilterByAuthorizedAccounts(false)
+                    .setServerClientId(Constants.WEB_CLIENT_ID)
+                    .setAutoSelectEnabled(false)
+                    .build()
 
-            Log.d("AuthRepository", "Requesting credential via CredentialManager with WEB_CLIENT_ID=${Constants.WEB_CLIENT_ID}")
-            val result = credentialManager.getCredential(
-                request = request,
-                context = targetActivity
-            )
+                val fallbackRequest = GetCredentialRequest.Builder()
+                    .addCredentialOption(googleIdOption)
+                    .build()
+
+                credentialManager.getCredential(
+                    request = fallbackRequest,
+                    context = targetActivity
+                )
+            }
 
             val credential = result.credential
             val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
