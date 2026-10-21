@@ -1,6 +1,8 @@
 package com.martinrevert.latorrentola.ui.auth
 
 import android.content.Context
+import android.util.Log
+import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseUser
@@ -12,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 /**
@@ -42,16 +45,29 @@ class AuthViewModel @Inject constructor(
             _authState.value = AuthState.Loading
             val result = authRepository.signInWithGoogle(context)
             if (result.isSuccess) {
-                // Sync settings from Firestore after login
-                val remoteFiltered = userLibraryRepository.getRemoteFilteredLanguages()
-                if (remoteFiltered != null) {
-                    preferenceManager.setFilteredLanguages(remoteFiltered)
+                // Sync settings from Firestore after login bounded by 3s timeout so it never stalls login completion
+                try {
+                    withTimeoutOrNull(3000L) {
+                        val remoteFiltered = userLibraryRepository.getRemoteFilteredLanguages()
+                        if (remoteFiltered != null) {
+                            preferenceManager.setFilteredLanguages(remoteFiltered)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("AuthViewModel", "Failed syncing remote settings post-login: ${e.message}")
                 }
                 _authState.value = AuthState.Success
             } else {
-                val error = result.exceptionOrNull()?.message?.let { UiText.DynamicString(it) }
-                    ?: UiText.StringResource(R.string.unknown_error)
-                _authState.value = AuthState.Error(error)
+                val exception = result.exceptionOrNull()
+                if (exception is GetCredentialCancellationException ||
+                    exception?.message?.contains("cancelled", ignoreCase = true) == true) {
+                    _authState.value = AuthState.Idle
+                } else {
+                    val error = exception?.message?.takeIf { it.isNotBlank() }
+                        ?.let { UiText.DynamicString(it) }
+                        ?: UiText.StringResource(R.string.unknown_error)
+                    _authState.value = AuthState.Error(error)
+                }
             }
         }
     }

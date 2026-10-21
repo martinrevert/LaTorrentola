@@ -77,6 +77,18 @@ class AuthViewModelTest {
     }
 
     @Test
+    fun `signInWithGoogle cancellation resets state to Idle`() = runTest {
+        val cancellationMessage = "activity is cancelled by the user."
+        coEvery { authRepository.signInWithGoogle(any()) } returns Result.failure(
+            androidx.credentials.exceptions.GetCredentialCancellationException(cancellationMessage)
+        )
+
+        viewModel.signInWithGoogle(context)
+
+        assertThat(viewModel.authState.value).isEqualTo(AuthState.Idle)
+    }
+
+    @Test
     fun `signOut resets state to Idle`() = runTest {
         viewModel.signOut()
         
