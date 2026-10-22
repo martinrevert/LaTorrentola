@@ -87,17 +87,18 @@ fun DeleteTorrentDownloadsDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.85f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {}
-                ),
-            contentAlignment = Alignment.Center
-        ) {
+        val themedDialog = @Composable {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.85f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {}
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
             val dialogBody: @Composable () -> Unit = {
                 Column(
                     modifier = Modifier
@@ -179,38 +180,45 @@ fun DeleteTorrentDownloadsDialog(
             }
 
             if (isTv) {
-                TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
-                    Surface(
-                        modifier = Modifier
-                            .widthIn(max = 500.dp)
-                            .padding(24.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = SurfaceDefaults.colors(
-                            containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
-                            contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface
-                        )
-                    ) {
-                        dialogBody()
-                    }
+                Surface(
+                    modifier = Modifier
+                        .widthIn(max = 500.dp)
+                        .padding(24.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = SurfaceDefaults.colors(
+                        containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
+                        contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface
+                    )
+                ) {
+                    dialogBody()
                 }
             } else {
-                LaTorrentolaTheme(themeMode = effectiveThemeMode) {
-                    Card(
-                        modifier = Modifier
-                            .widthIn(max = 480.dp)
-                            .padding(24.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                        ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-                    ) {
-                        dialogBody()
-                    }
+                Card(
+                    modifier = Modifier
+                        .widthIn(max = 480.dp)
+                        .padding(24.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                ) {
+                    dialogBody()
                 }
             }
         }
     }
+
+    if (isTv) {
+        TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
+            themedDialog()
+        }
+    } else {
+        LaTorrentolaTheme(themeMode = effectiveThemeMode) {
+            themedDialog()
+        }
+    }
+}
 }
 
 @Preview(name = "Mobile Delete Dialog Preview")

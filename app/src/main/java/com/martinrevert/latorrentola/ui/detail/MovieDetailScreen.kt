@@ -58,6 +58,7 @@ import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.Abs
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.options.IFramePlayerOptions
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.ui.components.MovieTorrentShimmerCard
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
 import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
 import com.martinrevert.latorrentola.model.YTS.Movie
@@ -471,8 +472,7 @@ fun MovieDetailContent(
         
         Text(text = stringResource(R.string.torrents_header), style = MaterialTheme.typography.titleLarge)
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = if (isTv) Alignment.CenterHorizontally else Alignment.Start
+            modifier = Modifier.fillMaxWidth()
         ) {
             movie.torrents?.forEachIndexed { index, torrent ->
                 val isFirstItem = index == 0 && movie.ytTrailerCode.isNullOrEmpty()
@@ -577,7 +577,7 @@ fun YoutubePlayer(
             .fillMaxWidth()
             .aspectRatio(16 / 9f)
             .clip(MaterialTheme.shapes.medium)
-            .background(Color.Black),
+            .background(MaterialTheme.colorScheme.scrim),
         contentAlignment = Alignment.Center
     ) {
         AndroidView(
@@ -634,7 +634,7 @@ fun YoutubePlayer(
                     }
                 },
                 modifier = playButtonModifier
-                    .background(Color.Black.copy(alpha = 0.1f), CircleShape),
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.25f), CircleShape),
                 colors = IconButtonDefaults.colors(
                     containerColor = Color.Transparent,
                     focusedContainerColor = Color.Transparent,
@@ -644,7 +644,7 @@ fun YoutubePlayer(
                 androidx.tv.material3.Icon(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = if (isPlaying) stringResource(R.string.pause_desc) else stringResource(R.string.play_desc),
-                    tint = Color.White,
+                    tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(48.dp)
                 )
             }
@@ -657,13 +657,13 @@ fun YoutubePlayer(
                     }
                 },
                 modifier = playButtonModifier
-                    .background(Color.Black.copy(alpha = 0.15f), CircleShape)
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.25f), CircleShape)
                     .focusHighlight(shape = CircleShape)
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = if (isPlaying) stringResource(R.string.pause_desc) else stringResource(R.string.play_desc),
-                    tint = Color.White,
+                    tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(48.dp)
                 )
             }
@@ -824,13 +824,10 @@ fun TorrentItem(
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
-    val isTv = remember(context) { context.isTvDevice() }
 
     val onTorrentClickInternal = {
         val hash = torrent.hash
-        if (hash.isNullOrBlank()) {
-            Toast.makeText(context, resources.getString(R.string.toast_magnet_error), Toast.LENGTH_SHORT).show()
-        } else {
+        if (!hash.isNullOrBlank()) {
             try {
                 val title = movie.title ?: resources.getString(R.string.torrent_download_title)
                 val magnetUri = TorrentLaunchHelper.buildMagnetUri(hash, title)
@@ -838,124 +835,31 @@ fun TorrentItem(
                 when (val result = TorrentLaunchHelper.launch(context, handlingMode, magnetUri, title, movieId = movie.id, requiredSizeBytes = sizeBytes)) {
                     TorrentLaunchResult.Started -> {
                         onTorrentClick(torrent)
-                        if (handlingMode != TorrentHandlingMode.EXTERNAL_CLIENT) {
-                            Toast.makeText(
-                                context,
-                                resources.getString(R.string.torrent_download_queued),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
                     }
-                    TorrentLaunchResult.NoExternalClient -> Toast.makeText(
-                        context,
-                        resources.getString(R.string.toast_no_torrent_client),
-                        Toast.LENGTH_LONG
-                    ).show()
-                    TorrentLaunchResult.CastUnavailable -> Toast.makeText(
-                        context,
-                        resources.getString(R.string.torrent_cast_unavailable),
-                        Toast.LENGTH_LONG
-                    ).show()
                     is TorrentLaunchResult.InsufficientStorage -> {
                         onInsufficientStorage(result.availableBytes, result.requiredBytes)
                     }
-                    TorrentLaunchResult.Fat32LimitExceeded -> Toast.makeText(
-                        context,
-                        resources.getString(R.string.toast_fat32_limit),
-                        Toast.LENGTH_LONG
-                    ).show()
+                    else -> {}
                 }
-            } catch (e: IllegalArgumentException) {
-                Toast.makeText(context, resources.getString(R.string.toast_magnet_error), Toast.LENGTH_SHORT).show()
-            } catch (e: IllegalStateException) {
-                Toast.makeText(context, resources.getString(R.string.toast_magnet_error), Toast.LENGTH_SHORT).show()
+            } catch (_: IllegalArgumentException) {
+            } catch (_: IllegalStateException) {
             }
         }
     }
 
     val buttonModifier = Modifier
-        .then(if (isTv) Modifier.fillMaxWidth(0.5f) else Modifier.fillMaxWidth())
+        .fillMaxWidth()
         .padding(vertical = 4.dp)
         .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
 
-    val codecLabel = listOfNotNull(
-        torrent.videoCodec?.uppercase()?.takeIf { it.isNotBlank() },
-        torrent.bitDepth?.let { if (it == "10") "10-BIT" else null },
-        torrent.audioChannels?.let { if (it.contains("5.1")) "5.1" else null }
-    ).joinToString(" ")
-
-    val torrentDisplayText = if (codecLabel.isNotBlank()) {
-        "${torrent.quality} • $codecLabel - ${torrent.size}"
-    } else {
-        "${torrent.quality} - ${torrent.size} (${torrent.type})"
-    }
-
-    if (isTv) {
-        TvButton(
-            onClick = onTorrentClickInternal,
-            modifier = buttonModifier,
-            colors = androidx.tv.material3.ButtonDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            )
-        ) {
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                androidx.tv.material3.Text(
-                    text = torrentDisplayText,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = if (isDownloaded) 28.dp else 0.dp),
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (isDownloaded) {
-                    androidx.tv.material3.Icon(
-                        imageVector = Icons.Default.CloudDone,
-                        contentDescription = stringResource(R.string.downloaded_desc),
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .size(20.dp)
-                    )
-                }
-            }
-        }
-    } else {
-        Button(
-            onClick = onTorrentClickInternal,
-            modifier = buttonModifier.focusHighlight(shape = MaterialTheme.shapes.extraLarge),
-            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            )
-        ) {
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = torrentDisplayText,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = if (isDownloaded) 28.dp else 0.dp),
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (isDownloaded) {
-                    Icon(
-                        imageVector = Icons.Default.CloudDone,
-                        contentDescription = stringResource(R.string.downloaded_desc),
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .size(20.dp)
-                    )
-                }
-            }
-        }
-    }
+    MovieTorrentShimmerCard(
+        movie = movie,
+        torrent = torrent,
+        isDownloaded = isDownloaded,
+        onClick = onTorrentClickInternal,
+        modifier = buttonModifier,
+        focusRequester = focusRequester
+    )
 }
 
 /** TV preview of the movie detail screen. */

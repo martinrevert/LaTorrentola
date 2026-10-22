@@ -498,9 +498,41 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP_PLAYBACK) {
+            val exceptHash = intent.getStringExtra(EXTRA_EXCEPT_INFO_HASH).orEmpty()
+            val currentId = mediaSession?.player?.currentMediaItem?.mediaId.orEmpty()
+            val isSameMedia = exceptHash.isNotBlank() && currentId.contains(exceptHash, ignoreCase = true)
+            if (!isSameMedia) {
+                Log.i(TAG, "ACTION_STOP_PLAYBACK received: stopping media (currentId=$currentId, exceptHash=$exceptHash)")
+                saveCurrentProgress(mediaSession?.player)
+                mediaSession?.player?.stop()
+                mediaSession?.player?.clearMediaItems()
+            }
+            return START_NOT_STICKY
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
+
     companion object {
         private const val TAG = "PlaybackService"
         const val EXTRA_IS_EPISODE = "extra_is_episode"
         const val EXTRA_CAST_URL = "extra_cast_url"
+        const val ACTION_STOP_PLAYBACK = "com.martinrevert.latorrentola.action.STOP_PLAYBACK"
+        const val EXTRA_EXCEPT_INFO_HASH = "extra_except_info_hash"
+
+        fun stopPlayback(context: android.content.Context, exceptInfoHash: String? = null) {
+            val intent = Intent(context, PlaybackService::class.java).apply {
+                action = ACTION_STOP_PLAYBACK
+                if (!exceptInfoHash.isNullOrBlank()) {
+                    putExtra(EXTRA_EXCEPT_INFO_HASH, exceptInfoHash)
+                }
+            }
+            try {
+                context.startService(intent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to send STOP_PLAYBACK to PlaybackService", e)
+            }
+        }
     }
 }

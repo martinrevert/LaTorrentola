@@ -2,7 +2,6 @@
 
 package com.martinrevert.latorrentola.ui.detail
 
-import android.widget.Toast
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
@@ -38,6 +37,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import com.martinrevert.latorrentola.ui.components.EpisodeTorrentShimmerCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -166,7 +166,6 @@ fun TvEpisodeDetailScreen(
 
             is TvEpisodeDetailUiState.Success -> {
                 var showOptionDialog by remember { mutableStateOf(false) }
-                val downloadedText = stringResource(R.string.tv_episode_downloaded)
                 val mediaId = "media_${seriesId}_s${seasonNumber}_e${episodeNumber}"
                 val progress = watchHistoryMap[mediaId]
                 val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
@@ -193,13 +192,7 @@ fun TvEpisodeDetailScreen(
                                 TorrentLaunchHelper.buildMagnetUri(it, title)
                             }.orEmpty()
                         }
-                        if (magnetUri.isBlank()) {
-                            Toast.makeText(
-                                context,
-                                context.resources.getString(R.string.toast_magnet_error),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        } else {
+                        if (magnetUri.isNotBlank()) {
                             val nextEpisodeInfo = viewModel.getNextEpisodeInfo()?.let { ArrayList(it.map { item -> item.toString() }) }
                             val sizeBytes = torrent.sizeBytes?.toLongOrNull()
                             when (
@@ -217,38 +210,11 @@ fun TvEpisodeDetailScreen(
                             ) {
                                 TorrentLaunchResult.Started -> {
                                     viewModel.markEpisodeAsDownloaded(torrent)
-                                    if (torrentHandlingMode == TorrentHandlingMode.EXTERNAL_CLIENT) {
-                                        Toast.makeText(
-                                            context,
-                                            downloadedText,
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    } else {
-                                        Toast.makeText(
-                                            context,
-                                            context.resources.getString(R.string.torrent_download_queued),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
                                 }
-                                TorrentLaunchResult.NoExternalClient -> Toast.makeText(
-                                    context,
-                                    context.resources.getString(R.string.toast_no_torrent_client),
-                                    Toast.LENGTH_LONG
-                                ).show()
-                                TorrentLaunchResult.CastUnavailable -> Toast.makeText(
-                                    context,
-                                    context.resources.getString(R.string.torrent_cast_unavailable),
-                                    Toast.LENGTH_LONG
-                                ).show()
                                 is TorrentLaunchResult.InsufficientStorage -> {
                                     insufficientStorageState.value = Pair(result.availableBytes, result.requiredBytes)
                                 }
-                                TorrentLaunchResult.Fat32LimitExceeded -> Toast.makeText(
-                                    context,
-                                    context.resources.getString(R.string.toast_fat32_limit),
-                                    Toast.LENGTH_LONG
-                                ).show()
+                                else -> {}
                             }
                         }
                     }
@@ -359,7 +325,7 @@ private fun EpisodeDetailContent(
             torrents.forEachIndexed { index, torrent ->
                 val isTorrentDownloaded =
                     torrent.downloadInfoHash()?.let(downloadedHashes::contains) == true
-                TorrentReleaseCard(
+                EpisodeTorrentShimmerCard(
                     torrent = torrent,
                     isDownloaded = isTorrentDownloaded,
                     onClick = { onTorrentClick(torrent) },
@@ -430,8 +396,8 @@ private fun EpisodeHeader(
                             .fillMaxWidth()
                             .height(4.dp)
                             .align(Alignment.BottomCenter),
-                        color = Color(0xFFE50914),
-                        trackColor = Color(0x33FFFFFF),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                         strokeCap = StrokeCap.Butt
                     )
                 }
@@ -506,7 +472,7 @@ private fun EpisodeHeader(
     }
 }
 
-/** Displays a torrent release with native TV focus behavior, release info, and download status. */
+/** Displays a torrent release with real-time liquid shimmer fill and native focus behavior. */
 @Composable
 private fun TorrentReleaseCard(
     torrent: EztvTorrent,
@@ -514,89 +480,12 @@ private fun TorrentReleaseCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val isTv = remember(context) { context.isTvDevice() }
-    val cardContent: @Composable () -> Unit = {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = torrent.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(Modifier.height(4.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (torrent.formattedSize.isNotBlank()) {
-                        Text(
-                            text = torrent.formattedSize,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Text(
-                        text = stringResource(
-                            R.string.tv_torrent_peers_info,
-                            torrent.seeds,
-                            torrent.peers
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            Icon(
-                imageVector = if (isDownloaded) Icons.Default.CloudDone else Icons.Default.Download,
-                contentDescription = if (isDownloaded) stringResource(R.string.tv_episode_downloaded) else stringResource(R.string.tv_download_torrent_desc),
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(28.dp)
-            )
-        }
-    }
-
-    if (isTv) {
-        val interactionSource = remember { MutableInteractionSource() }
-        val isFocused by interactionSource.collectIsFocusedAsState()
-
-        TvSurface(
-            onClick = onClick,
-            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
-            shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
-            colors = ClickableSurfaceDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                focusedContentColor = MaterialTheme.colorScheme.onSurface
-            ),
-            interactionSource = interactionSource,
-            modifier = modifier.fillMaxWidth()
-        ) {
-            cardContent()
-        }
-    } else {
-        Card(
-            onClick = onClick,
-            modifier = modifier
-                .fillMaxWidth()
-                .focusHighlight(shape = MaterialTheme.shapes.medium),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = MaterialTheme.colorScheme.onSurface
-            )
-        ) {
-            cardContent()
-        }
-    }
+    EpisodeTorrentShimmerCard(
+        torrent = torrent,
+        isDownloaded = isDownloaded,
+        onClick = onClick,
+        modifier = modifier
+    )
 }
 
 @com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
@@ -604,13 +493,14 @@ private fun TorrentReleaseCard(
 private fun TorrentReleaseCardPreview() {
     com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
         androidx.compose.material3.Surface {
-            TorrentReleaseCard(
+            EpisodeTorrentShimmerCard(
                 torrent = com.martinrevert.latorrentola.model.EZTV.EztvTorrent(
                     title = "Breaking.Bad.S01E01.1080p.WEB-DL.x264",
                     seeds = 120,
                     peers = 15,
                     sizeBytes = "1258291200"
                 ),
+                isDownloaded = false,
                 onClick = {}
             )
         }

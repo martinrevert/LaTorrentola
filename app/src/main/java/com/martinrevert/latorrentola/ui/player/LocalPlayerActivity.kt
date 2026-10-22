@@ -8,10 +8,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.WindowManager
-import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -70,13 +70,16 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Subtitles
-import androidx.compose.material.icons.filled.Warning
+import com.google.android.gms.cast.MediaStatus
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.SessionManager
 import com.google.android.gms.cast.framework.SessionManagerListener
+import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.martinrevert.latorrentola.ui.components.CastCodecWarningObserver
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import kotlinx.coroutines.Job
+import kotlin.time.Duration.Companion.seconds
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -200,6 +203,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -358,6 +362,10 @@ class LocalPlayerActivity : FragmentActivity() {
     private var subtitleOperationInProgress by mutableStateOf(false)
     private var subtitleStartupCheckStarted = false
 
+    private var progressTickerJob: Job? = null
+    private var castSessionManagerListener: SessionManagerListener<CastSession>? = null
+    private var remoteMediaClientCallback: RemoteMediaClient.Callback? = null
+
     private var pendingMediaUri: Uri? = null
     private var pendingMediaItem: MediaItem? = null
     private var lastKnownPlaybackPositionMs = 0L
@@ -365,6 +373,13 @@ class LocalPlayerActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        activeActivityRef = java.lang.ref.WeakReference(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, android.R.anim.fade_in, android.R.anim.fade_out)
+        } else {
+            @Suppress("DEPRECATION")
+            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+        }
 
         handleIntent(intent)
 
@@ -390,6 +405,7 @@ class LocalPlayerActivity : FragmentActivity() {
         customSubtitleSizeFraction = sizeFraction
         customSubtitleBottomOffset = offset
 
+        setupCastSessionListener()
         connectToMediaSession()
 
         setContent {
@@ -399,7 +415,7 @@ class LocalPlayerActivity : FragmentActivity() {
             val content = @Composable {
                 val controller = mediaController
                 Box(
-                    modifier = Modifier.fillMaxSize().background(Color.Black),
+                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim),
                     contentAlignment = Alignment.Center
                 ) {
                     if (controller != null) {
@@ -587,7 +603,8 @@ class LocalPlayerActivity : FragmentActivity() {
                                     )
                                     if (result is TorrentLaunchResult.InsufficientStorage) {
                                         insufficientStorageData = Pair(result.availableBytes, result.requiredBytes)
-                                    } else {
+                                        showNextEpisodeDialog = false
+                                    } else if (result == TorrentLaunchResult.NoExternalClient || result == TorrentLaunchResult.CastUnavailable) {
                                         showNextEpisodeDialog = false
                                     }
                                 }
@@ -603,7 +620,8 @@ class LocalPlayerActivity : FragmentActivity() {
                         InsufficientStorageDialog(
                             availableBytes = available,
                             requiredBytes = required,
-                            onDismiss = { insufficientStorageData = null }
+                            onDismiss = { insufficientStorageData = null },
+                            themeMode = themeMode
                         )
                     }
 
@@ -611,7 +629,8 @@ class LocalPlayerActivity : FragmentActivity() {
                     if (state != null) {
                         PlayerBottomSheetContent(
                             state = state,
-                            onDismiss = { playerBottomSheetState = null }
+                            onDismiss = { playerBottomSheetState = null },
+                            themeMode = themeMode
                         )
                     }
                 }
@@ -628,6 +647,7 @@ class LocalPlayerActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        showNextEpisodeDialog = false
         handleIntent(intent)
         val controller = mediaController
         if (controller != null) {
@@ -762,6 +782,14 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
             }
 
+            if (currentSeasonNumber <= 0 || currentEpisodeNumber <= 0) {
+                val (detectedSeason, detectedEpisode) = extractSeasonAndEpisode(mediaTitle, file?.name, mediaUri.toString())
+                if (detectedSeason > 0 && detectedEpisode > 0) {
+                    if (currentSeasonNumber <= 0) currentSeasonNumber = detectedSeason
+                    if (currentEpisodeNumber <= 0) currentEpisodeNumber = detectedEpisode
+                }
+            }
+
             val nextEpisodeInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
             if (nextEpisodeInfo != null && nextEpisodeInfo.size >= 5) {
                 try {
@@ -796,6 +824,33 @@ class LocalPlayerActivity : FragmentActivity() {
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
                         Log.w(TAG, "Failed to resolve next episode info asynchronously: ${e.message}")
+                    }
+                }
+            } else if (currentSeriesId <= 0 && currentSeasonNumber > 0 && currentEpisodeNumber > 0 && !hasNextEpisodeInfo) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        val cleanTitle = extractCleanSearchTitles(mediaTitle).firstOrNull() ?: mediaTitle
+                        val searchResult = tmdbRepository.searchTvSeries(cleanTitle).results?.firstOrNull()
+                        if (searchResult != null && searchResult.id > 0) {
+                            currentSeriesId = searchResult.id
+                            val info = tvPlayerViewModel.getNextEpisodeInfo(
+                                seriesId = currentSeriesId,
+                                seriesName = searchResult.name.orEmpty(),
+                                seasonNumber = currentSeasonNumber,
+                                episodeNumber = currentEpisodeNumber
+                            )
+                            if (info != null && info.size >= 5) {
+                                nextEpisodeSeriesId = info[0].toIntOrNull() ?: currentSeriesId
+                                nextEpisodeSeriesName = info[1]
+                                nextEpisodeSeasonNumber = info[2].toIntOrNull() ?: currentSeasonNumber
+                                nextEpisodeEpisodeNumber = info[3].toIntOrNull() ?: (currentEpisodeNumber + 1)
+                                nextEpisodeEpisodeName = info[4]
+                                hasNextEpisodeInfo = true
+                            }
+                        }
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                        Log.w(TAG, "Failed to resolve series and next episode info via TMDB: ${e.message}")
                     }
                 }
             }
@@ -875,11 +930,26 @@ class LocalPlayerActivity : FragmentActivity() {
             val newUri = newItem?.localConfiguration?.uri
             val uriChanged = activeUri != null && newUri != null && activeUri != newUri
 
-            if (newItem != null && (activeItem == null || activeItem.mediaId != newItem.mediaId || uriChanged || controller.playbackState == Player.STATE_IDLE || controller.playbackState == Player.STATE_ENDED)) {
+            val isNewMedia = activeItem == null || newItem == null || activeItem.mediaId != newItem.mediaId
+            if (isNewMedia) {
+                lastKnownPlaybackPositionMs = 0L
+                nextEpisodeTriggered = false
+                if (activeItem != null) {
+                    saveCurrentProgress(controller)
+                    controller.stop()
+                    controller.clearMediaItems()
+                }
+            }
+
+            if (newItem != null && (isNewMedia || uriChanged || controller.playbackState == Player.STATE_IDLE || controller.playbackState == Player.STATE_ENDED)) {
                 val savedProgress = userLibraryRepository.getPlaybackProgress(newItem.mediaId)
-                val currentPos = lastKnownPlaybackPositionMs.takeIf { it > 5000L }
-                    ?: controller.currentPosition.takeIf { it > 5000L }
-                    ?: 0L
+                val currentPos = if (isNewMedia) {
+                    0L
+                } else {
+                    lastKnownPlaybackPositionMs.takeIf { it > 5000L }
+                        ?: controller.currentPosition.takeIf { it > 5000L }
+                        ?: 0L
+                }
                 val dbPos = if (savedProgress != null && savedProgress.positionMs > 5000L && !savedProgress.isCompleted) {
                     savedProgress.positionMs
                 } else {
@@ -928,6 +998,7 @@ class LocalPlayerActivity : FragmentActivity() {
                 controller.setMediaItem(itemToPlay, startPosition)
                 controller.prepare()
                 controller.playWhenReady = true
+                startProgressTicker(controller)
             } else if (activeItem != null) {
                 currentMediaItem = activeItem
                 val titleFromMetadata = activeItem.mediaMetadata.title?.toString()
@@ -945,6 +1016,12 @@ class LocalPlayerActivity : FragmentActivity() {
                 override fun onTracksChanged(tracks: Tracks) {
                     selectDefaultSubtitleIfNeeded(controller)
                     prepareSubtitleTrackIfNeeded(tracks)
+                }
+
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (!isPlaying) {
+                        saveCurrentProgress(controller)
+                    }
                 }
 
                 override fun onPlaybackStateChanged(state: Int) {
@@ -975,7 +1052,7 @@ class LocalPlayerActivity : FragmentActivity() {
                                     action = TorrentDownloadService.ACTION_PLAY_STREAM
                                     putExtra(TorrentDownloadService.EXTRA_INFO_HASH, torrentInfoHash)
                                 }
-                                ContextCompat.startForegroundService(this@LocalPlayerActivity, playIntent)
+                                startService(playIntent)
                             }
                             return
                         }
@@ -1067,6 +1144,7 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     private fun handlePlaybackEnded() {
+        saveCurrentProgress(mediaController)
         mediaController?.pause()
         if (torrentInfoHash.isNotBlank()) {
             showDeletePromptDialog = true
@@ -1772,6 +1850,79 @@ class LocalPlayerActivity : FragmentActivity() {
         super.onStop()
     }
 
+    private fun startProgressTicker(player: Player) {
+        progressTickerJob?.cancel()
+        progressTickerJob = lifecycleScope.launch {
+            while (isActive) {
+                delay(10.seconds)
+                if (player.isPlaying) {
+                    saveCurrentProgress(player)
+                }
+            }
+        }
+    }
+
+    private fun setupCastSessionListener() {
+        try {
+            val mainExecutor = ContextCompat.getMainExecutor(this)
+            CastContext.getSharedInstance(this, mainExecutor).addOnSuccessListener { castContext ->
+                val listener = object : SessionManagerListener<CastSession> {
+                    override fun onSessionStarted(session: CastSession, sessionId: String) {
+                        attachRemoteMediaClientCallback(session)
+                    }
+                    override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
+                        attachRemoteMediaClientCallback(session)
+                    }
+                    override fun onSessionEnding(session: CastSession) {
+                        detachRemoteMediaClientCallback(session)
+                    }
+                    override fun onSessionEnded(session: CastSession, error: Int) {
+                        detachRemoteMediaClientCallback(session)
+                    }
+                    override fun onSessionStartFailed(session: CastSession, error: Int) {}
+                    override fun onSessionResumeFailed(session: CastSession, error: Int) {}
+                    override fun onSessionSuspended(session: CastSession, reason: Int) {}
+                    override fun onSessionStarting(session: CastSession) {}
+                    override fun onSessionResuming(session: CastSession, sessionId: String) {}
+                }
+                castSessionManagerListener = listener
+                castContext.sessionManager.addSessionManagerListener(listener, CastSession::class.java)
+                castContext.sessionManager.currentCastSession?.let { attachRemoteMediaClientCallback(it) }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "CastContext unavailable for session listener: ${e.message}")
+        }
+    }
+
+    private fun attachRemoteMediaClientCallback(session: CastSession) {
+        val rmc = session.remoteMediaClient ?: return
+        if (remoteMediaClientCallback == null) {
+            val callback = object : RemoteMediaClient.Callback() {
+                override fun onStatusUpdated() {
+                    val status = rmc.mediaStatus ?: return
+                    if (status.playerState == MediaStatus.PLAYER_STATE_IDLE &&
+                        status.idleReason == MediaStatus.IDLE_REASON_FINISHED) {
+                        if (!nextEpisodeTriggered) {
+                            nextEpisodeTriggered = true
+                            lifecycleScope.launch(Dispatchers.Main) {
+                                handlePlaybackEnded()
+                            }
+                        }
+                    }
+                }
+            }
+            remoteMediaClientCallback = callback
+            rmc.registerCallback(callback)
+            applyCastSubtitleStyleIfConnected()
+        }
+    }
+
+    private fun detachRemoteMediaClientCallback(session: CastSession) {
+        val rmc = session.remoteMediaClient ?: return
+        remoteMediaClientCallback?.let { rmc.unregisterCallback(it) }
+        remoteMediaClientCallback = null
+    }
+
     private fun saveCurrentProgress(player: Player?) {
         val p = player ?: return
         val pos = p.currentPosition
@@ -1788,10 +1939,13 @@ class LocalPlayerActivity : FragmentActivity() {
         val title = item.mediaMetadata.title?.toString() ?: mediaTitle
         val isEpisode = currentSeriesId > 0
 
+        val isNearlyFinished = pos >= (dur * 0.95f).toLong()
+        val finalPos = if (isNearlyFinished) dur else pos
+
         val progress = PlaybackProgress(
             mediaId = mediaId,
             title = title.ifBlank { "Media Item" },
-            positionMs = pos,
+            positionMs = finalPos,
             durationMs = dur,
             timestamp = System.currentTimeMillis(),
             isEpisode = isEpisode
@@ -1800,7 +1954,7 @@ class LocalPlayerActivity : FragmentActivity() {
         lifecycleScope.launch {
             try {
                 userLibraryRepository.savePlaybackProgress(progress)
-                Log.i(TAG, "Saved progress on Activity pause/stop: $pos / $dur ms for $mediaId")
+                Log.i(TAG, "Saved progress: $finalPos / $dur ms for $mediaId (completed=${progress.isCompleted})")
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving playback progress", e)
             }
@@ -1808,11 +1962,49 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     override fun onDestroy() {
+        progressTickerJob?.cancel()
+        progressTickerJob = null
+        castSessionManagerListener?.let { listener ->
+            try {
+                val castContext = CastContext.getSharedInstance()
+                castContext?.sessionManager?.removeSessionManagerListener(listener, CastSession::class.java)
+            } catch (_: Exception) {}
+        }
         controllerFuture?.let { MediaController.releaseFuture(it) }
+        if (activeActivityRef?.get() == this) {
+            activeActivityRef = null
+        }
         super.onDestroy()
     }
 
+    override fun finish() {
+        super.finish()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, android.R.anim.fade_in, android.R.anim.fade_out)
+        } else {
+            @Suppress("DEPRECATION")
+            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+        }
+    }
+
     companion object {
+        private var activeActivityRef: java.lang.ref.WeakReference<LocalPlayerActivity>? = null
+
+        fun finishBackgroundPlayer(exceptInfoHash: String? = null) {
+            activeActivityRef?.get()?.let { activity ->
+                if (!activity.isFinishing && !activity.isDestroyed) {
+                    val currentHash = activity.torrentInfoHash
+                    if (exceptInfoHash.isNullOrBlank() || !currentHash.equals(exceptInfoHash, ignoreCase = true)) {
+                        val isPip = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N && activity.isInPictureInPictureMode
+                        if (isPip || activity.lifecycle.currentState < androidx.lifecycle.Lifecycle.State.RESUMED) {
+                            Log.i(TAG, "Finishing background/PiP LocalPlayerActivity (currentHash=$currentHash, exceptHash=$exceptInfoHash)")
+                            activity.finish()
+                        }
+                    }
+                }
+            }
+        }
+
         val EPISODE_PATTERN = Regex("""\bS\d{2}E\d{2}\b""", RegexOption.IGNORE_CASE)
         const val EXTRA_FILE_PATH = "verified_media_file_path"
         const val EXTRA_STREAM_URL = "verified_media_stream_url"
@@ -1978,7 +2170,7 @@ fun ControlButton(
     onClick: () -> Unit,
     icon: ImageVector,
     contentDescription: String,
-    tint: Color = Color.White,
+    tint: Color = MaterialTheme.colorScheme.onSurface,
     enabled: Boolean = true,
     focusRequester: FocusRequester? = null,
     modifier: Modifier = Modifier,
@@ -1990,7 +2182,7 @@ fun ControlButton(
     val itemModifier = modifier
         .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
         .onFocusChanged { isFocused = it.isFocused }
-        .background(if (isFocused) Color.White.copy(alpha = 0.25f) else Color.Transparent, CircleShape)
+        .background(if (isFocused) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f) else Color.Transparent, CircleShape)
 
     if (isTv) {
         TvIconButton(
@@ -2168,7 +2360,7 @@ fun PlayerControlsOverlay(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f))
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f))
                     .padding(24.dp)
             ) {
                 // Top Bar
@@ -2182,7 +2374,7 @@ fun PlayerControlsOverlay(
                     Text(
                         text = mediaTitle,
                         style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -2199,7 +2391,7 @@ fun PlayerControlsOverlay(
                             icon = Icons.Default.Subtitles,
                             contentDescription = "Subtitles",
                             enabled = hasSubtitleTracks,
-                            tint = if (hasSubtitleTracks) Color.White else Color.Gray.copy(alpha = 0.5f),
+                            tint = if (hasSubtitleTracks) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                             focusRequester = subtitlesFocusRequester
                         )
                         // 2. OpenSubtitles
@@ -2222,7 +2414,7 @@ fun PlayerControlsOverlay(
                             icon = Icons.Default.GraphicEq,
                             contentDescription = "Audio Tracks",
                             enabled = hasAudioTracks,
-                            tint = if (hasAudioTracks) Color.White else Color.Gray.copy(alpha = 0.5f),
+                            tint = if (hasAudioTracks) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                             focusRequester = audioFocusRequester
                         )
                         // 5. Stats for Nerds
@@ -2230,7 +2422,7 @@ fun PlayerControlsOverlay(
                             onClick = onToggleStats,
                             icon = Icons.Default.BugReport,
                             contentDescription = "Stats",
-                            tint = if (showStats) Color.Green else Color.White,
+                            tint = if (showStats) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                             focusRequester = statsFocusRequester
                         )
                         // 6. Cast (Handheld only)
@@ -2240,7 +2432,7 @@ fun PlayerControlsOverlay(
                                 onClick = onShowCast,
                                 icon = if (isCasting) Icons.Default.CastConnected else Icons.Default.Cast,
                                 contentDescription = "Cast",
-                                tint = if (isCasting) MaterialTheme.colorScheme.primary else Color.White
+                                tint = if (isCasting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
@@ -2287,7 +2479,7 @@ fun PlayerControlsOverlay(
                     Text(
                         text = "${formatTime(pos)} / ${formatTime(duration)}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
 
                     Slider(
@@ -2333,15 +2525,15 @@ fun StatsForNerdsOverlay(
     }
 
     Surface(
-        color = Color.Black.copy(alpha = 0.75f),
+        color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.85f),
         shape = MaterialTheme.shapes.medium,
         modifier = modifier
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Stats for Nerds", style = MaterialTheme.typography.titleSmall, color = Color.Green, fontWeight = FontWeight.Bold)
-            Text("Video: $videoSizeText", style = MaterialTheme.typography.bodySmall, color = Color.White)
-            Text("Audio: $audioText", style = MaterialTheme.typography.bodySmall, color = Color.White)
-            Text("Buffer: $bufferText", style = MaterialTheme.typography.bodySmall, color = Color.White)
+            Text("Stats for Nerds", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            Text("Video: $videoSizeText", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+            Text("Audio: $audioText", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+            Text("Buffer: $bufferText", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -2349,47 +2541,55 @@ fun StatsForNerdsOverlay(
 @Composable
 fun PlayerBottomSheetContent(
     state: PlayerBottomSheetState,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    themeMode: Int? = null
 ) {
     val context = LocalContext.current
+    val effectiveThemeMode = remember(context, themeMode) {
+        themeMode ?: PreferenceManager(context).getTheme()
+    }
     val isTv = remember(context) { context.isTvDevice() }
 
     if (isTv) {
-        Dialog(
-            onDismissRequest = onDismiss,
-            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onDismiss
-                    ),
-                contentAlignment = Alignment.BottomCenter
+        TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
+            Dialog(
+                onDismissRequest = onDismiss,
+                properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
             ) {
-                Surface(
+                Box(
                     modifier = Modifier
-                        .widthIn(max = 600.dp)
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            onClick = {}
+                            onClick = onDismiss
                         ),
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.onSurface
+                    contentAlignment = Alignment.BottomCenter
                 ) {
-                    BottomSheetInnerContent(state = state, onDismiss = onDismiss)
+                    Surface(
+                        modifier = Modifier
+                            .widthIn(max = 600.dp)
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {}
+                            ),
+                        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    ) {
+                        BottomSheetInnerContent(state = state, onDismiss = onDismiss)
+                    }
                 }
             }
         }
     } else {
-        PlayerMobileBottomSheet(state = state, onDismiss = onDismiss)
+        LaTorrentolaTheme(themeMode = effectiveThemeMode) {
+            PlayerMobileBottomSheet(state = state, onDismiss = onDismiss)
+        }
     }
 }
 
@@ -2484,7 +2684,7 @@ private fun BottomSheetInnerContent(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(65.dp)
-                                    .background(Color.Black.copy(alpha = 0.9f))
+                                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.9f))
                                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.medium),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -2619,7 +2819,7 @@ private fun BottomSheetInnerContent(
                                                 modifier = Modifier
                                                     .size(20.dp)
                                                     .background(Color(selectedFgColor), CircleShape)
-                                                    .border(1.dp, Color.Gray, CircleShape)
+                                                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
                                             )
                                             Text("Text Color", style = MaterialTheme.typography.bodyMedium)
                                         }
@@ -2640,7 +2840,7 @@ private fun BottomSheetInnerContent(
                                                 modifier = Modifier
                                                     .size(20.dp)
                                                     .background(if (selectedBgColor == 0) Color.Transparent else Color(selectedBgColor), CircleShape)
-                                                    .border(1.dp, Color.Gray, CircleShape)
+                                                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
                                             )
                                             Text("Background", style = MaterialTheme.typography.bodyMedium)
                                         }
@@ -2820,7 +3020,7 @@ fun ColorPickerDialog(
                                 .background(if (colorVal == 0) Color.Transparent else Color(colorVal), CircleShape)
                                 .border(
                                     width = if (isSelected) 3.dp else 1.dp,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
                                     shape = CircleShape
                                 )
                                 .focusHighlight(shape = CircleShape)
@@ -2831,7 +3031,7 @@ fun ColorPickerDialog(
                                 Icon(
                                     imageVector = Icons.Default.Check,
                                     contentDescription = "Selected",
-                                    tint = if (colorVal == android.graphics.Color.WHITE) Color.Black else Color.White,
+                                    tint = if (colorVal == android.graphics.Color.WHITE) MaterialTheme.colorScheme.inverseOnSurface else MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }

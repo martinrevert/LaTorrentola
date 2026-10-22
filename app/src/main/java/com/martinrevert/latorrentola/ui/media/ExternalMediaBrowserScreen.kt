@@ -97,6 +97,8 @@ fun ExternalMediaBrowserScreen(
         viewModel.events.collect { event ->
             when (event) {
                 is ExternalMediaEvent.PlayLocalFile -> {
+                    com.martinrevert.latorrentola.service.TorrentDownloadService.pauseActiveTransfers(context)
+                    com.martinrevert.latorrentola.service.PlaybackService.stopPlayback(context)
                     val intent = Intent(context, LocalPlayerActivity::class.java).apply {
                         putExtra(LocalPlayerActivity.EXTRA_FILE_PATH, event.file.absolutePath)
                         putExtra(LocalPlayerActivity.EXTRA_TITLE, event.title)
@@ -107,6 +109,8 @@ fun ExternalMediaBrowserScreen(
                     context.startActivity(intent)
                 }
                 is ExternalMediaEvent.PlayRemoteStream -> {
+                    com.martinrevert.latorrentola.service.TorrentDownloadService.pauseActiveTransfers(context)
+                    com.martinrevert.latorrentola.service.PlaybackService.stopPlayback(context)
                     val intent = Intent(context, LocalPlayerActivity::class.java).apply {
                         putExtra(LocalPlayerActivity.EXTRA_STREAM_URL, event.streamUrl)
                         putExtra(LocalPlayerActivity.EXTRA_CAST_URL, event.castUrl)

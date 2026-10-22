@@ -1,16 +1,11 @@
 package com.martinrevert.latorrentola.service
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
-import androidx.core.app.NotificationCompat
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.network.UserLibraryRepository
@@ -28,6 +23,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -51,8 +49,20 @@ import org.libtorrent4j.alerts.Alert
 import org.libtorrent4j.alerts.PieceFinishedAlert
 import org.libtorrent4j.alerts.TorrentFinishedAlert
 
+/** Real-time buffer and download state emitted to in-app visual progress indicators. */
+data class TorrentBufferState(
+    val infoHash: String,
+    val title: String,
+    val state: String,
+    val readyProgress: Float,
+    val totalProgress: Float,
+    val downloadSpeedBytes: Long,
+    val numSeeds: Int,
+    val numPeers: Int
+)
+
 /**
- * Downloads torrents in a foreground service and only serves byte ranges covered by verified
+ * Downloads torrents in a background service and only serves byte ranges covered by verified
  * libtorrent pieces; app-managed completed files are retained until the user deletes them.
  */
 @AndroidEntryPoint
@@ -150,10 +160,9 @@ class TorrentDownloadService : Service() {
         wifiLock = null
     }
 
-    /** Initializes the notification channel required for foreground transfers. */
+    /** Initializes locks and background workers. */
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
         acquireLocks()
         serviceScope.launch {
             torrentDownloadDao.getRecoverable().forEach { stored ->
@@ -182,6 +191,12 @@ class TorrentDownloadService : Service() {
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         latestStartId = startId
+        if (intent?.action == ACTION_PAUSE_ALL) {
+            serviceScope.launch {
+                preemptActiveTransfersAndPlayback(null, null)
+            }
+            return START_NOT_STICKY
+        }
         if (intent?.action == ACTION_PLAY_STREAM) {
             val infoHash = intent.getStringExtra(EXTRA_INFO_HASH).orEmpty()
             if (infoHash.isBlank()) {
@@ -189,21 +204,13 @@ class TorrentDownloadService : Service() {
                 return START_NOT_STICKY
             }
             val readyIntent = readyPlayerIntents[infoHash]
-            val server = streamServers[infoHash]
-            if (readyIntent != null && server != null) {
-                startForegroundForPlayback(
-                    buildReadyNotification(
-                        readyIntent.getStringExtra(LocalPlayerActivity.EXTRA_TITLE).orEmpty(),
-                        readyIntent,
-                        server.listeningPort
-                    )
-                )
-            } else {
-                startForegroundForPlayback(
-                    buildProgressNotification(getString(R.string.torrent_download_title), 0)
-                )
+            if (readyIntent != null) {
+                intent.extras?.let { readyIntent.putExtras(it) }
             }
-            serviceScope.launch { openReadyPlayer(infoHash) }
+            serviceScope.launch {
+                preemptActiveTransfersAndPlayback(infoHash, null)
+                openReadyPlayer(infoHash)
+            }
             return START_STICKY
         }
         if (intent?.action == ACTION_STOP_STREAM) {
@@ -211,7 +218,6 @@ class TorrentDownloadService : Service() {
             streamServers.remove(infoHash)?.stop()
             readyPlayerIntents.remove(infoHash)
             if (!workerStarted && streamServers.isEmpty()) {
-                stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf(startId)
             }
             return START_NOT_STICKY
@@ -248,7 +254,6 @@ class TorrentDownloadService : Service() {
                         if (!isActive) {
                             withContext(Dispatchers.Main) {
                                 if (!workerStarted && streamServers.isEmpty()) {
-                                    stopForeground(STOP_FOREGROUND_REMOVE)
                                     stopSelf(startId)
                                 }
                             }
@@ -257,6 +262,7 @@ class TorrentDownloadService : Service() {
                         pausedInfoHash = null
                         updateDownloadState(requestedHash, STATE_DOWNLOADING)
                     } else {
+                        preemptActiveTransfersAndPlayback(requestedHash, stored.title)
                         val resumed = stored.copy(
                             state = STATE_QUEUED,
                             updatedAtMillis = System.currentTimeMillis()
@@ -266,12 +272,16 @@ class TorrentDownloadService : Service() {
                             if (activeInfoHash != requestedHash &&
                                 downloadQueue.none { it.infoHash == requestedHash }
                             ) {
-                                downloadQueue.addLast(
+                                downloadQueue.addFirst(
                                     DownloadRequest(
                                         resumed.infoHash,
                                         resumed.magnetUri,
                                         resumed.title,
-                                        resumed.castWhenReady
+                                        resumed.castWhenReady,
+                                        seriesId = resumed.seriesId ?: 0,
+                                        seasonNumber = resumed.seasonNumber ?: 0,
+                                        episodeNumber = resumed.episodeNumber ?: 0,
+                                        movieId = resumed.movieId ?: 0
                                     )
                                 )
                             }
@@ -296,7 +306,18 @@ class TorrentDownloadService : Service() {
                 serviceScope.launch {
                     updateDownloadState(activeHash, STATE_PAUSED)
                     val activeTitle = activeRequest?.title ?: getString(R.string.torrent_download_title)
-                    updateNotification(buildFailedNotification(activeTitle))
+                    updateBufferState(
+                        TorrentBufferState(
+                            infoHash = activeHash,
+                            title = activeTitle,
+                            state = STATE_PAUSED,
+                            readyProgress = 0f,
+                            totalProgress = 0f,
+                            downloadSpeedBytes = 0L,
+                            numSeeds = 0,
+                            numPeers = 0
+                        )
+                    )
                 }
             }
             return START_STICKY
@@ -329,7 +350,6 @@ class TorrentDownloadService : Service() {
                         torrentDownloadDao.delete(requestedHash)
                         if (!workerStarted && streamServers.isEmpty()) {
                             withContext(Dispatchers.Main.immediate) {
-                                stopForeground(STOP_FOREGROUND_REMOVE)
                                 stopSelf(startId)
                             }
                         }
@@ -377,7 +397,18 @@ class TorrentDownloadService : Service() {
         }
 
         openWhenReadyHashes.add(infoHash)
-        startForegroundForDownload(buildProgressNotification(title, 0))
+        updateBufferState(
+            TorrentBufferState(
+                infoHash = infoHash,
+                title = title,
+                state = STATE_BUFFERING,
+                readyProgress = 0.05f,
+                totalProgress = 0f,
+                downloadSpeedBytes = 0L,
+                numSeeds = 0,
+                numPeers = 0
+            )
+        )
         serviceScope.launch {
             val castWhenReady = intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false)
             val existingIntent = readyPlayerIntents[infoHash]
@@ -393,6 +424,7 @@ class TorrentDownloadService : Service() {
                 activeRequest?.castWhenReady = castWhenReady
                 return@launch
             }
+            preemptActiveTransfersAndPlayback(infoHash, title)
             val existing = torrentDownloadDao.get(infoHash)
             val completedFile = existing
                 ?.takeIf { it.state == STATE_COMPLETED }
@@ -422,6 +454,18 @@ class TorrentDownloadService : Service() {
 
             if (completedFile != null) {
                 openWhenReadyHashes.remove(infoHash)
+                updateBufferState(
+                    TorrentBufferState(
+                        infoHash = infoHash,
+                        title = title,
+                        state = STATE_READY,
+                        readyProgress = 1.0f,
+                        totalProgress = 1.0f,
+                        downloadSpeedBytes = 0L,
+                        numSeeds = 0,
+                        numPeers = 0
+                    )
+                )
                 val castWhenReady = intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false)
                 startCompletedPlayback(infoHash, title, completedFile, castWhenReady, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId)
                 return@launch
@@ -445,7 +489,18 @@ class TorrentDownloadService : Service() {
                         movieId = movieId
                     )
                 )
-                stopForeground(STOP_FOREGROUND_REMOVE)
+                updateBufferState(
+                    TorrentBufferState(
+                        infoHash = infoHash,
+                        title = title,
+                        state = STATE_FAILED,
+                        readyProgress = 0f,
+                        totalProgress = 0f,
+                        downloadSpeedBytes = 0L,
+                        numSeeds = 0,
+                        numPeers = 0
+                    )
+                )
                 return@launch
             }
             torrentDownloadDao.upsert(
@@ -466,7 +521,7 @@ class TorrentDownloadService : Service() {
             )
             synchronized(queueLock) {
                 if (infoHash != activeInfoHash && downloadQueue.none { it.infoHash == infoHash }) {
-                    downloadQueue.addLast(
+                    downloadQueue.addFirst(
                         DownloadRequest(
                             infoHash = infoHash,
                             magnetUri = magnetUri,
@@ -486,6 +541,49 @@ class TorrentDownloadService : Service() {
             startQueueWorker(title)
         }
         return START_REDELIVER_INTENT
+    }
+
+    /**
+     * Stops active media playback and pauses running or queued torrent transfers to give way to a new transfer.
+     *
+     * @param newInfoHash Info hash of the incoming transfer, or null if all transfers should pause.
+     * @param newTitle Title of the incoming transfer.
+     */
+    private suspend fun preemptActiveTransfersAndPlayback(newInfoHash: String?, newTitle: String?) {
+        try {
+            PlaybackService.stopPlayback(this@TorrentDownloadService, exceptInfoHash = newInfoHash)
+            LocalPlayerActivity.finishBackgroundPlayer(exceptInfoHash = newInfoHash)
+        } catch (e: Exception) {
+            Log.w(TAG, "Error stopping active playback during preemption", e)
+        }
+
+        val oldActiveHash = synchronized(queueLock) { activeInfoHash }
+        if (oldActiveHash != null && oldActiveHash != newInfoHash) {
+            Log.i(TAG, "Preempting active transfer $oldActiveHash for new transfer $newInfoHash")
+            pausedInfoHash = oldActiveHash
+            synchronized(sessionLock) {
+                sessionManager
+                    ?.find(Sha1Hash.parseHex(oldActiveHash))
+                    ?.takeIf { it.isValid }
+                    ?.pause()
+            }
+            updateDownloadState(oldActiveHash, STATE_PAUSED)
+            streamServers.remove(oldActiveHash)?.stop()
+            readyPlayerIntents.remove(oldActiveHash)
+            openWhenReadyHashes.remove(oldActiveHash)
+        }
+
+        val queuedToPause = synchronized(queueLock) {
+            val toRemove = downloadQueue.filter { it.infoHash != newInfoHash }
+            downloadQueue.removeAll { it.infoHash != newInfoHash }
+            toRemove
+        }
+        for (pending in queuedToPause) {
+            updateDownloadState(pending.infoHash, STATE_PAUSED)
+            streamServers.remove(pending.infoHash)?.stop()
+            readyPlayerIntents.remove(pending.infoHash)
+            openWhenReadyHashes.remove(pending.infoHash)
+        }
     }
 
     /**
@@ -546,7 +644,6 @@ class TorrentDownloadService : Service() {
         readyPlayerIntents[infoHash] = playerIntent
 
         withContext(Dispatchers.Main) {
-            startForegroundForPlayback(buildReadyNotification(title, playerIntent, port))
             startActivity(playerIntent)
         }
     }
@@ -560,11 +657,7 @@ class TorrentDownloadService : Service() {
         val readyIntent = readyPlayerIntents[infoHash]
         val server = streamServers[infoHash]
         if (readyIntent != null && server != null) {
-            val title = readyIntent.getStringExtra(LocalPlayerActivity.EXTRA_TITLE).orEmpty()
             withContext(Dispatchers.Main.immediate) {
-                startForegroundForPlayback(
-                    buildReadyNotification(title, readyIntent, server.listeningPort)
-                )
                 startActivity(Intent(readyIntent))
             }
             return
@@ -640,16 +733,15 @@ class TorrentDownloadService : Service() {
     }
 
     /**
-     * Starts queue processing once and presents the required foreground notification.
+     * Starts queue processing once when tasks are waiting.
      *
-     * @param title Title shown while the transfer queue is active.
+     * @param title Title of the transfer to process.
      */
     private suspend fun startQueueWorker(title: String) {
         val shouldStart = withContext(Dispatchers.Main.immediate) {
             synchronized(queueLock) {
                 if (!workerStarted && downloadQueue.isNotEmpty()) {
                     workerStarted = true
-                    startForegroundForDownload(buildProgressNotification(title, 0))
                     true
                 } else {
                     false
@@ -673,7 +765,6 @@ class TorrentDownloadService : Service() {
                 }
             } ?: break
 
-            updateNotification(buildProgressNotification(request.title, 0))
             try {
                 downloadAndAwaitVerification(request)
             } catch (e: CancellationException) {
@@ -684,27 +775,63 @@ class TorrentDownloadService : Service() {
                 readyPlayerIntents.remove(request.infoHash)
                 openWhenReadyHashes.remove(request.infoHash)
                 updateDownloadState(request.infoHash, STATE_FAILED)
-                updateNotification(buildFailedNotification(request.title))
+                updateBufferState(
+                    TorrentBufferState(
+                        infoHash = request.infoHash,
+                        title = request.title,
+                        state = STATE_FAILED,
+                        readyProgress = 0f,
+                        totalProgress = 0f,
+                        downloadSpeedBytes = 0L,
+                        numSeeds = 0,
+                        numPeers = 0
+                    )
+                )
             } catch (e: IllegalStateException) {
                 Log.e(TAG, "Torrent download could not be completed", e)
                 streamServers.remove(request.infoHash)?.stop()
                 readyPlayerIntents.remove(request.infoHash)
                 openWhenReadyHashes.remove(request.infoHash)
                 updateDownloadState(request.infoHash, STATE_FAILED)
-                updateNotification(buildFailedNotification(request.title))
+                updateBufferState(
+                    TorrentBufferState(
+                        infoHash = request.infoHash,
+                        title = request.title,
+                        state = STATE_FAILED,
+                        readyProgress = 0f,
+                        totalProgress = 0f,
+                        downloadSpeedBytes = 0L,
+                        numSeeds = 0,
+                        numPeers = 0
+                    )
+                )
             } catch (e: SecurityException) {
                 Log.e(TAG, "Torrent download was blocked by the platform", e)
                 streamServers.remove(request.infoHash)?.stop()
                 readyPlayerIntents.remove(request.infoHash)
                 openWhenReadyHashes.remove(request.infoHash)
                 updateDownloadState(request.infoHash, STATE_FAILED)
-                updateNotification(buildFailedNotification(request.title))
+                updateBufferState(
+                    TorrentBufferState(
+                        infoHash = request.infoHash,
+                        title = request.title,
+                        state = STATE_FAILED,
+                        readyProgress = 0f,
+                        totalProgress = 0f,
+                        downloadSpeedBytes = 0L,
+                        numSeeds = 0,
+                        numPeers = 0
+                    )
+                )
             } finally {
                 stopSessionManager()
                 if (deletedActiveHashes.remove(request.infoHash)) {
                     TorrentStorageResolver.findTorrentDirectory(this@TorrentDownloadService, request.infoHash)?.deleteRecursively()
                     File(filesDir, "$TORRENT_DIRECTORY/${request.infoHash}").deleteRecursively()
                     torrentDownloadDao.delete(request.infoHash)
+                }
+                if (activeInfoHash == request.infoHash) {
+                    updateBufferState(null)
                 }
                 activeInfoHash = null
                 activeRequest = null
@@ -721,21 +848,7 @@ class TorrentDownloadService : Service() {
                 } else {
                     workerStarted = false
                     if (streamServers.isEmpty()) {
-                        stopForeground(STOP_FOREGROUND_REMOVE)
                         stopSelfResult(latestStartId)
-                    } else {
-                        readyPlayerIntents.entries.firstOrNull { streamServers.containsKey(it.key) }
-                            ?.let { (infoHash, playerIntent) ->
-                                val port = streamServers[infoHash]?.listeningPort ?: return@let
-                                startForegroundForPlayback(
-                                    buildReadyNotification(
-                                        playerIntent.getStringExtra(LocalPlayerActivity.EXTRA_TITLE)
-                                            .orEmpty(),
-                                        playerIntent,
-                                        port
-                                    )
-                                )
-                            }
                     }
                 }
             }
@@ -802,6 +915,10 @@ class TorrentDownloadService : Service() {
         try {
             while (true) {
                 if (request.infoHash in deletedActiveHashes) return
+                if (pausedInfoHash == infoHash) {
+                    Log.i(TAG, "Transfer $infoHash is paused/preempted, exiting verification loop")
+                    return
+                }
                 val targetWasMissing = mediaTarget == null
                 val handle = synchronized(sessionLock) {
                     if (sessionManager !== manager) {
@@ -913,7 +1030,7 @@ class TorrentDownloadService : Service() {
                         if (sessionManager === manager && handle.isValid) handle.status() else null
                     }
                     if (status == null) {
-                        delay(1.seconds)
+                        delay(200L)
                         continue
                     }
                     val progress = (status.progress() * 100).toInt().coerceIn(0, 100)
@@ -935,13 +1052,6 @@ class TorrentDownloadService : Service() {
                         lastReportedState = currentState
                         lastReportedProgress = progress
                         lastDbUpdateTime = now
-                        if (readyIntent == null) {
-                            updateNotification(buildProgressNotification(request.title, progress))
-                        } else {
-                            updateNotification(
-                                buildReadyNotification(request.title, readyIntent, readyServerPort)
-                            )
-                        }
                         updateDownloadRecord(
                             request,
                             currentState,
@@ -971,6 +1081,74 @@ class TorrentDownloadService : Service() {
                             }
                         }
                     }
+
+                    val totalProgress = status.progress().coerceIn(0f, 1f)
+                    val downloadSpeed = status.downloadRate().toLong()
+
+                    val computedReadyProgress = if (readyIntent != null || readyNotified) {
+                        1.0f
+                    } else if (target != null && tracker != null) {
+                        val startupEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES - 1)
+                        val headPieces = ((startupEnd - target.fileOffset) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
+                        val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
+                            target.file.extension.equals("webm", ignoreCase = true) ||
+                            target.file.extension.equals("mp4", ignoreCase = true)
+                        val tailBytes = minOf(target.length, 2L * 1024L * 1024L)
+                        val tailPieceStart = if (isIndexedContainer) {
+                            ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
+                        } else {
+                            target.lastPiece + 1
+                        }
+                        val resumePiece = piecePlanner?.calculateResumePiece(request.resumePositionMs, request.durationMs) ?: target.firstPiece
+                        val resumePiecesEnd = if (resumePiece > target.firstPiece) minOf(resumePiece + 3, target.lastPiece + 1) else resumePiece
+
+                        var totalRequiredPieces = 0
+                        var verifiedRequiredPieces = 0
+
+                        for (p in target.firstPiece..headPieces) {
+                            totalRequiredPieces++
+                            if (tracker.isPieceVerified(p) || synchronized(sessionLock) { sessionManager === manager && handle.isValid && handle.havePiece(p) }) {
+                                verifiedRequiredPieces++
+                            }
+                        }
+                        if (tailPieceStart <= target.lastPiece) {
+                            for (p in tailPieceStart..target.lastPiece) {
+                                totalRequiredPieces++
+                                if (tracker.isPieceVerified(p) || synchronized(sessionLock) { sessionManager === manager && handle.isValid && handle.havePiece(p) }) {
+                                    verifiedRequiredPieces++
+                                }
+                            }
+                        }
+                        if (resumePiecesEnd > resumePiece) {
+                            for (p in resumePiece until resumePiecesEnd) {
+                                totalRequiredPieces++
+                                if (tracker.isPieceVerified(p) || synchronized(sessionLock) { sessionManager === manager && handle.isValid && handle.havePiece(p) }) {
+                                    verifiedRequiredPieces++
+                                }
+                            }
+                        }
+
+                        if (totalRequiredPieces > 0) {
+                            0.15f + 0.85f * (verifiedRequiredPieces.toFloat() / totalRequiredPieces.toFloat()).coerceIn(0f, 1f)
+                        } else {
+                            0.15f
+                        }
+                    } else {
+                        0.05f
+                    }
+
+                    updateBufferState(
+                        TorrentBufferState(
+                            infoHash = infoHash,
+                            title = request.title,
+                            state = currentState,
+                            readyProgress = computedReadyProgress.coerceIn(0f, 1f),
+                            totalProgress = totalProgress,
+                            downloadSpeedBytes = downloadSpeed,
+                            numSeeds = numSeeds,
+                            numPeers = numPeers
+                        )
+                    )
 
                     val isReady = !readyNotified && target != null && tracker != null && run {
                         val startupEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES - 1)
@@ -1088,7 +1266,7 @@ class TorrentDownloadService : Service() {
                         streamServers[infoHash] = server
 
 
-                        val playerIntent = Intent(this, LocalPlayerActivity::class.java)
+                        val playerIntent = Intent(this@TorrentDownloadService, LocalPlayerActivity::class.java)
                             .putExtra(LocalPlayerActivity.EXTRA_STREAM_URL, server.localUrl())
                             .putExtra(LocalPlayerActivity.EXTRA_CAST_URL, castUrl)
                             .putExtra(LocalPlayerActivity.EXTRA_INFO_HASH, infoHash)
@@ -1110,11 +1288,18 @@ class TorrentDownloadService : Service() {
                         readyPlayerIntent = playerIntent
                         readyPlayerIntents[infoHash] = playerIntent
                         readyServerPort = port
-                        withContext(Dispatchers.Main.immediate) {
-                            startForegroundForPlayback(
-                                buildReadyNotification(request.title, playerIntent, port)
+                        updateBufferState(
+                            TorrentBufferState(
+                                infoHash = infoHash,
+                                title = request.title,
+                                state = STATE_READY,
+                                readyProgress = 1.0f,
+                                totalProgress = totalProgress,
+                                downloadSpeedBytes = downloadSpeed,
+                                numSeeds = numSeeds,
+                                numPeers = numPeers
                             )
-                        }
+                        )
                         updateDownloadRecord(request, STATE_READY, progress, target.file.absolutePath, numSeeds, numPeers)
                         if (openWhenReadyHashes.remove(infoHash)) {
                             withContext(Dispatchers.Main) { startActivity(playerIntent) }
@@ -1128,6 +1313,18 @@ class TorrentDownloadService : Service() {
                         completed.set(true)
                         pieceTracker?.setAllVerified()
                         updateDownloadRecord(request, STATE_COMPLETED, 100, playableFile.absolutePath, 0, 0)
+                        updateBufferState(
+                            TorrentBufferState(
+                                infoHash = infoHash,
+                                title = request.title,
+                                state = STATE_COMPLETED,
+                                readyProgress = 1.0f,
+                                totalProgress = 1.0f,
+                                downloadSpeedBytes = 0L,
+                                numSeeds = 0,
+                                numPeers = 0
+                            )
+                        )
 
                         if (playableFile.extension.equals("mkv", ignoreCase = true)) {
                             val mp4File = File(playableFile.parentFile, "${playableFile.nameWithoutExtension}.mp4")
@@ -1142,22 +1339,23 @@ class TorrentDownloadService : Service() {
                         // ZERO SEEDING MANDATE: completely terminate native torrent session
                         manager.removeListener(alertListener)
                         stopSessionManager()
-
-                        val playerIntent = readyPlayerIntent
-                        if (playerIntent != null) {
-                            updateNotification(
-                                buildReadyNotification(request.title, playerIntent, readyServerPort)
-                            )
-                        } else {
-                            updateNotification(buildCompletedNotification(request.title, playableFile))
-                        }
                         return
                     }
                     if (pausedInfoHash == infoHash) {
                         updateDownloadRecord(request, STATE_PAUSED, progress, null, numSeeds, numPeers)
+                        return
                     }
                 }
-                delay(1.seconds)
+                val pollDelay = if (!readyNotified) 200L else 1000L
+                val step = 100L
+                var elapsed = 0L
+                while (elapsed < pollDelay) {
+                    if (pausedInfoHash == infoHash || request.infoHash in deletedActiveHashes) {
+                        return
+                    }
+                    delay(step)
+                    elapsed += step
+                }
             }
         } finally {
             try { manager.removeListener(alertListener) } catch (_: Exception) {}
@@ -1170,36 +1368,7 @@ class TorrentDownloadService : Service() {
      * @param magnetUri Magnet URI to inspect.
      * @return Lowercase hexadecimal BTIH or `null` when the hash is unsupported.
      */
-    private fun parseHexInfoHash(magnetUri: String): String? {
-        val rawHash = Regex(
-            """xt=urn:btih:([a-fA-F0-9]{40}|[A-Z2-7]{32})""",
-            RegexOption.IGNORE_CASE
-        )
-            .find(magnetUri)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?: return null
-        if (rawHash.length == 40) return rawHash.lowercase(Locale.ROOT)
-
-        val decoded = ByteArray(20)
-        var bitBuffer = 0
-        var bitCount = 0
-        var outputIndex = 0
-        for (character in rawHash.uppercase(Locale.ROOT)) {
-            val value = BASE32_ALPHABET.indexOf(character)
-            if (value < 0) return null
-            bitBuffer = (bitBuffer shl 5) or value
-            bitCount += 5
-            if (bitCount >= 8) {
-                bitCount -= 8
-                if (outputIndex >= decoded.size) return null
-                decoded[outputIndex++] = (bitBuffer shr bitCount).toByte()
-                bitBuffer = bitBuffer and ((1 shl bitCount) - 1)
-            }
-        }
-        if (outputIndex != decoded.size || bitCount != 0) return null
-        return decoded.joinToString("") { "%02x".format(Locale.ROOT, it.toInt() and 0xff) }
-    }
+    private fun parseHexInfoHash(magnetUri: String): String? = Companion.parseHexInfoHash(magnetUri)
 
     /**
      * Selects the supported video file matching the requested episode title from resolved torrent metadata.
@@ -1321,199 +1490,6 @@ class TorrentDownloadService : Service() {
                 file.isFile && file.extension.lowercase(Locale.ROOT) in supportedExtensions
             }
             .maxByOrNull(File::length)
-    }
-
-    /** Creates the channel used by persistent torrent progress notifications. */
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val channel = NotificationChannel(
-            NOTIFICATION_CHANNEL_ID,
-            getString(R.string.torrent_notification_channel),
-            NotificationManager.IMPORTANCE_LOW
-        )
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-    }
-
-    /**
-     * Keeps downloads in the foreground and declares active streaming when a server is also open.
-     *
-     * @param notification Foreground transfer notification.
-     */
-    private fun startForegroundForDownload(notification: Notification) {
-        startForegroundWithType(
-            notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
-            includePlayback = streamServers.isNotEmpty()
-        )
-    }
-
-    /**
-     * Keeps active local or Cast streaming in a media-playback foreground service.
-     *
-     * @param notification Foreground playback notification.
-     */
-    private fun startForegroundForPlayback(notification: Notification) {
-        val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK or
-            (if (workerStarted) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0)
-        startForegroundWithType(notification, type, includePlayback = true)
-    }
-
-    /**
-     * Applies the foreground service types supported by the current Android version.
-     *
-     * @param notification Current foreground notification.
-     * @param type Declared foreground service types required for the active work.
-     * @param includePlayback Whether an HTTP stream is being served.
-     */
-    private fun startForegroundWithType(
-        notification: Notification,
-        type: Int,
-        includePlayback: Boolean
-    ) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val isPlayback = includePlayback || streamServers.isNotEmpty()
-            val foregroundType = if (isPlayback) {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-            } else {
-                type
-            }
-
-            try {
-                startForeground(NOTIFICATION_ID, notification, foregroundType)
-            } catch (e: Exception) {
-                Log.w(TAG, "startForeground with type $foregroundType failed, attempting fallback to MEDIA_PLAYBACK", e)
-                try {
-                    startForeground(
-                        NOTIFICATION_ID,
-                        notification,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                    )
-                } catch (e2: Exception) {
-                    Log.e(TAG, "All startForeground attempts failed", e2)
-                }
-            }
-        } else {
-            try {
-                startForeground(NOTIFICATION_ID, notification)
-            } catch (e: Exception) {
-                Log.e(TAG, "startForeground legacy failed", e)
-            }
-        }
-    }
-
-    /**
-     * Builds a progress notification for an in-progress local download.
-     *
-     * @param title Media title shown in the notification.
-     * @param progress Integer progress percentage.
-     * @return Foreground transfer notification.
-     */
-    private fun buildProgressNotification(title: String, progress: Int): Notification =
-        NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle(title)
-            .setContentText(getString(R.string.torrent_download_progress, progress))
-            .setProgress(100, progress, false)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .build()
-
-    /**
-     * Builds a notification that opens the verified completed file when selected.
-     *
-     * @param title Media title shown in the notification.
-     * @param file Completed video file with verified torrent pieces.
-     * @return Notification with a playback content action.
-     */
-    private fun buildCompletedNotification(title: String, file: File): Notification {
-        val hashPattern = Regex("(?i)[a-f0-9]{40}")
-        val extractedHash = hashPattern.find(file.absolutePath)?.value?.lowercase(java.util.Locale.ROOT).orEmpty()
-        var seriesId = 0
-        var seasonNumber = 0
-        var episodeNumber = 0
-        var movieId = 0
-        if (extractedHash.isNotBlank()) {
-            try {
-                val record = runBlocking(Dispatchers.IO) { torrentDownloadDao.get(extractedHash) }
-                if (record != null) {
-                    seriesId = record.seriesId ?: 0
-                    seasonNumber = record.seasonNumber ?: 0
-                    episodeNumber = record.episodeNumber ?: 0
-                    movieId = record.movieId ?: 0
-                }
-            } catch (_: Exception) {}
-        }
-        val playerIntent = Intent(this, LocalPlayerActivity::class.java)
-            .putExtra(LocalPlayerActivity.EXTRA_FILE_PATH, file.absolutePath)
-            .putExtra(LocalPlayerActivity.EXTRA_TITLE, title)
-            .putExtra(LocalPlayerActivity.EXTRA_INFO_HASH, extractedHash)
-            .putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, seriesId)
-            .putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, seasonNumber)
-            .putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, episodeNumber)
-            .putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, movieId)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            file.absolutePath.hashCode(),
-            playerIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle(title)
-            .setContentText(getString(R.string.torrent_download_complete))
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .build()
-    }
-
-    /**
-     * Builds a notification that opens a stream after its startup pieces pass hash checks.
-     *
-     * @param title Media title.
-     * @param playerIntent Intent containing local and LAN playback URLs.
-     * @param port Embedded server port used for playback.
-     * @return Actionable playback-ready notification.
-     */
-    private fun buildReadyNotification(title: String, playerIntent: Intent, port: Int): Notification {
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            title.hashCode(),
-            playerIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle(title)
-            .setContentText(getString(R.string.torrent_playback_ready))
-            .setSubText(":$port")
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .build()
-    }
-
-    /**
-     * Builds an error notification without exposing the magnet or torrent metadata.
-     *
-     * @param title Media title shown in the notification.
-     * @return Non-ongoing failure notification.
-     */
-    private fun buildFailedNotification(title: String): Notification =
-        NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_error)
-            .setContentTitle(title)
-            .setContentText(getString(R.string.torrent_download_failed))
-            .setAutoCancel(true)
-            .build()
-
-    /**
-     * Replaces the foreground notification with [notification].
-     *
-     * @param notification Updated progress, completion, or failure notification.
-     */
-    private fun updateNotification(notification: Notification) {
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification)
     }
 
     /**
@@ -1666,6 +1642,19 @@ class TorrentDownloadService : Service() {
         const val ACTION_RESUME = "com.martinrevert.latorrentola.action.RESUME_TORRENT"
         /** Open a locally downloaded torrent once its startup buffer is ready. */
         const val ACTION_PLAY_STREAM = "com.martinrevert.latorrentola.action.PLAY_TORRENT_STREAM"
+        /** Pause all active and queued transfers. */
+        const val ACTION_PAUSE_ALL = "com.martinrevert.latorrentola.action.PAUSE_ALL"
+
+        fun pauseActiveTransfers(context: Context) {
+            val intent = Intent(context, TorrentDownloadService::class.java).apply {
+                action = ACTION_PAUSE_ALL
+            }
+            try {
+                context.startService(intent)
+            } catch (e: Exception) {
+                Log.w("TorrentDownloadService", "Failed to send PAUSE_ALL to TorrentDownloadService", e)
+            }
+        }
         /** Remove a local transfer command. */
         const val ACTION_DELETE = "com.martinrevert.latorrentola.action.DELETE_TORRENT"
         /** Storage volume unmounted or ejected while transfers may be active. */
@@ -1694,10 +1683,6 @@ class TorrentDownloadService : Service() {
         const val ACTION_STOP_STREAM = "com.martinrevert.latorrentola.action.STOP_STREAM"
         /** Private application files subdirectory for completed and partial transfers. */
         const val TORRENT_DIRECTORY = "torrent_downloads"
-        /** Notification channel identifier. */
-        const val NOTIFICATION_CHANNEL_ID = "torrent_downloads"
-        /** Foreground progress notification identifier. */
-        const val NOTIFICATION_ID = 2401
         /** RFC 4648 alphabet used by magnet BTIH Base32 hashes. */
         const val BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
         /** Log tag used for native torrent failures. */
@@ -1718,5 +1703,49 @@ class TorrentDownloadService : Service() {
         const val STATE_FAILED = "FAILED"
         /** Minimum verified startup buffer before playback may be offered (5 MB). */
         const val STARTUP_BUFFER_BYTES = 5L * 1024L * 1024L
+
+        private val _activeBufferState = MutableStateFlow<TorrentBufferState?>(null)
+        val activeBufferState: StateFlow<TorrentBufferState?> = _activeBufferState.asStateFlow()
+
+        fun updateBufferState(state: TorrentBufferState?) {
+            _activeBufferState.value = state
+        }
+
+        /**
+         * Converts a hexadecimal or Base32 BTIH from a magnet link to normalized hexadecimal.
+         *
+         * @param magnetUri Magnet URI to inspect.
+         * @return Lowercase hexadecimal BTIH or `null` when the hash is unsupported.
+         */
+        fun parseHexInfoHash(magnetUri: String): String? {
+            val rawHash = Regex(
+                """xt=urn:btih:([a-fA-F0-9]{40}|[A-Z2-7]{32})""",
+                RegexOption.IGNORE_CASE
+            )
+                .find(magnetUri)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?: return null
+            if (rawHash.length == 40) return rawHash.lowercase(Locale.ROOT)
+
+            val decoded = ByteArray(20)
+            var bitBuffer = 0
+            var bitCount = 0
+            var outputIndex = 0
+            for (character in rawHash.uppercase(Locale.ROOT)) {
+                val value = BASE32_ALPHABET.indexOf(character)
+                if (value < 0) return null
+                bitBuffer = (bitBuffer shl 5) or value
+                bitCount += 5
+                while (bitCount >= 8) {
+                    bitCount -= 8
+                    if (outputIndex >= decoded.size) return null
+                    decoded[outputIndex++] = (bitBuffer shr bitCount).toByte()
+                    bitBuffer = bitBuffer and ((1 shl bitCount) - 1)
+                }
+            }
+            if (outputIndex != decoded.size || bitCount != 0) return null
+            return decoded.joinToString("") { "%02x".format(Locale.ROOT, it.toInt() and 0xff) }
+        }
     }
 }

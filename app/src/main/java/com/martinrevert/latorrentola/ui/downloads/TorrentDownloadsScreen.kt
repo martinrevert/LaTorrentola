@@ -341,12 +341,12 @@ fun TorrentDownloadsScreen(
                                     if (download.episodeNumber != null) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, download.episodeNumber)
                                     if (download.movieId != null) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, download.movieId)
 
-                                    if (download.state != TorrentDownloadService.STATE_READY) {
+                                    putExtra(TorrentDownloadService.EXTRA_TITLE, download.title)
+                                    if (download.magnetUri.isNotBlank()) {
                                         putExtra(TorrentDownloadService.EXTRA_MAGNET_URI, download.magnetUri)
-                                        putExtra(TorrentDownloadService.EXTRA_TITLE, download.title)
                                     }
                                 }
-                                ContextCompat.startForegroundService(context, intent)
+                                context.startService(intent)
                             }
                         )
                     }

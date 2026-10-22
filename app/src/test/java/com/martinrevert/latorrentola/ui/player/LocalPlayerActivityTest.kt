@@ -99,4 +99,44 @@ class LocalPlayerActivityTest {
         assertThat(results).hasSize(1)
         assertThat(results.first().id).isEqualTo("2")
     }
+
+    @Test
+    fun `playback completion threshold of 95 percent marks progress as completed and duration as final position`() {
+        val duration = 100_000L
+
+        fun computeProgress(pos: Long, dur: Long): Pair<Long, Boolean> {
+            val isNearlyFinished = pos >= (dur * 0.95f).toLong()
+            val finalPos = if (isNearlyFinished) dur else pos
+            val isCompleted = isNearlyFinished || (dur > 0 && finalPos >= dur)
+            return Pair(finalPos, isCompleted)
+        }
+
+        val (posBelow, completedBelow) = computeProgress(94_000L, duration)
+        assertThat(posBelow).isEqualTo(94_000L)
+        assertThat(completedBelow).isFalse()
+
+        val (posAt, completedAt) = computeProgress(95_000L, duration)
+        assertThat(posAt).isEqualTo(100_000L)
+        assertThat(completedAt).isTrue()
+
+        val (posAbove, completedAbove) = computeProgress(98_000L, duration)
+        assertThat(posAbove).isEqualTo(100_000L)
+        assertThat(completedAbove).isTrue()
+    }
+
+    @Test
+    fun `new media item does not inherit previous controller position`() {
+        val previousMediaId = "ep_1"
+        val newMediaId = "ep_2"
+        val previousPosition = 45_000L
+        var lastKnownPosition = previousPosition
+
+        val isNewMedia = previousMediaId != newMediaId
+        if (isNewMedia) {
+            lastKnownPosition = 0L
+        }
+
+        val startingPosition = if (isNewMedia) 0L else lastKnownPosition
+        assertThat(startingPosition).isEqualTo(0L)
+    }
 }

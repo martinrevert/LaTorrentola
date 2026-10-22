@@ -92,6 +92,21 @@ object TorrentLaunchHelper {
         episodeNumber: Int = 0,
         movieId: Int = 0
     ) {
+        val hash = TorrentDownloadService.parseHexInfoHash(magnetUri)
+        if (!hash.isNullOrBlank()) {
+            TorrentDownloadService.updateBufferState(
+                com.martinrevert.latorrentola.service.TorrentBufferState(
+                    infoHash = hash,
+                    title = title,
+                    state = TorrentDownloadService.STATE_BUFFERING,
+                    readyProgress = 0.05f,
+                    totalProgress = 0f,
+                    downloadSpeedBytes = 0L,
+                    numSeeds = 0,
+                    numPeers = 0
+                )
+            )
+        }
         val intent = Intent(context, TorrentDownloadService::class.java).apply {
             action = TorrentDownloadService.ACTION_DOWNLOAD
             putExtra(TorrentDownloadService.EXTRA_MAGNET_URI, magnetUri)
@@ -105,7 +120,7 @@ object TorrentLaunchHelper {
                 putStringArrayListExtra(TorrentDownloadService.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
             }
         }
-        ContextCompat.startForegroundService(context, intent)
+        context.startService(intent)
     }
 
     /**

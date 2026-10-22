@@ -13,7 +13,16 @@
 ---
 
 ## 🛠️ 2. AGENT ENVIRONMENT & TOOLING
-- **Windows PowerShell Execution**: When using the `run_shell_command` tool in this Windows development environment, **you MUST set `shell="pwsh"`** to use PowerShell Core, or use the exact command `pwsh -Command "..."` if specifying the shell directly. Do not assume bash or standard cmd environments.
+- **Windows PowerShell Execution**:
+  - In Windows environments, commands can be run via PowerShell Core (`pwsh -Command "..."`) or Windows PowerShell 5.1 (`powershell -Command "..."`), depending on what is installed.
+  - Gradle invocation on Windows uses the batch wrapper: `.\gradlew.bat <task>`.
+- **Linux / POSIX Execution Guidelines (for AI Agents)**:
+  - If operating in a Linux / macOS / container environment:
+    - Shell is standard `bash` or `sh`.
+    - DO NOT use `.bat` files (`gradlew.bat` will fail).
+    - Always use the POSIX shell wrapper: `./gradlew <task>`.
+    - Ensure executable permissions if needed: `chmod +x gradlew`.
+    - Use forward slashes `/` for all file and directory paths.
 
 ---
 
@@ -31,7 +40,9 @@
 
 ## 🧪 4. UNIT TESTING & VALIDATION MANDATE (ZERO EXCEPTIONS)
 **RULE**: You MUST write or update Unit Tests concurrently with any functional change.
-1. **No APK Building Required**: AI agents **DO NOT** need to assemble or build release/debug APKs (`assembleRelease`, `assembleDebug`). Running unit tests (`pwsh -Command ".\gradlew.bat testDebugUnitTest"`) is sufficient validation after finishing changes or executing a plan.
+1. **No APK Building Required**: AI agents **DO NOT** need to assemble or build release/debug APKs (`assembleRelease`, `assembleDebug`). Running unit tests is sufficient validation after finishing changes or executing a plan:
+   - **Windows**: `pwsh -Command ".\gradlew.bat testDebugUnitTest"` or `powershell -Command ".\gradlew.bat testDebugUnitTest"`
+   - **Linux / macOS**: `./gradlew testDebugUnitTest`
 2. **Scope**: Create tests for ViewModels, Repositories, UseCases, and Utility classes. UI tests are required for complex Compose logic.
 3. **Frameworks**: Use JUnit4, MockK, Coroutines `runTest`, and Turbine (for Flows).
 4. **Location**: Place tests in `app/src/test/...` mirroring the package structure of the target class.
@@ -170,6 +181,6 @@ Before marking a task complete, verify:
 4. [ ] Is TypeSafe serialization fully intact (both annotations present)?
 5. [ ] Is TV logic securely sandboxed behind `isTvDevice()`?
 6. [ ] Did I pass `themeMode` from `PreferenceManager` to `TvLaTorrentolaTheme(themeMode = ...)` and `LaTorrentolaTheme(themeMode = ...)` in every Dialog, BottomSheet, and Compose entry point to prevent Dark Mode regressions on Android TV?
-7. [ ] Did I use `pwsh` for any required terminal commands?
+7. [ ] Did I use `pwsh` or `powershell` (on Windows) or `bash` with `./gradlew` (on Linux) for terminal commands?
 8. [ ] Did I run unit tests (`testDebugUnitTest`) as validation instead of assembling release/debug APKs?
 9. [ ] If modifying remote storage/streaming, did I preserve session caching, asynchronous prefetching, and keep hot-path read loops free of Log.d?

@@ -118,17 +118,18 @@ fun NextEpisodeTorrentDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.75f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {}
-                ),
-            contentAlignment = Alignment.Center
-        ) {
+        val themedDialogBody = @Composable {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.8f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {}
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
         val dialogContent: @Composable () -> Unit = {
             Column(
                 modifier = Modifier
@@ -242,11 +243,11 @@ fun NextEpisodeTorrentDialog(
                                             }
                                         )
 
-                                    TorrentOptionItem(
+                                    NextEpisodeTorrentShimmerCard(
                                         torrent = torrent,
-                                        isTv = isTv,
                                         onClick = { onTorrentSelected(torrent) },
-                                        modifier = itemModifier
+                                        modifier = itemModifier,
+                                        themeMode = effectiveThemeMode
                                     )
                                 }
                             }
@@ -285,51 +286,58 @@ fun NextEpisodeTorrentDialog(
             }
         }
 
-        if (isTv) {
-            TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
-                TvSurface(
-                    onClick = {},
-                    shape = ClickableSurfaceDefaults.shape(androidx.tv.material3.MaterialTheme.shapes.extraLarge),
-                    colors = ClickableSurfaceDefaults.colors(
-                        containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
-                        contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
-                        focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
-                        focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface
-                    ),
-                    modifier = Modifier
-                        .padding(24.dp)
-                        .widthIn(min = 520.dp, max = 680.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {}
-                        )
-                ) {
-                    dialogContent()
-                }
-            }
-        } else {
-            LaTorrentolaTheme(themeMode = effectiveThemeMode) {
-                Surface(
-                    modifier = Modifier
-                        .padding(24.dp)
-                        .widthIn(min = 320.dp, max = 560.dp)
-                        .fillMaxWidth(0.92f)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {}
+                if (isTv) {
+                    TvSurface(
+                        onClick = {},
+                        shape = ClickableSurfaceDefaults.shape(androidx.tv.material3.MaterialTheme.shapes.extraLarge),
+                        colors = ClickableSurfaceDefaults.colors(
+                            containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
+                            contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
+                            focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.surface,
+                            focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurface
                         ),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    tonalElevation = 6.dp,
-                    shadowElevation = 8.dp
-                ) {
-                    dialogContent()
+                        modifier = Modifier
+                            .padding(24.dp)
+                            .widthIn(min = 520.dp, max = 680.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {}
+                            )
+                    ) {
+                        dialogContent()
+                    }
+                } else {
+                    Surface(
+                        modifier = Modifier
+                            .padding(24.dp)
+                            .widthIn(min = 320.dp, max = 560.dp)
+                            .fillMaxWidth(0.92f)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {}
+                            ),
+                        shape = MaterialTheme.shapes.extraLarge,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        tonalElevation = 6.dp,
+                        shadowElevation = 8.dp
+                    ) {
+                        dialogContent()
+                    }
                 }
             }
         }
-    }
+
+        if (isTv) {
+            TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
+                themedDialogBody()
+            }
+        } else {
+            LaTorrentolaTheme(themeMode = effectiveThemeMode) {
+                themedDialogBody()
+            }
+        }
     }
 }
 
@@ -343,117 +351,11 @@ private fun TorrentOptionItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val cardContent: @Composable (Color, Color, Color) -> Unit = { textColor, variantColor, primaryColor ->
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = torrent.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = textColor,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (torrent.formattedSize.isNotBlank()) {
-                        Text(
-                            text = torrent.formattedSize,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = variantColor
-                        )
-                    }
-                    Text(
-                        text = stringResource(
-                            R.string.tv_torrent_peers_info,
-                            torrent.seeds,
-                            torrent.peers
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = primaryColor
-                    )
-                }
-            }
-            Icon(
-                imageVector = Icons.Default.Download,
-                contentDescription = stringResource(R.string.tv_download_torrent_desc),
-                tint = primaryColor,
-                modifier = Modifier.size(24.dp)
-            )
-        }
-    }
-
-    if (isTv) {
-        val interactionSource = remember { MutableInteractionSource() }
-        val isFocused by interactionSource.collectIsFocusedAsState()
-
-        val tvColors = ClickableSurfaceDefaults.colors(
-            containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant,
-            focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.primaryContainer,
-            contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-            focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
-        )
-
-        val textColor = if (isFocused) {
-            androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
-        } else {
-            androidx.tv.material3.MaterialTheme.colorScheme.onSurface
-        }
-
-        val variantColor = if (isFocused) {
-            androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-        } else {
-            androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant
-        }
-
-        val primaryColor = if (isFocused) {
-            androidx.tv.material3.MaterialTheme.colorScheme.onPrimaryContainer
-        } else {
-            androidx.tv.material3.MaterialTheme.colorScheme.primary
-        }
-
-        TvSurface(
-            onClick = onClick,
-            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
-            shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
-            colors = tvColors,
-            interactionSource = interactionSource,
-            modifier = modifier.fillMaxWidth()
-        ) {
-            cardContent(textColor, variantColor, primaryColor)
-        }
-    } else {
-        Card(
-            onClick = onClick,
-            modifier = modifier
-                .fillMaxWidth()
-                .focusHighlight(shape = MaterialTheme.shapes.medium),
-            shape = MaterialTheme.shapes.medium,
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                contentColor = MaterialTheme.colorScheme.onSurface
-            )
-        ) {
-            cardContent(
-                MaterialTheme.colorScheme.onSurface,
-                MaterialTheme.colorScheme.onSurfaceVariant,
-                MaterialTheme.colorScheme.primary
-            )
-        }
-    }
+    NextEpisodeTorrentShimmerCard(
+        torrent = torrent,
+        onClick = onClick,
+        modifier = modifier
+    )
 }
 
 /**

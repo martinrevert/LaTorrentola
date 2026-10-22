@@ -129,8 +129,7 @@
 
         <service
             android:name=".service.TorrentDownloadService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync|mediaPlayback" />
+            android:exported="false" />
 
         <activity
             android:name=".ui.player.LocalPlayerActivity"

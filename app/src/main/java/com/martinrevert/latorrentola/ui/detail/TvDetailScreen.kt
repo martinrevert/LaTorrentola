@@ -899,8 +899,8 @@ private fun TvEpisodeCard(
                                 .fillMaxWidth()
                                 .height(4.dp)
                                 .align(Alignment.BottomCenter),
-                            color = Color(0xFFE50914),
-                            trackColor = Color(0x33FFFFFF),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                             strokeCap = StrokeCap.Butt
                         )
                     }
