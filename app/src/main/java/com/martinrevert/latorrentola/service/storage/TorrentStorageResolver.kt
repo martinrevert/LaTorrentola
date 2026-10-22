@@ -6,7 +6,6 @@ import android.os.Environment
 import android.os.StatFs
 import android.os.storage.StorageManager
 import android.util.Log
-import androidx.core.content.ContextCompat
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import java.io.File
 
@@ -111,7 +110,7 @@ object TorrentStorageResolver {
             null
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && storageManager != null) {
+        if (storageManager != null) {
             try {
                 for (volume in storageManager.storageVolumes) {
                     if (volume.isPrimary) continue
@@ -153,9 +152,9 @@ object TorrentStorageResolver {
             }
         }
 
-        // 3. Discover via ContextCompat.getExternalFilesDirs(null)
+        // 3. Discover via context.getExternalFilesDirs(null)
         val externalDirs = try {
-            ContextCompat.getExternalFilesDirs(context, null)
+            context.getExternalFilesDirs(null)
         } catch (_: Throwable) {
             emptyArray()
         }
@@ -184,9 +183,7 @@ object TorrentStorageResolver {
                 true
             }
             val desc = try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && storageManager != null) {
-                    storageManager.getStorageVolume(volumeRoot)?.getDescription(context)
-                } else null
+                storageManager?.getStorageVolume(volumeRoot)?.getDescription(context)
             } catch (_: Throwable) {
                 null
             }
