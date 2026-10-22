@@ -55,6 +55,7 @@
 ### A. Theming & Hardcoded Values
 - **NEVER** use explicit colors (e.g., `Color.Black`, `Color(0xFF...)`).
 - **ALWAYS** extract colors from `MaterialTheme.colorScheme` (Mobile) or `TvMaterialTheme.colorScheme` (TV).
+- **EXCEPCIÓN EXPLÍCITA DE COLOR (BARRAS DE PROGRESO DE HISTORIAL)**: Las barras y líneas de progreso de la historia de reproducción (`watch progress` en pósters de películas, fichas de episodios y miniaturas de catálogo) DEBEN ser rojas (estándar de la industria / rojo streaming: `Color(0xFFE50914)`). Esta es una excepción formal y mandatoria para respetar el estándar visual de plataformas de streaming.
 - **NEVER** hardcode strings. **ALWAYS** use the `UiText` wrapper or `strings.xml`.
 
 ### B. TV & UI Branching and Theme Mode Propagation (STRICT MANDATE)
@@ -99,6 +100,7 @@ When triggering a download/play action, read `TorrentHandlingMode` and execute:
 
 ### Data Sync Flow
 - **Watch History**: Write to Room DAO FIRST (Immediate UI update) -> Sync to Firestore in the background. Room is the Single Source of Truth.
+- **Cast Player History Sync**: Cast Player MUST follow the exact same history saving patterns as ExoPlayer: save every 10 seconds while playing, save immediately on pause, and save immediately upon session disconnect/stop/destroy using the remote position. When handoff back to ExoPlayer occurs, ExoPlayer MUST seek to this synchronized position so watch history is pure, uninterrupted, and all UI progress indicators match reality.
 
 ### 🔖 Manual Watch Progress & Download Marking System (STRICT MANDATE)
 When users trigger manual progress or completion marks via long-press gestures:

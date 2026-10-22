@@ -150,6 +150,7 @@ object TorrentLaunchHelper {
         movieId: Int = 0,
         requiredSizeBytes: Long? = null
     ): TorrentLaunchResult {
+        @Suppress("DEPRECATION")
         if (mode == TorrentHandlingMode.LOCAL_PLAYBACK || mode == TorrentHandlingMode.CHROMECAST) {
             val required = maxOf(MIN_REQUIRED_STORAGE_BYTES, requiredSizeBytes ?: 0L)
             val available = getAvailableStorageBytes(context)
@@ -167,12 +168,9 @@ object TorrentLaunchHelper {
             TorrentHandlingMode.EXTERNAL_CLIENT ->
                 if (openExternal(context, magnetUri)) TorrentLaunchResult.Started
                 else TorrentLaunchResult.NoExternalClient
-            TorrentHandlingMode.LOCAL_PLAYBACK -> {
+            TorrentHandlingMode.LOCAL_PLAYBACK,
+            @Suppress("DEPRECATION") TorrentHandlingMode.CHROMECAST -> {
                 downloadLocally(context, magnetUri, title, false, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId)
-                TorrentLaunchResult.Started
-            }
-            TorrentHandlingMode.CHROMECAST -> {
-                downloadLocally(context, magnetUri, title, true, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId)
                 TorrentLaunchResult.Started
             }
         }

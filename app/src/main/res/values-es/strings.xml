@@ -344,4 +344,19 @@
     <string name="usb_permission_banner_desc">Para explorar todas las carpetas y películas de unidades USB conectadas en Android 11+, concede permiso de acceso a archivos.</string>
     <string name="usb_permission_grant_button">Conceder permiso</string>
     <string name="external_media_refresh_usb">Actualizar unidades</string>
+
+    <!-- Cast BottomSheet & Remote Canvas -->
+    <string name="cast_bottom_sheet_playing_header">Reproduciendo ahora</string>
+    <string name="cast_bottom_sheet_suggestions">Sugerencias</string>
+    <string name="cast_bottom_sheet_other_devices">Otros dispositivos</string>
+    <string name="cast_stop_streaming">Detener transmisión</string>
+    <string name="cast_play_on_phone">Reproducir en este teléfono</string>
+    <string name="cast_searching_devices">Buscando dispositivos…</string>
+    <string name="cast_volume_label">Volumen (%1$d%%)</string>
+    <string name="cast_mute">Silenciar</string>
+    <string name="cast_unmute">Activar sonido</string>
+    <string name="cast_remote_canvas_title">Transmitiendo a %1$s</string>
+    <string name="cast_remote_canvas_subtitle">Usa los controles de la pantalla para gestionar la TV</string>
+    <string name="cast_remote_canvas_play_locally">Ver en este teléfono</string>
+    <string name="cast_connected_status">Conectado</string>
 </resources>

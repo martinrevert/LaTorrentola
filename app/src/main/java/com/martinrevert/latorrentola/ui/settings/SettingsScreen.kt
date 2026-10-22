@@ -640,14 +640,9 @@ private fun TorrentModeSetting(
     onModeSelected: (TorrentHandlingMode) -> Unit,
     isTv: Boolean
 ) {
-    // On TV devices, Chromecast mode is not shown since TV devices use dedicated Cast functionality
-    val options = if (isTv) listOf(
+    val options = listOf(
         Triple(TorrentHandlingMode.EXTERNAL_CLIENT, R.string.torrent_mode_external, R.string.torrent_mode_external_support),
         Triple(TorrentHandlingMode.LOCAL_PLAYBACK, R.string.torrent_mode_local, R.string.torrent_mode_local_support)
-    ) else listOf(
-        Triple(TorrentHandlingMode.EXTERNAL_CLIENT, R.string.torrent_mode_external, R.string.torrent_mode_external_support),
-        Triple(TorrentHandlingMode.LOCAL_PLAYBACK, R.string.torrent_mode_local, R.string.torrent_mode_local_support),
-        Triple(TorrentHandlingMode.CHROMECAST, R.string.torrent_mode_cast, R.string.torrent_mode_cast_support)
     )
 
     Column(

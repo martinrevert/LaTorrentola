@@ -132,6 +132,10 @@ class TvPlayerViewModel @Inject constructor(
         }
     }
 
+    suspend fun getReleasesForEpisode(imdbId: String, seasonNumber: Int, episodeNumber: Int): List<EztvTorrent> {
+        return eztvRepository.getTorrentsForEpisode(imdbId, seasonNumber, episodeNumber)
+    }
+
     suspend fun downloadEpisode(
         context: Context,
         release: EztvTorrent,

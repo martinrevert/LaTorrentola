@@ -46,6 +46,7 @@ class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private var localPlayer: ExoPlayer? = null
     private var remotePlayer: CastPlayer? = null
+    private var lastCastPositionMs: Long = 0L
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
     private var progressReportingJob: Job? = null
@@ -251,14 +252,20 @@ class PlaybackService : MediaSessionService() {
                 }
 
                 override fun onCastSessionUnavailable() {
-                    Log.i(TAG, "Cast session unavailable - restoring local playback on ExoPlayer")
+                    Log.i(TAG, "Cast session unavailable - restoring local playback on ExoPlayer at $lastCastPositionMs ms")
                     serviceScope.launch {
                         delay(200.milliseconds)
                         localPlayer?.let { exo ->
+                            if (lastCastPositionMs > 0L) {
+                                exo.seekTo(lastCastPositionMs)
+                            }
                             if (exo.mediaItemCount > 0 && exo.playbackState == Player.STATE_IDLE) {
                                 exo.prepare()
                                 exo.play()
-                                Log.i(TAG, "ExoPlayer prepared and resumed at position ${exo.currentPosition}ms")
+                                Log.i(TAG, "ExoPlayer prepared and resumed at position ${exo.currentPosition}ms (synced from Cast)")
+                            } else if (exo.mediaItemCount > 0) {
+                                exo.play()
+                                Log.i(TAG, "ExoPlayer resumed at position ${exo.currentPosition}ms (synced from Cast)")
                             }
                         }
                     }
@@ -293,8 +300,24 @@ class PlaybackService : MediaSessionService() {
                                 }
                                 override fun onSessionStarting(session: com.google.android.gms.cast.framework.CastSession) {}
                                 override fun onSessionResuming(session: com.google.android.gms.cast.framework.CastSession, sessionId: String) {}
-                                override fun onSessionEnded(session: com.google.android.gms.cast.framework.CastSession, error: Int) {}
-                                override fun onSessionEnding(session: com.google.android.gms.cast.framework.CastSession) {}
+                                override fun onSessionEnding(session: com.google.android.gms.cast.framework.CastSession) {
+                                    val client = session.remoteMediaClient
+                                    val castPos = client?.approximateStreamPosition ?: remotePlayer?.currentPosition ?: 0L
+                                    val castDur = client?.streamDuration ?: remotePlayer?.duration ?: 0L
+                                    if (castPos > 0L) {
+                                        lastCastPositionMs = castPos
+                                        saveExplicitProgress(castPos, castDur)
+                                    }
+                                }
+                                override fun onSessionEnded(session: com.google.android.gms.cast.framework.CastSession, error: Int) {
+                                    val client = session.remoteMediaClient
+                                    val castPos = client?.approximateStreamPosition ?: remotePlayer?.currentPosition ?: 0L
+                                    val castDur = client?.streamDuration ?: remotePlayer?.duration ?: 0L
+                                    if (castPos > 0L) {
+                                        lastCastPositionMs = castPos
+                                        saveExplicitProgress(castPos, castDur)
+                                    }
+                                }
                                 override fun onSessionStartFailed(session: com.google.android.gms.cast.framework.CastSession, error: Int) {}
                                 override fun onSessionResumeFailed(session: com.google.android.gms.cast.framework.CastSession, error: Int) {}
                                 override fun onSessionSuspended(session: com.google.android.gms.cast.framework.CastSession, reason: Int) {}
@@ -470,6 +493,9 @@ class PlaybackService : MediaSessionService() {
         val pos = p.currentPosition
         val dur = p.duration
         if (dur <= 0L) return
+        if (pos > 0L) {
+            lastCastPositionMs = pos
+        }
 
         // We embed our metadata in the MediaItem's MediaMetadata bundle or ID
         val item = p.currentMediaItem ?: return
@@ -480,10 +506,13 @@ class PlaybackService : MediaSessionService() {
         val extras = item.mediaMetadata.extras
         val isEpisode = extras?.getBoolean(EXTRA_IS_EPISODE, false) ?: false
 
+        val isNearlyFinished = pos >= (dur * 0.95f).toLong()
+        val finalPos = if (isNearlyFinished) dur else pos
+
         val progress = PlaybackProgress(
             mediaId = mediaId,
             title = title,
-            positionMs = pos,
+            positionMs = finalPos,
             durationMs = dur,
             timestamp = System.currentTimeMillis(),
             isEpisode = isEpisode
@@ -494,6 +523,38 @@ class PlaybackService : MediaSessionService() {
                 userLibraryRepository.savePlaybackProgress(progress)
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving playback progress", e)
+            }
+        }
+    }
+
+    private fun saveExplicitProgress(pos: Long, dur: Long) {
+        if (dur <= 0L || pos <= 0L) return
+        val item = remotePlayer?.currentMediaItem ?: localPlayer?.currentMediaItem ?: return
+        val mediaId = item.mediaId
+        if (mediaId.isBlank() || mediaId == MediaItem.DEFAULT_MEDIA_ID) return
+
+        val title = item.mediaMetadata.title?.toString() ?: "Media Item"
+        val extras = item.mediaMetadata.extras
+        val isEpisode = extras?.getBoolean(EXTRA_IS_EPISODE, false) ?: false
+
+        val isNearlyFinished = pos >= (dur * 0.95f).toLong()
+        val finalPos = if (isNearlyFinished) dur else pos
+
+        val progress = PlaybackProgress(
+            mediaId = mediaId,
+            title = title,
+            positionMs = finalPos,
+            durationMs = dur,
+            timestamp = System.currentTimeMillis(),
+            isEpisode = isEpisode
+        )
+
+        serviceScope.launch {
+            try {
+                userLibraryRepository.savePlaybackProgress(progress)
+                Log.i(TAG, "Explicitly saved progress: $finalPos / $dur ms for $mediaId")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error explicitly saving playback progress", e)
             }
         }
     }

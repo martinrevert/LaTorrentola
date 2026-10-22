@@ -396,8 +396,8 @@ private fun EpisodeHeader(
                             .fillMaxWidth()
                             .height(4.dp)
                             .align(Alignment.BottomCenter),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        color = Color(0xFFE50914),
+                        trackColor = Color(0x33FFFFFF),
                         strokeCap = StrokeCap.Butt
                     )
                 }

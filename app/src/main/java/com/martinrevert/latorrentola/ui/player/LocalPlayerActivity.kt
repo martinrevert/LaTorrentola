@@ -67,9 +67,12 @@ import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.StopScreenShare
 import androidx.compose.material.icons.filled.Subtitles
+import com.google.android.gms.cast.CastDevice
 import com.google.android.gms.cast.MediaStatus
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
@@ -80,6 +83,11 @@ import com.martinrevert.latorrentola.ui.components.CastCodecWarningObserver
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import kotlinx.coroutines.Job
 import kotlin.time.Duration.Companion.seconds
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.mediarouter.media.MediaRouter
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -87,6 +95,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -102,6 +111,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -368,6 +378,7 @@ class LocalPlayerActivity : FragmentActivity() {
 
     private var pendingMediaUri: Uri? = null
     private var pendingMediaItem: MediaItem? = null
+    private var posterUrl: String? = null
     private var lastKnownPlaybackPositionMs = 0L
     private var lastStreamRecoveryAttemptMillis = 0L
 
@@ -437,10 +448,24 @@ class LocalPlayerActivity : FragmentActivity() {
                             .fillMaxSize()
                             .resizeWithContentScale(ContentScale.Fit, presentationState.videoSizeDp)
 
-                        PlayerSurface(
-                            player = controller,
-                            modifier = videoModifier
-                        )
+                        val isCasting = deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE
+
+                        if (isCasting) {
+                            RemoteCastCanvas(
+                                mediaTitle = mediaTitle,
+                                posterUrl = posterUrl ?: controller.currentMediaItem?.mediaMetadata?.artworkUri?.toString(),
+                                onDisconnect = {
+                                    val mediaRouter = MediaRouter.getInstance(this@LocalPlayerActivity)
+                                    mediaRouter.selectRoute(mediaRouter.defaultRoute)
+                                },
+                                modifier = videoModifier
+                            )
+                        } else {
+                            PlayerSurface(
+                                player = controller,
+                                modifier = videoModifier
+                            )
+                        }
 
                             var currentCues by remember(controller) { mutableStateOf<List<Cue>>(controller.currentCues.cues) }
                             DisposableEffect(controller) {
@@ -503,6 +528,8 @@ class LocalPlayerActivity : FragmentActivity() {
                             if (showStatsForNerds) {
                                 StatsForNerdsOverlay(
                                     controller = controller,
+                                    torrentInfoHash = torrentInfoHash,
+                                    torrentDownloadDao = torrentDownloadDao,
                                     modifier = Modifier
                                         .padding(16.dp)
                                         .align(Alignment.TopCenter)
@@ -520,7 +547,9 @@ class LocalPlayerActivity : FragmentActivity() {
                         if (showCastBottomSheet) {
                             CastBottomSheet(
                                 onDismissRequest = { showCastBottomSheet = false },
-                                mediaTitle = mediaTitle
+                                mediaTitle = mediaTitle,
+                                posterUrl = posterUrl ?: controller.currentMediaItem?.mediaMetadata?.artworkUri?.toString(),
+                                player = controller
                             )
                         }
 
@@ -759,6 +788,7 @@ class LocalPlayerActivity : FragmentActivity() {
                     mediaUri.toString()
                 )
             }
+            posterUrl = intent.getStringExtra(EXTRA_POSTER_URL)
             currentSeriesId = intent.getIntExtra(EXTRA_SERIES_ID, 0)
             currentSeasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
             currentEpisodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
@@ -884,16 +914,19 @@ class LocalPlayerActivity : FragmentActivity() {
                 ?: intent.getStringExtra(EXTRA_REMOTE_FILE_PATH)?.mediaMimeType()
                 ?: intent.getStringExtra(EXTRA_TITLE)?.mediaMimeType()
 
+            val mediaMetadataBuilder = MediaMetadata.Builder()
+                .setTitle(mediaTitle)
+                .setExtras(itemBundle)
+
+            if (!posterUrl.isNullOrBlank()) {
+                mediaMetadataBuilder.setArtworkUri(Uri.parse(posterUrl))
+            }
+
             pendingMediaItem = MediaItem.Builder()
                 .setMediaId(mediaId)
                 .setUri(mediaUri)
                 .setMimeType(inferredMimeType)
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(mediaTitle)
-                        .setExtras(itemBundle)
-                        .build()
-                )
+                .setMediaMetadata(mediaMetadataBuilder.build())
                 .build()
             currentMediaItem = pendingMediaItem
         }
@@ -1164,24 +1197,104 @@ class LocalPlayerActivity : FragmentActivity() {
         when (autoPlayMode) {
             AutoPlayQualitySelectionMethod.DO_NOTHING -> {}
             AutoPlayQualitySelectionMethod.OFF -> {
-                if (hasNextEpisodeInfo) {
-                    tvPlayerViewModel.fetchReleasesForNextEpisode(
-                        seriesId = nextEpisodeSeriesId,
-                        seasonNumber = nextEpisodeSeasonNumber,
-                        episodeNumber = nextEpisodeEpisodeNumber,
-                        seriesName = nextEpisodeSeriesName,
-                        episodeName = nextEpisodeEpisodeName
-                    )
-                } else {
-                    tvPlayerViewModel.fetchNextEpisodeAndReleases(
-                        seriesId = currentSeriesId,
-                        currentSeasonNumber = currentSeasonNumber,
-                        currentEpisodeNumber = currentEpisodeNumber
-                    )
-                }
+                fetchNextEpisodeData()
                 showNextEpisodeDialog = true
             }
-            else -> {}
+            AutoPlayQualitySelectionMethod.BY_QUALITY,
+            AutoPlayQualitySelectionMethod.BY_SEED_PEERS -> {
+                lifecycleScope.launch {
+                    try {
+                        val nextInfo = if (hasNextEpisodeInfo) {
+                            listOf(
+                                nextEpisodeSeriesId.toString(),
+                                nextEpisodeSeriesName,
+                                nextEpisodeSeasonNumber.toString(),
+                                nextEpisodeEpisodeNumber.toString(),
+                                nextEpisodeEpisodeName
+                            )
+                        } else {
+                            tvPlayerViewModel.getNextEpisodeInfo(
+                                seriesId = currentSeriesId,
+                                seriesName = mediaTitle,
+                                seasonNumber = currentSeasonNumber,
+                                episodeNumber = currentEpisodeNumber
+                            )
+                        }
+
+                        if (nextInfo != null && nextInfo.size >= 5) {
+                            val nextSeriesId = nextInfo[0].toIntOrNull() ?: currentSeriesId
+                            val nextSeriesName = nextInfo[1]
+                            val nextSeason = nextInfo[2].toIntOrNull() ?: currentSeasonNumber
+                            val nextEp = nextInfo[3].toIntOrNull() ?: (currentEpisodeNumber + 1)
+                            val nextEpName = nextInfo[4]
+
+                            val imdbId = tmdbRepository.getTvImdbId(nextSeriesId)
+                            val releases = if (!imdbId.isNullOrEmpty()) {
+                                tvPlayerViewModel.getReleasesForEpisode(imdbId, nextSeason, nextEp)
+                            } else emptyList()
+
+                            if (releases.isNotEmpty()) {
+                                val selectedRelease = if (autoPlayMode == AutoPlayQualitySelectionMethod.BY_QUALITY) {
+                                    releases.maxByOrNull { release ->
+                                        when {
+                                            release.title.contains("2160p", true) || release.title.contains("4k", true) -> 4
+                                            release.title.contains("1080p", true) -> 3
+                                            release.title.contains("720p", true) -> 2
+                                            else -> 1
+                                        }
+                                    } ?: releases.first()
+                                } else {
+                                    releases.maxByOrNull { it.seeds + it.peers } ?: releases.first()
+                                }
+
+                                val result = tvPlayerViewModel.downloadEpisode(
+                                    this@LocalPlayerActivity,
+                                    selectedRelease,
+                                    nextSeriesId,
+                                    nextSeriesName,
+                                    nextSeason,
+                                    nextEp,
+                                    nextEpName
+                                )
+
+                                if (result is TorrentLaunchResult.InsufficientStorage) {
+                                    insufficientStorageData = Pair(result.availableBytes, result.requiredBytes)
+                                } else if (result == TorrentLaunchResult.NoExternalClient || result == TorrentLaunchResult.CastUnavailable) {
+                                    fetchNextEpisodeData()
+                                    showNextEpisodeDialog = true
+                                }
+                            } else {
+                                fetchNextEpisodeData()
+                                showNextEpisodeDialog = true
+                            }
+                        } else {
+                            finish()
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed auto-playing next episode: ${e.message}", e)
+                        fetchNextEpisodeData()
+                        showNextEpisodeDialog = true
+                    }
+                }
+            }
+        }
+    }
+
+    private fun fetchNextEpisodeData() {
+        if (hasNextEpisodeInfo) {
+            tvPlayerViewModel.fetchReleasesForNextEpisode(
+                seriesId = nextEpisodeSeriesId,
+                seasonNumber = nextEpisodeSeasonNumber,
+                episodeNumber = nextEpisodeEpisodeNumber,
+                seriesName = nextEpisodeSeriesName,
+                episodeName = nextEpisodeEpisodeName
+            )
+        } else {
+            tvPlayerViewModel.fetchNextEpisodeAndReleases(
+                seriesId = currentSeriesId,
+                currentSeasonNumber = currentSeasonNumber,
+                currentEpisodeNumber = currentEpisodeNumber
+            )
         }
     }
 
@@ -1857,6 +1970,9 @@ class LocalPlayerActivity : FragmentActivity() {
                 delay(10.seconds)
                 if (player.isPlaying) {
                     saveCurrentProgress(player)
+                    CastContext.getSharedInstance()?.sessionManager?.currentCastSession?.let { castSession ->
+                        saveCastSessionProgress(castSession)
+                    }
                 }
             }
         }
@@ -1874,9 +1990,11 @@ class LocalPlayerActivity : FragmentActivity() {
                         attachRemoteMediaClientCallback(session)
                     }
                     override fun onSessionEnding(session: CastSession) {
+                        saveCastSessionProgress(session)
                         detachRemoteMediaClientCallback(session)
                     }
                     override fun onSessionEnded(session: CastSession, error: Int) {
+                        saveCastSessionProgress(session)
                         detachRemoteMediaClientCallback(session)
                     }
                     override fun onSessionStartFailed(session: CastSession, error: Int) {}
@@ -1900,8 +2018,12 @@ class LocalPlayerActivity : FragmentActivity() {
             val callback = object : RemoteMediaClient.Callback() {
                 override fun onStatusUpdated() {
                     val status = rmc.mediaStatus ?: return
+                    if (status.playerState == MediaStatus.PLAYER_STATE_PAUSED) {
+                        saveCastSessionProgress(session)
+                    }
                     if (status.playerState == MediaStatus.PLAYER_STATE_IDLE &&
                         status.idleReason == MediaStatus.IDLE_REASON_FINISHED) {
+                        saveCastSessionProgress(session)
                         if (!nextEpisodeTriggered) {
                             nextEpisodeTriggered = true
                             lifecycleScope.launch(Dispatchers.Main) {
@@ -1959,6 +2081,65 @@ class LocalPlayerActivity : FragmentActivity() {
                 Log.e(TAG, "Error saving playback progress", e)
             }
         }
+    }
+
+    private fun saveCastSessionProgress(session: CastSession) {
+        val rmc = session.remoteMediaClient ?: return
+        val pos = rmc.approximateStreamPosition
+        val dur = rmc.streamDuration
+        if (dur <= 0L || pos <= 0L) return
+        lastKnownPlaybackPositionMs = pos
+
+        val controller = mediaController ?: return
+        val item = controller.currentMediaItem ?: return
+        val mediaId = item.mediaId
+        if (mediaId.isBlank() || mediaId == MediaItem.DEFAULT_MEDIA_ID) return
+
+        val title = item.mediaMetadata.title?.toString() ?: mediaTitle
+        val isEpisode = currentSeriesId > 0
+
+        val isNearlyFinished = pos >= (dur * 0.95f).toLong()
+        val finalPos = if (isNearlyFinished) dur else pos
+
+        val progress = PlaybackProgress(
+            mediaId = mediaId,
+            title = title.ifBlank { "Media Item" },
+            positionMs = finalPos,
+            durationMs = dur,
+            timestamp = System.currentTimeMillis(),
+            isEpisode = isEpisode
+        )
+
+        lifecycleScope.launch {
+            try {
+                userLibraryRepository.savePlaybackProgress(progress)
+                Log.i(TAG, "Saved Cast progress: $finalPos / $dur ms for $mediaId (completed=${progress.isCompleted})")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving Cast playback progress", e)
+            }
+        }
+    }
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        val controller = mediaController
+        val isCasting = controller?.deviceInfo?.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE
+        if (isCasting && event.action == android.view.KeyEvent.ACTION_DOWN) {
+            val mediaRouter = MediaRouter.getInstance(this)
+            val selectedRoute = mediaRouter.selectedRoute
+            if (!selectedRoute.isDefault && selectedRoute.volumeHandling == MediaRouter.RouteInfo.PLAYBACK_VOLUME_VARIABLE) {
+                when (event.keyCode) {
+                    android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
+                        selectedRoute.requestUpdateVolume(1)
+                        return true
+                    }
+                    android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                        selectedRoute.requestUpdateVolume(-1)
+                        return true
+                    }
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onDestroy() {
@@ -2022,6 +2203,7 @@ class LocalPlayerActivity : FragmentActivity() {
         const val EXTRA_REMOTE_SERVER_ID = "extra_remote_server_id"
         const val EXTRA_REMOTE_FILE_PATH = "extra_remote_file_path"
         const val EXTRA_REMOTE_SERVER_JSON = "extra_remote_server_json"
+        const val EXTRA_POSTER_URL = "extra_poster_url"
         private const val TAG = "LocalPlayerActivity"
 
         fun extractSeasonAndEpisode(vararg candidates: String?): Pair<Int, Int> {
@@ -2298,6 +2480,10 @@ fun PlayerControlsOverlay(
     onShowCast: () -> Unit
 ) {
     var controlsVisible by remember { mutableStateOf(true) }
+    var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var isScrubbing by remember { mutableStateOf(false) }
+    var scrubFraction by remember { mutableFloatStateOf(0f) }
+
     val isTv = LocalContext.current.isTvDevice()
 
     val playPauseFocusRequester = remember { FocusRequester() }
@@ -2310,14 +2496,85 @@ fun PlayerControlsOverlay(
     val audioFocusRequester = remember { FocusRequester() }
     val sliderFocusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(controlsVisible) {
-        if (controlsVisible) {
-            if (isTv) {
-                delay(100.milliseconds)
-                try { playPauseFocusRequester.requestFocus() } catch (_: Exception) {}
+    var isPlaying by remember(controller) { mutableStateOf(controller.isPlaying) }
+    var currentPosition by remember(controller) { mutableLongStateOf(controller.currentPosition) }
+    var duration by remember(controller) { mutableLongStateOf(controller.duration) }
+    var playbackTracks by remember(controller) { mutableStateOf(controller.currentTracks) }
+    var isCasting by remember(controller) {
+        mutableStateOf(controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE)
+    }
+
+    DisposableEffect(controller) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
             }
-            delay(5.seconds)
-            controlsVisible = false
+            override fun onTracksChanged(tracks: Tracks) {
+                playbackTracks = tracks
+            }
+            override fun onDeviceInfoChanged(deviceInfo: DeviceInfo) {
+                isCasting = deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE
+            }
+            override fun onPlaybackStateChanged(state: Int) {
+                duration = controller.duration
+            }
+        }
+        controller.addListener(listener)
+        onDispose { controller.removeListener(listener) }
+    }
+
+    LaunchedEffect(controller, isPlaying) {
+        while (true) {
+            currentPosition = controller.currentPosition
+            duration = controller.duration
+            delay(250.milliseconds)
+        }
+    }
+
+    // Auto-hide timeout resets whenever user interacts; paused while scrubbing
+    LaunchedEffect(controlsVisible, lastInteractionTime, isScrubbing) {
+        if (controlsVisible && !isScrubbing) {
+            delay(6.seconds)
+            if (!isScrubbing) {
+                controlsVisible = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (isTv) {
+            delay(150.milliseconds)
+            try { playPauseFocusRequester.requestFocus() } catch (_: Exception) {}
+        }
+    }
+
+    val gestureModifier = if (isTv) {
+        Modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null
+        ) {
+            controlsVisible = !controlsVisible
+            lastInteractionTime = System.currentTimeMillis()
+        }
+    } else {
+        Modifier.pointerInput(Unit) {
+            detectTapGestures(
+                onDoubleTap = { offset ->
+                    val width = size.width
+                    if (offset.x < width * 0.35f) {
+                        controller.seekBack()
+                    } else if (offset.x > width * 0.65f) {
+                        controller.seekForward()
+                    } else {
+                        controlsVisible = !controlsVisible
+                    }
+                    lastInteractionTime = System.currentTimeMillis()
+                },
+                onTap = {
+                    controlsVisible = !controlsVisible
+                    lastInteractionTime = System.currentTimeMillis()
+                }
+            )
         }
     }
 
@@ -2325,21 +2582,28 @@ fun PlayerControlsOverlay(
         modifier = Modifier
             .fillMaxSize()
             .onPreviewKeyEvent { event ->
-                if (isTv && event.type == KeyEventType.KeyDown) {
-                    val keyCode = event.nativeKeyEvent.keyCode
-                    if (!controlsVisible && (keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
-                                keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP ||
-                                keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN ||
-                                keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT ||
-                                keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT ||
-                                keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
-                                keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER ||
-                                keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
-                                keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY ||
-                                keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PAUSE)) {
-                        controlsVisible = true
-                        try { playPauseFocusRequester.requestFocus() } catch (_: Exception) {}
-                        true
+                if (event.type == KeyEventType.KeyDown) {
+                    lastInteractionTime = System.currentTimeMillis()
+                    if (isTv) {
+                        val keyCode = event.nativeKeyEvent.keyCode
+                        if (!controlsVisible && (
+                            keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                            keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP ||
+                            keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN ||
+                            keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT ||
+                            keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT ||
+                            keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
+                            keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER ||
+                            keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
+                            keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY ||
+                            keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PAUSE
+                        )) {
+                            controlsVisible = true
+                            try { playPauseFocusRequester.requestFocus() } catch (_: Exception) {}
+                            true
+                        } else {
+                            false
+                        }
                     } else {
                         false
                     }
@@ -2347,10 +2611,7 @@ fun PlayerControlsOverlay(
                     false
                 }
             }
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { controlsVisible = !controlsVisible }
+            .then(gestureModifier)
     ) {
         AnimatedVisibility(
             visible = controlsVisible,
@@ -2381,13 +2642,16 @@ fun PlayerControlsOverlay(
                         modifier = Modifier.weight(1f)
                     )
 
-                    val hasSubtitleTracks = controller.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
-                    val hasAudioTracks = controller.currentTracks.groups.any { it.type == C.TRACK_TYPE_AUDIO }
+                    val hasSubtitleTracks = playbackTracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
+                    val hasAudioTracks = playbackTracks.groups.any { it.type == C.TRACK_TYPE_AUDIO }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         // 1. Subtítulos Incrustados
                         ControlButton(
-                            onClick = onShowSubtitles,
+                            onClick = {
+                                lastInteractionTime = System.currentTimeMillis()
+                                onShowSubtitles()
+                            },
                             icon = Icons.Default.Subtitles,
                             contentDescription = "Subtitles",
                             enabled = hasSubtitleTracks,
@@ -2396,21 +2660,30 @@ fun PlayerControlsOverlay(
                         )
                         // 2. OpenSubtitles
                         ControlButton(
-                            onClick = onSearchSubtitles,
+                            onClick = {
+                                lastInteractionTime = System.currentTimeMillis()
+                                onSearchSubtitles()
+                            },
                             icon = Icons.Default.Download,
                             contentDescription = "Search Subtitles",
                             focusRequester = searchFocusRequester
                         )
                         // 3. Estilos de Subtítulo
                         ControlButton(
-                            onClick = onShowSubtitleStyle,
+                            onClick = {
+                                lastInteractionTime = System.currentTimeMillis()
+                                onShowSubtitleStyle()
+                            },
                             icon = Icons.Default.ColorLens,
                             contentDescription = "Subtitle Style",
                             focusRequester = styleFocusRequester
                         )
                         // 4. Pistas de Audio
                         ControlButton(
-                            onClick = onShowAudioTracks,
+                            onClick = {
+                                lastInteractionTime = System.currentTimeMillis()
+                                onShowAudioTracks()
+                            },
                             icon = Icons.Default.GraphicEq,
                             contentDescription = "Audio Tracks",
                             enabled = hasAudioTracks,
@@ -2419,7 +2692,10 @@ fun PlayerControlsOverlay(
                         )
                         // 5. Stats for Nerds
                         ControlButton(
-                            onClick = onToggleStats,
+                            onClick = {
+                                lastInteractionTime = System.currentTimeMillis()
+                                onToggleStats()
+                            },
                             icon = Icons.Default.BugReport,
                             contentDescription = "Stats",
                             tint = if (showStats) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
@@ -2427,9 +2703,11 @@ fun PlayerControlsOverlay(
                         )
                         // 6. Cast (Handheld only)
                         if (!isTv) {
-                            val isCasting = controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE
                             ControlButton(
-                                onClick = onShowCast,
+                                onClick = {
+                                    lastInteractionTime = System.currentTimeMillis()
+                                    onShowCast()
+                                },
                                 icon = if (isCasting) Icons.Default.CastConnected else Icons.Default.Cast,
                                 contentDescription = "Cast",
                                 tint = if (isCasting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
@@ -2445,21 +2723,30 @@ fun PlayerControlsOverlay(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     ControlButton(
-                        onClick = { controller.seekBack() },
+                        onClick = {
+                            lastInteractionTime = System.currentTimeMillis()
+                            controller.seekBack()
+                        },
                         icon = Icons.Default.FastRewind,
                         contentDescription = "Rewind",
                         focusRequester = rewindFocusRequester,
                         iconSize = 48.dp
                     )
                     ControlButton(
-                        onClick = { if (controller.isPlaying) controller.pause() else controller.play() },
-                        icon = if (controller.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        onClick = {
+                            lastInteractionTime = System.currentTimeMillis()
+                            if (isPlaying) controller.pause() else controller.play()
+                        },
+                        icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = "Play/Pause",
                         focusRequester = playPauseFocusRequester,
                         iconSize = 64.dp
                     )
                     ControlButton(
-                        onClick = { controller.seekForward() },
+                        onClick = {
+                            lastInteractionTime = System.currentTimeMillis()
+                            controller.seekForward()
+                        },
                         icon = Icons.Default.FastForward,
                         contentDescription = "Forward",
                         focusRequester = forwardFocusRequester,
@@ -2473,24 +2760,39 @@ fun PlayerControlsOverlay(
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
                 ) {
-                    val duration = controller.duration.coerceAtLeast(1L)
-                    val pos = controller.currentPosition.coerceAtLeast(0L)
+                    val dur = duration.coerceAtLeast(1L)
+                    val currentFraction = (currentPosition.coerceAtLeast(0L).toFloat() / dur.toFloat()).coerceIn(0f, 1f)
+                    val displayFraction = if (isScrubbing) scrubFraction else currentFraction
+                    val displayPositionMs = if (isScrubbing) (scrubFraction * dur).toLong() else currentPosition.coerceAtLeast(0L)
 
                     Text(
-                        text = "${formatTime(pos)} / ${formatTime(duration)}",
+                        text = "${formatTime(displayPositionMs)} / ${formatTime(dur)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface
                     )
 
                     Slider(
-                        value = if (duration > 0) pos.toFloat() / duration.toFloat() else 0f,
+                        value = displayFraction.coerceIn(0f, 1f),
                         onValueChange = { fraction ->
-                            controller.seekTo((fraction * duration).toLong())
+                            isScrubbing = true
+                            scrubFraction = fraction
+                            lastInteractionTime = System.currentTimeMillis()
+                        },
+                        onValueChangeFinished = {
+                            val targetMs = (scrubFraction * dur).toLong()
+                            controller.seekTo(targetMs)
+                            isScrubbing = false
+                            lastInteractionTime = System.currentTimeMillis()
                         },
                         modifier = Modifier
                             .fillMaxWidth()
                             .focusRequester(sliderFocusRequester)
                             .focusHighlight(shape = MaterialTheme.shapes.small)
+                            .onFocusChanged {
+                                if (it.isFocused) {
+                                    lastInteractionTime = System.currentTimeMillis()
+                                }
+                            }
                     )
                 }
             }
@@ -2499,41 +2801,198 @@ fun PlayerControlsOverlay(
 }
 
 @Composable
-fun StatsForNerdsOverlay(
-    controller: Player,
+fun RemoteCastCanvas(
+    mediaTitle: String,
+    posterUrl: String? = null,
+    onDisconnect: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var videoSizeText by remember { mutableStateOf("") }
-    var audioText by remember { mutableStateOf("") }
-    var bufferText by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val mediaRouter = remember { MediaRouter.getInstance(context) }
+    val selectedRoute = remember(mediaRouter.selectedRoute) { mediaRouter.selectedRoute }
+    val castDevice = remember(selectedRoute) { CastDevice.getFromBundle(selectedRoute.extras) }
+    val deviceName = selectedRoute.name
+    val modelName = castDevice?.modelName ?: "Google Cast"
 
-    LaunchedEffect(controller) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .padding(24.dp)
+                .fillMaxWidth()
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.padding(bottom = 16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CastConnected,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.cast_connected_status),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+
+            Text(
+                text = stringResource(R.string.cast_remote_canvas_title, deviceName),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center
+            )
+
+            Text(
+                text = modelName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, bottom = 20.dp)
+            )
+
+            Text(
+                text = mediaTitle,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            Text(
+                text = stringResource(R.string.cast_remote_canvas_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
+                textAlign = TextAlign.Center
+            )
+
+            OutlinedButton(
+                onClick = onDisconnect,
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.primary
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PhoneAndroid,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.cast_remote_canvas_play_locally),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun StatsForNerdsOverlay(
+    controller: Player,
+    torrentInfoHash: String = "",
+    torrentDownloadDao: TorrentDownloadDao? = null,
+    modifier: Modifier = Modifier
+) {
+    val isCasting = controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE
+    var line1 by remember { mutableStateOf("") }
+    var line2 by remember { mutableStateOf("") }
+    var line3 by remember { mutableStateOf("") }
+    var line4 by remember { mutableStateOf("") }
+    var lineTorrent by remember { mutableStateOf("") }
+
+    LaunchedEffect(controller, isCasting, torrentInfoHash) {
         while (true) {
-            val videoGroup = controller.currentTracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO && it.isSelected }
-            val vFormat = videoGroup?.getTrackFormat(0)
+            if (isCasting) {
+                val castSession = CastContext.getSharedInstance()?.sessionManager?.currentCastSession
+                val dev = castSession?.castDevice
+                val rmc = castSession?.remoteMediaClient
 
-            val audioGroup = controller.currentTracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
-            val aFormat = audioGroup?.getTrackFormat(0)
+                line1 = "Dispositivo: ${dev?.friendlyName ?: "Cast"} (${dev?.modelName ?: "Google Cast"})"
+                val stateStr = when (rmc?.playerState) {
+                    MediaStatus.PLAYER_STATE_PLAYING -> "Playing"
+                    MediaStatus.PLAYER_STATE_PAUSED -> "Paused"
+                    MediaStatus.PLAYER_STATE_BUFFERING -> "Buffering"
+                    else -> "Conectado"
+                }
+                val ip = dev?.inetAddress?.hostAddress ?: "Red local"
+                line2 = "Estado: $stateStr · IP: $ip"
 
-            val size = controller.videoSize
-            videoSizeText = "${size.width}x${size.height} @ ${vFormat?.frameRate?.toInt() ?: 0}fps (${vFormat?.codecs ?: vFormat?.sampleMimeType ?: "N/A"})"
-            audioText = "${aFormat?.sampleMimeType ?: "N/A"} (${aFormat?.channelCount ?: 0} ch)"
-            val buf = (controller.bufferedPosition - controller.currentPosition).coerceAtLeast(0L) / 1000L
-            bufferText = "${buf}s buffered"
+                val mime = rmc?.mediaInfo?.contentType ?: "video/mp4"
+                line3 = "Formato: $mime"
+
+                val activeTrackIds = rmc?.mediaStatus?.activeTrackIds ?: longArrayOf()
+                val tracks = rmc?.mediaInfo?.mediaTracks.orEmpty()
+                val activeSub = tracks.firstOrNull { activeTrackIds.contains(it.id) && it.type == MediaTrack.TYPE_TEXT }
+                val subLabel = activeSub?.name ?: activeSub?.language ?: "Ninguno / Nativo"
+                line4 = "Subtítulo: $subLabel"
+            } else {
+                val videoGroup = controller.currentTracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO && it.isSelected }
+                val vFormat = videoGroup?.getTrackFormat(0)
+
+                val audioGroup = controller.currentTracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
+                val aFormat = audioGroup?.getTrackFormat(0)
+
+                val size = controller.videoSize
+                line1 = "Video: ${size.width}x${size.height} @ ${vFormat?.frameRate?.toInt() ?: 0}fps (${vFormat?.codecs ?: vFormat?.sampleMimeType ?: "N/A"})"
+                line2 = "Audio: ${aFormat?.sampleMimeType ?: "N/A"} (${aFormat?.channelCount ?: 0} ch)"
+                val buf = (controller.bufferedPosition - controller.currentPosition).coerceAtLeast(0L) / 1000L
+                line3 = "Buffer: ${buf}s buffered"
+                line4 = ""
+            }
+
+            if (torrentInfoHash.isNotBlank() && torrentDownloadDao != null) {
+                try {
+                    val torrent = torrentDownloadDao.get(torrentInfoHash)
+                    if (torrent != null) {
+                        lineTorrent = "Torrent: ${torrent.progressPercent}% · Seeds: ${torrent.numSeeds} | Peers: ${torrent.numPeers}"
+                    }
+                } catch (_: Exception) {}
+            }
+
             delay(1.seconds)
         }
     }
 
     Surface(
-        color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.85f),
+        color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.88f),
         shape = MaterialTheme.shapes.medium,
         modifier = modifier
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Stats for Nerds", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            Text("Video: $videoSizeText", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
-            Text("Audio: $audioText", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
-            Text("Buffer: $bufferText", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                text = if (isCasting) "Stats for Nerds (Google Cast)" else "Stats for Nerds (ExoPlayer)",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+            if (line1.isNotBlank()) Text(line1, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+            if (line2.isNotBlank()) Text(line2, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+            if (line3.isNotBlank()) Text(line3, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+            if (line4.isNotBlank()) Text(line4, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+            if (lineTorrent.isNotBlank()) Text(lineTorrent, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
