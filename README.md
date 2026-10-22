@@ -19,6 +19,7 @@ Built for phones, tablets, foldables, and **Android TV / Chromecast**, the app f
 * **100% Android TV & Remote Ready**: Smooth navigation engineered for TV remotes with responsive card scaling, high-contrast focus indicators, and D-pad shortcuts.
 * **Torrent handling**: Choose external-client handoff, in-app download with local playback, or in-app download with Chromecast from Settings. In-app playback starts after a contiguous startup buffer has been verified by libtorrent4j; later HTTP byte ranges are served only after every overlapping torrent piece passes its hash check. Completed downloads remain in the app's download manager until deleted.
 * **Watch History & Resume**: Local playback automatically tracks position via Room (`WatchHistoryDao`) for seamless resume across sessions, with background sync to Firestore.
+* **Home Network Media Storage (SMB & NFS)**: Connect directly to personal home servers, NAS devices (Synology, QNAP, TrueNAS, Unraid), and PCs (Windows File Sharing, Samba, Linux NFS exports). Browse shared media folders, enjoy stutter-free playback powered by high-speed 16 MB asynchronous prefetching, and cast movies or shows directly to your TV over the local Wi-Fi.
 * **Subtitles & Casting**: Enhanced subtitle handling via OpenSubtitles (backed by `OpenSubtitlesCredentialStore` using Android Keystore encryption) and refined Google Cast integration supporting local server handoff via `PlaybackService` and `LocalPlayerActivity`.
 * **Push Notifications**: Receive alerts about new releases and updates via Firebase Cloud Messaging. Notifications deep-link directly to the relevant movie or screen inside the app.
 
@@ -32,6 +33,12 @@ Built for phones, tablets, foldables, and **Android TV / Chromecast**, the app f
 4. **Start Downloads**: Select a movie quality or TV episode release. Settings choose whether the magnet is sent to an external torrent app, downloaded and streamed locally, or downloaded and offered to a Chromecast-compatible receiver. In-app transfers can be paused, resumed, played, or deleted from **In-app downloads** in Settings.
 5. **Search and Details**: Search movie titles, or open a movie poster for summaries, full cast (enriched via TMDB), IMDb ratings, and trailers.
 6. **Sync Your Library**: Sign in and save favorites or select downloads; movie and TV download histories are stored separately in your account.
+7. **Stream from your Home NAS or PC (SMB / NFS)**:
+   * **Open Network Storage**: Navigate to **Settings** ➔ **External media / Network storage** (or tap the active storage indicator).
+   * **Scan or Add Server**: Tap **Scan Network** to automatically detect SMB and NFS servers on your local Wi-Fi, or tap **Add Server** to manually enter the IP address (e.g. `192.168.1.100`), select **SMB** (port 445) or **NFS** (port 2049), and enter the share name (e.g. `Movies` or `/volume1/video`).
+   * **Secure Credentials**: If your SMB share requires authentication, enter your username and password. Credentials are encrypted on-device via the Android Keystore.
+   * **Stutter-Free Streaming**: Browse folders and tap any video file (`.mkv`, `.mp4`, `.avi`, `.webm`, `.ts`, etc.). Playback starts instantly with smooth streaming powered by our 16 MB asynchronous prefetch cache.
+   * **Cast to Big Screen**: Tap the Cast button on any remote video item to stream it directly to your Chromecast or Android TV / Google TV.
 
 ---
 
@@ -49,6 +56,7 @@ This app has been refactored to leverage the latest Jetpack Compose libraries an
 * **Networking**: [Retrofit 3.0](https://square.github.io/retrofit/) with OkHttp 5 and Coroutines Flow.
 * **TV Catalog & Episode Releases**: TMDB provides series/season/episode metadata and movie cast enrichment via IMDb ID; EZTV provides episode torrent releases matched through each series' IMDb identifier.
 * **In-App Torrent & Playback**: [libtorrent4j](https://github.com/aldenml/libtorrent4j) foreground service with piece-verified HTTP streaming (`VerifiedTorrentHttpServer`); [Media3 ExoPlayer](https://developer.android.com/media/media3/exoplayer) for local playback and [Cast SDK](https://developers.google.com/cast) with `PlaybackService` for Chromecast handoff over LAN.
+* **Remote Network Storage (SMB / NFS)**: Native C [libnfs](https://github.com/sahlberg/libnfs) JNI bindings for NFSv3/v4; [smbj](https://github.com/hierynomus/smbj) with persistent session pooling and asynchronous chunk prefetching (`SmbPrefetchInputStream` with 16 MB recycled buffers) for SMBv2/v3; custom Media3 `RemoteMediaDataSource` for direct ExoPlayer streaming without local proxy overhead; and `RemoteMediaHttpServer` with CORS headers for Chromecast handoff.
 * **Local Persistence**: [Room](https://developer.android.com/training/data-storage/room) for genre usage statistics, in-app transfer records, watch history, and session metadata.
 * **On-Device AI Translation**: [Google ML Kit Translate](https://developers.google.com/ml-kit/language/translation) for local summary translation.
 
