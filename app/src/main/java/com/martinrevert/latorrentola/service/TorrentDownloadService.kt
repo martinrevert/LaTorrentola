@@ -1161,8 +1161,10 @@ class TorrentDownloadService : Service() {
                     }
 
                     if (isReady) {
+                        val priorityLock = Any()
                         var lastPrioritizedWindowStart = -1
                         var lastPrioritizedWindowEnd = -1
+                        var lastPriorityUpdateTimeMs = 0L
 
                         val server = VerifiedTorrentHttpServer(
                             mediaFile = target.file,
@@ -1177,29 +1179,42 @@ class TorrentDownloadService : Service() {
                                     )
                                     if (plan != null) {
                                         val windowStart = plan.sequentialRangeStart
-                                        val isCurrentRangeUnverified = !tracker.isRangeVerified(start, end)
-                                        val needsUpdate = isCurrentRangeUnverified ||
-                                            plan.isSeekJump || plan.isTailProbe ||
-                                            lastPrioritizedWindowStart == -1 ||
-                                            kotlin.math.abs(windowStart - lastPrioritizedWindowStart) >= 2
+                                        val nowMs = System.currentTimeMillis()
 
-                                        if (needsUpdate) {
-                                            val oldWindowStart = lastPrioritizedWindowStart
-                                            val oldWindowEnd = lastPrioritizedWindowEnd
-                                            lastPrioritizedWindowStart = windowStart
-                                            lastPrioritizedWindowEnd = windowStart + 32
+                                        val (shouldUpdate, isSeek, windowRange) = synchronized(priorityLock) {
+                                            val isSeek = plan.isSeekJump
+                                            val isFirst = lastPrioritizedWindowStart == -1
+                                            val windowMovedFar = lastPrioritizedWindowStart != -1 && (windowStart - lastPrioritizedWindowStart) >= 4
+                                            val timeElapsed = nowMs - lastPriorityUpdateTimeMs >= 1500L
+
+                                            if (isSeek || isFirst || (windowMovedFar && timeElapsed)) {
+                                                val oldStart = lastPrioritizedWindowStart
+                                                val oldEnd = lastPrioritizedWindowEnd
+                                                lastPrioritizedWindowStart = windowStart
+                                                lastPrioritizedWindowEnd = windowStart + 32
+                                                lastPriorityUpdateTimeMs = nowMs
+                                                Triple(true, isSeek, oldStart to oldEnd)
+                                            } else {
+                                                Triple(false, false, -1 to -1)
+                                            }
+                                        }
+
+                                        if (shouldUpdate) {
+                                            val (oldWindowStart, oldWindowEnd) = windowRange
 
                                             synchronized(sessionLock) {
                                                 if (sessionManager === manager && handle.isValid) {
                                                     try {
-                                                        if (plan.isSeekJump && oldWindowStart != -1) {
-                                                            // Only reset deadlines on the previously prioritized window, NOT all pieces
-                                                            for (p in oldWindowStart..minOf(oldWindowEnd, target.lastPiece)) {
-                                                                try { handle.resetPieceDeadline(p) } catch (_: Throwable) {}
+                                                        if (isSeek) {
+                                                            if (oldWindowStart != -1) {
+                                                                // Only reset deadlines on the previously prioritized window, NOT all pieces
+                                                                for (p in oldWindowStart..minOf(oldWindowEnd, target.lastPiece)) {
+                                                                    try { handle.resetPieceDeadline(p) } catch (_: Throwable) {}
+                                                                }
                                                             }
-                                                        }
-                                                        if (!plan.isTailProbe) {
-                                                            try { handle.setSequentialRange(plan.sequentialRangeStart, target.lastPiece) } catch (_: Throwable) {}
+                                                            try {
+                                                                handle.setSequentialRange(plan.sequentialRangeStart, target.lastPiece)
+                                                            } catch (_: Throwable) {}
                                                         }
                                                         for (p in plan.piecesToPrioritize) {
                                                             try { handle.piecePriority(p, Priority.TOP_PRIORITY) } catch (_: Throwable) {}

@@ -372,12 +372,17 @@ class VerifiedTorrentHttpServer(
         override fun read(): Int {
             if (currentOffset > end) return -1
             ensureVerified()
-            val r = getOrOpenRaf()
+            var r = getOrOpenRaf()
             r.seek(currentOffset)
             var value = r.read()
             if (value < 0 && currentOffset <= end) {
-                for (retry in 1..5) {
+                for (retry in 1..10) {
                     try { Thread.sleep(50) } catch (_: InterruptedException) { break }
+                    if (retry == 5) {
+                        try { raf?.close() } catch (_: Exception) {}
+                        raf = null
+                    }
+                    r = getOrOpenRaf()
                     r.seek(currentOffset)
                     value = r.read()
                     if (value >= 0) break
@@ -396,12 +401,17 @@ class VerifiedTorrentHttpServer(
                 verifiedThrough - currentOffset + 1L,
                 end - currentOffset + 1L
             ).toInt()
-            val r = getOrOpenRaf()
+            var r = getOrOpenRaf()
             r.seek(currentOffset)
             var count = r.read(buffer, offset, safeLength)
             if (count < 0 && currentOffset <= end) {
-                for (retry in 1..5) {
+                for (retry in 1..10) {
                     try { Thread.sleep(50) } catch (_: InterruptedException) { break }
+                    if (retry == 5) {
+                        try { raf?.close() } catch (_: Exception) {}
+                        raf = null
+                    }
+                    r = getOrOpenRaf()
                     r.seek(currentOffset)
                     count = r.read(buffer, offset, safeLength)
                     if (count > 0) break
