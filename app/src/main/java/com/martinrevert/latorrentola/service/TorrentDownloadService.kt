@@ -439,13 +439,11 @@ class TorrentDownloadService : Service() {
                     seriesId = seriesId,
                     seasonNumber = seasonNumber,
                     episodeNumber = episodeNumber,
-                    infoHash = infoHash,
                     title = title
                 )
             } else {
                 MediaIdHelper.forMovie(
                     movieId = movieId,
-                    infoHash = infoHash,
                     title = title
                 )
             }
@@ -697,13 +695,11 @@ class TorrentDownloadService : Service() {
                     seriesId = stored.seriesId ?: 0,
                     seasonNumber = stored.seasonNumber ?: 0,
                     episodeNumber = stored.episodeNumber ?: 0,
-                    infoHash = infoHash,
                     title = stored.title
                 )
             } else {
                 MediaIdHelper.forMovie(
                     movieId = stored.movieId ?: 0,
-                    infoHash = infoHash,
                     title = stored.title
                 )
             }

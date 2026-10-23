@@ -205,12 +205,15 @@ import com.martinrevert.latorrentola.service.VerifiedTorrentHttpServer
 import com.martinrevert.latorrentola.ui.components.DeleteTorrentDownloadsDialog
 import com.martinrevert.latorrentola.ui.components.InsufficientStorageDialog
 import com.martinrevert.latorrentola.ui.components.NextEpisodeTorrentDialog
+import com.martinrevert.latorrentola.ui.components.WatchProgressBar
+import com.martinrevert.latorrentola.ui.components.WatchProgressSlider
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.service.storage.remote.RemoteStorageManager
 import com.martinrevert.latorrentola.service.storage.remote.RemoteFileItem
 import com.martinrevert.latorrentola.service.storage.TorrentStorageResolver
 import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
+import com.martinrevert.latorrentola.utils.MediaMetadataResolver
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TorrentLaunchResult
 import com.martinrevert.latorrentola.utils.mediaMimeType
@@ -343,6 +346,9 @@ class LocalPlayerActivity : FragmentActivity() {
 
     @Inject
     lateinit var ytsRepository: YtsRepository
+
+    @Inject
+    lateinit var mediaMetadataResolver: MediaMetadataResolver
 
     private val tvPlayerViewModel: TvPlayerViewModel by viewModels()
 
@@ -1010,13 +1016,11 @@ class LocalPlayerActivity : FragmentActivity() {
                     seriesId = currentSeriesId,
                     seasonNumber = currentSeasonNumber,
                     episodeNumber = currentEpisodeNumber,
-                    infoHash = torrentInfoHash,
                     title = mediaTitle
                 )
             } else {
                 MediaIdHelper.forMovie(
                     movieId = currentMovieId,
-                    infoHash = torrentInfoHash,
                     title = mediaTitle
                 )
             }
@@ -1193,8 +1197,61 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
             }
 
-            if (newItem != null && (isNewMedia || uriChanged || controller.playbackState == Player.STATE_IDLE || controller.playbackState == Player.STATE_ENDED)) {
-                val savedProgress = userLibraryRepository.getPlaybackProgress(newItem.mediaId)
+            var itemToConfigure = newItem
+            if (itemToConfigure != null && (currentMovieId <= 0 && currentSeriesId <= 0)) {
+                try {
+                    val resolved = withContext(Dispatchers.IO) {
+                        mediaMetadataResolver.resolve(
+                            rawTitle = mediaTitle,
+                            filePath = intent.getStringExtra(EXTRA_FILE_PATH),
+                            streamUrl = localStreamUrl.ifBlank { castStreamUrl },
+                            infoHash = torrentInfoHash,
+                            existingMovieId = currentMovieId,
+                            existingSeriesId = currentSeriesId,
+                            existingSeasonNumber = currentSeasonNumber,
+                            existingEpisodeNumber = currentEpisodeNumber,
+                            existingPosterUrl = posterUrl
+                        )
+                    }
+                    currentMovieId = resolved.movieId
+                    currentSeriesId = resolved.seriesId
+                    currentSeasonNumber = resolved.seasonNumber
+                    currentEpisodeNumber = resolved.episodeNumber
+                    if (posterUrl.isNullOrBlank() && !resolved.posterUrl.isNullOrBlank()) {
+                        posterUrl = resolved.posterUrl
+                    }
+                    if (resolved.title.isNotBlank()) {
+                        mediaTitle = resolved.title
+                    }
+
+                    val itemBundle = Bundle().apply {
+                        putBoolean(PlaybackService.EXTRA_IS_EPISODE, resolved.isEpisode)
+                        if (castStreamUrl.isNotBlank()) {
+                            putString(PlaybackService.EXTRA_CAST_URL, castStreamUrl)
+                        }
+                    }
+                    val mediaMetadataBuilder = MediaMetadata.Builder()
+                        .setTitle(mediaTitle)
+                        .setExtras(itemBundle)
+                    if (!posterUrl.isNullOrBlank()) {
+                        mediaMetadataBuilder.setArtworkUri(Uri.parse(posterUrl))
+                    }
+
+                    itemToConfigure = itemToConfigure.buildUpon()
+                        .setMediaId(resolved.mediaId)
+                        .setMediaMetadata(mediaMetadataBuilder.build())
+                        .build()
+                    pendingMediaItem = itemToConfigure
+                    currentMediaItem = itemToConfigure
+                    Log.i(TAG, "Resolved canonical media ID for playback: ${resolved.mediaId}")
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    Log.w(TAG, "Failed resolving canonical media info: ${e.message}")
+                }
+            }
+
+            if (itemToConfigure != null && (isNewMedia || uriChanged || controller.playbackState == Player.STATE_IDLE || controller.playbackState == Player.STATE_ENDED)) {
+                val savedProgress = userLibraryRepository.getPlaybackProgress(itemToConfigure.mediaId)
                 val currentPos = if (isNewMedia) {
                     0L
                 } else {
@@ -1209,7 +1266,7 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
                 val startPosition = maxOf(currentPos, dbPos)
                 if (startPosition > 0L) {
-                    Log.i(TAG, "Restoring playback position: ${startPosition}ms for ${newItem.mediaId}")
+                    Log.i(TAG, "Restoring playback position: ${startPosition}ms for ${itemToConfigure.mediaId}")
                 }
 
                 val deviceLang = Locale.getDefault().language
@@ -1220,7 +1277,7 @@ class LocalPlayerActivity : FragmentActivity() {
                     .build()
                 controller.trackSelectionParameters = defaultTrackParams
 
-                var itemToPlay = newItem
+                var itemToPlay = itemToConfigure
                 if (itemToPlay.localConfiguration?.subtitleConfigurations.isNullOrEmpty() && torrentInfoHash.isNotBlank()) {
                     try {
                         val cachedSubtitle = openSubtitlesRepository.findLatestDownloaded(torrentInfoHash)
@@ -3056,7 +3113,7 @@ fun PlayerControlsOverlay(
                         color = MaterialTheme.colorScheme.onSurface
                     )
 
-                    Slider(
+                    WatchProgressSlider(
                         value = displayFraction.coerceIn(0f, 1f),
                         onValueChange = { fraction ->
                             isScrubbing = true
@@ -3127,13 +3184,12 @@ fun PlayerControlsOverlay(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     val dur = duration.coerceAtLeast(1L)
-                    LinearProgressIndicator(
-                        progress = { (currentPosition.toFloat() / dur.toFloat()).coerceIn(0f, 1f) },
+                    val seekPercent = ((currentPosition.toFloat() / dur.toFloat()).coerceIn(0f, 1f) * 100).toInt()
+                    WatchProgressBar(
+                        progressPercent = seekPercent,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(4.dp),
-                        color = Color(0xFFE50914),
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                            .height(4.dp)
                     )
                 }
             }
@@ -3439,7 +3495,7 @@ fun RemoteCastCanvas(
                     .fillMaxWidth()
                     .padding(horizontal = 4.dp)
             ) {
-                Slider(
+                WatchProgressSlider(
                     value = sliderProgress,
                     onValueChange = { fraction ->
                         isScrubbing = true
@@ -3451,11 +3507,6 @@ fun RemoteCastCanvas(
                         currentPosition = targetMs
                         isScrubbing = false
                     },
-                    colors = SliderDefaults.colors(
-                        thumbColor = MaterialTheme.colorScheme.primary,
-                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                        inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
                 Row(

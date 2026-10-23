@@ -102,6 +102,7 @@ import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.ui.components.ActorDetailBottomSheet
 import com.martinrevert.latorrentola.ui.components.AdaptiveChip
 import com.martinrevert.latorrentola.ui.components.MovieDetailPlaceholder
+import com.martinrevert.latorrentola.ui.components.WatchProgressBar
 import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import com.martinrevert.latorrentola.ui.components.adaptiveLongClickable
 import com.martinrevert.latorrentola.ui.components.tvDpadLongClickable
@@ -892,18 +893,13 @@ private fun TvEpisodeCard(
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
-                    if (progressPercent != null && progressPercent > 0) {
-                        LinearProgressIndicator(
-                            progress = { progressPercent / 100f },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(4.dp)
-                                .align(Alignment.BottomCenter),
-                            color = Color(0xFFE50914),
-                            trackColor = Color(0x33FFFFFF),
-                            strokeCap = StrokeCap.Butt
-                        )
-                    }
+                    WatchProgressBar(
+                        progressPercent = progressPercent,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .align(Alignment.BottomCenter)
+                    )
                 }
             }
             Column(modifier = Modifier.weight(1f)) {

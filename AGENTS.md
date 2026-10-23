@@ -55,7 +55,7 @@
 ### A. Theming & Hardcoded Values
 - **NEVER** use explicit colors (e.g., `Color.Black`, `Color(0xFF...)`).
 - **ALWAYS** extract colors from `MaterialTheme.colorScheme` (Mobile) or `TvMaterialTheme.colorScheme` (TV).
-- **EXCEPCIÓN EXPLÍCITA DE COLOR (BARRAS DE PROGRESO DE HISTORIAL)**: Las barras y líneas de progreso de la historia de reproducción (`watch progress` en pósters de películas, fichas de episodios y miniaturas de catálogo) DEBEN ser rojas (estándar de la industria / rojo streaming: `Color(0xFFE50914)`). Esta es una excepción formal y mandatoria para respetar el estándar visual de plataformas de streaming.
+- **EXCEPCIÓN EXPLÍCITA DE COLOR (BARRAS Y SCRUBBERS DE PROGRESO DE HISTORIAL)**: Las barras y líneas de progreso de la historia de reproducción (`watch progress` en pósters de películas, fichas de episodios, miniaturas de catálogo, indicadores de salto rápido `quickSeek`), y los scrubbers/sliders de línea de tiempo de los reproductores (`WatchProgressSlider`, `Slider` en `PlayerControlsOverlay` y `RemoteCastCanvas`) DEBEN ser rojas (estándar de la industria / rojo streaming: `Color(0xFFE50914)`). Esta es una excepción formal y mandatoria para respetar el estándar visual de plataformas de streaming.
 - **NEVER** hardcode strings. **ALWAYS** use the `UiText` wrapper or `strings.xml`.
 
 ### B. TV & UI Branching and Theme Mode Propagation (STRICT MANDATE)
@@ -101,6 +101,29 @@ When triggering a download/play action, read `TorrentHandlingMode` and execute:
 ### Data Sync Flow
 - **Watch History**: Write to Room DAO FIRST (Immediate UI update) -> Sync to Firestore in the background. Room is the Single Source of Truth.
 - **Cast Player History Sync**: Cast Player MUST follow the exact same history saving patterns as ExoPlayer: save every 10 seconds while playing, save immediately on pause, and save immediately upon session disconnect/stop/destroy using the remote position. When handoff back to ExoPlayer occurs, ExoPlayer MUST seek to this synchronized position so watch history is pure, uninterrupted, and all UI progress indicators match reality.
+
+### 🎬 Canonical Watch History Media ID & Cross-Source Parity Mandate (STRICT - ZERO REGRESSION)
+To ensure seamless interoperability between Torrents, Network Storage (NAS / SMB / NFS / USB), and Local Playback, the storage format of watch history in Room and Firestore MUST adhere strictly to the canonical definitions:
+1. **Canonical ID Definitions (MANDATORY)**:
+   - **Movies**: `mediaId` MUST ALWAYS be the canonical numeric string ID from TMDB/YTS catalog (e.g. `"12230"`).
+     - **PROHIBITION**: NEVER save 40-character torrent infoHashes (`092ea1d9309572ad7caf0868c3a94217dad15769`), raw file names (e.g. `Inception.2010.1080p.mkv`), or arbitrary raw strings as movie `mediaId`.
+   - **TV Series Episodes**: `mediaId` MUST ALWAYS adhere to the canonical mnemonic:
+     `"media_${seriesId}_s${seasonNumber}_e${episodeNumber}"` (e.g. `"media_111803_s1_e1"`), where `seriesId` is the canonical TMDB series ID, and `seasonNumber` and `episodeNumber` are positive integers.
+     - **PROHIBITION**: NEVER vary prefixes, use capital letters (`media_S1_E1`), or save raw episode file names.
+2. **Mandatory Inverse Resolution for External Media (NAS / USB / Local Files)**:
+   - When media is played from network shares (SMB/NFS) or external storage, or when metadata IDs are absent from a torrent:
+     - The filename and stream title MUST be parsed via `MediaMetadataResolver` using regex (`extractSeasonAndEpisode`) and release tag cleaning (`extractCleanSearchTitles`).
+     - **If Episode**: Asynchronously resolve `seriesId` via `tmdbRepository.searchTvSeries(cleanTitle)` before finalizing `mediaId`.
+     - **If Movie**: Asynchronously resolve `movieId` via `ytsRepository.searchMovies(cleanTitle, 1)` (fallback `tmdbRepository.searchMovies`) before finalizing `mediaId`.
+     - This guarantees that watching a video on NAS saves progress to the exact same document as playing it via Torrent, enabling uninterrupted cross-source resume.
+3. **Decoupled Architecture & UI Components**:
+   - All watch progress bars in catalog and thumbnails MUST use the shared `@Composable WatchProgressBar(progressPercent = ...)`.
+   - All player timeline scrubbers MUST use `@Composable WatchProgressSlider(value = ...)`.
+   - Resolution logic MUST reside in `MediaMetadataResolver`, keeping Activities and UI screens completely decoupled.
+4. **Automatic Legacy Cleanup & Migration**:
+   - `UserLibraryRepository` MUST detect non-canonical records (hashes, titles, malformed strings) in Room and Firestore, resolve their canonical IDs from title/name, migrate progress to the canonical key, and purge the legacy records.
+5. **STRICT PROHIBITION FOR FUTURE AI AGENTS**:
+   - Future AI agents are **STRICTLY FORBIDDEN** from modifying, altering, or circumventing these storage keys, canonical formats, or reverse lookup mechanisms in Room, Firestore, `MediaIdHelper`, `MediaMetadataResolver`, `LocalPlayerActivity`, `TorrentDownloadService`, `PlaybackService`, and `UserLibraryRepository` under any circumstances unless explicitly requested and approved by the user.
 
 ### 🔖 Manual Watch Progress & Download Marking System (STRICT MANDATE)
 When users trigger manual progress or completion marks via long-press gestures:

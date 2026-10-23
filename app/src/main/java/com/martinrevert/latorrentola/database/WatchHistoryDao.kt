@@ -22,6 +22,10 @@ interface WatchHistoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(item: WatchHistoryEntity)
 
+    /** Returns all watch history records. */
+    @Query("SELECT * FROM watch_history")
+    suspend fun getAll(): List<WatchHistoryEntity>
+
     /** Removes a watch history record. */
     @Query("DELETE FROM watch_history WHERE mediaId = :mediaId")
     suspend fun delete(mediaId: String)

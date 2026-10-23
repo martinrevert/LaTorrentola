@@ -61,6 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.combinedClickable
+import com.martinrevert.latorrentola.ui.components.WatchProgressBar
 import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface as TvSurface
@@ -390,18 +391,13 @@ private fun EpisodeHeader(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
-                if (progressPercent != null && progressPercent > 0) {
-                    LinearProgressIndicator(
-                        progress = { progressPercent / 100f },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .align(Alignment.BottomCenter),
-                        color = Color(0xFFE50914),
-                        trackColor = Color(0x33FFFFFF),
-                        strokeCap = StrokeCap.Butt
-                    )
-                }
+                WatchProgressBar(
+                    progressPercent = progressPercent,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .align(Alignment.BottomCenter)
+                )
             }
             Spacer(Modifier.height(16.dp))
         }
