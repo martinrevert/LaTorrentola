@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.CastConnected
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -54,7 +55,11 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -156,6 +161,8 @@ fun CastBottomSheet(
 
     val isCasting = !selectedRoute.isDefault
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var connectingRouteId by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
 
     val sheetBody: @Composable () -> Unit = {
         LazyColumn(
@@ -201,13 +208,15 @@ fun CastBottomSheet(
                                             contentDescription = null,
                                             contentScale = ContentScale.Crop,
                                             modifier = Modifier
-                                                .size(48.dp)
+                                                .width(48.dp)
+                                                .height(72.dp)
                                                 .clip(RoundedCornerShape(8.dp))
                                         )
                                     } else {
                                         Box(
                                             modifier = Modifier
-                                                .size(48.dp)
+                                                .width(48.dp)
+                                                .height(72.dp)
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
                                             contentAlignment = Alignment.Center
@@ -225,7 +234,7 @@ fun CastBottomSheet(
 
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = mediaTitle.ifBlank { "Media" },
+                                            text = mediaTitle.ifBlank { stringResource(R.string.cast_bottom_sheet_title) },
                                             style = MaterialTheme.typography.bodyLarge,
                                             fontWeight = FontWeight.Bold,
                                             maxLines = 1,
@@ -249,7 +258,7 @@ fun CastBottomSheet(
                                         ) {
                                             Icon(
                                                 imageVector = if (isPlayerPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                                contentDescription = if (isPlayerPlaying) "Pause" else "Play",
+                                                contentDescription = if (isPlayerPlaying) stringResource(R.string.pause_desc) else stringResource(R.string.play_desc),
                                                 tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(32.dp)
                                             )
@@ -277,12 +286,25 @@ fun CastBottomSheet(
                             )
                             Spacer(modifier = Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = selectedRoute.name,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = selectedRoute.name,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (isPlayerPlaying) {
+                                        Icon(
+                                            imageVector = Icons.Default.GraphicEq,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
                                 if (!hardwareModel.isNullOrBlank()) {
                                     Text(
                                         text = hardwareModel,
@@ -407,14 +429,19 @@ fun CastBottomSheet(
                     }
                     items(otherRoutes) { route ->
                         val dev = remember(route) { CastDevice.getFromBundle(route.extras) }
+                        val isConnecting = route.connectionState == MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING || connectingRouteId == route.id
                         CastDeviceRow(
                             title = route.name,
                             subtitle = dev?.modelName ?: route.description,
                             icon = routeIcon(route),
-                            isConnecting = route.connectionState == MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING,
+                            isConnecting = isConnecting,
                             onClick = {
+                                connectingRouteId = route.id
                                 mediaRouter.selectRoute(route)
-                                onDismissRequest()
+                                coroutineScope.launch {
+                                    delay(600.milliseconds)
+                                    onDismissRequest()
+                                }
                             }
                         )
                     }
@@ -435,14 +462,19 @@ fun CastBottomSheet(
                     }
                     items(suggested) { route ->
                         val dev = remember(route) { CastDevice.getFromBundle(route.extras) }
+                        val isConnecting = route.connectionState == MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING || connectingRouteId == route.id
                         CastDeviceRow(
                             title = route.name,
                             subtitle = dev?.modelName ?: route.description,
                             icon = routeIcon(route),
-                            isConnecting = route.connectionState == MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING,
+                            isConnecting = isConnecting,
                             onClick = {
+                                connectingRouteId = route.id
                                 mediaRouter.selectRoute(route)
-                                onDismissRequest()
+                                coroutineScope.launch {
+                                    delay(600.milliseconds)
+                                    onDismissRequest()
+                                }
                             }
                         )
                     }
@@ -467,14 +499,19 @@ fun CastBottomSheet(
                     }
                     items(others) { route ->
                         val dev = remember(route) { CastDevice.getFromBundle(route.extras) }
+                        val isConnecting = route.connectionState == MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING || connectingRouteId == route.id
                         CastDeviceRow(
                             title = route.name,
                             subtitle = dev?.modelName ?: route.description,
                             icon = routeIcon(route),
-                            isConnecting = route.connectionState == MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING,
+                            isConnecting = isConnecting,
                             onClick = {
+                                connectingRouteId = route.id
                                 mediaRouter.selectRoute(route)
-                                onDismissRequest()
+                                coroutineScope.launch {
+                                    delay(600.milliseconds)
+                                    onDismissRequest()
+                                }
                             }
                         )
                     }
@@ -566,7 +603,14 @@ private fun CastDeviceRow(
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Medium
                 )
-                if (!subtitle.isNullOrBlank()) {
+                if (isConnecting) {
+                    Text(
+                        text = stringResource(R.string.cast_connecting_device),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
+                } else if (!subtitle.isNullOrBlank()) {
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodyMedium,

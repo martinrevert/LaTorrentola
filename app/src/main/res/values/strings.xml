@@ -346,10 +346,11 @@
     <string name="external_media_refresh_usb">Refresh Drives</string>
 
     <!-- Cast BottomSheet & Remote Canvas -->
+    <string name="cast_bottom_sheet_title">Cast</string>
     <string name="cast_bottom_sheet_playing_header">Now Playing</string>
     <string name="cast_bottom_sheet_suggestions">Suggestions</string>
     <string name="cast_bottom_sheet_other_devices">Other devices</string>
-    <string name="cast_stop_streaming">Stop streaming</string>
+    <string name="cast_stop_streaming">Stop streaming and play on this phone</string>
     <string name="cast_play_on_phone">Play on this phone</string>
     <string name="cast_searching_devices">Searching for devices…</string>
     <string name="cast_volume_label">Volume (%1$d%%)</string>
@@ -359,6 +360,12 @@
     <string name="cast_remote_canvas_subtitle">Use controls below to control playback on your TV</string>
     <string name="cast_remote_canvas_play_locally">Play on this phone</string>
     <string name="cast_connected_status">Connected</string>
+    <string name="cast_connecting_banner">Connecting to %1$s…</string>
+    <string name="cast_connection_failed">Could not connect to %1$s. Verify that it is connected to the same Wi-Fi network.</string>
+    <string name="cast_connecting_device">Connecting…</string>
+    <string name="player_rewind_10">Rewind 10 seconds</string>
+    <string name="player_forward_10">Forward 10 seconds</string>
+    <string name="player_stats_nerds">Stats for nerds</string>
 
     <string name="asset_statements" translatable="false">[]</string>
 </resources>

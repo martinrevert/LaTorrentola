@@ -76,4 +76,26 @@ class TorrentLaunchHelperTest {
         assertThat(storageResult.availableBytes).isEqualTo(1_500_000_000L)
         assertThat(storageResult.requiredBytes).isEqualTo(2_500_000_000L)
     }
+
+    @Test
+    fun `launch with legacy CHROMECAST mode should route to downloadLocally`() {
+        val context = mockk<Context>()
+        val filesDir = mockk<File>()
+        every { context.filesDir } returns filesDir
+        every { filesDir.absolutePath } returns "/mock/files/dir"
+        every { context.startService(any()) } returns null
+
+        mockkConstructor(StatFs::class)
+        every { anyConstructed<StatFs>().availableBytes } returns 2_000_000_000L
+
+        @Suppress("DEPRECATION")
+        val result = TorrentLaunchHelper.launch(
+            context = context,
+            mode = TorrentHandlingMode.CHROMECAST,
+            magnetUri = "magnet:?xt=urn:btih:123",
+            title = "Test Legacy Cast"
+        )
+
+        assertThat(result).isEqualTo(TorrentLaunchResult.Started)
+    }
 }

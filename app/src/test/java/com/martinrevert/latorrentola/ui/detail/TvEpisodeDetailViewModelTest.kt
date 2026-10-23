@@ -54,6 +54,11 @@ class TvEpisodeDetailViewModelTest {
         val episodeNum = 2
         val seriesName = "Breaking Bad"
 
+        coEvery { tmdbRepository.getTvDetails(seriesId) } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary(
+            id = seriesId,
+            name = seriesName,
+            posterPath = "/poster_path.jpg"
+        )
         coEvery { tmdbRepository.getTvImdbId(seriesId) } returns "123456"
         coEvery { eztvRepository.getTorrentsForEpisode("123456", seasonNum, episodeNum) } returns listOf(
             EztvTorrent(title = "Breaking.Bad.S01E02.720p", hash = "abc123hash")
@@ -77,6 +82,7 @@ class TvEpisodeDetailViewModelTest {
         assertThat(successState.seriesName).isEqualTo("Breaking Bad")
         assertThat(successState.torrents).hasSize(1)
         assertThat(successState.isDownloaded).isFalse()
+        assertThat(successState.posterUrl).isEqualTo("https://image.tmdb.org/t/p/w500/poster_path.jpg")
 
         job.cancel()
     }

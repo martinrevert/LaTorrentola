@@ -831,8 +831,9 @@ fun TorrentItem(
             try {
                 val title = movie.title ?: resources.getString(R.string.torrent_download_title)
                 val magnetUri = TorrentLaunchHelper.buildMagnetUri(hash, title)
+                val moviePoster = movie.mediumCoverImage ?: movie.largeCoverImage
                 val sizeBytes = torrent.sizeBytes?.toLongOrNull()
-                when (val result = TorrentLaunchHelper.launch(context, handlingMode, magnetUri, title, movieId = movie.id, requiredSizeBytes = sizeBytes)) {
+                when (val result = TorrentLaunchHelper.launch(context, handlingMode, magnetUri, title, movieId = movie.id, posterUrl = moviePoster, requiredSizeBytes = sizeBytes)) {
                     TorrentLaunchResult.Started -> {
                         onTorrentClick(torrent)
                     }

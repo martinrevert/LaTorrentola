@@ -205,6 +205,7 @@ fun TvEpisodeDetailScreen(
                                     seriesId = seriesId,
                                     seasonNumber = state.episode.seasonNumber,
                                     episodeNumber = state.episode.episodeNumber,
+                                    posterUrl = state.posterUrl,
                                     requiredSizeBytes = sizeBytes
                                 )
                             ) {

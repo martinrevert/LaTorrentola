@@ -81,16 +81,17 @@ import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.martinrevert.latorrentola.ui.components.CastCodecWarningObserver
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import coil3.compose.AsyncImage
 import kotlinx.coroutines.Job
 import kotlin.time.Duration.Companion.seconds
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.mediarouter.media.MediaRouter
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -102,7 +103,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -216,6 +225,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.util.Locale
@@ -375,10 +385,13 @@ class LocalPlayerActivity : FragmentActivity() {
     private var progressTickerJob: Job? = null
     private var castSessionManagerListener: SessionManagerListener<CastSession>? = null
     private var remoteMediaClientCallback: RemoteMediaClient.Callback? = null
+    private var isCastConnecting by mutableStateOf(false)
+    private var connectingDeviceName by mutableStateOf("")
+    private var castErrorMessage by mutableStateOf<String?>(null)
 
     private var pendingMediaUri: Uri? = null
     private var pendingMediaItem: MediaItem? = null
-    private var posterUrl: String? = null
+    private var posterUrl by mutableStateOf<String?>(null)
     private var lastKnownPlaybackPositionMs = 0L
     private var lastStreamRecoveryAttemptMillis = 0L
 
@@ -433,10 +446,14 @@ class LocalPlayerActivity : FragmentActivity() {
                         var showCastBottomSheet by remember { mutableStateOf(false) }
 
                         var deviceInfo by remember(controller) { mutableStateOf(controller.deviceInfo) }
+                        var playbackState by remember(controller) { mutableIntStateOf(controller.playbackState) }
                         DisposableEffect(controller) {
                             val listener = object : Player.Listener {
                                 override fun onDeviceInfoChanged(info: DeviceInfo) {
                                     deviceInfo = info
+                                }
+                                override fun onPlaybackStateChanged(state: Int) {
+                                    playbackState = state
                                 }
                             }
                             controller.addListener(listener)
@@ -452,20 +469,41 @@ class LocalPlayerActivity : FragmentActivity() {
 
                         if (isCasting) {
                             RemoteCastCanvas(
+                                controller = controller,
                                 mediaTitle = mediaTitle,
                                 posterUrl = posterUrl ?: controller.currentMediaItem?.mediaMetadata?.artworkUri?.toString(),
+                                seasonNumber = currentSeasonNumber,
+                                episodeNumber = currentEpisodeNumber,
                                 onDisconnect = {
+                                    CastContext.getSharedInstance()?.sessionManager?.currentCastSession?.let { castSession ->
+                                        saveCastSessionProgress(castSession)
+                                    }
                                     val mediaRouter = MediaRouter.getInstance(this@LocalPlayerActivity)
                                     mediaRouter.selectRoute(mediaRouter.defaultRoute)
                                 },
-                                modifier = videoModifier
+                                onShowCast = { showCastBottomSheet = true },
+                                onShowSubtitles = { showSubtitleOptions() },
+                                onShowAudioTracks = { showAudioOptions() },
+                                showStats = showStatsForNerds,
+                                onToggleStats = { showStatsForNerds = !showStatsForNerds },
+                                onBack = { finish() },
+                                modifier = Modifier.fillMaxSize()
                             )
                         } else {
                             PlayerSurface(
                                 player = controller,
                                 modifier = videoModifier
                             )
-                        }
+
+                            if (playbackState == Player.STATE_BUFFERING) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .align(Alignment.Center),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    strokeWidth = 4.dp
+                                )
+                            }
 
                             var currentCues by remember(controller) { mutableStateOf<List<Cue>>(controller.currentCues.cues) }
                             DisposableEffect(controller) {
@@ -524,18 +562,93 @@ class LocalPlayerActivity : FragmentActivity() {
                                 onShowAudioTracks = { showAudioOptions() },
                                 onShowCast = { showCastBottomSheet = true }
                             )
+                        }
 
-                            if (showStatsForNerds) {
-                                StatsForNerdsOverlay(
-                                    controller = controller,
-                                    torrentInfoHash = torrentInfoHash,
-                                    torrentDownloadDao = torrentDownloadDao,
-                                    modifier = Modifier
-                                        .padding(16.dp)
-                                        .align(Alignment.TopCenter)
-                                        .padding(top = 56.dp)
-                                )
+                        AnimatedVisibility(
+                            visible = isCastConnecting,
+                            enter = fadeIn() + slideInVertically(),
+                            exit = fadeOut() + slideOutVertically(),
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 32.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
+                                tonalElevation = 6.dp,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.cast_connecting_banner, connectingDeviceName.ifBlank { "Cast" }),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
                             }
+                        }
+
+                        castErrorMessage?.let { errorMsg ->
+                            LaunchedEffect(errorMsg) {
+                                delay(4.seconds)
+                                castErrorMessage = null
+                            }
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = fadeIn() + slideInVertically { it / 2 },
+                                exit = fadeOut() + slideOutVertically { it / 2 },
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 32.dp, start = 24.dp, end = 24.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.95f),
+                                    tonalElevation = 6.dp,
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                        Text(
+                                            text = errorMsg,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (showStatsForNerds) {
+                            StatsForNerdsOverlay(
+                                controller = controller,
+                                torrentInfoHash = torrentInfoHash,
+                                torrentDownloadDao = torrentDownloadDao,
+                                modifier = Modifier
+                                    .padding(16.dp)
+                                    .align(Alignment.TopCenter)
+                                    .statusBarsPadding()
+                                    .padding(top = 56.dp)
+                            )
+                        }
 
                         CastCodecWarningObserver(
                             player = controller,
@@ -545,9 +658,15 @@ class LocalPlayerActivity : FragmentActivity() {
                         )
 
                         if (showCastBottomSheet) {
+                            val sheetSubtitle = when {
+                                currentSeasonNumber > 0 && currentEpisodeNumber > 0 ->
+                                    "T$currentSeasonNumber:E$currentEpisodeNumber"
+                                else -> ""
+                            }
                             CastBottomSheet(
                                 onDismissRequest = { showCastBottomSheet = false },
                                 mediaTitle = mediaTitle,
+                                mediaSubtitle = sheetSubtitle,
                                 posterUrl = posterUrl ?: controller.currentMediaItem?.mediaMetadata?.artworkUri?.toString(),
                                 player = controller
                             )
@@ -929,7 +1048,107 @@ class LocalPlayerActivity : FragmentActivity() {
                 .setMediaMetadata(mediaMetadataBuilder.build())
                 .build()
             currentMediaItem = pendingMediaItem
+
+            if (posterUrl.isNullOrBlank()) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val resolved = resolvePosterUrl(
+                        movieId = currentMovieId,
+                        seriesId = currentSeriesId,
+                        seasonNumber = currentSeasonNumber,
+                        episodeNumber = currentEpisodeNumber,
+                        title = mediaTitle,
+                        infoHash = torrentInfoHash
+                    )
+                    if (!resolved.isNullOrBlank()) {
+                        withContext(Dispatchers.Main) {
+                            posterUrl = resolved
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    private suspend fun resolvePosterUrl(
+        movieId: Int,
+        seriesId: Int,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        title: String,
+        infoHash: String
+    ): String? {
+        try {
+            if (infoHash.isNotBlank()) {
+                val dbRecord = torrentDownloadDao.get(infoHash)
+                if (dbRecord != null) {
+                    val mId = dbRecord.movieId ?: 0
+                    if (mId > 0) {
+                        try {
+                            val summary = ytsRepository.getMovieSummary(mId)
+                            val movie = summary.data?.movie
+                            val poster = movie?.largeCoverImage ?: movie?.mediumCoverImage
+                            if (!poster.isNullOrBlank()) return poster
+                        } catch (_: Exception) {}
+                    }
+                    val sId = dbRecord.seriesId ?: 0
+                    if (sId > 0) {
+                        try {
+                            val seriesSummary = tmdbRepository.getTvDetails(sId)
+                            val poster = seriesSummary.fullPosterUrl
+                            if (!poster.isNullOrBlank()) return poster
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+
+            if (movieId > 0) {
+                try {
+                    val summary = ytsRepository.getMovieSummary(movieId)
+                    val movie = summary.data?.movie
+                    val poster = movie?.largeCoverImage ?: movie?.mediumCoverImage
+                    if (!poster.isNullOrBlank()) return poster
+                } catch (_: Exception) {}
+            }
+
+            if (seriesId > 0) {
+                try {
+                    val seriesSummary = tmdbRepository.getTvDetails(seriesId)
+                    val poster = seriesSummary.fullPosterUrl
+                    if (!poster.isNullOrBlank()) return poster
+                } catch (_: Exception) {}
+            }
+
+            val cleanTitles = extractCleanSearchTitles(title)
+            val cleanTitle = cleanTitles.firstOrNull() ?: title
+            if (cleanTitle.isNotBlank()) {
+                if (seasonNumber > 0 || episodeNumber > 0) {
+                    try {
+                        val searchResult = tmdbRepository.searchTvSeries(cleanTitle).results?.firstOrNull()
+                        if (searchResult != null) {
+                            val poster = searchResult.fullPosterUrl
+                            if (!poster.isNullOrBlank()) return poster
+                        }
+                    } catch (_: Exception) {}
+                } else {
+                    try {
+                        val movieSearch = ytsRepository.searchMovies(cleanTitle, 1)
+                        val movie = movieSearch.data?.movies?.firstOrNull()
+                        val poster = movie?.largeCoverImage ?: movie?.mediumCoverImage
+                        if (!poster.isNullOrBlank()) return poster
+                    } catch (_: Exception) {}
+
+                    try {
+                        val tvSearch = tmdbRepository.searchTvSeries(cleanTitle).results?.firstOrNull()
+                        val tvPoster = tvSearch?.fullPosterUrl
+                        if (!tvPoster.isNullOrBlank()) return tvPoster
+                    } catch (_: Exception) {}
+                }
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w(TAG, "Failed to resolve poster URL asynchronously: ${e.message}")
+        }
+        return null
     }
 
     private fun connectToMediaSession() {
@@ -1193,8 +1412,7 @@ class LocalPlayerActivity : FragmentActivity() {
             return
         }
 
-        val autoPlayMode = preferenceManager.getAutoPlayQualitySelectionMethod()
-        when (autoPlayMode) {
+        when (val autoPlayMode = preferenceManager.getAutoPlayQualitySelectionMethod()) {
             AutoPlayQualitySelectionMethod.DO_NOTHING -> {}
             AutoPlayQualitySelectionMethod.OFF -> {
                 fetchNextEpisodeData()
@@ -1868,6 +2086,8 @@ class LocalPlayerActivity : FragmentActivity() {
                         )
                         remoteStorageManager.saveColocatedSubtitle(item, vttText, subtitle.language)
                         Log.i(TAG, "Saved co-located subtitle to remote server: $remoteFilePath")
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to co-locate subtitle on remote server: ${e.message}")
                     }
@@ -1882,16 +2102,19 @@ class LocalPlayerActivity : FragmentActivity() {
                         )
                         remoteStorageManager.saveColocatedSubtitle(item, vttText, subtitle.language)
                         Log.i(TAG, "Saved co-located subtitle to USB storage: ${localFile.name}")
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to co-locate subtitle on USB drive: ${e.message}")
                     }
                 }
 
                 playerBottomSheetState = null
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: OpenSubtitlesException) {
                 errorMessage = error.message ?: getString(R.string.opensubtitles_download_failed)
             } catch (error: Exception) {
-                if (error is CancellationException) throw error
                 errorMessage = getString(R.string.opensubtitles_download_failed)
             } finally {
                 subtitleOperationInProgress = false
@@ -1984,24 +2207,44 @@ class LocalPlayerActivity : FragmentActivity() {
             CastContext.getSharedInstance(this, mainExecutor).addOnSuccessListener { castContext ->
                 val listener = object : SessionManagerListener<CastSession> {
                     override fun onSessionStarted(session: CastSession, sessionId: String) {
+                        isCastConnecting = false
                         attachRemoteMediaClientCallback(session)
                     }
                     override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
+                        isCastConnecting = false
                         attachRemoteMediaClientCallback(session)
                     }
                     override fun onSessionEnding(session: CastSession) {
                         saveCastSessionProgress(session)
                         detachRemoteMediaClientCallback(session)
+                        isCastConnecting = false
                     }
                     override fun onSessionEnded(session: CastSession, error: Int) {
                         saveCastSessionProgress(session)
                         detachRemoteMediaClientCallback(session)
+                        isCastConnecting = false
                     }
-                    override fun onSessionStartFailed(session: CastSession, error: Int) {}
-                    override fun onSessionResumeFailed(session: CastSession, error: Int) {}
+                    override fun onSessionStartFailed(session: CastSession, error: Int) {
+                        isCastConnecting = false
+                        val devName = session.castDevice?.friendlyName ?: "Cast"
+                        castErrorMessage = getString(R.string.cast_connection_failed, devName)
+                    }
+                    override fun onSessionResumeFailed(session: CastSession, error: Int) {
+                        isCastConnecting = false
+                        val devName = session.castDevice?.friendlyName ?: "Cast"
+                        castErrorMessage = getString(R.string.cast_connection_failed, devName)
+                    }
                     override fun onSessionSuspended(session: CastSession, reason: Int) {}
-                    override fun onSessionStarting(session: CastSession) {}
-                    override fun onSessionResuming(session: CastSession, sessionId: String) {}
+                    override fun onSessionStarting(session: CastSession) {
+                        val devName = session.castDevice?.friendlyName ?: "Cast"
+                        connectingDeviceName = devName
+                        isCastConnecting = true
+                    }
+                    override fun onSessionResuming(session: CastSession, sessionId: String) {
+                        val devName = session.castDevice?.friendlyName ?: "Cast"
+                        connectingDeviceName = devName
+                        isCastConnecting = true
+                    }
                 }
                 castSessionManagerListener = listener
                 castContext.sessionManager.addSessionManagerListener(listener, CastSession::class.java)
@@ -2482,7 +2725,15 @@ fun PlayerControlsOverlay(
     var controlsVisible by remember { mutableStateOf(true) }
     var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var isScrubbing by remember { mutableStateOf(false) }
+    var isSliderFocused by remember { mutableStateOf(false) }
     var scrubFraction by remember { mutableFloatStateOf(0f) }
+
+    var quickSeekDelta by remember { mutableIntStateOf(0) }
+    var showQuickSeek by remember { mutableStateOf(false) }
+    var quickSeekTriggerTime by remember { mutableLongStateOf(0L) }
+
+    var doubleTapSeekDelta by remember { mutableIntStateOf(0) }
+    var doubleTapTriggerTime by remember { mutableLongStateOf(0L) }
 
     val isTv = LocalContext.current.isTvDevice()
 
@@ -2531,13 +2782,27 @@ fun PlayerControlsOverlay(
         }
     }
 
-    // Auto-hide timeout resets whenever user interacts; paused while scrubbing
-    LaunchedEffect(controlsVisible, lastInteractionTime, isScrubbing) {
-        if (controlsVisible && !isScrubbing) {
+    // Auto-hide timeout resets whenever user interacts; paused while scrubbing or slider focused
+    LaunchedEffect(controlsVisible, lastInteractionTime, isScrubbing, isSliderFocused) {
+        if (controlsVisible && !isScrubbing && !isSliderFocused) {
             delay(6.seconds)
-            if (!isScrubbing) {
+            if (!isScrubbing && !isSliderFocused) {
                 controlsVisible = false
             }
+        }
+    }
+
+    LaunchedEffect(quickSeekTriggerTime) {
+        if (showQuickSeek) {
+            delay(2.seconds)
+            showQuickSeek = false
+        }
+    }
+
+    LaunchedEffect(doubleTapTriggerTime) {
+        if (doubleTapSeekDelta != 0) {
+            delay(800.milliseconds)
+            doubleTapSeekDelta = 0
         }
     }
 
@@ -2563,8 +2828,12 @@ fun PlayerControlsOverlay(
                     val width = size.width
                     if (offset.x < width * 0.35f) {
                         controller.seekBack()
+                        doubleTapSeekDelta = -10
+                        doubleTapTriggerTime = System.currentTimeMillis()
                     } else if (offset.x > width * 0.65f) {
                         controller.seekForward()
+                        doubleTapSeekDelta = 10
+                        doubleTapTriggerTime = System.currentTimeMillis()
                     } else {
                         controlsVisible = !controlsVisible
                     }
@@ -2584,25 +2853,35 @@ fun PlayerControlsOverlay(
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown) {
                     lastInteractionTime = System.currentTimeMillis()
-                    if (isTv) {
-                        val keyCode = event.nativeKeyEvent.keyCode
-                        if (!controlsVisible && (
-                            keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
-                            keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP ||
-                            keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN ||
-                            keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT ||
-                            keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT ||
-                            keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
-                            keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER ||
-                            keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
-                            keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY ||
-                            keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PAUSE
-                        )) {
-                            controlsVisible = true
-                            try { playPauseFocusRequester.requestFocus() } catch (_: Exception) {}
-                            true
-                        } else {
-                            false
+                    if (isTv && !controlsVisible) {
+                        when (event.nativeKeyEvent.keyCode) {
+                            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                controller.seekBack()
+                                quickSeekDelta = -10
+                                showQuickSeek = true
+                                quickSeekTriggerTime = System.currentTimeMillis()
+                                true
+                            }
+                            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                controller.seekForward()
+                                quickSeekDelta = 10
+                                showQuickSeek = true
+                                quickSeekTriggerTime = System.currentTimeMillis()
+                                true
+                            }
+                            android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+                            android.view.KeyEvent.KEYCODE_DPAD_UP,
+                            android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+                            android.view.KeyEvent.KEYCODE_ENTER,
+                            android.view.KeyEvent.KEYCODE_NUMPAD_ENTER,
+                            android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                            android.view.KeyEvent.KEYCODE_MEDIA_PLAY,
+                            android.view.KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                                controlsVisible = true
+                                try { playPauseFocusRequester.requestFocus() } catch (_: Exception) {}
+                                true
+                            }
+                            else -> false
                         }
                     } else {
                         false
@@ -2735,7 +3014,13 @@ fun PlayerControlsOverlay(
                     ControlButton(
                         onClick = {
                             lastInteractionTime = System.currentTimeMillis()
-                            if (isPlaying) controller.pause() else controller.play()
+                            if (isPlaying) {
+                                isPlaying = false
+                                controller.pause()
+                            } else {
+                                isPlaying = true
+                                controller.play()
+                            }
                         },
                         icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = "Play/Pause",
@@ -2789,10 +3074,101 @@ fun PlayerControlsOverlay(
                             .focusRequester(sliderFocusRequester)
                             .focusHighlight(shape = MaterialTheme.shapes.small)
                             .onFocusChanged {
+                                isSliderFocused = it.isFocused
                                 if (it.isFocused) {
                                     lastInteractionTime = System.currentTimeMillis()
                                 }
                             }
+                    )
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = showQuickSeek && !controlsVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 56.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
+                tonalElevation = 6.dp,
+                modifier = Modifier.widthIn(min = 280.dp, max = 400.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (quickSeekDelta > 0) Icons.Default.FastForward else Icons.Default.FastRewind,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Text(
+                            text = if (quickSeekDelta > 0) "+10s" else "-10s",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "${formatTime(currentPosition)} / ${formatTime(duration)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    val dur = duration.coerceAtLeast(1L)
+                    LinearProgressIndicator(
+                        progress = { (currentPosition.toFloat() / dur.toFloat()).coerceIn(0f, 1f) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp),
+                        color = Color(0xFFE50914),
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = doubleTapSeekDelta != 0,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(if (doubleTapSeekDelta > 0) Alignment.CenterEnd else Alignment.CenterStart)
+                .padding(horizontal = 48.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f),
+                tonalElevation = 6.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = if (doubleTapSeekDelta > 0) Icons.Default.FastForward else Icons.Default.FastRewind,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = if (doubleTapSeekDelta > 0) "+10s" else "-10s",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -2802,9 +3178,18 @@ fun PlayerControlsOverlay(
 
 @Composable
 fun RemoteCastCanvas(
+    controller: Player,
     mediaTitle: String,
     posterUrl: String? = null,
+    seasonNumber: Int = 0,
+    episodeNumber: Int = 0,
     onDisconnect: () -> Unit,
+    onShowCast: () -> Unit,
+    onShowSubtitles: () -> Unit,
+    onShowAudioTracks: () -> Unit,
+    showStats: Boolean,
+    onToggleStats: () -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -2812,86 +3197,368 @@ fun RemoteCastCanvas(
     val selectedRoute = remember(mediaRouter.selectedRoute) { mediaRouter.selectedRoute }
     val castDevice = remember(selectedRoute) { CastDevice.getFromBundle(selectedRoute.extras) }
     val deviceName = selectedRoute.name
-    val modelName = castDevice?.modelName ?: "Google Cast"
+    val modelName = castDevice?.modelName ?: stringResource(R.string.cast_desc)
+
+    var isPlaying by remember(controller) { mutableStateOf(controller.isPlaying) }
+    var currentPosition by remember(controller) { mutableLongStateOf(controller.currentPosition) }
+    var duration by remember(controller) { mutableLongStateOf(controller.duration) }
+    var isScrubbing by remember { mutableStateOf(false) }
+    var scrubFraction by remember { mutableFloatStateOf(0f) }
+
+    DisposableEffect(controller) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+            }
+            override fun onPlaybackStateChanged(state: Int) {
+                duration = controller.duration
+            }
+        }
+        controller.addListener(listener)
+        onDispose { controller.removeListener(listener) }
+    }
+
+    LaunchedEffect(controller, isPlaying, isScrubbing) {
+        while (!isScrubbing) {
+            currentPosition = controller.currentPosition.coerceAtLeast(0L)
+            duration = controller.duration.coerceAtLeast(0L)
+            delay(250.milliseconds)
+        }
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceContainerLowest),
-        contentAlignment = Alignment.Center
+            .background(MaterialTheme.colorScheme.background)
     ) {
+        // Ambient background poster overlay with dark gradient scrim
+        if (!posterUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = posterUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.88f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.94f),
+                                MaterialTheme.colorScheme.background
+                            )
+                        )
+                    )
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.surfaceContainerHighest,
+                                MaterialTheme.colorScheme.surfaceContainerLowest
+                            )
+                        )
+                    )
+            )
+        }
+
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
             modifier = Modifier
-                .padding(24.dp)
-                .fillMaxWidth()
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.padding(bottom = 16.dp)
+            // Top Bar
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                IconButton(onClick = onBack) {
                     Icon(
-                        imageVector = Icons.Default.CastConnected,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.back_desc),
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                // Clickable Cast Device Pill (opens CastBottomSheet)
+                Surface(
+                    onClick = onShowCast,
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    tonalElevation = 4.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CastConnected,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = deviceName,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onShowSubtitles) {
+                        Icon(
+                            imageVector = Icons.Default.Subtitles,
+                            contentDescription = stringResource(R.string.player_subtitle_tracks),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    IconButton(onClick = onShowAudioTracks) {
+                        Icon(
+                            imageVector = Icons.Default.GraphicEq,
+                            contentDescription = stringResource(R.string.player_audio_tracks),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    IconButton(onClick = onToggleStats) {
+                        Icon(
+                            imageVector = Icons.Default.BugReport,
+                            contentDescription = stringResource(R.string.player_stats_nerds),
+                            tint = if (showStats) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Prominent Featured Media Artwork Card
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                ),
+                modifier = Modifier
+                    .width(160.dp)
+                    .height(240.dp)
+            ) {
+                if (!posterUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = posterUrl,
+                        contentDescription = mediaTitle,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Tv,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(64.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text(
+                text = mediaTitle.ifBlank { stringResource(R.string.cast_bottom_sheet_title) },
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            if (seasonNumber > 0 && episodeNumber > 0) {
+                Text(
+                    text = "${stringResource(R.string.tv_season_number, seasonNumber)} • ${stringResource(R.string.tv_episode_number, episodeNumber)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(top = 8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                )
+                Text(
+                    text = stringResource(R.string.cast_remote_canvas_title, deviceName),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Timeline & Seekbar
+            val dur = duration.coerceAtLeast(0L)
+            val pos = if (isScrubbing) (scrubFraction * dur).toLong() else currentPosition.coerceAtLeast(0L)
+            val sliderProgress = if (dur > 0L) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp)
+            ) {
+                Slider(
+                    value = sliderProgress,
+                    onValueChange = { fraction ->
+                        isScrubbing = true
+                        scrubFraction = fraction
+                    },
+                    onValueChangeFinished = {
+                        val targetMs = (scrubFraction * dur).toLong()
+                        controller.seekTo(targetMs)
+                        currentPosition = targetMs
+                        isScrubbing = false
+                    },
+                    colors = SliderDefaults.colors(
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                        inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = formatTime(pos),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = stringResource(R.string.cast_connected_status),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                        text = formatTime(dur),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            Text(
-                text = stringResource(R.string.cast_remote_canvas_title, deviceName),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center
-            )
+            // Transport Controls: Rewind 10s, Play/Pause, Forward 10s
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                FilledTonalIconButton(
+                    onClick = {
+                        val newPos = (controller.currentPosition - 10_000L).coerceAtLeast(0L)
+                        controller.seekTo(newPos)
+                        currentPosition = newPos
+                    },
+                    modifier = Modifier.size(52.dp),
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FastRewind,
+                        contentDescription = stringResource(R.string.player_rewind_10),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
 
-            Text(
-                text = modelName,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp, bottom = 20.dp)
-            )
+                Spacer(modifier = Modifier.width(32.dp))
 
-            Text(
-                text = mediaTitle,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
+                FilledIconButton(
+                    onClick = {
+                        if (isPlaying) {
+                            controller.pause()
+                        } else {
+                            controller.play()
+                        }
+                        isPlaying = !isPlaying
+                    },
+                    modifier = Modifier.size(72.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) stringResource(R.string.pause_desc) else stringResource(R.string.play_desc),
+                        modifier = Modifier.size(40.dp)
+                    )
+                }
 
-            Text(
-                text = stringResource(R.string.cast_remote_canvas_subtitle),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
-                textAlign = TextAlign.Center
-            )
+                Spacer(modifier = Modifier.width(32.dp))
 
+                FilledTonalIconButton(
+                    onClick = {
+                        val newPos = (controller.currentPosition + 10_000L).coerceAtMost(controller.duration.coerceAtLeast(0L))
+                        controller.seekTo(newPos)
+                        currentPosition = newPos
+                    },
+                    modifier = Modifier.size(52.dp),
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FastForward,
+                        contentDescription = stringResource(R.string.player_forward_10),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+
+            // "Ver en este teléfono" button
             OutlinedButton(
                 onClick = onDisconnect,
                 colors = ButtonDefaults.outlinedButtonColors(
                     contentColor = MaterialTheme.colorScheme.primary
                 ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                modifier = Modifier
+                    .padding(top = 4.dp, bottom = 8.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.PhoneAndroid,
@@ -2938,10 +3605,13 @@ fun StatsForNerdsOverlay(
                     else -> "Conectado"
                 }
                 val ip = dev?.inetAddress?.hostAddress ?: "Red local"
-                line2 = "Estado: $stateStr · IP: $ip"
+                val speed = rmc?.mediaStatus?.playbackRate ?: 1.0
+                val vol = ((rmc?.mediaStatus?.streamVolume ?: 1.0) * 100).toInt()
+                line2 = "Estado: $stateStr (${speed}x) · Vol: $vol% · IP: $ip"
 
+                val contentUrl = rmc?.mediaInfo?.contentUrl ?: rmc?.mediaInfo?.contentId.orEmpty()
                 val mime = rmc?.mediaInfo?.contentType ?: "video/mp4"
-                line3 = "Formato: $mime"
+                line3 = if (contentUrl.isNotBlank()) "Formato: $mime · URL: $contentUrl" else "Formato: $mime"
 
                 val activeTrackIds = rmc?.mediaStatus?.activeTrackIds ?: longArrayOf()
                 val tracks = rmc?.mediaInfo?.mediaTracks.orEmpty()
@@ -2967,9 +3637,13 @@ fun StatsForNerdsOverlay(
                 try {
                     val torrent = torrentDownloadDao.get(torrentInfoHash)
                     if (torrent != null) {
-                        lineTorrent = "Torrent: ${torrent.progressPercent}% · Seeds: ${torrent.numSeeds} | Peers: ${torrent.numPeers}"
+                        lineTorrent = "Torrent: ${torrent.progressPercent}% verificado · Semillas: ${torrent.numSeeds} | Pares: ${torrent.numPeers} (${torrent.state})"
                     }
-                } catch (_: Exception) {}
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Ignore non-cancellation errors
+                }
             }
 
             delay(1.seconds)

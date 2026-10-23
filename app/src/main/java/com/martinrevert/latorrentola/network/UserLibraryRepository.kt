@@ -49,31 +49,28 @@ class UserLibraryRepository @Inject constructor(
     private val userId: String? get() = auth.currentUser?.uid
 
     /** Observes the signed-in user's downloads in reverse chronological order. */
-    fun getDownloadedMovies(): Flow<List<DownloadedMovie>> = callbackFlow {
-        val uid = userId
-        if (uid == null) {
-            trySend(emptyList())
-            return@callbackFlow
-        }
+    fun getDownloadedMovies(): Flow<List<DownloadedMovie>> {
+        val uid = userId ?: return flowOf(emptyList())
+        return callbackFlow {
+            val subscription = firestore.collection("users")
+                .document(uid)
+                .collection("downloads")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e("Firestore", "Error fetching downloads: ${error.message}")
+                        trySend(emptyList())
+                        return@addSnapshotListener
+                    }
 
-        val subscription = firestore.collection("users")
-            .document(uid)
-            .collection("downloads")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e("Firestore", "Error fetching downloads: ${error.message}")
-                    trySend(emptyList())
-                    return@addSnapshotListener
+                    val downloads = snapshot?.documents?.mapNotNull {
+                        it.toObject(DownloadedMovie::class.java)
+                    }?.sortedByDescending { it.timestamp } ?: emptyList()
+
+                    trySend(downloads)
                 }
 
-                val downloads = snapshot?.documents?.mapNotNull {
-                    it.toObject(DownloadedMovie::class.java)
-                }?.sortedByDescending { it.timestamp } ?: emptyList()
-
-                trySend(downloads)
-            }
-
-        awaitClose { subscription.remove() }
+            awaitClose { subscription.remove() }
+        }
     }
 
     /** Saves or replaces a download record, keyed by its torrent hash. */
@@ -93,31 +90,28 @@ class UserLibraryRepository @Inject constructor(
     }
 
     /** Observes the signed-in user's TV episode downloads in reverse chronological order. */
-    fun getDownloadedEpisodes(): Flow<List<DownloadedEpisode>> = callbackFlow {
-        val uid = userId
-        if (uid == null) {
-            trySend(emptyList())
-            return@callbackFlow
-        }
+    fun getDownloadedEpisodes(): Flow<List<DownloadedEpisode>> {
+        val uid = userId ?: return flowOf(emptyList())
+        return callbackFlow {
+            val subscription = firestore.collection("users")
+                .document(uid)
+                .collection("tv_downloads")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e("Firestore", "Error fetching TV downloads: ${error.message}")
+                        trySend(emptyList())
+                        return@addSnapshotListener
+                    }
 
-        val subscription = firestore.collection("users")
-            .document(uid)
-            .collection("tv_downloads")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e("Firestore", "Error fetching TV downloads: ${error.message}")
-                    trySend(emptyList())
-                    return@addSnapshotListener
+                    val downloads = snapshot?.documents?.mapNotNull {
+                        it.toObject(DownloadedEpisode::class.java)
+                    }?.sortedByDescending { it.timestamp } ?: emptyList()
+
+                    trySend(downloads)
                 }
 
-                val downloads = snapshot?.documents?.mapNotNull {
-                    it.toObject(DownloadedEpisode::class.java)
-                }?.sortedByDescending { it.timestamp } ?: emptyList()
-
-                trySend(downloads)
-            }
-
-        awaitClose { subscription.remove() }
+            awaitClose { subscription.remove() }
+        }
     }
 
     /** Saves or replaces a TV episode download record, keyed by its torrent hash or fallback document ID. */
@@ -141,33 +135,30 @@ class UserLibraryRepository @Inject constructor(
     }
 
     /** Observes the signed-in user's favorite movie records. */
-    fun getFavoriteMovies(): Flow<List<Movie>> = callbackFlow {
-        val uid = userId
-        if (uid == null) {
-            trySend(emptyList())
-            return@callbackFlow
-        }
+    fun getFavoriteMovies(): Flow<List<Movie>> {
+        val uid = userId ?: return flowOf(emptyList())
+        return callbackFlow {
+            val subscription = firestore.collection("users")
+                .document(uid)
+                .collection("favorites")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e("Firestore", "Error fetching favorites: ${error.message}")
+                        trySend(emptyList())
+                        return@addSnapshotListener
+                    }
 
-        val subscription = firestore.collection("users")
-            .document(uid)
-            .collection("favorites")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e("Firestore", "Error fetching favorites: ${error.message}")
-                    trySend(emptyList())
-                    return@addSnapshotListener
+                    val favorites = snapshot?.documents?.filterNot {
+                        it.id.startsWith("tv_")
+                    }?.mapNotNull {
+                        it.toObject(Movie::class.java)
+                    } ?: emptyList()
+
+                    trySend(favorites)
                 }
 
-                val favorites = snapshot?.documents?.filterNot {
-                    it.id.startsWith("tv_")
-                }?.mapNotNull {
-                    it.toObject(Movie::class.java)
-                } ?: emptyList()
-
-                trySend(favorites)
-            }
-
-        awaitClose { subscription.remove() }
+            awaitClose { subscription.remove() }
+        }
     }
 
     /** Saves or replaces [movie] in the signed-in user's favorites. */
@@ -203,44 +194,41 @@ class UserLibraryRepository @Inject constructor(
     }
 
     /** Observes the signed-in user's favorite TV series. */
-    fun getFavoriteTvSeries(): Flow<List<TmdbTvSummary>> = callbackFlow {
-        val uid = userId
-        if (uid == null) {
-            trySend(emptyList())
-            return@callbackFlow
-        }
+    fun getFavoriteTvSeries(): Flow<List<TmdbTvSummary>> {
+        val uid = userId ?: return flowOf(emptyList())
+        return callbackFlow {
+            val subscription = firestore.collection("users")
+                .document(uid)
+                .collection("favorites")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e("Firestore", "Error fetching favorite TV series: ${error.message}")
+                        trySend(emptyList())
+                        return@addSnapshotListener
+                    }
 
-        val subscription = firestore.collection("users")
-            .document(uid)
-            .collection("favorites")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e("Firestore", "Error fetching favorite TV series: ${error.message}")
-                    trySend(emptyList())
-                    return@addSnapshotListener
+                    val favorites = snapshot?.documents
+                        ?.filter { it.id.startsWith("tv_") }
+                        ?.mapNotNull { document ->
+                            val id = (document.get("id") as? Number)?.toInt() ?: return@mapNotNull null
+                            FavoriteTvSeries(
+                                id = id,
+                                name = document.getString("name"),
+                                posterPath = document.getString("posterPath"),
+                                firstAirDate = document.getString("firstAirDate"),
+                                voteAverage = (document.get("voteAverage") as? Number)?.toDouble(),
+                                genreIds = (document.get("genreIds") as? List<*>)
+                                    .orEmpty()
+                                    .mapNotNull { (it as? Number)?.toInt() },
+                                numberOfSeasons = (document.get("numberOfSeasons") as? Number)?.toInt(),
+                                numberOfEpisodes = (document.get("numberOfEpisodes") as? Number)?.toInt()
+                            ).toTmdbTvSummary()
+                        } ?: emptyList()
+                    trySend(favorites)
                 }
 
-                val favorites = snapshot?.documents
-                    ?.filter { it.id.startsWith("tv_") }
-                    ?.mapNotNull { document ->
-                        val id = (document.get("id") as? Number)?.toInt() ?: return@mapNotNull null
-                        FavoriteTvSeries(
-                            id = id,
-                            name = document.getString("name"),
-                            posterPath = document.getString("posterPath"),
-                            firstAirDate = document.getString("firstAirDate"),
-                            voteAverage = (document.get("voteAverage") as? Number)?.toDouble(),
-                            genreIds = (document.get("genreIds") as? List<*>)
-                                .orEmpty()
-                                .mapNotNull { (it as? Number)?.toInt() },
-                            numberOfSeasons = (document.get("numberOfSeasons") as? Number)?.toInt(),
-                            numberOfEpisodes = (document.get("numberOfEpisodes") as? Number)?.toInt()
-                        ).toTmdbTvSummary()
-                    } ?: emptyList()
-                trySend(favorites)
-            }
-
-        awaitClose { subscription.remove() }
+            awaitClose { subscription.remove() }
+        }
     }
 
     /** Saves or replaces [series] in the signed-in user's TV favorites. */

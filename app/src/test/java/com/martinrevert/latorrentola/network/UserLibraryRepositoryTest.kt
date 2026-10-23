@@ -139,4 +139,44 @@ class UserLibraryRepositoryTest {
             watchHistoryDao.delete("media_10_s1_e2")
         }
     }
+
+    @Test
+    fun `getDownloadedMovies should return empty list when user is not authenticated`() = runTest {
+        every { auth.currentUser } returns null
+        repository.getDownloadedMovies().test {
+            val list = awaitItem()
+            assertThat(list).isEmpty()
+            awaitComplete()
+        }
+    }
+
+    @Test
+    fun `getDownloadedEpisodes should return empty list when user is not authenticated`() = runTest {
+        every { auth.currentUser } returns null
+        repository.getDownloadedEpisodes().test {
+            val list = awaitItem()
+            assertThat(list).isEmpty()
+            awaitComplete()
+        }
+    }
+
+    @Test
+    fun `getFavoriteMovies should return empty list when user is not authenticated`() = runTest {
+        every { auth.currentUser } returns null
+        repository.getFavoriteMovies().test {
+            val list = awaitItem()
+            assertThat(list).isEmpty()
+            awaitComplete()
+        }
+    }
+
+    @Test
+    fun `getFavoriteTvSeries should return empty list when user is not authenticated`() = runTest {
+        every { auth.currentUser } returns null
+        repository.getFavoriteTvSeries().test {
+            val list = awaitItem()
+            assertThat(list).isEmpty()
+            awaitComplete()
+        }
+    }
 }

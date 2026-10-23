@@ -346,10 +346,11 @@
     <string name="external_media_refresh_usb">Actualizar unidades</string>
 
     <!-- Cast BottomSheet & Remote Canvas -->
+    <string name="cast_bottom_sheet_title">Transmitir</string>
     <string name="cast_bottom_sheet_playing_header">Reproduciendo ahora</string>
     <string name="cast_bottom_sheet_suggestions">Sugerencias</string>
     <string name="cast_bottom_sheet_other_devices">Otros dispositivos</string>
-    <string name="cast_stop_streaming">Detener transmisión</string>
+    <string name="cast_stop_streaming">Detener transmisión y reproducir en este teléfono</string>
     <string name="cast_play_on_phone">Reproducir en este teléfono</string>
     <string name="cast_searching_devices">Buscando dispositivos…</string>
     <string name="cast_volume_label">Volumen (%1$d%%)</string>
@@ -359,4 +360,10 @@
     <string name="cast_remote_canvas_subtitle">Usa los controles de la pantalla para gestionar la TV</string>
     <string name="cast_remote_canvas_play_locally">Ver en este teléfono</string>
     <string name="cast_connected_status">Conectado</string>
+    <string name="cast_connecting_banner">Conectando a %1$s…</string>
+    <string name="cast_connection_failed">No se pudo conectar a %1$s. Verifica que esté conectado a la misma red Wi-Fi.</string>
+    <string name="cast_connecting_device">Conectando…</string>
+    <string name="player_rewind_10">Retroceder 10 segundos</string>
+    <string name="player_forward_10">Adelantar 10 segundos</string>
+    <string name="player_stats_nerds">Estadísticas avanzadas</string>
 </resources>

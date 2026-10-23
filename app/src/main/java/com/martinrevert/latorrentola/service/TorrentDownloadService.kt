@@ -366,6 +366,7 @@ class TorrentDownloadService : Service() {
         var seasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
         var episodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
         var movieId = intent.getIntExtra(EXTRA_MOVIE_ID, 0)
+        val posterUrl = intent.getStringExtra(EXTRA_POSTER_URL)
         val magnetUri = intent.getStringExtra(EXTRA_MAGNET_URI).orEmpty()
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank {
             getString(R.string.torrent_download_title)
@@ -467,7 +468,7 @@ class TorrentDownloadService : Service() {
                     )
                 )
                 val castWhenReady = intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false)
-                startCompletedPlayback(infoHash, title, completedFile, castWhenReady, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId)
+                startCompletedPlayback(infoHash, title, completedFile, castWhenReady, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId, posterUrl)
                 return@launch
             }
 
@@ -533,7 +534,8 @@ class TorrentDownloadService : Service() {
                             episodeNumber = episodeNumber,
                             movieId = movieId,
                             resumePositionMs = resumePos,
-                            durationMs = dur
+                            durationMs = dur,
+                            posterUrl = posterUrl
                         )
                     )
                 }
@@ -604,7 +606,8 @@ class TorrentDownloadService : Service() {
         seriesId: Int = 0,
         seasonNumber: Int = 0,
         episodeNumber: Int = 0,
-        movieId: Int = 0
+        movieId: Int = 0,
+        posterUrl: String? = null
     ) {
         streamServers.remove(infoHash)?.stop()
 
@@ -634,6 +637,7 @@ class TorrentDownloadService : Service() {
             .putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, seasonNumber)
             .putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, episodeNumber)
             .putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, movieId)
+            .putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, posterUrl)
             .apply {
                 if (nextEpisodeInfo != null) {
                     putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
@@ -911,6 +915,7 @@ class TorrentDownloadService : Service() {
         var lastReportedProgress = -1
         var lastReportedState = ""
         var lastDbUpdateTime = 0L
+        var lastPriorityUpdateTime = 0L
 
         try {
             while (true) {
@@ -991,33 +996,37 @@ class TorrentDownloadService : Service() {
                         updateDownloadRecord(request, STATE_BUFFERING, 0, target.file.absolutePath)
                     }
 
-                    // Deterministic startup buffer enforcement: continuously request missing startup pieces without polling JNI on verified pieces
+                    // Periodic startup buffer enforcement: reinforce priorities every 3 seconds without hammering JNI
                     if (!readyNotified && target != null) {
-                        val tracker = pieceTracker
-                        val planner = piecePlanner
-                        if (tracker != null && planner != null) {
-                            synchronized(sessionLock) {
-                                if (sessionManager === manager && handle.isValid) {
-                                    val initialPlan = planner.planForRange(
-                                        requestedStart = 0L,
-                                        requestedEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES),
-                                        tracker = tracker
-                                    )
-                                    for (p in initialPlan.piecesToPrioritize) {
-                                        handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                        try { handle.setPieceDeadline(p, 500) } catch (_: Exception) {}
-                                    }
+                        val nowLoop = System.currentTimeMillis()
+                        if (nowLoop - lastPriorityUpdateTime >= 3000L) {
+                            lastPriorityUpdateTime = nowLoop
+                            val tracker = pieceTracker
+                            val planner = piecePlanner
+                            if (tracker != null && planner != null) {
+                                synchronized(sessionLock) {
+                                    if (sessionManager === manager && handle.isValid) {
+                                        val initialPlan = planner.planForRange(
+                                            requestedStart = 0L,
+                                            requestedEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES),
+                                            tracker = tracker
+                                        )
+                                        for (p in initialPlan.piecesToPrioritize) {
+                                            handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                            try { handle.setPieceDeadline(p, 500) } catch (_: Exception) {}
+                                        }
 
-                                    val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
-                                        target.file.extension.equals("webm", ignoreCase = true) ||
-                                        target.file.extension.equals("mp4", ignoreCase = true)
-                                    if (isIndexedContainer) {
-                                        val tailBytes = minOf(target.length, 5L * 1024L * 1024L)
-                                        val tailPieceStart = ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
-                                        for (p in tailPieceStart..target.lastPiece) {
-                                            if (!tracker.isPieceVerified(p)) {
-                                                handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                                try { handle.setPieceDeadline(p, 500) } catch (_: Exception) {}
+                                        val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
+                                            target.file.extension.equals("webm", ignoreCase = true) ||
+                                            target.file.extension.equals("mp4", ignoreCase = true)
+                                        if (isIndexedContainer) {
+                                            val tailBytes = minOf(target.length, 5L * 1024L * 1024L)
+                                            val tailPieceStart = ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
+                                            for (p in tailPieceStart..target.lastPiece) {
+                                                if (!tracker.isPieceVerified(p)) {
+                                                    handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                                    try { handle.setPieceDeadline(p, 500) } catch (_: Exception) {}
+                                                }
                                             }
                                         }
                                     }
@@ -1030,7 +1039,7 @@ class TorrentDownloadService : Service() {
                         if (sessionManager === manager && handle.isValid) handle.status() else null
                     }
                     if (status == null) {
-                        delay(200L)
+                        delay(500L)
                         continue
                     }
                     val progress = (status.progress() * 100).toInt().coerceIn(0, 100)
@@ -1063,25 +1072,6 @@ class TorrentDownloadService : Service() {
                     }
 
                     val tracker = pieceTracker
-                    if (target != null && tracker != null) {
-                        val unverified = tracker.getUnverifiedPieces(target.firstPiece, target.lastPiece)
-                        if (unverified.isNotEmpty()) {
-                            val newlyVerified = mutableListOf<Int>()
-                            synchronized(sessionLock) {
-                                if (sessionManager === manager && handle.isValid) {
-                                    for (p in unverified) {
-                                        if (handle.havePiece(p)) {
-                                            newlyVerified.add(p)
-                                        }
-                                    }
-                                }
-                            }
-                            if (newlyVerified.isNotEmpty()) {
-                                tracker.markPiecesVerified(newlyVerified)
-                            }
-                        }
-                    }
-
                     val totalProgress = status.progress().coerceIn(0f, 1f)
                     val downloadSpeed = status.downloadRate().toLong()
 
@@ -1089,7 +1079,7 @@ class TorrentDownloadService : Service() {
                         1.0f
                     } else if (target != null && tracker != null) {
                         val startupEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES - 1)
-                        val headPieces = ((startupEnd - target.fileOffset) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
+                        val headPieces = ((target.fileOffset + startupEnd) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
                         val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
                             target.file.extension.equals("webm", ignoreCase = true) ||
                             target.file.extension.equals("mp4", ignoreCase = true)
@@ -1107,14 +1097,14 @@ class TorrentDownloadService : Service() {
 
                         for (p in target.firstPiece..headPieces) {
                             totalRequiredPieces++
-                            if (tracker.isPieceVerified(p) || synchronized(sessionLock) { sessionManager === manager && handle.isValid && handle.havePiece(p) }) {
+                            if (tracker.isPieceVerified(p)) {
                                 verifiedRequiredPieces++
                             }
                         }
                         if (tailPieceStart <= target.lastPiece) {
                             for (p in tailPieceStart..target.lastPiece) {
                                 totalRequiredPieces++
-                                if (tracker.isPieceVerified(p) || synchronized(sessionLock) { sessionManager === manager && handle.isValid && handle.havePiece(p) }) {
+                                if (tracker.isPieceVerified(p)) {
                                     verifiedRequiredPieces++
                                 }
                             }
@@ -1122,7 +1112,7 @@ class TorrentDownloadService : Service() {
                         if (resumePiecesEnd > resumePiece) {
                             for (p in resumePiece until resumePiecesEnd) {
                                 totalRequiredPieces++
-                                if (tracker.isPieceVerified(p) || synchronized(sessionLock) { sessionManager === manager && handle.isValid && handle.havePiece(p) }) {
+                                if (tracker.isPieceVerified(p)) {
                                     verifiedRequiredPieces++
                                 }
                             }
@@ -1152,31 +1142,21 @@ class TorrentDownloadService : Service() {
 
                     val isReady = !readyNotified && target != null && tracker != null && run {
                         val startupEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES - 1)
-                        val headVerified = tracker.isRangeVerified(0, startupEnd) { p ->
-                            synchronized(sessionLock) {
-                                sessionManager === manager && handle.isValid && handle.havePiece(p)
-                            }
-                        }
+                        val headVerified = tracker.isRangeVerified(0, startupEnd)
                         val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
                             target.file.extension.equals("webm", ignoreCase = true) ||
                             target.file.extension.equals("mp4", ignoreCase = true)
                         val tailVerified = if (isIndexedContainer) {
                             val tailBytes = minOf(target.length, 2L * 1024L * 1024L)
                             val tailStart = maxOf(0L, target.length - tailBytes)
-                            tracker.isRangeVerified(tailStart, target.length - 1L) { p ->
-                                synchronized(sessionLock) {
-                                    sessionManager === manager && handle.isValid && handle.havePiece(p)
-                                }
-                            }
+                            tracker.isRangeVerified(tailStart, target.length - 1L)
                         } else {
                             true
                         }
                         val resumePiece = piecePlanner?.calculateResumePiece(request.resumePositionMs, request.durationMs) ?: target.firstPiece
                         val resumeVerified = if (resumePiece > target.firstPiece) {
                             (resumePiece until minOf(resumePiece + 3, target.lastPiece + 1)).all { p ->
-                                tracker.isPieceVerified(p) || synchronized(sessionLock) {
-                                    sessionManager === manager && handle.isValid && handle.havePiece(p)
-                                }
+                                tracker.isPieceVerified(p)
                             }
                         } else {
                             true
@@ -1279,6 +1259,7 @@ class TorrentDownloadService : Service() {
                             .putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, request.seasonNumber)
                             .putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, request.episodeNumber)
                             .putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, request.movieId)
+                            .putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, request.posterUrl)
                             .apply {
                                 if (request.nextEpisodeInfo != null) {
                                     putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, request.nextEpisodeInfo)
@@ -1346,7 +1327,7 @@ class TorrentDownloadService : Service() {
                         return
                     }
                 }
-                val pollDelay = if (!readyNotified) 200L else 1000L
+                val pollDelay = if (!readyNotified) 500L else 1000L
                 val step = 100L
                 var elapsed = 0L
                 while (elapsed < pollDelay) {
@@ -1544,16 +1525,18 @@ class TorrentDownloadService : Service() {
 
     /** Stops and clears the active native session without racing service teardown. */
     private suspend fun stopSessionManager() {
-        val manager = synchronized(sessionLock) {
-            val m = sessionManager
-            sessionManager = null
-            m
-        } ?: return
         withContext(Dispatchers.IO) {
-            try {
-                manager.stop()
-            } catch (e: Exception) {
-                Log.w(TAG, "Error stopping SessionManager", e)
+            val manager = synchronized(sessionLock) {
+                val m = sessionManager
+                sessionManager = null
+                m
+            } ?: return@withContext
+            synchronized(sessionLock) {
+                try {
+                    manager.stop()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error stopping SessionManager", e)
+                }
             }
         }
     }
@@ -1577,7 +1560,8 @@ class TorrentDownloadService : Service() {
         val episodeNumber: Int = 0,
         val movieId: Int = 0,
         val resumePositionMs: Long = 0L,
-        val durationMs: Long = 0L
+        val durationMs: Long = 0L,
+        val posterUrl: String? = null
     )
 
     /**
@@ -1677,6 +1661,8 @@ class TorrentDownloadService : Service() {
         const val EXTRA_EPISODE_NUMBER = "torrent_episode_number"
         /** Movie ID extra. */
         const val EXTRA_MOVIE_ID = "torrent_movie_id"
+        /** Poster URL extra. */
+        const val EXTRA_POSTER_URL = "torrent_poster_url"
         /** Next episode information passed along for quality selection upon completion. */
         const val EXTRA_NEXT_EPISODE_INFO = "extra_next_episode_info"
         /** Stop serving a torrent after the player closes. */

@@ -86,7 +86,8 @@ class TvEpisodeDetailViewModel @Inject constructor(
                     episode = rawState.episode,
                     torrents = rawState.torrents,
                     isDownloaded = matching.isNotEmpty(),
-                    downloadedHashes = downloadedHashes
+                    downloadedHashes = downloadedHashes,
+                    posterUrl = rawState.posterUrl
                 )
             }
         }
@@ -155,15 +156,17 @@ class TvEpisodeDetailViewModel @Inject constructor(
                 }
                 currentEpisode = episode
 
-                // 3. Resolve series title if missing
+                // 3. Resolve series title and vertical poster from TMDB
                 var resolvedSeriesName = seriesName
-                if (resolvedSeriesName.isBlank()) {
-                    try {
-                        val series = tmdbRepository.getTvDetails(seriesId)
+                var resolvedPosterUrl: String? = null
+                try {
+                    val series = tmdbRepository.getTvDetails(seriesId)
+                    if (resolvedSeriesName.isBlank()) {
                         resolvedSeriesName = series.name.orEmpty()
-                    } catch (e: Exception) {
-                        if (e is CancellationException) throw e
                     }
+                    resolvedPosterUrl = series.fullPosterUrl
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                 }
                 activeSeriesName = resolvedSeriesName
 
@@ -180,7 +183,8 @@ class TvEpisodeDetailViewModel @Inject constructor(
                 _rawUiState.value = TvEpisodeDetailRawUiState.Success(
                     seriesName = resolvedSeriesName,
                     episode = episode,
-                    torrents = torrents
+                    torrents = torrents,
+                    posterUrl = resolvedPosterUrl
                 )
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
@@ -320,7 +324,8 @@ private sealed interface TvEpisodeDetailRawUiState {
     data class Success(
         val seriesName: String,
         val episode: TmdbTvEpisode,
-        val torrents: List<EztvTorrent>
+        val torrents: List<EztvTorrent>,
+        val posterUrl: String? = null
     ) : TvEpisodeDetailRawUiState
 
     data class Error(val message: String) : TvEpisodeDetailRawUiState
@@ -335,7 +340,8 @@ sealed interface TvEpisodeDetailUiState {
         val episode: TmdbTvEpisode,
         val torrents: List<EztvTorrent>,
         val isDownloaded: Boolean = false,
-        val downloadedHashes: Set<String> = emptySet()
+        val downloadedHashes: Set<String> = emptySet(),
+        val posterUrl: String? = null
     ) : TvEpisodeDetailUiState
 
     data class Error(val message: String) : TvEpisodeDetailUiState
