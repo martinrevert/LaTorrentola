@@ -20,13 +20,15 @@ class TorrentDownloadServiceTest {
             seriesId = 12,
             seasonNumber = 1,
             episodeNumber = 5,
-            movieId = 0
+            movieId = 0,
+            posterUrl = "https://image.tmdb.org/t/p/w500/sample.jpg"
         )
 
         assertThat(download.seriesId).isEqualTo(12)
         assertThat(download.seasonNumber).isEqualTo(1)
         assertThat(download.episodeNumber).isEqualTo(5)
         assertThat(download.movieId).isEqualTo(0)
+        assertThat(download.posterUrl).isEqualTo("https://image.tmdb.org/t/p/w500/sample.jpg")
     }
 
     @Test
@@ -94,5 +96,17 @@ class TorrentDownloadServiceTest {
         )
         assertThat(download.state).isEqualTo(TorrentDownloadService.STATE_PAUSED)
         assertThat(download.progressPercent).isEqualTo(42)
+    }
+
+    @Test
+    fun `readyStreamEvents is exposed as a SharedFlow on TorrentDownloadService companion`() {
+        val events = TorrentDownloadService.readyStreamEvents
+        assertThat(events).isNotNull()
+    }
+
+    @Test
+    fun `getReadyPlayerIntent returns null for non-registered hash`() {
+        val intent = TorrentDownloadService.getReadyPlayerIntent("non_existent_hash")
+        assertThat(intent).isNull()
     }
 }

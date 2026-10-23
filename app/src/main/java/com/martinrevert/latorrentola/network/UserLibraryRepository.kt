@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import com.martinrevert.latorrentola.utils.MediaMetadataResolver
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -37,43 +38,42 @@ import javax.inject.Singleton
  * @property auth Firebase authentication client used to scope data by user.
  * @property watchHistoryDao Local database access for watch progress caching.
  * @property torrentDownloadDao Local database access for torrent transfers cleanup.
+ * @property mediaMetadataResolver Lazy resolver used to migrate non-canonical media IDs to canonical IDs.
  */
 @Singleton
 class UserLibraryRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val auth: FirebaseAuth,
     private val watchHistoryDao: WatchHistoryDao,
-    private val torrentDownloadDao: TorrentDownloadDao? = null
+    private val torrentDownloadDao: TorrentDownloadDao? = null,
+    private val mediaMetadataResolver: dagger.Lazy<MediaMetadataResolver>? = null
 ) {
     /** Authenticated Firebase UID used to scope cloud library documents. */
     private val userId: String? get() = auth.currentUser?.uid
 
     /** Observes the signed-in user's downloads in reverse chronological order. */
-    fun getDownloadedMovies(): Flow<List<DownloadedMovie>> = callbackFlow {
-        val uid = userId
-        if (uid == null) {
-            trySend(emptyList())
-            return@callbackFlow
-        }
+    fun getDownloadedMovies(): Flow<List<DownloadedMovie>> {
+        val uid = userId ?: return flowOf(emptyList())
+        return callbackFlow {
+            val subscription = firestore.collection("users")
+                .document(uid)
+                .collection("downloads")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e("Firestore", "Error fetching downloads: ${error.message}")
+                        trySend(emptyList())
+                        return@addSnapshotListener
+                    }
 
-        val subscription = firestore.collection("users")
-            .document(uid)
-            .collection("downloads")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e("Firestore", "Error fetching downloads: ${error.message}")
-                    trySend(emptyList())
-                    return@addSnapshotListener
+                    val downloads = snapshot?.documents?.mapNotNull {
+                        it.toObject(DownloadedMovie::class.java)
+                    }?.sortedByDescending { it.timestamp } ?: emptyList()
+
+                    trySend(downloads)
                 }
 
-                val downloads = snapshot?.documents?.mapNotNull {
-                    it.toObject(DownloadedMovie::class.java)
-                }?.sortedByDescending { it.timestamp } ?: emptyList()
-
-                trySend(downloads)
-            }
-
-        awaitClose { subscription.remove() }
+            awaitClose { subscription.remove() }
+        }
     }
 
     /** Saves or replaces a download record, keyed by its torrent hash. */
@@ -93,31 +93,28 @@ class UserLibraryRepository @Inject constructor(
     }
 
     /** Observes the signed-in user's TV episode downloads in reverse chronological order. */
-    fun getDownloadedEpisodes(): Flow<List<DownloadedEpisode>> = callbackFlow {
-        val uid = userId
-        if (uid == null) {
-            trySend(emptyList())
-            return@callbackFlow
-        }
+    fun getDownloadedEpisodes(): Flow<List<DownloadedEpisode>> {
+        val uid = userId ?: return flowOf(emptyList())
+        return callbackFlow {
+            val subscription = firestore.collection("users")
+                .document(uid)
+                .collection("tv_downloads")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e("Firestore", "Error fetching TV downloads: ${error.message}")
+                        trySend(emptyList())
+                        return@addSnapshotListener
+                    }
 
-        val subscription = firestore.collection("users")
-            .document(uid)
-            .collection("tv_downloads")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e("Firestore", "Error fetching TV downloads: ${error.message}")
-                    trySend(emptyList())
-                    return@addSnapshotListener
+                    val downloads = snapshot?.documents?.mapNotNull {
+                        it.toObject(DownloadedEpisode::class.java)
+                    }?.sortedByDescending { it.timestamp } ?: emptyList()
+
+                    trySend(downloads)
                 }
 
-                val downloads = snapshot?.documents?.mapNotNull {
-                    it.toObject(DownloadedEpisode::class.java)
-                }?.sortedByDescending { it.timestamp } ?: emptyList()
-
-                trySend(downloads)
-            }
-
-        awaitClose { subscription.remove() }
+            awaitClose { subscription.remove() }
+        }
     }
 
     /** Saves or replaces a TV episode download record, keyed by its torrent hash or fallback document ID. */
@@ -141,33 +138,30 @@ class UserLibraryRepository @Inject constructor(
     }
 
     /** Observes the signed-in user's favorite movie records. */
-    fun getFavoriteMovies(): Flow<List<Movie>> = callbackFlow {
-        val uid = userId
-        if (uid == null) {
-            trySend(emptyList())
-            return@callbackFlow
-        }
+    fun getFavoriteMovies(): Flow<List<Movie>> {
+        val uid = userId ?: return flowOf(emptyList())
+        return callbackFlow {
+            val subscription = firestore.collection("users")
+                .document(uid)
+                .collection("favorites")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e("Firestore", "Error fetching favorites: ${error.message}")
+                        trySend(emptyList())
+                        return@addSnapshotListener
+                    }
 
-        val subscription = firestore.collection("users")
-            .document(uid)
-            .collection("favorites")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e("Firestore", "Error fetching favorites: ${error.message}")
-                    trySend(emptyList())
-                    return@addSnapshotListener
+                    val favorites = snapshot?.documents?.filterNot {
+                        it.id.startsWith("tv_")
+                    }?.mapNotNull {
+                        it.toObject(Movie::class.java)
+                    } ?: emptyList()
+
+                    trySend(favorites)
                 }
 
-                val favorites = snapshot?.documents?.filterNot {
-                    it.id.startsWith("tv_")
-                }?.mapNotNull {
-                    it.toObject(Movie::class.java)
-                } ?: emptyList()
-
-                trySend(favorites)
-            }
-
-        awaitClose { subscription.remove() }
+            awaitClose { subscription.remove() }
+        }
     }
 
     /** Saves or replaces [movie] in the signed-in user's favorites. */
@@ -203,44 +197,41 @@ class UserLibraryRepository @Inject constructor(
     }
 
     /** Observes the signed-in user's favorite TV series. */
-    fun getFavoriteTvSeries(): Flow<List<TmdbTvSummary>> = callbackFlow {
-        val uid = userId
-        if (uid == null) {
-            trySend(emptyList())
-            return@callbackFlow
-        }
+    fun getFavoriteTvSeries(): Flow<List<TmdbTvSummary>> {
+        val uid = userId ?: return flowOf(emptyList())
+        return callbackFlow {
+            val subscription = firestore.collection("users")
+                .document(uid)
+                .collection("favorites")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e("Firestore", "Error fetching favorite TV series: ${error.message}")
+                        trySend(emptyList())
+                        return@addSnapshotListener
+                    }
 
-        val subscription = firestore.collection("users")
-            .document(uid)
-            .collection("favorites")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e("Firestore", "Error fetching favorite TV series: ${error.message}")
-                    trySend(emptyList())
-                    return@addSnapshotListener
+                    val favorites = snapshot?.documents
+                        ?.filter { it.id.startsWith("tv_") }
+                        ?.mapNotNull { document ->
+                            val id = (document.get("id") as? Number)?.toInt() ?: return@mapNotNull null
+                            FavoriteTvSeries(
+                                id = id,
+                                name = document.getString("name"),
+                                posterPath = document.getString("posterPath"),
+                                firstAirDate = document.getString("firstAirDate"),
+                                voteAverage = (document.get("voteAverage") as? Number)?.toDouble(),
+                                genreIds = (document.get("genreIds") as? List<*>)
+                                    .orEmpty()
+                                    .mapNotNull { (it as? Number)?.toInt() },
+                                numberOfSeasons = (document.get("numberOfSeasons") as? Number)?.toInt(),
+                                numberOfEpisodes = (document.get("numberOfEpisodes") as? Number)?.toInt()
+                            ).toTmdbTvSummary()
+                        } ?: emptyList()
+                    trySend(favorites)
                 }
 
-                val favorites = snapshot?.documents
-                    ?.filter { it.id.startsWith("tv_") }
-                    ?.mapNotNull { document ->
-                        val id = (document.get("id") as? Number)?.toInt() ?: return@mapNotNull null
-                        FavoriteTvSeries(
-                            id = id,
-                            name = document.getString("name"),
-                            posterPath = document.getString("posterPath"),
-                            firstAirDate = document.getString("firstAirDate"),
-                            voteAverage = (document.get("voteAverage") as? Number)?.toDouble(),
-                            genreIds = (document.get("genreIds") as? List<*>)
-                                .orEmpty()
-                                .mapNotNull { (it as? Number)?.toInt() },
-                            numberOfSeasons = (document.get("numberOfSeasons") as? Number)?.toInt(),
-                            numberOfEpisodes = (document.get("numberOfEpisodes") as? Number)?.toInt()
-                        ).toTmdbTvSummary()
-                    } ?: emptyList()
-                trySend(favorites)
-            }
-
-        awaitClose { subscription.remove() }
+            awaitClose { subscription.remove() }
+        }
     }
 
     /** Saves or replaces [series] in the signed-in user's TV favorites. */
@@ -526,7 +517,165 @@ class UserLibraryRepository @Inject constructor(
             )
         }
 
+        // Fallback: If mediaId is canonical, attempt to look up and migrate matching legacy non-canonical records
+        if (MediaIdHelper.isCanonical(mediaId)) {
+            val legacyMatch = findAndMigrateLegacyProgress(mediaId)
+            if (legacyMatch != null) return legacyMatch
+        }
+
         return null
+    }
+
+    /**
+     * Finds any legacy record in Room matching the requested canonical media ID,
+     * migrates it to the canonical key, and deletes the old legacy record.
+     */
+    private suspend fun findAndMigrateLegacyProgress(canonicalMediaId: String): PlaybackProgress? {
+        val resolver = mediaMetadataResolver?.get() ?: return null
+        val uid = userId
+        try {
+            val allLocal = watchHistoryDao.getAll()
+            val episodeTriple = MediaIdHelper.parseCanonicalEpisode(canonicalMediaId)
+
+            for (legacy in allLocal) {
+                if (MediaIdHelper.isCanonical(legacy.mediaId)) continue
+
+                // Check episode match by season and episode numbers
+                if (episodeTriple != null) {
+                    val (sNum, eNum) = MediaMetadataResolver.extractSeasonAndEpisode(legacy.title, legacy.mediaId)
+                    if (sNum == episodeTriple.second && eNum == episodeTriple.third) {
+                        val resolved = resolver.resolve(rawTitle = legacy.title.ifBlank { legacy.mediaId })
+                        if (resolved.mediaId == canonicalMediaId) {
+                            val migrated = PlaybackProgress(
+                                mediaId = canonicalMediaId,
+                                title = resolved.title.ifBlank { legacy.title },
+                                positionMs = legacy.positionMs,
+                                durationMs = legacy.durationMs,
+                                timestamp = legacy.timestamp,
+                                isEpisode = true
+                            )
+                            savePlaybackProgress(migrated)
+                            deletePlaybackProgress(legacy.mediaId)
+                            Log.i("UserLibraryRepository", "Migrated on-demand legacy episode '${legacy.mediaId}' -> '$canonicalMediaId'")
+                            return migrated
+                        }
+                    }
+                } else if (MediaIdHelper.isCanonicalMovieId(canonicalMediaId)) {
+                    // Check movie match by resolving legacy candidate
+                    val resolved = resolver.resolve(rawTitle = legacy.title.ifBlank { legacy.mediaId })
+                    if (resolved.mediaId == canonicalMediaId) {
+                        val migrated = PlaybackProgress(
+                            mediaId = canonicalMediaId,
+                            title = resolved.title.ifBlank { legacy.title },
+                            positionMs = legacy.positionMs,
+                            durationMs = legacy.durationMs,
+                            timestamp = legacy.timestamp,
+                            isEpisode = false
+                        )
+                        savePlaybackProgress(migrated)
+                        deletePlaybackProgress(legacy.mediaId)
+                        Log.i("UserLibraryRepository", "Migrated on-demand legacy movie '${legacy.mediaId}' -> '$canonicalMediaId'")
+                        return migrated
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w("UserLibraryRepository", "Error resolving on-demand legacy progress: ${e.message}")
+        }
+        return null
+    }
+
+    /**
+     * Scans Room and Firestore for any non-canonical watch history items
+     * (e.g. 40-char torrent infoHashes, raw file names, or unformatted titles).
+     * Resolves their canonical IDs via [MediaMetadataResolver], persists under the
+     * canonical key, and deletes the old bad records from Room and Firestore.
+     */
+    suspend fun cleanupAndMigrateWatchHistory() {
+        val resolver = mediaMetadataResolver?.get() ?: return
+        val uid = userId
+
+        // 1. Process local non-canonical items from Room
+        try {
+            val localItems = watchHistoryDao.getAll()
+            for (item in localItems) {
+                if (!MediaIdHelper.isCanonical(item.mediaId)) {
+                    migrateSingleItem(
+                        item = PlaybackProgress(
+                            mediaId = item.mediaId,
+                            title = item.title,
+                            positionMs = item.positionMs,
+                            durationMs = item.durationMs,
+                            timestamp = item.timestamp,
+                            isEpisode = item.isEpisode
+                        ),
+                        resolver = resolver,
+                        uid = uid
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w("UserLibraryRepository", "Error during local watch history migration: ${e.message}")
+        }
+
+        // 2. Process remote non-canonical items from Firestore
+        if (uid != null) {
+            try {
+                val snapshot = firestore.collection("users")
+                    .document(uid)
+                    .collection("watch_history")
+                    .get()
+                    .await()
+
+                for (doc in snapshot.documents) {
+                    val rawId = doc.id
+                    if (!MediaIdHelper.isCanonical(rawId)) {
+                        val progress = parsePlaybackProgress(doc)
+                        if (progress != null) {
+                            migrateSingleItem(progress, resolver, uid, rawDocId = rawId)
+                        } else {
+                            // Purge corrupt or empty document
+                            doc.reference.delete().await()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.w("UserLibraryRepository", "Error during remote watch history migration: ${e.message}")
+            }
+        }
+    }
+
+    private suspend fun migrateSingleItem(
+        item: PlaybackProgress,
+        resolver: MediaMetadataResolver,
+        uid: String?,
+        rawDocId: String? = null
+    ) {
+        val oldId = rawDocId ?: item.mediaId
+        try {
+            val titleToParse = item.title.ifBlank { oldId }
+            val resolved = resolver.resolve(rawTitle = titleToParse)
+            if (MediaIdHelper.isCanonical(resolved.mediaId) && resolved.mediaId != oldId) {
+                val migratedProgress = item.copy(
+                    mediaId = resolved.mediaId,
+                    title = if (resolved.title.isNotBlank()) resolved.title else item.title,
+                    isEpisode = resolved.isEpisode
+                )
+                savePlaybackProgress(migratedProgress)
+                deletePlaybackProgress(oldId)
+                Log.i("UserLibraryRepository", "Successfully migrated legacy watch history '$oldId' -> '${resolved.mediaId}'")
+            } else if (MediaIdHelper.isInfoHash(oldId)) {
+                // Purge orphan unresolvable 40-character torrent infoHash
+                deletePlaybackProgress(oldId)
+                Log.i("UserLibraryRepository", "Purged unresolvable infoHash document '$oldId' from watch history")
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w("UserLibraryRepository", "Failed migrating item '$oldId': ${e.message}")
+        }
     }
 
     /** Observes the user's watch history from local Room cache, syncing with Firestore when signed in. */
@@ -568,6 +717,9 @@ class UserLibraryRepository @Inject constructor(
                                     if (e is CancellationException) throw e
                                     Log.e("UserLibraryRepository", "Error syncing item: ${e.message}")
                                 }
+                            }
+                            if (remoteItems.any { !MediaIdHelper.isCanonical(it.mediaId) }) {
+                                cleanupAndMigrateWatchHistory()
                             }
                         }
                     }

@@ -2,7 +2,13 @@
 
 package com.martinrevert.latorrentola.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,15 +19,31 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.automirrored.filled.StopScreenShare
+import androidx.compose.material.icons.automirrored.filled.VolumeDown
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.CastConnected
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -30,28 +52,41 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.media3.common.Player
+import androidx.mediarouter.media.MediaRouteSelector
+import androidx.mediarouter.media.MediaRouter
+import coil3.compose.AsyncImage
+import com.google.android.gms.cast.CastDevice
+import com.google.android.gms.cast.CastMediaControlIntent
+import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
-import androidx.media3.common.Player
-import androidx.mediarouter.media.MediaRouteSelector
-import androidx.mediarouter.media.MediaRouter
-import com.google.android.gms.cast.CastMediaControlIntent
 
 /**
  * YouTube Music-style Cast Bottom Sheet for discovering devices,
- * controlling remote volume, and transferring playback back to phone ("Este dispositivo").
+ * controlling remote volume, mini-player preview, and transferring playback back to phone.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +94,8 @@ fun CastBottomSheet(
     onDismissRequest: () -> Unit,
     mediaTitle: String = "",
     mediaSubtitle: String = "",
+    posterUrl: String? = null,
+    player: Player? = null,
     themeMode: Int? = null
 ) {
     val context = LocalContext.current
@@ -110,8 +147,22 @@ fun CastBottomSheet(
         }
     }
 
+    var isPlayerPlaying by remember(player) { mutableStateOf(player?.isPlaying == true) }
+    DisposableEffect(player) {
+        if (player == null) return@DisposableEffect onDispose {}
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlayerPlaying = playing
+            }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+
     val isCasting = !selectedRoute.isDefault
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var connectingRouteId by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
 
     val sheetBody: @Composable () -> Unit = {
         LazyColumn(
@@ -129,64 +180,233 @@ fun CastBottomSheet(
                             .padding(horizontal = 24.dp, vertical = 8.dp)
                     ) {
                         Text(
-                            text = "Reproduciendo",
+                            text = stringResource(R.string.cast_bottom_sheet_playing_header),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        if (mediaTitle.isNotBlank()) {
+
+                        // Mini-Player preview card if media info is present
+                        if (mediaTitle.isNotBlank() || player != null) {
                             Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = mediaTitle,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            if (mediaSubtitle.isNotBlank()) {
-                                Text(
-                                    text = mediaSubtitle,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
                                 )
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (!posterUrl.isNullOrBlank()) {
+                                        AsyncImage(
+                                            model = posterUrl,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .width(48.dp)
+                                                .height(72.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(48.dp)
+                                                .height(72.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Movie,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = mediaTitle.ifBlank { stringResource(R.string.cast_bottom_sheet_title) },
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        val sub = if (mediaSubtitle.isNotBlank()) mediaSubtitle else selectedRoute.name
+                                        Text(
+                                            text = sub,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+
+                                    if (player != null) {
+                                        IconButton(
+                                            onClick = {
+                                                if (isPlayerPlaying) player.pause() else player.play()
+                                            }
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isPlayerPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                                contentDescription = if (isPlayerPlaying) stringResource(R.string.pause_desc) else stringResource(R.string.play_desc),
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(32.dp)
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
+
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Selected Route Control Row & Volume Slider
+                        // Active Route Control Row & Volume Slider
+                        val castDevice = remember(selectedRoute) { CastDevice.getFromBundle(selectedRoute.extras) }
+                        val hardwareModel = castDevice?.modelName
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = routeIcon(selectedRoute),
+                                imageVector = Icons.Default.CastConnected,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurface,
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(28.dp)
                             )
                             Spacer(modifier = Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = selectedRoute.name,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                if (selectedRoute.volumeHandling == MediaRouter.RouteInfo.PLAYBACK_VOLUME_VARIABLE) {
-                                    var sliderValue by remember(selectedRoute.volume) {
-                                        mutableFloatStateOf(selectedRoute.volume.toFloat())
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = selectedRoute.name,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (isPlayerPlaying) {
+                                        Icon(
+                                            imageVector = Icons.Default.GraphicEq,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
-                                    Slider(
-                                        value = sliderValue,
-                                        onValueChange = { newValue ->
-                                            sliderValue = newValue
-                                            selectedRoute.requestSetVolume(newValue.toInt())
-                                        },
-                                        valueRange = 0f..selectedRoute.volumeMax.toFloat(),
-                                        modifier = Modifier.fillMaxWidth()
+                                }
+                                if (!hardwareModel.isNullOrBlank()) {
+                                    Text(
+                                        text = hardwareModel,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
                         }
+
+                        if (selectedRoute.volumeHandling == MediaRouter.RouteInfo.PLAYBACK_VOLUME_VARIABLE) {
+                            val haptic = LocalHapticFeedback.current
+                            val currentVol = selectedRoute.volume
+                            val maxVol = selectedRoute.volumeMax.coerceAtLeast(1)
+                            val volPct = ((currentVol.toFloat() / maxVol) * 100).toInt()
+                            var sliderValue by remember(currentVol) {
+                                mutableFloatStateOf(currentVol.toFloat())
+                            }
+                            var lastHapticStep by remember { mutableIntStateOf(currentVol) }
+                            var preMuteVolume by remember { mutableIntStateOf(if (currentVol > 0) currentVol else maxVol / 2) }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(
+                                    onClick = {
+                                        if (currentVol > 0) {
+                                            preMuteVolume = currentVol
+                                            selectedRoute.requestSetVolume(0)
+                                        } else {
+                                            selectedRoute.requestSetVolume(preMuteVolume.coerceAtLeast(1))
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = when {
+                                            currentVol == 0 -> Icons.AutoMirrored.Filled.VolumeOff
+                                            volPct < 50 -> Icons.AutoMirrored.Filled.VolumeDown
+                                            else -> Icons.AutoMirrored.Filled.VolumeUp
+                                        },
+                                        contentDescription = if (currentVol == 0) stringResource(R.string.cast_unmute) else stringResource(R.string.cast_mute),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+
+                                Slider(
+                                    value = sliderValue,
+                                    onValueChange = { newValue ->
+                                        sliderValue = newValue
+                                        val targetVol = newValue.toInt()
+                                        if (targetVol != lastHapticStep) {
+                                            lastHapticStep = targetVol
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
+                                        selectedRoute.requestSetVolume(targetVol)
+                                    },
+                                    valueRange = 0f..maxVol.toFloat(),
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "$volPct%",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.width(42.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Explicit Disconnect / Play on phone button
+                item {
+                    OutlinedButton(
+                        onClick = {
+                            mediaRouter.selectRoute(mediaRouter.defaultRoute)
+                            onDismissRequest()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.StopScreenShare,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(R.string.cast_stop_streaming),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
 
@@ -197,39 +417,31 @@ fun CastBottomSheet(
                     )
                 }
 
-                // "Sugerencias" Section (Includes "Este dispositivo" to transfer back to phone)
-                item {
-                    Text(
-                        text = "Sugerencias",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-                    )
-                }
-
-                item {
-                    CastDeviceRow(
-                        title = "Este dispositivo",
-                        subtitle = null,
-                        icon = Icons.Default.PhoneAndroid,
-                        onClick = {
-                            mediaRouter.selectRoute(mediaRouter.defaultRoute)
-                            onDismissRequest()
-                        }
-                    )
-                }
-
-                val suggestedRoutes = routes.filter { it.id != selectedRoute.id }
-                items(suggestedRoutes) { route ->
-                    CastDeviceRow(
-                        title = route.name,
-                        subtitle = route.description,
-                        icon = routeIcon(route),
-                        onClick = {
-                            mediaRouter.selectRoute(route)
-                            onDismissRequest()
-                        }
-                    )
+                val otherRoutes = routes.filter { it.id != selectedRoute.id }
+                if (otherRoutes.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = stringResource(R.string.cast_bottom_sheet_other_devices),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                        )
+                    }
+                    items(otherRoutes) { route ->
+                        val dev = remember(route) { CastDevice.getFromBundle(route.extras) }
+                        val isConnecting = route.connectionState == MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING || connectingRouteId == route.id
+                        CastDeviceRow(
+                            title = route.name,
+                            subtitle = dev?.modelName ?: route.description,
+                            icon = routeIcon(route),
+                            isConnecting = isConnecting,
+                            onClick = {
+                                connectingRouteId = route.id
+                                onDismissRequest()
+                                mediaRouter.selectRoute(route)
+                            }
+                        )
+                    }
                 }
             } else {
                 // Disconnected Mode: Show device list
@@ -239,20 +451,24 @@ fun CastBottomSheet(
                 if (suggested.isNotEmpty()) {
                     item {
                         Text(
-                            text = "Sugerencias",
+                            text = stringResource(R.string.cast_bottom_sheet_suggestions),
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
                         )
                     }
                     items(suggested) { route ->
+                        val dev = remember(route) { CastDevice.getFromBundle(route.extras) }
+                        val isConnecting = route.connectionState == MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING || connectingRouteId == route.id
                         CastDeviceRow(
                             title = route.name,
-                            subtitle = route.description,
+                            subtitle = dev?.modelName ?: route.description,
                             icon = routeIcon(route),
+                            isConnecting = isConnecting,
                             onClick = {
-                                mediaRouter.selectRoute(route)
+                                connectingRouteId = route.id
                                 onDismissRequest()
+                                mediaRouter.selectRoute(route)
                             }
                         )
                     }
@@ -269,20 +485,24 @@ fun CastBottomSheet(
                 if (others.isNotEmpty()) {
                     item {
                         Text(
-                            text = "Otros dispositivos",
+                            text = stringResource(R.string.cast_bottom_sheet_other_devices),
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
                         )
                     }
                     items(others) { route ->
+                        val dev = remember(route) { CastDevice.getFromBundle(route.extras) }
+                        val isConnecting = route.connectionState == MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING || connectingRouteId == route.id
                         CastDeviceRow(
                             title = route.name,
-                            subtitle = route.description,
+                            subtitle = dev?.modelName ?: route.description,
                             icon = routeIcon(route),
+                            isConnecting = isConnecting,
                             onClick = {
-                                mediaRouter.selectRoute(route)
+                                connectingRouteId = route.id
                                 onDismissRequest()
+                                mediaRouter.selectRoute(route)
                             }
                         )
                     }
@@ -293,11 +513,18 @@ fun CastBottomSheet(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                                .padding(36.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
                         ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(36.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                strokeWidth = 3.dp
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = "Buscando dispositivos...",
+                                text = stringResource(R.string.cast_searching_devices),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -331,6 +558,7 @@ private fun CastDeviceRow(
     title: String,
     subtitle: String?,
     icon: ImageVector,
+    isConnecting: Boolean = false,
     onClick: () -> Unit
 ) {
     Surface(
@@ -344,12 +572,20 @@ private fun CastDeviceRow(
                 .padding(horizontal = 24.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(24.dp)
-            )
+            if (isConnecting) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
             Spacer(modifier = Modifier.width(20.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -358,7 +594,14 @@ private fun CastDeviceRow(
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Medium
                 )
-                if (!subtitle.isNullOrBlank()) {
+                if (isConnecting) {
+                    Text(
+                        text = stringResource(R.string.cast_connecting_device),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
+                } else if (!subtitle.isNullOrBlank()) {
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodyMedium,

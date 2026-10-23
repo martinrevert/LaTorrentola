@@ -46,6 +46,7 @@ class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private var localPlayer: ExoPlayer? = null
     private var remotePlayer: CastPlayer? = null
+    private var lastCastPositionMs: Long = 0L
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
     private var progressReportingJob: Job? = null
@@ -85,43 +86,52 @@ class PlaybackService : MediaSessionService() {
                 override fun evaluate(request: CastTrackSelectorRequest): CastTrackSelectorResult {
                     val builder = request.buildResultUpon()
                     val params = request.trackSelectionParameters
+                    val selectedGroups = request.currentlySelectedTrackGroups.toMutableSet()
 
-                    // If text is disabled, clear text selections
-                    if (params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)) {
-                        val newSelections = request.currentlySelectedTrackGroups.filter { it.type != C.TRACK_TYPE_TEXT }
-                        builder.setSelections(com.google.common.collect.ImmutableSet.copyOf(newSelections))
-                        return builder.build()
-                    }
-
-                    // Find the preferred text track from ExoPlayer parameters
-                    val textTrackGroups = request.trackGroupList.filter { it.type == C.TRACK_TYPE_TEXT }
-                    if (textTrackGroups.isEmpty()) return builder.build()
-
-                    var targetGroup: androidx.media3.common.TrackGroup? = null
-                    
-                    // 1. Check direct override
-                    val override = params.overrides.values.firstOrNull { it.mediaTrackGroup.type == C.TRACK_TYPE_TEXT }
-                    if (override != null) {
-                        targetGroup = override.mediaTrackGroup
-                    } else {
-                        // 2. Check preferred language
-                        val prefLang = params.preferredTextLanguages.firstOrNull()
-                        if (prefLang != null) {
-                            targetGroup = textTrackGroups.firstOrNull { 
-                                it.getFormat(0).language?.equals(prefLang, ignoreCase = true) == true 
-                            }
+                    // 1. Audio Track Evaluation
+                    val audioTrackGroups = request.trackGroupList.filter { it.type == C.TRACK_TYPE_AUDIO }
+                    if (audioTrackGroups.isNotEmpty()) {
+                        val audioOverride = params.overrides.values.firstOrNull { it.mediaTrackGroup.type == C.TRACK_TYPE_AUDIO }
+                        val targetAudioGroup = if (audioOverride != null) {
+                            audioOverride.mediaTrackGroup
+                        } else {
+                            val prefAudioLang = params.preferredAudioLanguages.firstOrNull()
+                            if (prefAudioLang != null) {
+                                audioTrackGroups.firstOrNull {
+                                    it.getFormat(0).language?.equals(prefAudioLang, ignoreCase = true) == true
+                                }
+                            } else null
+                        }
+                        if (targetAudioGroup != null) {
+                            selectedGroups.removeAll { it.type == C.TRACK_TYPE_AUDIO }
+                            selectedGroups.add(targetAudioGroup)
                         }
                     }
-                    
-                    // 3. Fallback to first available text track
-                    if (targetGroup == null) {
-                        targetGroup = textTrackGroups.first()
+
+                    // 2. Text Track Evaluation
+                    if (params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)) {
+                        selectedGroups.removeAll { it.type == C.TRACK_TYPE_TEXT }
+                    } else {
+                        val textTrackGroups = request.trackGroupList.filter { it.type == C.TRACK_TYPE_TEXT }
+                        if (textTrackGroups.isNotEmpty()) {
+                            val textOverride = params.overrides.values.firstOrNull { it.mediaTrackGroup.type == C.TRACK_TYPE_TEXT }
+                            val targetTextGroup = if (textOverride != null) {
+                                textOverride.mediaTrackGroup
+                            } else {
+                                val prefLang = params.preferredTextLanguages.firstOrNull()
+                                if (prefLang != null) {
+                                    textTrackGroups.firstOrNull {
+                                        it.getFormat(0).language?.equals(prefLang, ignoreCase = true) == true
+                                    }
+                                } else null
+                            } ?: textTrackGroups.first()
+
+                            selectedGroups.removeAll { it.type == C.TRACK_TYPE_TEXT }
+                            selectedGroups.add(targetTextGroup)
+                        }
                     }
 
-                    val selectedGroups = request.currentlySelectedTrackGroups.filter { it.type != C.TRACK_TYPE_TEXT }.toMutableSet()
-                    selectedGroups.add(targetGroup)
                     builder.setSelections(com.google.common.collect.ImmutableSet.copyOf(selectedGroups))
-                    
                     return builder.build()
                 }
             }
@@ -236,6 +246,17 @@ class PlaybackService : MediaSessionService() {
                         }
 
                         val queueItemBuilder = MediaQueueItem.Builder(newMediaInfoBuilder.build())
+                            .setAutoplay(true)
+
+                        if (!defaultQueueItem.startTime.isNaN() && defaultQueueItem.startTime > 0.0) {
+                            queueItemBuilder.setStartTime(defaultQueueItem.startTime)
+                        }
+                        if (!defaultQueueItem.preloadTime.isNaN() && defaultQueueItem.preloadTime > 0.0) {
+                            queueItemBuilder.setPreloadTime(defaultQueueItem.preloadTime)
+                        }
+                        defaultQueueItem.customData?.let {
+                            queueItemBuilder.setCustomData(it)
+                        }
                         if (castMediaTracks.isNotEmpty()) {
                             queueItemBuilder.setActiveTrackIds(longArrayOf(1L))
                         }
@@ -247,18 +268,32 @@ class PlaybackService : MediaSessionService() {
 
             remotePlayerInstance.setSessionAvailabilityListener(object : SessionAvailabilityListener {
                 override fun onCastSessionAvailable() {
-                    Log.i(TAG, "Cast session available")
+                    Log.i(TAG, "Cast session available - ensuring active playback continues")
+                    val wasPlaying = localPlayer?.isPlaying == true || localPlayer?.playWhenReady == true
+                    if (wasPlaying) {
+                        serviceScope.launch {
+                            delay(400.milliseconds)
+                            remotePlayer?.playWhenReady = true
+                            remotePlayer?.play()
+                        }
+                    }
                 }
 
                 override fun onCastSessionUnavailable() {
-                    Log.i(TAG, "Cast session unavailable - restoring local playback on ExoPlayer")
+                    Log.i(TAG, "Cast session unavailable - restoring local playback on ExoPlayer at $lastCastPositionMs ms")
                     serviceScope.launch {
                         delay(200.milliseconds)
                         localPlayer?.let { exo ->
+                            if (lastCastPositionMs > 0L) {
+                                exo.seekTo(lastCastPositionMs)
+                            }
                             if (exo.mediaItemCount > 0 && exo.playbackState == Player.STATE_IDLE) {
                                 exo.prepare()
                                 exo.play()
-                                Log.i(TAG, "ExoPlayer prepared and resumed at position ${exo.currentPosition}ms")
+                                Log.i(TAG, "ExoPlayer prepared and resumed at position ${exo.currentPosition}ms (synced from Cast)")
+                            } else if (exo.mediaItemCount > 0) {
+                                exo.play()
+                                Log.i(TAG, "ExoPlayer resumed at position ${exo.currentPosition}ms (synced from Cast)")
                             }
                         }
                     }
@@ -285,6 +320,19 @@ class PlaybackService : MediaSessionService() {
                                     lastAppliedStyleContentId = null
                                     lastActivatedTrackContentId = null
                                     applyCastSubtitleStyle(session)
+                                    val client = session.remoteMediaClient
+                                    if (client != null) {
+                                        val wasPlaying = localPlayer?.isPlaying == true || localPlayer?.playWhenReady == true
+                                        if (wasPlaying) {
+                                            serviceScope.launch {
+                                                delay(600.milliseconds)
+                                                if (client.mediaStatus?.playerState == com.google.android.gms.cast.MediaStatus.PLAYER_STATE_PAUSED) {
+                                                    client.play()
+                                                    Log.i(TAG, "Cast session started in paused state; resumed playing automatically")
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 override fun onSessionResumed(session: com.google.android.gms.cast.framework.CastSession, wasSuspended: Boolean) {
                                     lastAppliedStyleContentId = null
@@ -293,8 +341,24 @@ class PlaybackService : MediaSessionService() {
                                 }
                                 override fun onSessionStarting(session: com.google.android.gms.cast.framework.CastSession) {}
                                 override fun onSessionResuming(session: com.google.android.gms.cast.framework.CastSession, sessionId: String) {}
-                                override fun onSessionEnded(session: com.google.android.gms.cast.framework.CastSession, error: Int) {}
-                                override fun onSessionEnding(session: com.google.android.gms.cast.framework.CastSession) {}
+                                override fun onSessionEnding(session: com.google.android.gms.cast.framework.CastSession) {
+                                    val client = session.remoteMediaClient
+                                    val castPos = client?.approximateStreamPosition ?: remotePlayer?.currentPosition ?: 0L
+                                    val castDur = client?.streamDuration ?: remotePlayer?.duration ?: 0L
+                                    if (castPos > 0L) {
+                                        lastCastPositionMs = castPos
+                                        saveExplicitProgress(castPos, castDur)
+                                    }
+                                }
+                                override fun onSessionEnded(session: com.google.android.gms.cast.framework.CastSession, error: Int) {
+                                    val client = session.remoteMediaClient
+                                    val castPos = client?.approximateStreamPosition ?: remotePlayer?.currentPosition ?: 0L
+                                    val castDur = client?.streamDuration ?: remotePlayer?.duration ?: 0L
+                                    if (castPos > 0L) {
+                                        lastCastPositionMs = castPos
+                                        saveExplicitProgress(castPos, castDur)
+                                    }
+                                }
                                 override fun onSessionStartFailed(session: com.google.android.gms.cast.framework.CastSession, error: Int) {}
                                 override fun onSessionResumeFailed(session: com.google.android.gms.cast.framework.CastSession, error: Int) {}
                                 override fun onSessionSuspended(session: com.google.android.gms.cast.framework.CastSession, reason: Int) {}
@@ -470,6 +534,9 @@ class PlaybackService : MediaSessionService() {
         val pos = p.currentPosition
         val dur = p.duration
         if (dur <= 0L) return
+        if (pos > 0L) {
+            lastCastPositionMs = pos
+        }
 
         // We embed our metadata in the MediaItem's MediaMetadata bundle or ID
         val item = p.currentMediaItem ?: return
@@ -480,10 +547,13 @@ class PlaybackService : MediaSessionService() {
         val extras = item.mediaMetadata.extras
         val isEpisode = extras?.getBoolean(EXTRA_IS_EPISODE, false) ?: false
 
+        val isNearlyFinished = pos >= (dur * 0.95f).toLong()
+        val finalPos = if (isNearlyFinished) dur else pos
+
         val progress = PlaybackProgress(
             mediaId = mediaId,
             title = title,
-            positionMs = pos,
+            positionMs = finalPos,
             durationMs = dur,
             timestamp = System.currentTimeMillis(),
             isEpisode = isEpisode
@@ -494,6 +564,38 @@ class PlaybackService : MediaSessionService() {
                 userLibraryRepository.savePlaybackProgress(progress)
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving playback progress", e)
+            }
+        }
+    }
+
+    private fun saveExplicitProgress(pos: Long, dur: Long) {
+        if (dur <= 0L || pos <= 0L) return
+        val item = remotePlayer?.currentMediaItem ?: localPlayer?.currentMediaItem ?: return
+        val mediaId = item.mediaId
+        if (mediaId.isBlank() || mediaId == MediaItem.DEFAULT_MEDIA_ID) return
+
+        val title = item.mediaMetadata.title?.toString() ?: "Media Item"
+        val extras = item.mediaMetadata.extras
+        val isEpisode = extras?.getBoolean(EXTRA_IS_EPISODE, false) ?: false
+
+        val isNearlyFinished = pos >= (dur * 0.95f).toLong()
+        val finalPos = if (isNearlyFinished) dur else pos
+
+        val progress = PlaybackProgress(
+            mediaId = mediaId,
+            title = title,
+            positionMs = finalPos,
+            durationMs = dur,
+            timestamp = System.currentTimeMillis(),
+            isEpisode = isEpisode
+        )
+
+        serviceScope.launch {
+            try {
+                userLibraryRepository.savePlaybackProgress(progress)
+                Log.i(TAG, "Explicitly saved progress: $finalPos / $dur ms for $mediaId")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error explicitly saving playback progress", e)
             }
         }
     }

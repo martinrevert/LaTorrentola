@@ -8,6 +8,11 @@ enum class TorrentHandlingMode {
     /** Downloads locally and streams only byte ranges whose torrent pieces are verified. */
     LOCAL_PLAYBACK,
 
-    /** Downloads locally and offers a LAN stream to a selected Chromecast-compatible receiver. */
+    /**
+     * Legacy mode for directly targeting Chromecast.
+     * Deprecated: Torrent playback now always initiates through ExoPlayer local playback,
+     * and Chromecast streaming is activated on-demand via the player's MediaRouter Cast button.
+     */
+    @Deprecated("Chromecast is now initiated on demand via the in-player MediaRouter button.")
     CHROMECAST
 }

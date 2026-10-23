@@ -90,7 +90,8 @@ object TorrentLaunchHelper {
         seriesId: Int = 0,
         seasonNumber: Int = 0,
         episodeNumber: Int = 0,
-        movieId: Int = 0
+        movieId: Int = 0,
+        posterUrl: String? = null
     ) {
         val hash = TorrentDownloadService.parseHexInfoHash(magnetUri)
         if (!hash.isNullOrBlank()) {
@@ -116,6 +117,9 @@ object TorrentLaunchHelper {
             putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, seasonNumber)
             putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, episodeNumber)
             putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, movieId)
+            if (!posterUrl.isNullOrBlank()) {
+                putExtra(TorrentDownloadService.EXTRA_POSTER_URL, posterUrl)
+            }
             if (nextEpisodeInfo != null) {
                 putStringArrayListExtra(TorrentDownloadService.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
             }
@@ -135,6 +139,7 @@ object TorrentLaunchHelper {
      * @param seasonNumber Current season number.
      * @param episodeNumber Current episode number.
      * @param movieId Movie ID.
+     * @param posterUrl Optional cover poster URL for the movie or series.
      * @param requiredSizeBytes Optional size in bytes of the torrent release.
      * @return Result describing whether the request started or why it was rejected.
      */
@@ -148,8 +153,10 @@ object TorrentLaunchHelper {
         seasonNumber: Int = 0,
         episodeNumber: Int = 0,
         movieId: Int = 0,
+        posterUrl: String? = null,
         requiredSizeBytes: Long? = null
     ): TorrentLaunchResult {
+        @Suppress("DEPRECATION")
         if (mode == TorrentHandlingMode.LOCAL_PLAYBACK || mode == TorrentHandlingMode.CHROMECAST) {
             val required = maxOf(MIN_REQUIRED_STORAGE_BYTES, requiredSizeBytes ?: 0L)
             val available = getAvailableStorageBytes(context)
@@ -167,12 +174,9 @@ object TorrentLaunchHelper {
             TorrentHandlingMode.EXTERNAL_CLIENT ->
                 if (openExternal(context, magnetUri)) TorrentLaunchResult.Started
                 else TorrentLaunchResult.NoExternalClient
-            TorrentHandlingMode.LOCAL_PLAYBACK -> {
-                downloadLocally(context, magnetUri, title, false, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId)
-                TorrentLaunchResult.Started
-            }
-            TorrentHandlingMode.CHROMECAST -> {
-                downloadLocally(context, magnetUri, title, true, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId)
+            TorrentHandlingMode.LOCAL_PLAYBACK,
+            @Suppress("DEPRECATION") TorrentHandlingMode.CHROMECAST -> {
+                downloadLocally(context, magnetUri, title, false, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId, posterUrl)
                 TorrentLaunchResult.Started
             }
         }

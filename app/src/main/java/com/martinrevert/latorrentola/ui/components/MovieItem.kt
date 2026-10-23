@@ -157,17 +157,7 @@ fun MovieItem(
                             )
                         }
                     }
-                    if (progressPercent != null && progressPercent > 0) {
-                        LinearProgressIndicator(
-                            progress = { progressPercent / 100f },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(4.dp),
-                            color = Color(0xFFE50914),
-                            trackColor = Color(0x33FFFFFF),
-                            strokeCap = StrokeCap.Butt
-                        )
-                    }
+                    WatchProgressBar(progressPercent = progressPercent)
                     Column(
                         modifier = Modifier
                             .background(androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant)
@@ -285,17 +275,7 @@ fun MovieItem(
                                 )
                             }
                         }
-                        if (progressPercent != null && progressPercent > 0) {
-                            LinearProgressIndicator(
-                                progress = { progressPercent / 100f },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(4.dp),
-                                color = Color(0xFFE50914),
-                                trackColor = Color(0x33FFFFFF),
-                                strokeCap = StrokeCap.Butt
-                            )
-                        }
+                        WatchProgressBar(progressPercent = progressPercent)
                         Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
                             Text(
                                 text = movie.title ?: "",

@@ -23,8 +23,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -95,7 +98,7 @@ class TorrentDownloadService : Service() {
     private val streamServers = ConcurrentHashMap<String, VerifiedTorrentHttpServer>()
 
     /** Player intents for ready transfers and jobs awaiting their startup buffer. */
-    private val readyPlayerIntents = ConcurrentHashMap<String, Intent>()
+    private val readyPlayerIntents = _readyPlayerIntents
 
     /** Jobs whose player should open as soon as their startup buffer is verified. */
     private val openWhenReadyHashes = ConcurrentHashMap.newKeySet<String>()
@@ -170,7 +173,17 @@ class TorrentDownloadService : Service() {
                 synchronized(queueLock) {
                     if (downloadQueue.none { it.infoHash == hash } && hash != activeInfoHash) {
                         downloadQueue.addLast(
-                            DownloadRequest(hash, stored.magnetUri, stored.title, stored.castWhenReady)
+                            DownloadRequest(
+                                infoHash = hash,
+                                magnetUri = stored.magnetUri,
+                                title = stored.title,
+                                castWhenReady = stored.castWhenReady,
+                                seriesId = stored.seriesId ?: 0,
+                                seasonNumber = stored.seasonNumber ?: 0,
+                                episodeNumber = stored.episodeNumber ?: 0,
+                                movieId = stored.movieId ?: 0,
+                                posterUrl = stored.posterUrl
+                            )
                         )
                     }
                 }
@@ -203,13 +216,31 @@ class TorrentDownloadService : Service() {
                 stopSelf(startId)
                 return START_NOT_STICKY
             }
+            val castWhenReady = intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false)
+            val posterUrl = intent.getStringExtra(EXTRA_POSTER_URL)
             val readyIntent = readyPlayerIntents[infoHash]
             if (readyIntent != null) {
                 intent.extras?.let { readyIntent.putExtras(it) }
+                readyIntent.putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, castWhenReady)
+                if (!posterUrl.isNullOrBlank()) {
+                    readyIntent.putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, posterUrl)
+                }
+                if (intent.hasExtra(EXTRA_SERIES_ID)) {
+                    readyIntent.putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, intent.getIntExtra(EXTRA_SERIES_ID, 0))
+                }
+                if (intent.hasExtra(EXTRA_SEASON_NUMBER)) {
+                    readyIntent.putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, intent.getIntExtra(EXTRA_SEASON_NUMBER, 0))
+                }
+                if (intent.hasExtra(EXTRA_EPISODE_NUMBER)) {
+                    readyIntent.putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0))
+                }
+                if (intent.hasExtra(EXTRA_MOVIE_ID)) {
+                    readyIntent.putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, intent.getIntExtra(EXTRA_MOVIE_ID, 0))
+                }
             }
             serviceScope.launch {
                 preemptActiveTransfersAndPlayback(infoHash, null)
-                openReadyPlayer(infoHash)
+                openReadyPlayer(infoHash, castWhenReady)
             }
             return START_STICKY
         }
@@ -366,6 +397,7 @@ class TorrentDownloadService : Service() {
         var seasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
         var episodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
         var movieId = intent.getIntExtra(EXTRA_MOVIE_ID, 0)
+        var posterUrl = intent.getStringExtra(EXTRA_POSTER_URL)
         val magnetUri = intent.getStringExtra(EXTRA_MAGNET_URI).orEmpty()
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank {
             getString(R.string.torrent_download_title)
@@ -380,21 +412,26 @@ class TorrentDownloadService : Service() {
             return START_NOT_STICKY
         }
 
-        if (seriesId <= 0 && movieId <= 0) {
-            try {
-                val existingRecord = runBlocking(Dispatchers.IO) { torrentDownloadDao.get(infoHash) }
-                if (existingRecord != null) {
-                    if ((existingRecord.seriesId ?: 0) > 0) {
-                        seriesId = existingRecord.seriesId ?: 0
-                        if (seasonNumber <= 0) seasonNumber = existingRecord.seasonNumber ?: 0
-                        if (episodeNumber <= 0) episodeNumber = existingRecord.episodeNumber ?: 0
-                    }
-                    if ((existingRecord.movieId ?: 0) > 0) {
-                        movieId = existingRecord.movieId ?: 0
-                    }
+        try {
+            val existingRecord = runBlocking(Dispatchers.IO) { torrentDownloadDao.get(infoHash) }
+            if (existingRecord != null) {
+                if (seriesId <= 0 && (existingRecord.seriesId ?: 0) > 0) {
+                    seriesId = existingRecord.seriesId ?: 0
                 }
-            } catch (_: Exception) {}
-        }
+                if (seasonNumber <= 0 && (existingRecord.seasonNumber ?: 0) > 0) {
+                    seasonNumber = existingRecord.seasonNumber ?: 0
+                }
+                if (episodeNumber <= 0 && (existingRecord.episodeNumber ?: 0) > 0) {
+                    episodeNumber = existingRecord.episodeNumber ?: 0
+                }
+                if (movieId <= 0 && (existingRecord.movieId ?: 0) > 0) {
+                    movieId = existingRecord.movieId ?: 0
+                }
+                if (posterUrl.isNullOrBlank() && !existingRecord.posterUrl.isNullOrBlank()) {
+                    posterUrl = existingRecord.posterUrl
+                }
+            }
+        } catch (_: Exception) {}
 
         openWhenReadyHashes.add(infoHash)
         updateBufferState(
@@ -438,13 +475,11 @@ class TorrentDownloadService : Service() {
                     seriesId = seriesId,
                     seasonNumber = seasonNumber,
                     episodeNumber = episodeNumber,
-                    infoHash = infoHash,
                     title = title
                 )
             } else {
                 MediaIdHelper.forMovie(
                     movieId = movieId,
-                    infoHash = infoHash,
                     title = title
                 )
             }
@@ -467,7 +502,7 @@ class TorrentDownloadService : Service() {
                     )
                 )
                 val castWhenReady = intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false)
-                startCompletedPlayback(infoHash, title, completedFile, castWhenReady, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId)
+                startCompletedPlayback(infoHash, title, completedFile, castWhenReady, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId, posterUrl)
                 return@launch
             }
 
@@ -486,7 +521,8 @@ class TorrentDownloadService : Service() {
                         seriesId = seriesId,
                         seasonNumber = seasonNumber,
                         episodeNumber = episodeNumber,
-                        movieId = movieId
+                        movieId = movieId,
+                        posterUrl = posterUrl
                     )
                 )
                 updateBufferState(
@@ -516,7 +552,8 @@ class TorrentDownloadService : Service() {
                     seriesId = seriesId,
                     seasonNumber = seasonNumber,
                     episodeNumber = episodeNumber,
-                    movieId = movieId
+                    movieId = movieId,
+                    posterUrl = posterUrl
                 )
             )
             synchronized(queueLock) {
@@ -533,7 +570,8 @@ class TorrentDownloadService : Service() {
                             episodeNumber = episodeNumber,
                             movieId = movieId,
                             resumePositionMs = resumePos,
-                            durationMs = dur
+                            durationMs = dur,
+                            posterUrl = posterUrl
                         )
                     )
                 }
@@ -604,7 +642,8 @@ class TorrentDownloadService : Service() {
         seriesId: Int = 0,
         seasonNumber: Int = 0,
         episodeNumber: Int = 0,
-        movieId: Int = 0
+        movieId: Int = 0,
+        posterUrl: String? = null
     ) {
         streamServers.remove(infoHash)?.stop()
 
@@ -634,6 +673,7 @@ class TorrentDownloadService : Service() {
             .putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, seasonNumber)
             .putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, episodeNumber)
             .putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, movieId)
+            .putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, posterUrl)
             .apply {
                 if (nextEpisodeInfo != null) {
                     putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
@@ -642,9 +682,14 @@ class TorrentDownloadService : Service() {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
         readyPlayerIntents[infoHash] = playerIntent
+        _readyStreamEvents.tryEmit(playerIntent)
 
         withContext(Dispatchers.Main) {
-            startActivity(playerIntent)
+            try {
+                startActivity(playerIntent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Cannot start activity from background service: ${e.message}")
+            }
         }
     }
 
@@ -653,12 +698,20 @@ class TorrentDownloadService : Service() {
      *
      * @param infoHash Stable local torrent job identifier.
      */
-    private suspend fun openReadyPlayer(infoHash: String) {
+    private suspend fun openReadyPlayer(infoHash: String, castWhenReady: Boolean? = null) {
         val readyIntent = readyPlayerIntents[infoHash]
         val server = streamServers[infoHash]
         if (readyIntent != null && server != null) {
+            if (castWhenReady != null) {
+                readyIntent.putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, castWhenReady)
+            }
+            _readyStreamEvents.tryEmit(Intent(readyIntent))
             withContext(Dispatchers.Main.immediate) {
-                startActivity(Intent(readyIntent))
+                try {
+                    startActivity(Intent(readyIntent))
+                } catch (e: Exception) {
+                    Log.w(TAG, "Cannot start activity from background service: ${e.message}")
+                }
             }
             return
         }
@@ -667,6 +720,7 @@ class TorrentDownloadService : Service() {
         // Check if the torrent exists in our local Room database to resurrect streaming automatically.
         val stored = torrentDownloadDao.get(infoHash)
         if (stored != null) {
+            val effectiveCast = castWhenReady ?: stored.castWhenReady
             val completedFile = stored.mediaPath?.let(::File)?.takeIf { it.isFile && it.canRead() }
             if (stored.state == STATE_COMPLETED && completedFile != null) {
                 openWhenReadyHashes.remove(infoHash)
@@ -674,17 +728,19 @@ class TorrentDownloadService : Service() {
                     infoHash = infoHash,
                     title = stored.title,
                     file = completedFile,
-                    castWhenReady = stored.castWhenReady,
+                    castWhenReady = effectiveCast,
                     seriesId = stored.seriesId ?: 0,
                     seasonNumber = stored.seasonNumber ?: 0,
                     episodeNumber = stored.episodeNumber ?: 0,
-                    movieId = stored.movieId ?: 0
+                    movieId = stored.movieId ?: 0,
+                    posterUrl = stored.posterUrl
                 )
                 return
             }
 
             openWhenReadyHashes.add(infoHash)
             if (infoHash == activeInfoHash) {
+                activeRequest?.castWhenReady = effectiveCast
                 return
             }
 
@@ -693,13 +749,11 @@ class TorrentDownloadService : Service() {
                     seriesId = stored.seriesId ?: 0,
                     seasonNumber = stored.seasonNumber ?: 0,
                     episodeNumber = stored.episodeNumber ?: 0,
-                    infoHash = infoHash,
                     title = stored.title
                 )
             } else {
                 MediaIdHelper.forMovie(
                     movieId = stored.movieId ?: 0,
-                    infoHash = infoHash,
                     title = stored.title
                 )
             }
@@ -714,13 +768,14 @@ class TorrentDownloadService : Service() {
                             infoHash = infoHash,
                             magnetUri = stored.magnetUri,
                             title = stored.title,
-                            castWhenReady = stored.castWhenReady,
+                            castWhenReady = effectiveCast,
                             seriesId = stored.seriesId ?: 0,
                             seasonNumber = stored.seasonNumber ?: 0,
                             episodeNumber = stored.episodeNumber ?: 0,
                             movieId = stored.movieId ?: 0,
                             resumePositionMs = resumePos,
-                            durationMs = dur
+                            durationMs = dur,
+                            posterUrl = stored.posterUrl
                         )
                     )
                 }
@@ -911,6 +966,7 @@ class TorrentDownloadService : Service() {
         var lastReportedProgress = -1
         var lastReportedState = ""
         var lastDbUpdateTime = 0L
+        var lastPriorityUpdateTime = 0L
 
         try {
             while (true) {
@@ -991,33 +1047,37 @@ class TorrentDownloadService : Service() {
                         updateDownloadRecord(request, STATE_BUFFERING, 0, target.file.absolutePath)
                     }
 
-                    // Deterministic startup buffer enforcement: continuously request missing startup pieces without polling JNI on verified pieces
+                    // Periodic startup buffer enforcement: reinforce priorities every 3 seconds without hammering JNI
                     if (!readyNotified && target != null) {
-                        val tracker = pieceTracker
-                        val planner = piecePlanner
-                        if (tracker != null && planner != null) {
-                            synchronized(sessionLock) {
-                                if (sessionManager === manager && handle.isValid) {
-                                    val initialPlan = planner.planForRange(
-                                        requestedStart = 0L,
-                                        requestedEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES),
-                                        tracker = tracker
-                                    )
-                                    for (p in initialPlan.piecesToPrioritize) {
-                                        handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                        try { handle.setPieceDeadline(p, 500) } catch (_: Exception) {}
-                                    }
+                        val nowLoop = System.currentTimeMillis()
+                        if (nowLoop - lastPriorityUpdateTime >= 3000L) {
+                            lastPriorityUpdateTime = nowLoop
+                            val tracker = pieceTracker
+                            val planner = piecePlanner
+                            if (tracker != null && planner != null) {
+                                synchronized(sessionLock) {
+                                    if (sessionManager === manager && handle.isValid) {
+                                        val initialPlan = planner.planForRange(
+                                            requestedStart = 0L,
+                                            requestedEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES),
+                                            tracker = tracker
+                                        )
+                                        for (p in initialPlan.piecesToPrioritize) {
+                                            handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                            try { handle.setPieceDeadline(p, 500) } catch (_: Exception) {}
+                                        }
 
-                                    val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
-                                        target.file.extension.equals("webm", ignoreCase = true) ||
-                                        target.file.extension.equals("mp4", ignoreCase = true)
-                                    if (isIndexedContainer) {
-                                        val tailBytes = minOf(target.length, 5L * 1024L * 1024L)
-                                        val tailPieceStart = ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
-                                        for (p in tailPieceStart..target.lastPiece) {
-                                            if (!tracker.isPieceVerified(p)) {
-                                                handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                                try { handle.setPieceDeadline(p, 500) } catch (_: Exception) {}
+                                        val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
+                                            target.file.extension.equals("webm", ignoreCase = true) ||
+                                            target.file.extension.equals("mp4", ignoreCase = true)
+                                        if (isIndexedContainer) {
+                                            val tailBytes = minOf(target.length, 5L * 1024L * 1024L)
+                                            val tailPieceStart = ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
+                                            for (p in tailPieceStart..target.lastPiece) {
+                                                if (!tracker.isPieceVerified(p)) {
+                                                    handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                                    try { handle.setPieceDeadline(p, 500) } catch (_: Exception) {}
+                                                }
                                             }
                                         }
                                     }
@@ -1030,7 +1090,7 @@ class TorrentDownloadService : Service() {
                         if (sessionManager === manager && handle.isValid) handle.status() else null
                     }
                     if (status == null) {
-                        delay(200L)
+                        delay(500L)
                         continue
                     }
                     val progress = (status.progress() * 100).toInt().coerceIn(0, 100)
@@ -1063,25 +1123,6 @@ class TorrentDownloadService : Service() {
                     }
 
                     val tracker = pieceTracker
-                    if (target != null && tracker != null) {
-                        val unverified = tracker.getUnverifiedPieces(target.firstPiece, target.lastPiece)
-                        if (unverified.isNotEmpty()) {
-                            val newlyVerified = mutableListOf<Int>()
-                            synchronized(sessionLock) {
-                                if (sessionManager === manager && handle.isValid) {
-                                    for (p in unverified) {
-                                        if (handle.havePiece(p)) {
-                                            newlyVerified.add(p)
-                                        }
-                                    }
-                                }
-                            }
-                            if (newlyVerified.isNotEmpty()) {
-                                tracker.markPiecesVerified(newlyVerified)
-                            }
-                        }
-                    }
-
                     val totalProgress = status.progress().coerceIn(0f, 1f)
                     val downloadSpeed = status.downloadRate().toLong()
 
@@ -1089,7 +1130,7 @@ class TorrentDownloadService : Service() {
                         1.0f
                     } else if (target != null && tracker != null) {
                         val startupEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES - 1)
-                        val headPieces = ((startupEnd - target.fileOffset) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
+                        val headPieces = ((target.fileOffset + startupEnd) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
                         val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
                             target.file.extension.equals("webm", ignoreCase = true) ||
                             target.file.extension.equals("mp4", ignoreCase = true)
@@ -1107,14 +1148,14 @@ class TorrentDownloadService : Service() {
 
                         for (p in target.firstPiece..headPieces) {
                             totalRequiredPieces++
-                            if (tracker.isPieceVerified(p) || synchronized(sessionLock) { sessionManager === manager && handle.isValid && handle.havePiece(p) }) {
+                            if (tracker.isPieceVerified(p)) {
                                 verifiedRequiredPieces++
                             }
                         }
                         if (tailPieceStart <= target.lastPiece) {
                             for (p in tailPieceStart..target.lastPiece) {
                                 totalRequiredPieces++
-                                if (tracker.isPieceVerified(p) || synchronized(sessionLock) { sessionManager === manager && handle.isValid && handle.havePiece(p) }) {
+                                if (tracker.isPieceVerified(p)) {
                                     verifiedRequiredPieces++
                                 }
                             }
@@ -1122,7 +1163,7 @@ class TorrentDownloadService : Service() {
                         if (resumePiecesEnd > resumePiece) {
                             for (p in resumePiece until resumePiecesEnd) {
                                 totalRequiredPieces++
-                                if (tracker.isPieceVerified(p) || synchronized(sessionLock) { sessionManager === manager && handle.isValid && handle.havePiece(p) }) {
+                                if (tracker.isPieceVerified(p)) {
                                     verifiedRequiredPieces++
                                 }
                             }
@@ -1152,31 +1193,21 @@ class TorrentDownloadService : Service() {
 
                     val isReady = !readyNotified && target != null && tracker != null && run {
                         val startupEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES - 1)
-                        val headVerified = tracker.isRangeVerified(0, startupEnd) { p ->
-                            synchronized(sessionLock) {
-                                sessionManager === manager && handle.isValid && handle.havePiece(p)
-                            }
-                        }
+                        val headVerified = tracker.isRangeVerified(0, startupEnd)
                         val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
                             target.file.extension.equals("webm", ignoreCase = true) ||
                             target.file.extension.equals("mp4", ignoreCase = true)
                         val tailVerified = if (isIndexedContainer) {
                             val tailBytes = minOf(target.length, 2L * 1024L * 1024L)
                             val tailStart = maxOf(0L, target.length - tailBytes)
-                            tracker.isRangeVerified(tailStart, target.length - 1L) { p ->
-                                synchronized(sessionLock) {
-                                    sessionManager === manager && handle.isValid && handle.havePiece(p)
-                                }
-                            }
+                            tracker.isRangeVerified(tailStart, target.length - 1L)
                         } else {
                             true
                         }
                         val resumePiece = piecePlanner?.calculateResumePiece(request.resumePositionMs, request.durationMs) ?: target.firstPiece
                         val resumeVerified = if (resumePiece > target.firstPiece) {
                             (resumePiece until minOf(resumePiece + 3, target.lastPiece + 1)).all { p ->
-                                tracker.isPieceVerified(p) || synchronized(sessionLock) {
-                                    sessionManager === manager && handle.isValid && handle.havePiece(p)
-                                }
+                                tracker.isPieceVerified(p)
                             }
                         } else {
                             true
@@ -1185,8 +1216,10 @@ class TorrentDownloadService : Service() {
                     }
 
                     if (isReady) {
+                        val priorityLock = Any()
                         var lastPrioritizedWindowStart = -1
                         var lastPrioritizedWindowEnd = -1
+                        var lastPriorityUpdateTimeMs = 0L
 
                         val server = VerifiedTorrentHttpServer(
                             mediaFile = target.file,
@@ -1201,29 +1234,42 @@ class TorrentDownloadService : Service() {
                                     )
                                     if (plan != null) {
                                         val windowStart = plan.sequentialRangeStart
-                                        val isCurrentRangeUnverified = !tracker.isRangeVerified(start, end)
-                                        val needsUpdate = isCurrentRangeUnverified ||
-                                            plan.isSeekJump || plan.isTailProbe ||
-                                            lastPrioritizedWindowStart == -1 ||
-                                            kotlin.math.abs(windowStart - lastPrioritizedWindowStart) >= 2
+                                        val nowMs = System.currentTimeMillis()
 
-                                        if (needsUpdate) {
-                                            val oldWindowStart = lastPrioritizedWindowStart
-                                            val oldWindowEnd = lastPrioritizedWindowEnd
-                                            lastPrioritizedWindowStart = windowStart
-                                            lastPrioritizedWindowEnd = windowStart + 32
+                                        val (shouldUpdate, isSeek, windowRange) = synchronized(priorityLock) {
+                                            val isSeek = plan.isSeekJump
+                                            val isFirst = lastPrioritizedWindowStart == -1
+                                            val windowMovedFar = lastPrioritizedWindowStart != -1 && (windowStart - lastPrioritizedWindowStart) >= 4
+                                            val timeElapsed = nowMs - lastPriorityUpdateTimeMs >= 1500L
+
+                                            if (isSeek || isFirst || (windowMovedFar && timeElapsed)) {
+                                                val oldStart = lastPrioritizedWindowStart
+                                                val oldEnd = lastPrioritizedWindowEnd
+                                                lastPrioritizedWindowStart = windowStart
+                                                lastPrioritizedWindowEnd = windowStart + 32
+                                                lastPriorityUpdateTimeMs = nowMs
+                                                Triple(true, isSeek, oldStart to oldEnd)
+                                            } else {
+                                                Triple(false, false, -1 to -1)
+                                            }
+                                        }
+
+                                        if (shouldUpdate) {
+                                            val (oldWindowStart, oldWindowEnd) = windowRange
 
                                             synchronized(sessionLock) {
                                                 if (sessionManager === manager && handle.isValid) {
                                                     try {
-                                                        if (plan.isSeekJump && oldWindowStart != -1) {
-                                                            // Only reset deadlines on the previously prioritized window, NOT all pieces
-                                                            for (p in oldWindowStart..minOf(oldWindowEnd, target.lastPiece)) {
-                                                                try { handle.resetPieceDeadline(p) } catch (_: Throwable) {}
+                                                        if (isSeek) {
+                                                            if (oldWindowStart != -1) {
+                                                                // Only reset deadlines on the previously prioritized window, NOT all pieces
+                                                                for (p in oldWindowStart..minOf(oldWindowEnd, target.lastPiece)) {
+                                                                    try { handle.resetPieceDeadline(p) } catch (_: Throwable) {}
+                                                                }
                                                             }
-                                                        }
-                                                        if (!plan.isTailProbe) {
-                                                            try { handle.setSequentialRange(plan.sequentialRangeStart, target.lastPiece) } catch (_: Throwable) {}
+                                                            try {
+                                                                handle.setSequentialRange(plan.sequentialRangeStart, target.lastPiece)
+                                                            } catch (_: Throwable) {}
                                                         }
                                                         for (p in plan.piecesToPrioritize) {
                                                             try { handle.piecePriority(p, Priority.TOP_PRIORITY) } catch (_: Throwable) {}
@@ -1279,6 +1325,7 @@ class TorrentDownloadService : Service() {
                             .putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, request.seasonNumber)
                             .putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, request.episodeNumber)
                             .putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, request.movieId)
+                            .putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, request.posterUrl)
                             .apply {
                                 if (request.nextEpisodeInfo != null) {
                                     putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, request.nextEpisodeInfo)
@@ -1302,7 +1349,14 @@ class TorrentDownloadService : Service() {
                         )
                         updateDownloadRecord(request, STATE_READY, progress, target.file.absolutePath, numSeeds, numPeers)
                         if (openWhenReadyHashes.remove(infoHash)) {
-                            withContext(Dispatchers.Main) { startActivity(playerIntent) }
+                            _readyStreamEvents.tryEmit(playerIntent)
+                            withContext(Dispatchers.Main) {
+                                try {
+                                    startActivity(playerIntent)
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Cannot start activity from background service: ${e.message}")
+                                }
+                            }
                         }
                         readyNotified = true
                     }
@@ -1346,7 +1400,7 @@ class TorrentDownloadService : Service() {
                         return
                     }
                 }
-                val pollDelay = if (!readyNotified) 200L else 1000L
+                val pollDelay = if (!readyNotified) 500L else 1000L
                 val step = 100L
                 var elapsed = 0L
                 while (elapsed < pollDelay) {
@@ -1508,6 +1562,13 @@ class TorrentDownloadService : Service() {
         numSeeds: Int = 0,
         numPeers: Int = 0
     ) {
+        val existing = torrentDownloadDao.get(request.infoHash)
+        val sId = if (request.seriesId > 0) request.seriesId else existing?.seriesId
+        val sNum = if (request.seasonNumber > 0) request.seasonNumber else existing?.seasonNumber
+        val eNum = if (request.episodeNumber > 0) request.episodeNumber else existing?.episodeNumber
+        val mId = if (request.movieId > 0) request.movieId else existing?.movieId
+        val poster = if (!request.posterUrl.isNullOrBlank()) request.posterUrl else existing?.posterUrl
+
         torrentDownloadDao.upsert(
             TorrentDownload(
                 infoHash = request.infoHash,
@@ -1518,12 +1579,13 @@ class TorrentDownloadService : Service() {
                 mediaPath = mediaPath,
                 castWhenReady = request.castWhenReady,
                 updatedAtMillis = System.currentTimeMillis(),
-                seriesId = request.seriesId,
-                seasonNumber = request.seasonNumber,
-                episodeNumber = request.episodeNumber,
-                movieId = request.movieId,
+                seriesId = sId,
+                seasonNumber = sNum,
+                episodeNumber = eNum,
+                movieId = mId,
                 numSeeds = numSeeds,
-                numPeers = numPeers
+                numPeers = numPeers,
+                posterUrl = poster
             )
         )
     }
@@ -1544,16 +1606,18 @@ class TorrentDownloadService : Service() {
 
     /** Stops and clears the active native session without racing service teardown. */
     private suspend fun stopSessionManager() {
-        val manager = synchronized(sessionLock) {
-            val m = sessionManager
-            sessionManager = null
-            m
-        } ?: return
         withContext(Dispatchers.IO) {
-            try {
-                manager.stop()
-            } catch (e: Exception) {
-                Log.w(TAG, "Error stopping SessionManager", e)
+            val manager = synchronized(sessionLock) {
+                val m = sessionManager
+                sessionManager = null
+                m
+            } ?: return@withContext
+            synchronized(sessionLock) {
+                try {
+                    manager.stop()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error stopping SessionManager", e)
+                }
             }
         }
     }
@@ -1577,7 +1641,8 @@ class TorrentDownloadService : Service() {
         val episodeNumber: Int = 0,
         val movieId: Int = 0,
         val resumePositionMs: Long = 0L,
-        val durationMs: Long = 0L
+        val durationMs: Long = 0L,
+        val posterUrl: String? = null
     )
 
     /**
@@ -1677,6 +1742,8 @@ class TorrentDownloadService : Service() {
         const val EXTRA_EPISODE_NUMBER = "torrent_episode_number"
         /** Movie ID extra. */
         const val EXTRA_MOVIE_ID = "torrent_movie_id"
+        /** Poster URL extra. */
+        const val EXTRA_POSTER_URL = "torrent_poster_url"
         /** Next episode information passed along for quality selection upon completion. */
         const val EXTRA_NEXT_EPISODE_INFO = "extra_next_episode_info"
         /** Stop serving a torrent after the player closes. */
@@ -1703,6 +1770,12 @@ class TorrentDownloadService : Service() {
         const val STATE_FAILED = "FAILED"
         /** Minimum verified startup buffer before playback may be offered (5 MB). */
         const val STARTUP_BUFFER_BYTES = 5L * 1024L * 1024L
+
+        private val _readyPlayerIntents = ConcurrentHashMap<String, Intent>()
+        fun getReadyPlayerIntent(infoHash: String): Intent? = _readyPlayerIntents[infoHash]
+
+        private val _readyStreamEvents = MutableSharedFlow<Intent>(replay = 0, extraBufferCapacity = 10)
+        val readyStreamEvents: SharedFlow<Intent> = _readyStreamEvents.asSharedFlow()
 
         private val _activeBufferState = MutableStateFlow<TorrentBufferState?>(null)
         val activeBufferState: StateFlow<TorrentBufferState?> = _activeBufferState.asStateFlow()

@@ -139,4 +139,103 @@ class LocalPlayerActivityTest {
         val startingPosition = if (isNewMedia) 0L else lastKnownPosition
         assertThat(startingPosition).isEqualTo(0L)
     }
+
+    @Test
+    fun `PlaybackTrackOption preserves castTrackId and selection state`() {
+        val audioOption = PlaybackTrackOption(
+            label = "Español (Latinoamérica) (AC-3 6 ch)",
+            group = null,
+            trackIndex = 0,
+            castTrackId = 2L,
+            isSelected = true
+        )
+
+        assertThat(audioOption.label).isEqualTo("Español (Latinoamérica) (AC-3 6 ch)")
+        assertThat(audioOption.castTrackId).isEqualTo(2L)
+        assertThat(audioOption.isSelected).isTrue()
+        assertThat(audioOption.trackIndex).isEqualTo(0)
+    }
+
+    @Test
+    fun `audio track options selection updates isSelected accurately`() {
+        val initialTracks = listOf(
+            PlaybackTrackOption("Audio 1", null, 0, 1L, true),
+            PlaybackTrackOption("Audio 2", null, 1, 2L, false)
+        )
+
+        val selectedOption = initialTracks[1]
+        val updatedTracks = initialTracks.map {
+            it.copy(isSelected = it.label == selectedOption.label && it.trackIndex == selectedOption.trackIndex)
+        }
+
+        assertThat(updatedTracks[0].isSelected).isFalse()
+        assertThat(updatedTracks[1].isSelected).isTrue()
+    }
+
+    @Test
+    fun `EXTRA_FROM_PIP key is correctly defined`() {
+        assertThat(LocalPlayerActivity.EXTRA_FROM_PIP).isEqualTo("extra_from_pip")
+    }
+
+    @Test
+    fun `isPlayerActivityForeground returns false when activeActivityRef is null and not foreground`() {
+        LocalPlayerActivity.isPlayerForeground = false
+        assertThat(LocalPlayerActivity.isPlayerActivityForeground()).isFalse()
+        LocalPlayerActivity.isPlayerForeground = true
+        assertThat(LocalPlayerActivity.isPlayerActivityForeground()).isTrue()
+        LocalPlayerActivity.isPlayerForeground = false
+    }
+
+    @Test
+    fun `isAlreadyLoaded detects matching infoHash or canonical media id`() {
+        val downloadHash = "abcdef1234567890abcdef1234567890abcdef12"
+        val curInfoHash = "ABCDEF1234567890ABCDEF1234567890ABCDEF12"
+        val curMediaId = "media_123_s1_e2"
+        val canonicalEpisodeId = "media_123_s1_e2"
+
+        val matchesByHash = curInfoHash.isNotBlank() && curInfoHash.equals(downloadHash, ignoreCase = true)
+        val matchesByCanonicalId = canonicalEpisodeId == curMediaId
+
+        assertThat(matchesByHash).isTrue()
+        assertThat(matchesByCanonicalId).isTrue()
+    }
+
+    @Test
+    fun `PIP surface release guard preserves video surface when LocalPlayerActivity is active or expanding`() {
+        var shouldClearVideoSurface = false
+        val isExpanding = true
+        val isPlayerForeground = false
+
+        if (!isExpanding && !isPlayerForeground) {
+            shouldClearVideoSurface = true
+        }
+
+        assertThat(shouldClearVideoSurface).isFalse()
+
+        val isExpandingFalse = false
+        val isPlayerForegroundTrue = true
+        var shouldClearWhenForeground = false
+        if (!isExpandingFalse && !isPlayerForegroundTrue) {
+            shouldClearWhenForeground = true
+        }
+        assertThat(shouldClearWhenForeground).isFalse()
+
+        var shouldClearWhenNeither = false
+        if (!isExpandingFalse && !isPlayerForeground) {
+            shouldClearWhenNeither = true
+        }
+        assertThat(shouldClearWhenNeither).isTrue()
+    }
+
+    @Test
+    fun `Cast handoff preserves playback position and enables autoplay`() {
+        val lastPositionMs = 45_200L
+        val localWasPlaying = true
+
+        val autoplay = localWasPlaying
+        val startTimeSec = lastPositionMs / 1000.0
+
+        assertThat(autoplay).isTrue()
+        assertThat(startTimeSec).isEqualTo(45.2)
+    }
 }

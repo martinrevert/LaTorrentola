@@ -18,9 +18,9 @@ class WatchHistoryAndResumeTest {
         val movieMediaId = MediaIdHelper.forMovie(movieId = movieId, infoHash = "hash123", title = "Inception")
         assertThat(movieMediaId).isEqualTo("12345")
 
-        // Test fallback for movie without movieId
+        // Test fallback for movie without movieId (infoHash is rejected per AGENTS.md, title is used as temporary fallback)
         val fallbackMovieMediaId = MediaIdHelper.forMovie(movieId = 0, infoHash = "hash123", title = "Inception")
-        assertThat(fallbackMovieMediaId).isEqualTo("hash123")
+        assertThat(fallbackMovieMediaId).isEqualTo("Inception")
 
         // Test TV Episode ID format
         val episodeMediaId = MediaIdHelper.forEpisode(

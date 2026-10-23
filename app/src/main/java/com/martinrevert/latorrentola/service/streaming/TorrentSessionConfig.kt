@@ -16,15 +16,18 @@ object TorrentSessionConfig {
         val pack = SettingsPack()
 
         // 1. Threading & hashing limits (leave disk queue to dynamic mmap allocation)
-        val aioThreads = if (isTv || isLowRam) 2 else 4
-        val hashingThreads = if (isTv || isLowRam) 1 else 2
+        // CRITICAL FOR ANDROID SCUDO ALLOCATOR:
+        // Set hashing_threads = 1 on ALL devices to eliminate concurrent OpenSSL EVP context deallocations
+        // (crypto/evp/evp_lib.c) that trigger "Scudo ERROR: invalid chunk state" aborts.
+        val aioThreads = 2
+        val hashingThreads = 1
         pack.setInteger(settings_pack.int_types.aio_threads.swigValue(), aioThreads)
         pack.setInteger(settings_pack.int_types.hashing_threads.swigValue(), hashingThreads)
 
         // 2. Peer connections & unchoking limits: generous enough for fast swarm reciprocity
-        val connections = if (isTv || isLowRam) 120 else 200
-        val maxPeers = if (isTv || isLowRam) 200 else 400
-        val unchokeSlots = if (isTv || isLowRam) 8 else 16
+        val connections = if (isTv || isLowRam) 80 else 120
+        val maxPeers = if (isTv || isLowRam) 120 else 200
+        val unchokeSlots = if (isTv || isLowRam) 6 else 10
         pack.connectionsLimit(connections)
         pack.setInteger(settings_pack.int_types.max_peerlist_size.swigValue(), maxPeers)
         pack.setInteger(settings_pack.int_types.unchoke_slots_limit.swigValue(), unchokeSlots)

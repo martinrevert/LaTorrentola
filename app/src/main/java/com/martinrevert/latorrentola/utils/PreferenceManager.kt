@@ -182,10 +182,16 @@ class PreferenceManager @Inject constructor(
         _torrentHandlingModeFlow.value = mode
     }
 
-    /** Returns the configured torrent handling mode, defaulting to local playback/streaming. */
+    /** Returns the configured torrent handling mode, defaulting to local playback/streaming. Automatically migrates legacy CHROMECAST mode to LOCAL_PLAYBACK. */
     fun getTorrentHandlingMode(): TorrentHandlingMode {
         val storedMode = sharedPreferences.getString(KEY_TORRENT_HANDLING_MODE, null)
-        return TorrentHandlingMode.entries.firstOrNull { it.name == storedMode }
+        @Suppress("DEPRECATION")
+        if (storedMode == "CHROMECAST" || storedMode == TorrentHandlingMode.CHROMECAST.name) {
+            setTorrentHandlingMode(TorrentHandlingMode.LOCAL_PLAYBACK)
+            return TorrentHandlingMode.LOCAL_PLAYBACK
+        }
+        @Suppress("DEPRECATION")
+        return TorrentHandlingMode.entries.firstOrNull { it.name == storedMode && it != TorrentHandlingMode.CHROMECAST }
             ?: TorrentHandlingMode.LOCAL_PLAYBACK
     }
 

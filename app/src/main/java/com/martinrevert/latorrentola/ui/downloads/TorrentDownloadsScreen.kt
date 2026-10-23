@@ -38,7 +38,9 @@ import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Card
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,18 +52,25 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -83,7 +92,9 @@ import com.martinrevert.latorrentola.ui.components.CastBottomSheet
 import com.martinrevert.latorrentola.ui.components.CastCodecWarningObserver
 import com.martinrevert.latorrentola.ui.player.LocalPlayerActivity
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.utils.PlayerIntentUtils
 import com.martinrevert.latorrentola.utils.isTvDevice
+import java.io.File
 
 /**
  * Displays the app-managed torrent jobs and their playback/lifecycle actions.
@@ -123,6 +134,7 @@ fun TorrentDownloadsScreen(
     // Observe active playback item and playing state from MediaController
     var activeMediaId by remember { mutableStateOf("") }
     var activeMediaTitle by remember { mutableStateOf("") }
+    var activeInfoHash by remember { mutableStateOf("") }
     var isMediaPlaying by remember { mutableStateOf(false) }
 
     DisposableEffect(mediaController) {
@@ -130,6 +142,7 @@ fun TorrentDownloadsScreen(
         fun update() {
             activeMediaId = controller.currentMediaItem?.mediaId.orEmpty()
             activeMediaTitle = controller.currentMediaItem?.mediaMetadata?.title?.toString().orEmpty()
+            activeInfoHash = controller.currentMediaItem?.mediaMetadata?.extras?.getString(LocalPlayerActivity.EXTRA_INFO_HASH).orEmpty()
             isMediaPlaying = controller.isPlaying
         }
         val listener = object : Player.Listener {
@@ -177,6 +190,20 @@ fun TorrentDownloadsScreen(
         }
     }
 
+    val coroutineScope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+
+    var pendingDeleteHashes by remember { mutableStateOf(setOf<String>()) }
+    var pendingPauseResumeHashes by remember { mutableStateOf(setOf<String>()) }
+    var pendingPlayHashes by remember { mutableStateOf(setOf<String>()) }
+
+    LaunchedEffect(downloads) {
+        val currentHashes = downloads.map { it.infoHash }.toSet()
+        if (pendingDeleteHashes.isNotEmpty()) {
+            pendingDeleteHashes = pendingDeleteHashes.intersect(currentHashes)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -206,79 +233,6 @@ fun TorrentDownloadsScreen(
                     }
                 }
             )
-        },
-        bottomBar = {
-            // Persistent Mini-Player Bar when playback or casting is active
-            if (activeMediaTitle.isNotBlank() && (isMediaPlaying || isCasting)) {
-                Surface(
-                    onClick = {
-                        val intent = Intent(context, LocalPlayerActivity::class.java).apply {
-                            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-                        }
-                        context.startActivity(intent)
-                    },
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = if (isCasting) Icons.Default.Tv else Icons.Default.PlayCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = activeMediaTitle,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = if (isCasting) {
-                                    stringResource(R.string.mini_player_casting, selectedRoute.name)
-                                } else {
-                                    stringResource(R.string.mini_player_local)
-                                },
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        IconButton(
-                            onClick = {
-                                if (isMediaPlaying) mediaController?.pause() else mediaController?.play()
-                            }
-                        ) {
-                            Icon(
-                                imageVector = if (isMediaPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = stringResource(
-                                    if (isMediaPlaying) R.string.pause_desc else R.string.play_desc
-                                )
-                            )
-                        }
-                        IconButton(
-                            onClick = {
-                                mediaController?.stop()
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = stringResource(R.string.action_stop)
-                            )
-                        }
-                    }
-                }
-            }
         }
     ) { padding ->
         Box(
@@ -308,12 +262,29 @@ fun TorrentDownloadsScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(downloads, key = TorrentDownload::infoHash) { download ->
-                        val isActive = activeMediaTitle.isNotBlank() && (
+                        val (detectedS, detectedE) = LocalPlayerActivity.extractSeasonAndEpisode(download.title)
+                        val effSeason = download.seasonNumber ?: detectedS.takeIf { it > 0 }
+                        val effEpisode = download.episodeNumber ?: detectedE.takeIf { it > 0 }
+
+                        val canonicalEpisodeId = if ((download.seriesId ?: 0) > 0 && (effSeason ?: 0) > 0 && (effEpisode ?: 0) > 0) {
+                            "media_${download.seriesId}_s${effSeason}_e${effEpisode}"
+                        } else null
+
+                        val hasMatchingEpisodeToken = effSeason != null && effEpisode != null &&
+                            activeMediaId.contains("_s${effSeason}_e${effEpisode}", ignoreCase = true)
+
+                        val isActive = (activeMediaTitle.isNotBlank() || activeMediaId.isNotBlank() || activeInfoHash.isNotBlank()) && (
+                            (activeInfoHash.isNotBlank() && activeInfoHash.equals(download.infoHash, ignoreCase = true)) ||
                             activeMediaId == download.infoHash ||
-                            activeMediaId == download.movieId?.toString() ||
                             activeMediaId.contains(download.infoHash, ignoreCase = true) ||
+                            (download.movieId != null && download.movieId > 0 && activeMediaId == download.movieId.toString()) ||
+                            (canonicalEpisodeId != null && activeMediaId == canonicalEpisodeId) ||
+                            hasMatchingEpisodeToken ||
                             activeMediaTitle.equals(download.title, ignoreCase = true)
                         )
+                        val isPlayPending = download.infoHash in pendingPlayHashes
+                        val isPauseResumePending = download.infoHash in pendingPauseResumeHashes
+                        val isDeletePending = download.infoHash in pendingDeleteHashes
 
                         TorrentDownloadItem(
                             download = download,
@@ -322,31 +293,161 @@ fun TorrentDownloadsScreen(
                             isPlaying = isMediaPlaying,
                             isCasting = isCasting,
                             activeRouteName = selectedRoute.name,
+                            isPlayPending = isPlayPending,
+                            isPauseResumePending = isPauseResumePending,
+                            isDeletePending = isDeletePending,
                             onToggleActivePlayback = {
+                                LocalPlayerActivity.finishBackgroundPlayer()
+                                val hash = download.infoHash
+                                val previousPlaying = isMediaPlaying
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                pendingPlayHashes = pendingPlayHashes + hash
                                 if (isMediaPlaying) mediaController?.pause() else mediaController?.play()
-                            },
-                            onPauseResume = { viewModel.togglePause(context, download) },
-                            onDelete = { viewModel.delete(context, download) },
-                            onPlay = { cast ->
-                                val intent = Intent(context, TorrentDownloadService::class.java).apply {
-                                    action = if (download.state == TorrentDownloadService.STATE_READY || download.state == TorrentDownloadService.STATE_COMPLETED) {
-                                        TorrentDownloadService.ACTION_PLAY_STREAM
-                                    } else {
-                                        TorrentDownloadService.ACTION_DOWNLOAD
+                                coroutineScope.launch {
+                                    val start = System.currentTimeMillis()
+                                    while (System.currentTimeMillis() - start < 3500) {
+                                        delay(150)
+                                        if (isMediaPlaying != previousPlaying) break
                                     }
-                                    putExtra(TorrentDownloadService.EXTRA_INFO_HASH, download.infoHash)
-                                    putExtra(TorrentDownloadService.EXTRA_CAST_WHEN_READY, cast)
-                                    if (download.seriesId != null) putExtra(TorrentDownloadService.EXTRA_SERIES_ID, download.seriesId)
-                                    if (download.seasonNumber != null) putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, download.seasonNumber)
-                                    if (download.episodeNumber != null) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, download.episodeNumber)
-                                    if (download.movieId != null) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, download.movieId)
+                                    pendingPlayHashes = pendingPlayHashes - hash
+                                }
+                            },
+                            onPauseResume = {
+                                val hash = download.infoHash
+                                val previousState = download.state
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                pendingPauseResumeHashes = pendingPauseResumeHashes + hash
+                                viewModel.togglePause(context, download)
+                                coroutineScope.launch {
+                                    val start = System.currentTimeMillis()
+                                    while (System.currentTimeMillis() - start < 3500) {
+                                        delay(150)
+                                        val current = downloads.firstOrNull { it.infoHash == hash }
+                                        if (current == null || current.state != previousState) break
+                                    }
+                                    pendingPauseResumeHashes = pendingPauseResumeHashes - hash
+                                }
+                            },
+                            onDelete = {
+                                val hash = download.infoHash
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                pendingDeleteHashes = pendingDeleteHashes + hash
+                                viewModel.delete(context, download)
+                                coroutineScope.launch {
+                                    delay(4000)
+                                    pendingDeleteHashes = pendingDeleteHashes - hash
+                                }
+                            },
+                            onPlay = { cast ->
+                                LocalPlayerActivity.finishBackgroundPlayer()
+                                val hash = download.infoHash
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                pendingPlayHashes = pendingPlayHashes + hash
+                                coroutineScope.launch {
+                                    val start = System.currentTimeMillis()
+                                    while (System.currentTimeMillis() - start < 3500) {
+                                        delay(200)
+                                        if (activeMediaId.contains(hash, ignoreCase = true) || isMediaPlaying) break
+                                    }
+                                    pendingPlayHashes = pendingPlayHashes - hash
+                                }
 
-                                    putExtra(TorrentDownloadService.EXTRA_TITLE, download.title)
-                                    if (download.magnetUri.isNotBlank()) {
-                                        putExtra(TorrentDownloadService.EXTRA_MAGNET_URI, download.magnetUri)
+                                val readyIntent = TorrentDownloadService.getReadyPlayerIntent(download.infoHash)
+                                val completedFile = download.mediaPath?.let(::File)?.takeIf { it.isFile && it.canRead() }
+
+                                if (isTv || cast) {
+                                    if (readyIntent != null) {
+                                        val launchIntent = Intent(readyIntent).apply {
+                                            putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, cast)
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(launchIntent)
+                                    } else if (download.state == TorrentDownloadService.STATE_COMPLETED && completedFile != null) {
+                                        val launchIntent = Intent(context, LocalPlayerActivity::class.java).apply {
+                                            putExtra(LocalPlayerActivity.EXTRA_FILE_PATH, completedFile.absolutePath)
+                                            putExtra(LocalPlayerActivity.EXTRA_INFO_HASH, download.infoHash)
+                                            putExtra(LocalPlayerActivity.EXTRA_TITLE, download.title)
+                                            putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, download.posterUrl)
+                                            putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, cast)
+                                            if (download.seriesId != null) putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, download.seriesId)
+                                            if (effSeason != null) putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, effSeason)
+                                            if (effEpisode != null) putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, effEpisode)
+                                            if (download.movieId != null) putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, download.movieId)
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(launchIntent)
+                                    } else {
+                                        val serviceIntent = Intent(context, TorrentDownloadService::class.java).apply {
+                                            action = if (download.state == TorrentDownloadService.STATE_READY || download.state == TorrentDownloadService.STATE_COMPLETED) {
+                                                TorrentDownloadService.ACTION_PLAY_STREAM
+                                            } else {
+                                                TorrentDownloadService.ACTION_DOWNLOAD
+                                            }
+                                            putExtra(TorrentDownloadService.EXTRA_INFO_HASH, download.infoHash)
+                                            putExtra(TorrentDownloadService.EXTRA_CAST_WHEN_READY, cast)
+                                            if (download.seriesId != null) putExtra(TorrentDownloadService.EXTRA_SERIES_ID, download.seriesId)
+                                            if (effSeason != null) putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, effSeason)
+                                            if (effEpisode != null) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, effEpisode)
+                                            if (download.movieId != null) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, download.movieId)
+                                            if (!download.posterUrl.isNullOrBlank()) {
+                                                putExtra(TorrentDownloadService.EXTRA_POSTER_URL, download.posterUrl)
+                                            }
+                                            putExtra(TorrentDownloadService.EXTRA_TITLE, download.title)
+                                            if (download.magnetUri.isNotBlank()) {
+                                                putExtra(TorrentDownloadService.EXTRA_MAGNET_URI, download.magnetUri)
+                                            }
+                                        }
+                                        context.startService(serviceIntent)
+                                    }
+                                } else {
+                                    // Mobile / Tablet local playback -> Play in Floating PIP
+                                    val currentMedia = mediaController?.currentMediaItem
+                                    val curMediaId = currentMedia?.mediaId.orEmpty()
+                                    val curInfoHash = currentMedia?.mediaMetadata?.extras?.getString(LocalPlayerActivity.EXTRA_INFO_HASH).orEmpty()
+                                    val isAlreadyLoaded = (curInfoHash.isNotBlank() && curInfoHash.equals(download.infoHash, ignoreCase = true)) ||
+                                        curMediaId == download.infoHash ||
+                                        curMediaId.contains(download.infoHash, ignoreCase = true) ||
+                                        (download.movieId != null && download.movieId > 0 && curMediaId == download.movieId.toString()) ||
+                                        (canonicalEpisodeId != null && curMediaId == canonicalEpisodeId) ||
+                                        hasMatchingEpisodeToken ||
+                                        activeMediaTitle.equals(download.title, ignoreCase = true)
+
+                                    if (isAlreadyLoaded) {
+                                        mediaController?.play()
+                                    } else if (readyIntent != null) {
+                                        val mediaItem = PlayerIntentUtils.buildMediaItem(readyIntent)
+                                        mediaController?.setMediaItem(mediaItem)
+                                        mediaController?.prepare()
+                                        mediaController?.play()
+                                    } else if (download.state == TorrentDownloadService.STATE_COMPLETED && completedFile != null) {
+                                        val mediaItem = PlayerIntentUtils.buildMediaItem(download, completedFile)
+                                        mediaController?.setMediaItem(mediaItem)
+                                        mediaController?.prepare()
+                                        mediaController?.play()
+                                    } else {
+                                        val serviceIntent = Intent(context, TorrentDownloadService::class.java).apply {
+                                            action = if (download.state == TorrentDownloadService.STATE_READY || download.state == TorrentDownloadService.STATE_COMPLETED) {
+                                                TorrentDownloadService.ACTION_PLAY_STREAM
+                                            } else {
+                                                TorrentDownloadService.ACTION_DOWNLOAD
+                                            }
+                                            putExtra(TorrentDownloadService.EXTRA_INFO_HASH, download.infoHash)
+                                            putExtra(TorrentDownloadService.EXTRA_CAST_WHEN_READY, false)
+                                            if (download.seriesId != null) putExtra(TorrentDownloadService.EXTRA_SERIES_ID, download.seriesId)
+                                            if (effSeason != null) putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, effSeason)
+                                            if (effEpisode != null) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, effEpisode)
+                                            if (download.movieId != null) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, download.movieId)
+                                            if (!download.posterUrl.isNullOrBlank()) {
+                                                putExtra(TorrentDownloadService.EXTRA_POSTER_URL, download.posterUrl)
+                                            }
+                                            putExtra(TorrentDownloadService.EXTRA_TITLE, download.title)
+                                            if (download.magnetUri.isNotBlank()) {
+                                                putExtra(TorrentDownloadService.EXTRA_MAGNET_URI, download.magnetUri)
+                                            }
+                                        }
+                                        context.startService(serviceIntent)
                                     }
                                 }
-                                context.startService(intent)
                             }
                         )
                     }
@@ -392,6 +493,9 @@ private fun TorrentDownloadItem(
     isPlaying: Boolean = false,
     isCasting: Boolean = false,
     activeRouteName: String = "",
+    isPlayPending: Boolean = false,
+    isPauseResumePending: Boolean = false,
+    isDeletePending: Boolean = false,
     onToggleActivePlayback: () -> Unit = {},
     onPauseResume: () -> Unit,
     onDelete: () -> Unit,
@@ -540,80 +644,180 @@ private fun TorrentDownloadItem(
                         if (isCasting) Icons.Default.Tv else Icons.Default.PlayArrow
                     }
                     val iconTint = if (isActive || isCasting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                    val playActionEnabled = !isPlayPending && !isDeletePending
 
                     if (isTv) {
                         TvIconButton(
                             onClick = {
-                                if (isActive) onToggleActivePlayback() else onPlay(isCasting)
+                                if (playActionEnabled) {
+                                    if (isActive) onToggleActivePlayback() else onPlay(isCasting)
+                                }
                             },
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
-                            TvIcon(
-                                imageVector = iconVector,
-                                contentDescription = stringResource(R.string.play_desc)
-                            )
+                            AnimatedContent(
+                                targetState = isPlayPending,
+                                label = "PlayButtonMorph"
+                            ) { pending ->
+                                if (pending) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = iconTint
+                                    )
+                                } else {
+                                    TvIcon(
+                                        imageVector = iconVector,
+                                        contentDescription = stringResource(if (isActive && isPlaying) R.string.pause_desc else R.string.play_desc)
+                                    )
+                                }
+                            }
                         }
                     } else {
                         IconButton(
                             onClick = {
-                                if (isActive) onToggleActivePlayback() else onPlay(isCasting)
+                                if (playActionEnabled) {
+                                    if (isActive) onToggleActivePlayback() else onPlay(isCasting)
+                                }
                             },
+                            enabled = playActionEnabled,
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
-                            Icon(
-                                imageVector = iconVector,
-                                contentDescription = stringResource(R.string.play_desc),
-                                tint = iconTint
-                            )
+                            AnimatedContent(
+                                targetState = isPlayPending,
+                                label = "PlayButtonMorph"
+                            ) { pending ->
+                                if (pending) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = iconTint
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = iconVector,
+                                        contentDescription = stringResource(if (isActive && isPlaying) R.string.pause_desc else R.string.play_desc),
+                                        tint = iconTint
+                                    )
+                                }
+                            }
                         }
                     }
                 }
                 if (!completed) {
+                    val pauseActionEnabled = !isPauseResumePending && !isDeletePending
+                    val pauseResumeDesc = stringResource(
+                        if (resumable) R.string.torrent_resume else R.string.pause_desc
+                    )
+                    val pauseResumeIcon = if (resumable) Icons.Default.PlayArrow else Icons.Default.Pause
+                    val pauseResumeColor = MaterialTheme.colorScheme.onSurfaceVariant
+
                     if (isTv) {
                         TvIconButton(
-                            onClick = onPauseResume,
+                            onClick = {
+                                if (pauseActionEnabled) onPauseResume()
+                            },
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
-                            TvIcon(
-                                if (resumable) Icons.Default.PlayArrow else Icons.Default.Pause,
-                                contentDescription = stringResource(
-                                    if (resumable) R.string.torrent_resume else R.string.pause_desc
-                                )
-                            )
+                            AnimatedContent(
+                                targetState = isPauseResumePending,
+                                label = "PauseResumeButtonMorph"
+                            ) { pending ->
+                                if (pending) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = pauseResumeColor
+                                    )
+                                } else {
+                                    TvIcon(
+                                        imageVector = pauseResumeIcon,
+                                        contentDescription = pauseResumeDesc
+                                    )
+                                }
+                            }
                         }
                     } else {
                         IconButton(
-                            onClick = onPauseResume,
+                            onClick = {
+                                if (pauseActionEnabled) onPauseResume()
+                            },
+                            enabled = pauseActionEnabled,
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
-                            Icon(
-                                if (resumable) Icons.Default.PlayArrow else Icons.Default.Pause,
-                                contentDescription = stringResource(
-                                    if (resumable) R.string.torrent_resume else R.string.pause_desc
-                                )
-                            )
+                            AnimatedContent(
+                                targetState = isPauseResumePending,
+                                label = "PauseResumeButtonMorph"
+                            ) { pending ->
+                                if (pending) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = pauseResumeColor
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = pauseResumeIcon,
+                                        contentDescription = pauseResumeDesc
+                                    )
+                                }
+                            }
                         }
                     }
                 }
+                val deleteActionEnabled = !isDeletePending
+                val deleteColor = MaterialTheme.colorScheme.error
+
                 if (isTv) {
                     TvIconButton(
-                        onClick = onDelete,
+                        onClick = {
+                            if (deleteActionEnabled) onDelete()
+                        },
                         modifier = Modifier.focusHighlight(shape = CircleShape)
                     ) {
-                        TvIcon(
-                            Icons.Default.Delete,
-                            contentDescription = stringResource(R.string.torrent_delete)
-                        )
+                        AnimatedContent(
+                            targetState = isDeletePending,
+                            label = "DeleteButtonMorph"
+                        ) { pending ->
+                            if (pending) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = deleteColor
+                                )
+                            } else {
+                                TvIcon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = stringResource(R.string.torrent_delete)
+                                )
+                            }
+                        }
                     }
                 } else {
                     IconButton(
-                        onClick = onDelete,
+                        onClick = {
+                            if (deleteActionEnabled) onDelete()
+                        },
+                        enabled = deleteActionEnabled,
                         modifier = Modifier.focusHighlight(shape = CircleShape)
                     ) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = stringResource(R.string.torrent_delete)
-                        )
+                        AnimatedContent(
+                            targetState = isDeletePending,
+                            label = "DeleteButtonMorph"
+                        ) { pending ->
+                            if (pending) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = deleteColor
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = stringResource(R.string.torrent_delete)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -624,6 +828,7 @@ private fun TorrentDownloadItem(
 
     if (isTv) {
         TvSurface(
+            modifier = Modifier.alpha(if (isDeletePending) 0.55f else 1f),
             shape = MaterialTheme.shapes.medium,
             colors = SurfaceDefaults.colors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -634,7 +839,9 @@ private fun TorrentDownloadItem(
         }
     } else {
         Card(
-            modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.medium),
+            modifier = Modifier
+                .focusHighlight(shape = MaterialTheme.shapes.medium)
+                .alpha(if (isDeletePending) 0.55f else 1f),
             border = activeBorder,
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -665,6 +872,39 @@ private fun TorrentDownloadItemPreview() {
                     numPeers = 5
                 ),
                 isTv = false,
+                isPlayPending = false,
+                isPauseResumePending = false,
+                isDeletePending = false,
+                onPauseResume = {},
+                onDelete = {},
+                onPlay = {}
+            )
+        }
+    }
+}
+
+@androidx.compose.ui.tooling.preview.Preview(device = "id:tv_1080p")
+@Composable
+private fun TorrentDownloadItemTvPreview() {
+    com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme {
+        androidx.tv.material3.Surface {
+            TorrentDownloadItem(
+                download = TorrentDownload(
+                    infoHash = "HASH1",
+                    magnetUri = "magnet:?",
+                    title = "Inception (2010)",
+                    state = "DOWNLOADING",
+                    progressPercent = 50,
+                    mediaPath = null,
+                    castWhenReady = false,
+                    updatedAtMillis = System.currentTimeMillis(),
+                    numSeeds = 12,
+                    numPeers = 5
+                ),
+                isTv = true,
+                isPlayPending = false,
+                isPauseResumePending = true,
+                isDeletePending = false,
                 onPauseResume = {},
                 onDelete = {},
                 onPlay = {}

@@ -61,6 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.combinedClickable
+import com.martinrevert.latorrentola.ui.components.WatchProgressBar
 import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface as TvSurface
@@ -205,6 +206,7 @@ fun TvEpisodeDetailScreen(
                                     seriesId = seriesId,
                                     seasonNumber = state.episode.seasonNumber,
                                     episodeNumber = state.episode.episodeNumber,
+                                    posterUrl = state.posterUrl,
                                     requiredSizeBytes = sizeBytes
                                 )
                             ) {
@@ -389,18 +391,13 @@ private fun EpisodeHeader(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
-                if (progressPercent != null && progressPercent > 0) {
-                    LinearProgressIndicator(
-                        progress = { progressPercent / 100f },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .align(Alignment.BottomCenter),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                        strokeCap = StrokeCap.Butt
-                    )
-                }
+                WatchProgressBar(
+                    progressPercent = progressPercent,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .align(Alignment.BottomCenter)
+                )
             }
             Spacer(Modifier.height(16.dp))
         }

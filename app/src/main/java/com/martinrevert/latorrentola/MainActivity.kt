@@ -10,18 +10,28 @@ import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentSanitizer
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import com.martinrevert.latorrentola.network.FirebaseMessagingConfig
 import com.martinrevert.latorrentola.network.FirebaseMessagingInitializer
+import com.martinrevert.latorrentola.service.PlaybackService
+import com.martinrevert.latorrentola.service.TorrentDownloadService
 import com.martinrevert.latorrentola.ui.navigation.AppNavigation
+import com.martinrevert.latorrentola.ui.player.LocalPlayerActivity
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
+import com.martinrevert.latorrentola.utils.PlayerIntentUtils
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dagger.hilt.android.AndroidEntryPoint
@@ -78,17 +88,48 @@ class MainActivity : FragmentActivity() {
         setContent {
             val themeMode by preferenceManager.themeFlow.collectAsState()
             val isTv = isTvDevice()
-            val navigationContent: @Composable () -> Unit = {
-                AppNavigation(
-                    initialMovieJson = movieJsonToOpen,
-                    initialMovieId = movieIdToOpen,
-                    initialSearchQuery = searchQueryToOpen,
-                    onInitialDataHandled = {
-                        movieJsonToOpen = null
-                        movieIdToOpen = null
-                        searchQueryToOpen = null
+
+            LaunchedEffect(Unit) {
+                TorrentDownloadService.readyStreamEvents.collect { intent ->
+                    val isTvDevice = isTvDevice()
+                    val castEnabled = intent.getBooleanExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, false)
+                    if (isTvDevice || castEnabled) {
+                        val launchIntent = Intent(intent).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(launchIntent)
+                    } else {
+                        val sessionToken = SessionToken(this@MainActivity, ComponentName(this@MainActivity, PlaybackService::class.java))
+                        val controllerFuture = MediaController.Builder(this@MainActivity, sessionToken).buildAsync()
+                        controllerFuture.addListener({
+                            try {
+                                val controller = controllerFuture.get()
+                                val mediaItem = PlayerIntentUtils.buildMediaItem(intent)
+                                controller.setMediaItem(mediaItem)
+                                controller.prepare()
+                                controller.play()
+                            } catch (_: Exception) {}
+                        }, ContextCompat.getMainExecutor(this@MainActivity))
                     }
-                )
+                }
+            }
+
+            val navigationContent: @Composable () -> Unit = {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    AppNavigation(
+                        initialMovieJson = movieJsonToOpen,
+                        initialMovieId = movieIdToOpen,
+                        initialSearchQuery = searchQueryToOpen,
+                        onInitialDataHandled = {
+                            movieJsonToOpen = null
+                            movieIdToOpen = null
+                            searchQueryToOpen = null
+                        }
+                    )
+                    if (!isTv) {
+                        com.martinrevert.latorrentola.ui.components.FloatingVideoPipOverlay()
+                    }
+                }
             }
 
             if (isTv) {
