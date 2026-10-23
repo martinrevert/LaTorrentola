@@ -15,7 +15,7 @@ import com.martinrevert.latorrentola.model.torrent.TorrentDownload
 /** Room database for local visit dates, genre statistics, torrent downloads, and watch history. */
 @Database(
     entities = [DateLastVisit::class, GenreStats::class, TvGenreStats::class, TorrentDownload::class, WatchHistoryEntity::class],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -55,11 +55,19 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_7_8,
                         MIGRATION_8_9,
                         MIGRATION_9_10,
-                        MIGRATION_10_11
+                        MIGRATION_10_11,
+                        MIGRATION_11_12
                     )
                     .build()
                 INSTANCE = instance
                 instance
+            }
+        }
+
+        /** Adds posterUrl column to torrent_downloads. */
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `torrent_downloads` ADD COLUMN `posterUrl` TEXT")
             }
         }
 

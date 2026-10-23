@@ -33,5 +33,7 @@ data class TorrentDownload(
     /** Dynamic number of connected seeds. */
     val numSeeds: Int = 0,
     /** Dynamic number of connected peers. */
-    val numPeers: Int = 0
+    val numPeers: Int = 0,
+    /** Optional poster image URL for visual artwork display in player and Cast modes. */
+    val posterUrl: String? = null
 )

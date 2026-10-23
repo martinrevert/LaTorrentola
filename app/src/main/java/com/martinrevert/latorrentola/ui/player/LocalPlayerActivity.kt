@@ -29,9 +29,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -73,6 +77,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.StopScreenShare
 import androidx.compose.material.icons.filled.Subtitles
 import com.google.android.gms.cast.CastDevice
+import com.google.android.gms.cast.MediaSeekOptions
 import com.google.android.gms.cast.MediaStatus
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
@@ -360,13 +365,13 @@ class LocalPlayerActivity : FragmentActivity() {
 
     private var localStreamUrl = ""
     private var castStreamUrl = ""
-    private var mediaTitle = ""
+    private var mediaTitle by mutableStateOf("")
     private var torrentInfoHash = ""
 
-    private var currentSeriesId = 0
-    private var currentSeasonNumber = 0
-    private var currentEpisodeNumber = 0
-    private var currentMovieId = 0
+    private var currentSeriesId by mutableIntStateOf(0)
+    private var currentSeasonNumber by mutableIntStateOf(0)
+    private var currentEpisodeNumber by mutableIntStateOf(0)
+    private var currentMovieId by mutableIntStateOf(0)
 
     private var nextEpisodeSeriesId = 0
     private var nextEpisodeSeriesName = ""
@@ -384,6 +389,7 @@ class LocalPlayerActivity : FragmentActivity() {
     private var customCaptionStyle by mutableStateOf<CaptionStyleCompat?>(null)
     private var customSubtitleSizeFraction by mutableFloatStateOf(0.0533f)
     private var customSubtitleBottomOffset by mutableFloatStateOf(0.08f)
+    private var cachedAudioTrackOptions by mutableStateOf<List<PlaybackTrackOption>>(emptyList())
 
     private var subtitleOperationInProgress by mutableStateOf(false)
     private var subtitleStartupCheckStarted = false
@@ -400,6 +406,38 @@ class LocalPlayerActivity : FragmentActivity() {
     private var posterUrl by mutableStateOf<String?>(null)
     private var lastKnownPlaybackPositionMs = 0L
     private var lastStreamRecoveryAttemptMillis = 0L
+
+    private fun buildEnrichedMediaMetadata(
+        title: String,
+        isEpisode: Boolean,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        posterUrl: String?,
+        extras: Bundle
+    ): MediaMetadata {
+        val appBrand = getString(R.string.app_name)
+        val subtitleText = if (isEpisode && seasonNumber > 0 && episodeNumber > 0) {
+            val sText = getString(R.string.tv_season_number, seasonNumber)
+            val eText = getString(R.string.tv_episode_number, episodeNumber)
+            "$sText • $eText • $appBrand"
+        } else {
+            appBrand
+        }
+
+        return MediaMetadata.Builder()
+            .setTitle(title)
+            .setDisplayTitle(title)
+            .setArtist(subtitleText)
+            .setSubtitle(subtitleText)
+            .setAlbumTitle(appBrand)
+            .setExtras(extras)
+            .apply {
+                if (!posterUrl.isNullOrBlank()) {
+                    setArtworkUri(Uri.parse(posterUrl))
+                }
+            }
+            .build()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -473,6 +511,26 @@ class LocalPlayerActivity : FragmentActivity() {
 
                         val isCasting = deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE
 
+                        LaunchedEffect(isCasting) {
+                            if (isCasting && showCastBottomSheet) {
+                                showCastBottomSheet = false
+                            }
+                        }
+
+                        var surfaceRebindKey by remember { mutableIntStateOf(0) }
+                        val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+                        DisposableEffect(lifecycleOwner) {
+                            val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                                if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                                    surfaceRebindKey++
+                                }
+                            }
+                            lifecycleOwner.lifecycle.addObserver(observer)
+                            onDispose {
+                                lifecycleOwner.lifecycle.removeObserver(observer)
+                            }
+                        }
+
                         if (isCasting) {
                             RemoteCastCanvas(
                                 controller = controller,
@@ -489,6 +547,8 @@ class LocalPlayerActivity : FragmentActivity() {
                                 },
                                 onShowCast = { showCastBottomSheet = true },
                                 onShowSubtitles = { showSubtitleOptions() },
+                                onSearchSubtitles = { searchSubtitles() },
+                                onShowSubtitleStyle = { showSubtitleStyleOptions() },
                                 onShowAudioTracks = { showAudioOptions() },
                                 showStats = showStatsForNerds,
                                 onToggleStats = { showStatsForNerds = !showStatsForNerds },
@@ -496,10 +556,12 @@ class LocalPlayerActivity : FragmentActivity() {
                                 modifier = Modifier.fillMaxSize()
                             )
                         } else {
-                            PlayerSurface(
-                                player = controller,
-                                modifier = videoModifier
-                            )
+                            androidx.compose.runtime.key(surfaceRebindKey) {
+                                PlayerSurface(
+                                    player = controller,
+                                    modifier = videoModifier
+                                )
+                            }
 
                             if (playbackState == Player.STATE_BUFFERING) {
                                 CircularProgressIndicator(
@@ -902,40 +964,66 @@ class LocalPlayerActivity : FragmentActivity() {
             }
         }
 
-        if (mediaUri != null) {
-            mediaTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty()
-            val rawInfoHash = intent.getStringExtra(EXTRA_INFO_HASH).orEmpty()
-            torrentInfoHash = rawInfoHash.ifBlank {
-                extractInfoHash(
-                    localStreamUrl,
-                    castStreamUrl,
-                    file?.absolutePath,
-                    mediaUri.toString()
-                )
-            }
-            posterUrl = intent.getStringExtra(EXTRA_POSTER_URL)
-            currentSeriesId = intent.getIntExtra(EXTRA_SERIES_ID, 0)
-            currentSeasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
-            currentEpisodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
-            currentMovieId = intent.getIntExtra(EXTRA_MOVIE_ID, 0)
+        val titleExtra = intent.getStringExtra(EXTRA_TITLE)
+            ?: intent.getStringExtra(TorrentDownloadService.EXTRA_TITLE)
+        if (!titleExtra.isNullOrBlank()) {
+            mediaTitle = titleExtra
+        }
+        val rawInfoHash = intent.getStringExtra(EXTRA_INFO_HASH)
+            ?: intent.getStringExtra(TorrentDownloadService.EXTRA_INFO_HASH)
+            ?: ""
+        torrentInfoHash = rawInfoHash.ifBlank {
+            extractInfoHash(
+                localStreamUrl,
+                castStreamUrl,
+                file?.absolutePath,
+                mediaUri?.toString()
+            )
+        }
+        val posterExtra = intent.getStringExtra(EXTRA_POSTER_URL)
+            ?: intent.getStringExtra(TorrentDownloadService.EXTRA_POSTER_URL)
+        if (!posterExtra.isNullOrBlank()) {
+            posterUrl = posterExtra
+        }
+        val sId = intent.getIntExtra(EXTRA_SERIES_ID, 0)
+            .takeIf { it > 0 } ?: intent.getIntExtra(TorrentDownloadService.EXTRA_SERIES_ID, 0)
+        if (sId > 0) currentSeriesId = sId
+        val sNum = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
+            .takeIf { it > 0 } ?: intent.getIntExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, 0)
+        if (sNum > 0) currentSeasonNumber = sNum
+        val eNum = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
+            .takeIf { it > 0 } ?: intent.getIntExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, 0)
+        if (eNum > 0) currentEpisodeNumber = eNum
+        val mId = intent.getIntExtra(EXTRA_MOVIE_ID, 0)
+            .takeIf { it > 0 } ?: intent.getIntExtra(TorrentDownloadService.EXTRA_MOVIE_ID, 0)
+        if (mId > 0) currentMovieId = mId
 
-            if (torrentInfoHash.isNotBlank() && (currentSeriesId <= 0 && currentMovieId <= 0)) {
-                try {
-                    val dbRecord = runBlocking(Dispatchers.IO) { torrentDownloadDao.get(torrentInfoHash) }
-                    if (dbRecord != null) {
-                        if (currentMovieId <= 0 && (dbRecord.movieId ?: 0) > 0) {
-                            currentMovieId = dbRecord.movieId ?: 0
-                        }
-                        if (currentSeriesId <= 0 && (dbRecord.seriesId ?: 0) > 0) {
-                            currentSeriesId = dbRecord.seriesId ?: 0
-                            if (currentSeasonNumber <= 0) currentSeasonNumber = dbRecord.seasonNumber ?: 0
-                            if (currentEpisodeNumber <= 0) currentEpisodeNumber = dbRecord.episodeNumber ?: 0
-                        }
+        if (torrentInfoHash.isNotBlank()) {
+            try {
+                val dbRecord = runBlocking(Dispatchers.IO) { torrentDownloadDao.get(torrentInfoHash) }
+                if (dbRecord != null) {
+                    if (currentMovieId <= 0 && (dbRecord.movieId ?: 0) > 0) {
+                        currentMovieId = dbRecord.movieId ?: 0
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to recover series/movie metadata from DB: ${e.message}")
+                    if (currentSeriesId <= 0 && (dbRecord.seriesId ?: 0) > 0) {
+                        currentSeriesId = dbRecord.seriesId ?: 0
+                    }
+                    if (currentSeasonNumber <= 0 && (dbRecord.seasonNumber ?: 0) > 0) {
+                        currentSeasonNumber = dbRecord.seasonNumber ?: 0
+                    }
+                    if (currentEpisodeNumber <= 0 && (dbRecord.episodeNumber ?: 0) > 0) {
+                        currentEpisodeNumber = dbRecord.episodeNumber ?: 0
+                    }
+                    if (posterUrl.isNullOrBlank() && !dbRecord.posterUrl.isNullOrBlank()) {
+                        posterUrl = dbRecord.posterUrl
+                    }
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to recover series/movie metadata from DB: ${e.message}")
             }
+        }
+
+        if (mediaUri != null) {
 
             if (currentSeasonNumber <= 0 || currentEpisodeNumber <= 0) {
                 val (detectedSeason, detectedEpisode) = extractSeasonAndEpisode(mediaTitle, file?.name, mediaUri.toString())
@@ -1030,6 +1118,34 @@ class LocalPlayerActivity : FragmentActivity() {
                 if (castStreamUrl.isNotBlank()) {
                     putString(PlaybackService.EXTRA_CAST_URL, castStreamUrl)
                 }
+                if (localStreamUrl.isNotBlank()) {
+                    putString(EXTRA_STREAM_URL, localStreamUrl)
+                }
+                if (file != null && file.exists()) {
+                    putString(EXTRA_FILE_PATH, file.absolutePath)
+                }
+                if (torrentInfoHash.isNotBlank()) {
+                    putString(EXTRA_INFO_HASH, torrentInfoHash)
+                }
+                if (currentMovieId > 0) {
+                    putInt(EXTRA_MOVIE_ID, currentMovieId)
+                }
+                if (currentSeriesId > 0) {
+                    putInt(EXTRA_SERIES_ID, currentSeriesId)
+                }
+                if (currentSeasonNumber > 0) {
+                    putInt(EXTRA_SEASON_NUMBER, currentSeasonNumber)
+                }
+                if (currentEpisodeNumber > 0) {
+                    putInt(EXTRA_EPISODE_NUMBER, currentEpisodeNumber)
+                }
+                val inferredMime = intent.getStringExtra(EXTRA_MIME_TYPE) ?: file?.mediaMimeType()
+                if (!inferredMime.isNullOrBlank()) {
+                    putString(EXTRA_MIME_TYPE, inferredMime)
+                }
+                if (!posterUrl.isNullOrBlank()) {
+                    putString(EXTRA_POSTER_URL, posterUrl)
+                }
             }
 
             val inferredMimeType = intent.getStringExtra(EXTRA_MIME_TYPE)
@@ -1037,19 +1153,20 @@ class LocalPlayerActivity : FragmentActivity() {
                 ?: intent.getStringExtra(EXTRA_REMOTE_FILE_PATH)?.mediaMimeType()
                 ?: intent.getStringExtra(EXTRA_TITLE)?.mediaMimeType()
 
-            val mediaMetadataBuilder = MediaMetadata.Builder()
-                .setTitle(mediaTitle)
-                .setExtras(itemBundle)
-
-            if (!posterUrl.isNullOrBlank()) {
-                mediaMetadataBuilder.setArtworkUri(Uri.parse(posterUrl))
-            }
+            val mediaMetadata = buildEnrichedMediaMetadata(
+                title = mediaTitle,
+                isEpisode = isEpisode,
+                seasonNumber = currentSeasonNumber,
+                episodeNumber = currentEpisodeNumber,
+                posterUrl = posterUrl,
+                extras = itemBundle
+            )
 
             pendingMediaItem = MediaItem.Builder()
                 .setMediaId(mediaId)
                 .setUri(mediaUri)
                 .setMimeType(inferredMimeType)
-                .setMediaMetadata(mediaMetadataBuilder.build())
+                .setMediaMetadata(mediaMetadata)
                 .build()
             currentMediaItem = pendingMediaItem
 
@@ -1066,11 +1183,20 @@ class LocalPlayerActivity : FragmentActivity() {
                     if (!resolved.isNullOrBlank()) {
                         withContext(Dispatchers.Main) {
                             posterUrl = resolved
+                            currentMediaItem?.let { item ->
+                                val updatedMetadata = item.mediaMetadata.buildUpon()
+                                    .setArtworkUri(Uri.parse(resolved))
+                                    .build()
+                                val updatedItem = item.buildUpon().setMediaMetadata(updatedMetadata).build()
+                                currentMediaItem = updatedItem
+                                pendingMediaItem = updatedItem
+                            }
                         }
                     }
                 }
             }
         }
+        extractAudioTracksFromFile(intent.getStringExtra(EXTRA_FILE_PATH))
     }
 
     private suspend fun resolvePosterUrl(
@@ -1085,6 +1211,7 @@ class LocalPlayerActivity : FragmentActivity() {
             if (infoHash.isNotBlank()) {
                 val dbRecord = torrentDownloadDao.get(infoHash)
                 if (dbRecord != null) {
+                    if (!dbRecord.posterUrl.isNullOrBlank()) return dbRecord.posterUrl
                     val mId = dbRecord.movieId ?: 0
                     if (mId > 0) {
                         try {
@@ -1164,12 +1291,12 @@ class LocalPlayerActivity : FragmentActivity() {
                 mediaController = controller
                 if (controller != null) {
                     setupControllerMedia(controller)
-                } else if (pendingMediaUri == null) {
+                } else if (pendingMediaUri == null && !intent.getBooleanExtra(EXTRA_FROM_PIP, false)) {
                     finish()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to connect MediaController", e)
-                if (pendingMediaUri == null) {
+                if (pendingMediaUri == null && !intent.getBooleanExtra(EXTRA_FROM_PIP, false)) {
                     finish()
                 }
             }
@@ -1180,13 +1307,94 @@ class LocalPlayerActivity : FragmentActivity() {
         lifecycleScope.launch {
             val activeItem = controller.currentMediaItem
             val newItem = pendingMediaItem
-            Log.i(TAG, "setupControllerMedia: activeItem=${activeItem?.mediaId}, newItem=${newItem?.mediaId}, state=${controller.playbackState}")
+            val isFromPip = intent.getBooleanExtra(EXTRA_FROM_PIP, false)
+            Log.i(TAG, "setupControllerMedia: activeItem=${activeItem?.mediaId}, newItem=${newItem?.mediaId}, isFromPip=$isFromPip, isPlaying=${controller.isPlaying}, playWhenReady=${controller.playWhenReady}, state=${controller.playbackState}")
+
+            // Fast-path for PIP expansion: zero interruption to active PlaybackService playback
+            if (isFromPip && activeItem != null) {
+                currentMediaItem = activeItem
+                val titleFromMetadata = activeItem.mediaMetadata.title?.toString()
+                if (!titleFromMetadata.isNullOrBlank() && mediaTitle.isBlank()) {
+                    mediaTitle = titleFromMetadata
+                }
+                val artworkUri = activeItem.mediaMetadata.artworkUri?.toString()
+                if (!artworkUri.isNullOrBlank() && posterUrl.isNullOrBlank()) {
+                    posterUrl = artworkUri
+                }
+                if (currentSeasonNumber <= 0 || currentEpisodeNumber <= 0) {
+                    val (s, e) = extractSeasonAndEpisode(mediaTitle, activeItem.mediaId)
+                    if (currentSeasonNumber <= 0 && s > 0) currentSeasonNumber = s
+                    if (currentEpisodeNumber <= 0 && e > 0) currentEpisodeNumber = e
+                }
+                if (posterUrl.isNullOrBlank() && torrentInfoHash.isNotBlank()) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        torrentDownloadDao.get(torrentInfoHash)?.let { dbRecord ->
+                            if (!dbRecord.posterUrl.isNullOrBlank()) {
+                                withContext(Dispatchers.Main) {
+                                    posterUrl = dbRecord.posterUrl
+                                }
+                            }
+                            if (currentSeasonNumber <= 0 && (dbRecord.seasonNumber ?: 0) > 0) {
+                                withContext(Dispatchers.Main) {
+                                    currentSeasonNumber = dbRecord.seasonNumber ?: 0
+                                }
+                            }
+                            if (currentEpisodeNumber <= 0 && (dbRecord.episodeNumber ?: 0) > 0) {
+                                withContext(Dispatchers.Main) {
+                                    currentEpisodeNumber = dbRecord.episodeNumber ?: 0
+                                }
+                            }
+                        }
+                    }
+                }
+                startProgressTicker(controller)
+                updateCachedAudioTracks(controller.currentTracks)
+                prepareSubtitleTrackIfNeeded(controller.currentTracks)
+                setupPlaybackCompletionListener(controller)
+
+                controller.addListener(object : Player.Listener {
+                    override fun onTracksChanged(tracks: Tracks) {
+                        selectDefaultSubtitleIfNeeded(controller)
+                        prepareSubtitleTrackIfNeeded(tracks)
+                        updateCachedAudioTracks(tracks)
+                    }
+
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        if (isPlaying) {
+                            startProgressTicker(controller)
+                        } else {
+                            saveCurrentProgress(controller)
+                        }
+                    }
+
+                    override fun onPlaybackStateChanged(state: Int) {
+                        if (state == Player.STATE_ENDED) {
+                            saveCurrentProgress(controller)
+                        }
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        Log.e(TAG, "Player error encountered during playback: ${error.message}", error)
+                    }
+                })
+                return@launch
+            }
 
             val activeUri = activeItem?.localConfiguration?.uri
             val newUri = newItem?.localConfiguration?.uri
-            val uriChanged = activeUri != null && newUri != null && activeUri != newUri
+            val activeExtraUrl = activeItem?.mediaMetadata?.extras?.getString(EXTRA_STREAM_URL)
+            val newExtraUrl = newItem?.mediaMetadata?.extras?.getString(EXTRA_STREAM_URL)
+            val uriChanged = (activeUri != null && newUri != null && activeUri != newUri) ||
+                (!activeExtraUrl.isNullOrBlank() && !newExtraUrl.isNullOrBlank() && activeExtraUrl != newExtraUrl)
 
-            val isNewMedia = activeItem == null || newItem == null || activeItem.mediaId != newItem.mediaId
+            val isNewMedia = when {
+                activeItem == null -> true
+                newItem == null -> false
+                activeItem.mediaId == newItem.mediaId -> false
+                activeUri != null && newUri != null && activeUri == newUri -> false
+                !activeExtraUrl.isNullOrBlank() && !newExtraUrl.isNullOrBlank() && activeExtraUrl == newExtraUrl -> false
+                else -> true
+            }
             if (isNewMedia) {
                 lastKnownPlaybackPositionMs = 0L
                 nextEpisodeTriggered = false
@@ -1197,7 +1405,7 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
             }
 
-            var itemToConfigure = newItem
+            var itemToConfigure = newItem ?: activeItem
             if (itemToConfigure != null && (currentMovieId <= 0 && currentSeriesId <= 0)) {
                 try {
                     val resolved = withContext(Dispatchers.IO) {
@@ -1229,17 +1437,52 @@ class LocalPlayerActivity : FragmentActivity() {
                         if (castStreamUrl.isNotBlank()) {
                             putString(PlaybackService.EXTRA_CAST_URL, castStreamUrl)
                         }
+                        if (localStreamUrl.isNotBlank()) {
+                            putString(EXTRA_STREAM_URL, localStreamUrl)
+                        }
+                        val localFilePath = intent.getStringExtra(EXTRA_FILE_PATH)
+                            ?: itemToConfigure.mediaMetadata.extras?.getString(EXTRA_FILE_PATH)
+                        val localFile = localFilePath?.let(::File)
+                        if (localFile != null && localFile.exists()) {
+                            putString(EXTRA_FILE_PATH, localFile.absolutePath)
+                        }
+                        if (torrentInfoHash.isNotBlank()) {
+                            putString(EXTRA_INFO_HASH, torrentInfoHash)
+                        }
+                        if (resolved.movieId > 0) {
+                            putInt(EXTRA_MOVIE_ID, resolved.movieId)
+                        }
+                        if (resolved.seriesId > 0) {
+                            putInt(EXTRA_SERIES_ID, resolved.seriesId)
+                        }
+                        if (resolved.seasonNumber > 0) {
+                            putInt(EXTRA_SEASON_NUMBER, resolved.seasonNumber)
+                        }
+                        if (resolved.episodeNumber > 0) {
+                            putInt(EXTRA_EPISODE_NUMBER, resolved.episodeNumber)
+                        }
+                        val inferredMime = intent.getStringExtra(EXTRA_MIME_TYPE)
+                            ?: localFile?.mediaMimeType()
+                            ?: itemToConfigure.localConfiguration?.mimeType
+                        if (!inferredMime.isNullOrBlank()) {
+                            putString(EXTRA_MIME_TYPE, inferredMime)
+                        }
+                        if (!posterUrl.isNullOrBlank()) {
+                            putString(EXTRA_POSTER_URL, posterUrl)
+                        }
                     }
-                    val mediaMetadataBuilder = MediaMetadata.Builder()
-                        .setTitle(mediaTitle)
-                        .setExtras(itemBundle)
-                    if (!posterUrl.isNullOrBlank()) {
-                        mediaMetadataBuilder.setArtworkUri(Uri.parse(posterUrl))
-                    }
+                    val mediaMetadata = buildEnrichedMediaMetadata(
+                        title = mediaTitle,
+                        isEpisode = resolved.isEpisode,
+                        seasonNumber = resolved.seasonNumber,
+                        episodeNumber = resolved.episodeNumber,
+                        posterUrl = posterUrl,
+                        extras = itemBundle
+                    )
 
                     itemToConfigure = itemToConfigure.buildUpon()
                         .setMediaId(resolved.mediaId)
-                        .setMediaMetadata(mediaMetadataBuilder.build())
+                        .setMediaMetadata(mediaMetadata)
                         .build()
                     pendingMediaItem = itemToConfigure
                     currentMediaItem = itemToConfigure
@@ -1250,7 +1493,14 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
             }
 
-            if (itemToConfigure != null && (isNewMedia || uriChanged || controller.playbackState == Player.STATE_IDLE || controller.playbackState == Player.STATE_ENDED)) {
+            val needsReconfiguration = itemToConfigure != null && (
+                isNewMedia ||
+                uriChanged ||
+                controller.playbackState == Player.STATE_IDLE ||
+                controller.playbackState == Player.STATE_ENDED
+            )
+
+            if (needsReconfiguration) {
                 val savedProgress = userLibraryRepository.getPlaybackProgress(itemToConfigure.mediaId)
                 val currentPos = if (isNewMedia) {
                     0L
@@ -1311,9 +1561,42 @@ class LocalPlayerActivity : FragmentActivity() {
             } else if (activeItem != null) {
                 currentMediaItem = activeItem
                 val titleFromMetadata = activeItem.mediaMetadata.title?.toString()
-                if (!titleFromMetadata.isNullOrBlank()) {
+                if (!titleFromMetadata.isNullOrBlank() && mediaTitle.isBlank()) {
                     mediaTitle = titleFromMetadata
                 }
+                val artworkUri = activeItem.mediaMetadata.artworkUri?.toString()
+                if (!artworkUri.isNullOrBlank() && posterUrl.isNullOrBlank()) {
+                    posterUrl = artworkUri
+                }
+                if (currentSeasonNumber <= 0 || currentEpisodeNumber <= 0) {
+                    val (s, e) = extractSeasonAndEpisode(mediaTitle, activeItem.mediaId)
+                    if (currentSeasonNumber <= 0 && s > 0) currentSeasonNumber = s
+                    if (currentEpisodeNumber <= 0 && e > 0) currentEpisodeNumber = e
+                }
+                if (posterUrl.isNullOrBlank() && torrentInfoHash.isNotBlank()) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        torrentDownloadDao.get(torrentInfoHash)?.let { dbRecord ->
+                            if (!dbRecord.posterUrl.isNullOrBlank()) {
+                                withContext(Dispatchers.Main) {
+                                    posterUrl = dbRecord.posterUrl
+                                }
+                            }
+                            if (currentSeasonNumber <= 0 && (dbRecord.seasonNumber ?: 0) > 0) {
+                                withContext(Dispatchers.Main) {
+                                    currentSeasonNumber = dbRecord.seasonNumber ?: 0
+                                }
+                            }
+                            if (currentEpisodeNumber <= 0 && (dbRecord.episodeNumber ?: 0) > 0) {
+                                withContext(Dispatchers.Main) {
+                                    currentEpisodeNumber = dbRecord.episodeNumber ?: 0
+                                }
+                            }
+                        }
+                    }
+                }
+                startProgressTicker(controller)
+                updateCachedAudioTracks(controller.currentTracks)
+                prepareSubtitleTrackIfNeeded(controller.currentTracks)
             } else if (pendingMediaUri == null) {
                 finish()
                 return@launch
@@ -1325,6 +1608,7 @@ class LocalPlayerActivity : FragmentActivity() {
                 override fun onTracksChanged(tracks: Tracks) {
                     selectDefaultSubtitleIfNeeded(controller)
                     prepareSubtitleTrackIfNeeded(tracks)
+                    updateCachedAudioTracks(tracks)
                 }
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -1595,6 +1879,78 @@ class LocalPlayerActivity : FragmentActivity() {
         }
     }
 
+    private fun updateCachedAudioTracks(tracks: Tracks) {
+        val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+        if (audioGroups.isNotEmpty()) {
+            cachedAudioTrackOptions = audioGroups.flatMap { group ->
+                (0 until group.length).map { index ->
+                    val format = group.getTrackFormat(index)
+                    PlaybackTrackOption(
+                        label = trackLabel(format, PlaybackTrackType.AUDIO),
+                        group = group.mediaTrackGroup,
+                        trackIndex = index,
+                        castTrackId = format.id?.toLongOrNull(),
+                        isSelected = group.isTrackSelected(index)
+                    )
+                }
+            }
+        }
+    }
+
+    private fun extractAudioTracksFromFile(filePath: String?) {
+        if (filePath.isNullOrBlank()) return
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val file = File(filePath)
+                if (!file.exists() || !file.isFile || file.length() <= 0L) return@launch
+                val extractor = android.media.MediaExtractor()
+                extractor.setDataSource(file.absolutePath)
+                val extracted = mutableListOf<PlaybackTrackOption>()
+                for (i in 0 until extractor.trackCount) {
+                    val format = extractor.getTrackFormat(i)
+                    val mime = format.getString(android.media.MediaFormat.KEY_MIME).orEmpty()
+                    if (mime.startsWith("audio/")) {
+                        val lang = if (format.containsKey(android.media.MediaFormat.KEY_LANGUAGE)) format.getString(android.media.MediaFormat.KEY_LANGUAGE) else null
+                        val channels = if (format.containsKey(android.media.MediaFormat.KEY_CHANNEL_COUNT)) format.getInteger(android.media.MediaFormat.KEY_CHANNEL_COUNT) else 2
+                        val displayLang = lang?.takeIf { it.isNotBlank() && it != "und" }?.let {
+                            val loc = Locale.forLanguageTag(it)
+                            "${getLanguageFlag(it, it)} ${loc.getDisplayName(Locale.getDefault())}"
+                        } ?: "Audio ${extracted.size + 1}"
+                        val codec = when {
+                            mime.contains("eac3") -> "E-AC-3"
+                            mime.contains("ac3") -> "AC-3"
+                            mime.contains("dts") -> "DTS"
+                            mime.contains("truehd") -> "Dolby TrueHD"
+                            mime.contains("aac") -> "AAC"
+                            mime.contains("flac") -> "FLAC"
+                            mime.contains("opus") -> "Opus"
+                            mime.contains("vorbis") -> "Vorbis"
+                            else -> mime.substringAfter("audio/").uppercase(Locale.ROOT)
+                        }
+                        extracted.add(
+                            PlaybackTrackOption(
+                                label = "$displayLang ($codec $channels ch)",
+                                group = null,
+                                trackIndex = i,
+                                castTrackId = (i + 1).toLong(),
+                                isSelected = extracted.isEmpty()
+                            )
+                        )
+                    }
+                }
+                extractor.release()
+                if (extracted.isNotEmpty() && cachedAudioTrackOptions.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        cachedAudioTrackOptions = extracted
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.d(TAG, "Could not extract audio tracks via MediaExtractor: ${e.message}")
+            }
+        }
+    }
+
     private fun showSubtitleOptions() {
         val controller = mediaController ?: return
         val options = availableTrackOptions(PlaybackTrackType.SUBTITLE)
@@ -1628,6 +1984,14 @@ class LocalPlayerActivity : FragmentActivity() {
     private fun showAudioOptions() {
         val controller = mediaController ?: return
         val options = availableTrackOptions(PlaybackTrackType.AUDIO)
+        if (options.isEmpty()) {
+            playerBottomSheetState = PlayerBottomSheetState.Message(
+                title = getString(R.string.player_audio_tracks),
+                message = getString(R.string.player_no_audio_tracks),
+                onDismiss = { playerBottomSheetState = null }
+            )
+            return
+        }
         val selectedIndex = options.indexOfFirst { it.isSelected }.let { if (it < 0) 0 else it }
 
         playerBottomSheetState = PlayerBottomSheetState.Tracks(
@@ -1676,6 +2040,7 @@ class LocalPlayerActivity : FragmentActivity() {
             currentBottomOffset = initialOffset,
             onLiveChange = { fontName, sizeFraction, fg, bg, edge, offset ->
                 applyStyle(fontName, sizeFraction, fg, bg, edge, offset)
+                applyCastSubtitleStyleIfConnected()
             },
             onSave = { fontName, sizeFraction, fg, bg, edge, offset ->
                 preferenceManager.setSubtitleFontName(fontName)
@@ -1690,6 +2055,7 @@ class LocalPlayerActivity : FragmentActivity() {
             },
             onCancel = {
                 applyStyle(initialFont, initialSize, initialFg, initialBg, initialEdge, initialOffset)
+                applyCastSubtitleStyleIfConnected()
                 playerBottomSheetState = null
             }
         )
@@ -1739,7 +2105,11 @@ class LocalPlayerActivity : FragmentActivity() {
                                 val activeTrackIds = mediaStatus.activeTrackIds ?: longArrayOf()
                                 val textTrack = tracks.firstOrNull { it.type == MediaTrack.TYPE_TEXT }
                                 if (textTrack != null && !activeTrackIds.contains(textTrack.id)) {
-                                    remoteMediaClient.setActiveMediaTracks(longArrayOf(textTrack.id))
+                                    val newActive = activeTrackIds.filter { id ->
+                                        tracks.firstOrNull { it.id == id }?.type != MediaTrack.TYPE_TEXT
+                                    }.toMutableList()
+                                    newActive.add(textTrack.id)
+                                    remoteMediaClient.setActiveMediaTracks(newActive.toLongArray())
                                     Log.i(TAG, "Activated Cast text track ID: ${textTrack.id}")
                                 }
                             }
@@ -1749,7 +2119,7 @@ class LocalPlayerActivity : FragmentActivity() {
                     }
                 }
         } catch (e: Exception) {
-            Log.w(TAG, "Unable to apply Cast subtitle style: ${e.message}")
+            Log.w(TAG, "Failed to apply Cast subtitle style: ${e.message}")
         }
     }
 
@@ -1845,7 +2215,7 @@ class LocalPlayerActivity : FragmentActivity() {
             PlaybackTrackType.AUDIO -> C.TRACK_TYPE_AUDIO
             PlaybackTrackType.SUBTITLE -> C.TRACK_TYPE_TEXT
         }
-        return controller.currentTracks.groups
+        val controllerOptions = controller.currentTracks.groups
             .filter { it.type == media3Type }
             .flatMap { group ->
                 (0 until group.length).map { index ->
@@ -1854,11 +2224,54 @@ class LocalPlayerActivity : FragmentActivity() {
                         label = trackLabel(format, type),
                         group = group.mediaTrackGroup,
                         trackIndex = index,
-                        castTrackId = null,
+                        castTrackId = format.id?.toLongOrNull(),
                         isSelected = group.isTrackSelected(index)
                     )
                 }
             }
+
+        if (controllerOptions.isNotEmpty()) {
+            if (type == PlaybackTrackType.AUDIO) {
+                cachedAudioTrackOptions = controllerOptions
+            }
+            return controllerOptions
+        }
+
+        // When casting, check remote media client tracks or cached audio tracks
+        if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE) {
+            val rmc = CastContext.getSharedInstance()?.sessionManager?.currentCastSession?.remoteMediaClient
+            val mediaTracks = rmc?.mediaInfo?.mediaTracks.orEmpty()
+            val activeTrackIds = rmc?.mediaStatus?.activeTrackIds ?: longArrayOf()
+            val castTargetType = if (type == PlaybackTrackType.AUDIO) MediaTrack.TYPE_AUDIO else MediaTrack.TYPE_TEXT
+            val matchedCastTracks = mediaTracks.filter { it.type == castTargetType }
+            if (matchedCastTracks.isNotEmpty()) {
+                val castOptions = matchedCastTracks.map { track ->
+                    val lang = track.language?.takeIf { it.isNotBlank() && it != "und" }
+                    val name = track.name?.takeIf(String::isNotBlank)
+                    val label = name ?: lang?.let {
+                        val locale = Locale.forLanguageTag(it)
+                        "${getLanguageFlag(it, it)} ${locale.getDisplayName(Locale.getDefault())}"
+                    } ?: "${if (type == PlaybackTrackType.AUDIO) "Audio" else "Subtítulo"} ${track.id}"
+                    PlaybackTrackOption(
+                        label = label,
+                        group = null,
+                        trackIndex = null,
+                        castTrackId = track.id,
+                        isSelected = activeTrackIds.contains(track.id)
+                    )
+                }
+                if (type == PlaybackTrackType.AUDIO) {
+                    cachedAudioTrackOptions = castOptions
+                }
+                return castOptions
+            }
+
+            if (type == PlaybackTrackType.AUDIO && cachedAudioTrackOptions.isNotEmpty()) {
+                return cachedAudioTrackOptions
+            }
+        }
+
+        return emptyList()
     }
 
     private fun selectTrack(type: PlaybackTrackType, option: PlaybackTrackOption?) {
@@ -1876,6 +2289,44 @@ class LocalPlayerActivity : FragmentActivity() {
                 .build()
         } else {
             controller.trackSelectionParameters = parameters.build()
+        }
+
+        if (type == PlaybackTrackType.AUDIO && cachedAudioTrackOptions.isNotEmpty() && option != null) {
+            cachedAudioTrackOptions = cachedAudioTrackOptions.map {
+                it.copy(isSelected = it.label == option.label && (option.trackIndex == null || it.trackIndex == option.trackIndex))
+            }
+        }
+
+        // Active Cast track switching
+        if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE) {
+            try {
+                val rmc = CastContext.getSharedInstance()?.sessionManager?.currentCastSession?.remoteMediaClient
+                if (rmc != null) {
+                    val activeIds = rmc.mediaStatus?.activeTrackIds?.toMutableList() ?: mutableListOf()
+                    val allTracks = rmc.mediaInfo?.mediaTracks.orEmpty()
+                    val castType = if (type == PlaybackTrackType.AUDIO) MediaTrack.TYPE_AUDIO else MediaTrack.TYPE_TEXT
+                    val typeTrackIds = allTracks.filter { it.type == castType }.map { it.id }.toSet()
+
+                    activeIds.removeAll(typeTrackIds)
+
+                    val targetCastId = option?.castTrackId ?: run {
+                        if (option?.group != null && option.trackIndex != null) {
+                            val format = option.group.getFormat(option.trackIndex)
+                            format.id?.toLongOrNull() ?: allTracks.firstOrNull {
+                                it.type == castType && (it.language == format.language || it.name == format.label)
+                            }?.id
+                        } else null
+                    }
+
+                    if (targetCastId != null && targetCastId > 0L) {
+                        activeIds.add(targetCastId)
+                    }
+                    rmc.setActiveMediaTracks(activeIds.toLongArray())
+                    Log.i(TAG, "Cast setActiveMediaTracks called for $type: activeIds=$activeIds")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to set active Cast media tracks: ${e.message}")
+            }
         }
     }
 
@@ -2233,12 +2684,24 @@ class LocalPlayerActivity : FragmentActivity() {
         return ""
     }
 
+    override fun onStart() {
+        super.onStart()
+        isPlayerForeground = true
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isPlayerForeground = true
+    }
+
     override fun onPause() {
         saveCurrentProgress(mediaController)
         super.onPause()
     }
 
     override fun onStop() {
+        isPlayerForeground = false
+        mediaController?.clearVideoSurface()
         saveCurrentProgress(mediaController)
         super.onStop()
     }
@@ -2443,6 +2906,8 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     override fun onDestroy() {
+        isPlayerForeground = false
+        mediaController?.clearVideoSurface()
         progressTickerJob?.cancel()
         progressTickerJob = null
         castSessionManagerListener?.let { listener ->
@@ -2459,6 +2924,11 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     override fun finish() {
+        isPlayerForeground = false
+        mediaController?.clearVideoSurface()
+        if (activeActivityRef?.get() == this) {
+            activeActivityRef = null
+        }
         super.finish()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, android.R.anim.fade_in, android.R.anim.fade_out)
@@ -2469,7 +2939,18 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     companion object {
+        var isPlayerForeground by mutableStateOf(false)
+            internal set
+
         private var activeActivityRef: java.lang.ref.WeakReference<LocalPlayerActivity>? = null
+
+        fun isPlayerActivityForeground(): Boolean {
+            val activity = activeActivityRef?.get()
+            return isPlayerForeground || (activity != null && !activity.isFinishing && !activity.isDestroyed &&
+                activity.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))
+        }
+
+        fun isPlayerActivityActive(): Boolean = isPlayerActivityForeground()
 
         fun finishBackgroundPlayer(exceptInfoHash: String? = null) {
             activeActivityRef?.get()?.let { activity ->
@@ -2504,6 +2985,8 @@ class LocalPlayerActivity : FragmentActivity() {
         const val EXTRA_REMOTE_FILE_PATH = "extra_remote_file_path"
         const val EXTRA_REMOTE_SERVER_JSON = "extra_remote_server_json"
         const val EXTRA_POSTER_URL = "extra_poster_url"
+        const val EXTRA_FROM_PIP = "extra_from_pip"
+        const val EXTRA_MEDIA_ID = "extra_media_id"
         private const val TAG = "LocalPlayerActivity"
 
         fun extractSeasonAndEpisode(vararg candidates: String?): Pair<Int, Int> {
@@ -3242,6 +3725,8 @@ fun RemoteCastCanvas(
     onDisconnect: () -> Unit,
     onShowCast: () -> Unit,
     onShowSubtitles: () -> Unit,
+    onSearchSubtitles: () -> Unit,
+    onShowSubtitleStyle: () -> Unit,
     onShowAudioTracks: () -> Unit,
     showStats: Boolean,
     onToggleStats: () -> Unit,
@@ -3255,38 +3740,200 @@ fun RemoteCastCanvas(
     val deviceName = selectedRoute.name
     val modelName = castDevice?.modelName ?: stringResource(R.string.cast_desc)
 
-    var isPlaying by remember(controller) { mutableStateOf(controller.isPlaying) }
-    var currentPosition by remember(controller) { mutableLongStateOf(controller.currentPosition) }
-    var duration by remember(controller) { mutableLongStateOf(controller.duration) }
+    val initialCastSession = remember {
+        try {
+            CastContext.getSharedInstance(context).sessionManager.currentCastSession
+        } catch (_: Exception) { null }
+    }
+    val initialRmc = remember(initialCastSession) { initialCastSession?.remoteMediaClient }
+
+    val initialIsPlaying = remember(controller, initialRmc) {
+        val status = initialRmc?.mediaStatus
+        when (status?.playerState) {
+            MediaStatus.PLAYER_STATE_PLAYING -> true
+            MediaStatus.PLAYER_STATE_PAUSED -> false
+            else -> initialRmc?.isPlaying ?: controller.isPlaying
+        }
+    }
+    val initialDuration = remember(controller, initialRmc) {
+        val dur = initialRmc?.streamDuration ?: 0L
+        if (dur > 0L) dur else controller.duration
+    }
+    val initialPosition = remember(controller, initialRmc) {
+        val pos = initialRmc?.approximateStreamPosition ?: 0L
+        if (pos > 0L) pos else controller.currentPosition
+    }
+
+    var isPlaying by remember { mutableStateOf(initialIsPlaying) }
+    var currentPosition by remember { mutableLongStateOf(initialPosition) }
+    var duration by remember { mutableLongStateOf(initialDuration) }
     var isScrubbing by remember { mutableStateOf(false) }
     var scrubFraction by remember { mutableFloatStateOf(0f) }
 
-    DisposableEffect(controller) {
-        val listener = object : Player.Listener {
+    DisposableEffect(controller, context) {
+        val playerListener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
-                isPlaying = playing
+                val rmc = try {
+                    CastContext.getSharedInstance(context).sessionManager.currentCastSession?.remoteMediaClient
+                } catch (_: Exception) { null }
+
+                if (rmc == null || !rmc.hasMediaSession()) {
+                    isPlaying = playing
+                }
             }
             override fun onPlaybackStateChanged(state: Int) {
-                duration = controller.duration
+                val rmc = try {
+                    CastContext.getSharedInstance(context).sessionManager.currentCastSession?.remoteMediaClient
+                } catch (_: Exception) { null }
+
+                if (rmc == null || !rmc.hasMediaSession()) {
+                    duration = controller.duration
+                }
             }
         }
-        controller.addListener(listener)
-        onDispose { controller.removeListener(listener) }
+        controller.addListener(playerListener)
+
+        val castContext = try {
+            CastContext.getSharedInstance(context)
+        } catch (_: Exception) { null }
+
+        var currentRmc = castContext?.sessionManager?.currentCastSession?.remoteMediaClient
+
+        val rmcCallback = object : RemoteMediaClient.Callback() {
+            override fun onStatusUpdated() {
+                val status = currentRmc?.mediaStatus
+                if (status != null) {
+                    when (status.playerState) {
+                        MediaStatus.PLAYER_STATE_PLAYING -> isPlaying = true
+                        MediaStatus.PLAYER_STATE_PAUSED -> isPlaying = false
+                    }
+                    val dur = currentRmc?.streamDuration ?: 0L
+                    if (dur > 0L) duration = dur
+                    val pos = currentRmc?.approximateStreamPosition ?: 0L
+                    if (pos > 0L && !isScrubbing) currentPosition = pos
+                }
+            }
+        }
+
+        val sessionListener = object : SessionManagerListener<CastSession> {
+            override fun onSessionStarted(session: CastSession, sessionId: String) {
+                currentRmc?.unregisterCallback(rmcCallback)
+                currentRmc = session.remoteMediaClient
+                currentRmc?.registerCallback(rmcCallback)
+                currentRmc?.mediaStatus?.let { status ->
+                    if (status.playerState == MediaStatus.PLAYER_STATE_PLAYING) isPlaying = true
+                    if (status.playerState == MediaStatus.PLAYER_STATE_PAUSED) isPlaying = false
+                }
+            }
+            override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
+                currentRmc?.unregisterCallback(rmcCallback)
+                currentRmc = session.remoteMediaClient
+                currentRmc?.registerCallback(rmcCallback)
+                currentRmc?.mediaStatus?.let { status ->
+                    if (status.playerState == MediaStatus.PLAYER_STATE_PLAYING) isPlaying = true
+                    if (status.playerState == MediaStatus.PLAYER_STATE_PAUSED) isPlaying = false
+                }
+            }
+            override fun onSessionEnding(session: CastSession) {
+                currentRmc?.unregisterCallback(rmcCallback)
+                currentRmc = null
+            }
+            override fun onSessionEnded(session: CastSession, error: Int) {
+                currentRmc?.unregisterCallback(rmcCallback)
+                currentRmc = null
+            }
+            override fun onSessionStartFailed(session: CastSession, error: Int) {}
+            override fun onSessionResumeFailed(session: CastSession, error: Int) {}
+            override fun onSessionSuspended(session: CastSession, reason: Int) {}
+            override fun onSessionStarting(session: CastSession) {}
+            override fun onSessionResuming(session: CastSession, sessionId: String) {}
+        }
+
+        castContext?.sessionManager?.addSessionManagerListener(sessionListener, CastSession::class.java)
+        currentRmc?.registerCallback(rmcCallback)
+
+        onDispose {
+            controller.removeListener(playerListener)
+            currentRmc?.unregisterCallback(rmcCallback)
+            castContext?.sessionManager?.removeSessionManagerListener(sessionListener, CastSession::class.java)
+        }
     }
 
-    LaunchedEffect(controller, isPlaying, isScrubbing) {
+    LaunchedEffect(controller, isScrubbing) {
         while (!isScrubbing) {
-            currentPosition = controller.currentPosition.coerceAtLeast(0L)
-            duration = controller.duration.coerceAtLeast(0L)
+            val rmc = try {
+                CastContext.getSharedInstance(context).sessionManager.currentCastSession?.remoteMediaClient
+            } catch (_: Exception) { null }
+
+            if (rmc != null && rmc.hasMediaSession()) {
+                val status = rmc.mediaStatus
+                if (status != null) {
+                    if (status.playerState == MediaStatus.PLAYER_STATE_PLAYING && !isPlaying) {
+                        isPlaying = true
+                    } else if (status.playerState == MediaStatus.PLAYER_STATE_PAUSED && isPlaying) {
+                        isPlaying = false
+                    }
+                }
+                val pos = rmc.approximateStreamPosition
+                if (pos > 0L) {
+                    currentPosition = pos
+                }
+                val dur = rmc.streamDuration
+                if (dur > 0L) {
+                    duration = dur
+                }
+            } else {
+                if (controller.isPlaying != isPlaying) {
+                    isPlaying = controller.isPlaying
+                }
+                currentPosition = controller.currentPosition.coerceAtLeast(0L)
+                duration = controller.duration.coerceAtLeast(0L)
+            }
             delay(250.milliseconds)
         }
     }
 
-    Box(
+    val togglePlayPause = {
+        val rmc = try {
+            CastContext.getSharedInstance(context).sessionManager.currentCastSession?.remoteMediaClient
+        } catch (_: Exception) { null }
+
+        if (isPlaying) {
+            isPlaying = false
+            if (rmc != null && rmc.hasMediaSession()) {
+                rmc.pause()
+            }
+            controller.pause()
+        } else {
+            isPlaying = true
+            if (rmc != null && rmc.hasMediaSession()) {
+                rmc.play()
+            }
+            controller.play()
+        }
+    }
+
+    val seekDelta = { deltaMs: Long ->
+        val dur = duration.coerceAtLeast(0L)
+        val newPos = (currentPosition + deltaMs).coerceIn(0L, if (dur > 0L) dur else Long.MAX_VALUE)
+        currentPosition = newPos
+        controller.seekTo(newPos)
+        try {
+            CastContext.getSharedInstance(context).sessionManager.currentCastSession?.remoteMediaClient?.seek(
+                MediaSeekOptions.Builder().setPosition(newPos).build()
+            )
+        } catch (_: Exception) {}
+    }
+
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        val screenWidth = maxWidth
+        val screenHeight = maxHeight
+        val isWide = screenWidth > screenHeight || (screenWidth >= 600.dp && screenHeight >= 480.dp)
+
         // Ambient background poster overlay with dark gradient scrim
         if (!posterUrl.isNullOrBlank()) {
             AsyncImage(
@@ -3324,12 +3971,15 @@ fun RemoteCastCanvas(
             )
         }
 
+        val horizontalPadding = if (isWide) 20.dp else 16.dp
+        val verticalPadding = if (isWide) 8.dp else 12.dp
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
+                .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Top Bar
@@ -3338,290 +3988,567 @@ fun RemoteCastCanvas(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                IconButton(onClick = onBack) {
+                // 1. Back Button (Far Left)
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.size(36.dp)
+                ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(R.string.back_desc),
-                        tint = MaterialTheme.colorScheme.onSurface
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
 
-                // Clickable Cast Device Pill (opens CastBottomSheet)
-                Surface(
-                    onClick = onShowCast,
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    tonalElevation = 4.dp
+                // 2. Action buttons + Media Router customizado (Far Right - in parity with ExoPlayer)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(if (screenWidth < 360.dp) 0.dp else 2.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    // 1. Subtítulos Incrustados / Pistas
+                    IconButton(
+                        onClick = onShowSubtitles,
+                        modifier = Modifier.size(32.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.CastConnected,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = deviceName,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onShowSubtitles) {
                         Icon(
                             imageVector = Icons.Default.Subtitles,
                             contentDescription = stringResource(R.string.player_subtitle_tracks),
-                            tint = MaterialTheme.colorScheme.onSurface
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
-                    IconButton(onClick = onShowAudioTracks) {
+                    // 2. OpenSubtitles
+                    IconButton(
+                        onClick = onSearchSubtitles,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = stringResource(R.string.player_search_opensubtitles),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    // 3. Estilos de Subtítulo
+                    IconButton(
+                        onClick = onShowSubtitleStyle,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ColorLens,
+                            contentDescription = stringResource(R.string.player_subtitle_style),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    // 4. Pistas de Audio
+                    IconButton(
+                        onClick = onShowAudioTracks,
+                        modifier = Modifier.size(32.dp)
+                    ) {
                         Icon(
                             imageVector = Icons.Default.GraphicEq,
                             contentDescription = stringResource(R.string.player_audio_tracks),
-                            tint = MaterialTheme.colorScheme.onSurface
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
-                    IconButton(onClick = onToggleStats) {
+                    // 5. Stats for Nerds
+                    IconButton(
+                        onClick = onToggleStats,
+                        modifier = Modifier.size(32.dp)
+                    ) {
                         Icon(
                             imageVector = Icons.Default.BugReport,
                             contentDescription = stringResource(R.string.player_stats_nerds),
-                            tint = if (showStats) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = if (showStats) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
                         )
+                    }
+                    // 6. Media Router customizado (Rightmost - exact same spot as in ExoPlayer)
+                    Surface(
+                        onClick = onShowCast,
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        tonalElevation = 2.dp,
+                        modifier = Modifier.padding(start = 2.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(
+                                horizontal = if (screenWidth >= 380.dp) 8.dp else 6.dp,
+                                vertical = 6.dp
+                            ),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CastConnected,
+                                contentDescription = stringResource(R.string.cast_bottom_sheet_title),
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            if (screenWidth >= 380.dp) {
+                                Text(
+                                    text = deviceName,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = if (screenWidth >= 480.dp) 90.dp else 50.dp)
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
-
-            // Prominent Featured Media Artwork Card
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                ),
-                modifier = Modifier
-                    .width(160.dp)
-                    .height(240.dp)
-            ) {
-                if (!posterUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = posterUrl,
-                        contentDescription = mediaTitle,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
+            if (isWide) {
+                // 2-pane Landscape / Foldable Unfolded Layout
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Left Pane: Artwork Poster Card
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
+                            .fillMaxHeight()
+                            .weight(0.40f),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Tv,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(64.dp)
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                            ),
+                            modifier = Modifier
+                                .fillMaxHeight(0.88f)
+                                .aspectRatio(2f / 3f)
+                        ) {
+                            if (!posterUrl.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = posterUrl,
+                                    contentDescription = mediaTitle,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tv,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(54.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Right Pane: Info, Timeline, Controls
+                    Column(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .weight(0.60f)
+                            .padding(start = 16.dp, end = 8.dp),
+                        verticalArrangement = Arrangement.SpaceEvenly,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // Title & Episode Info
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = mediaTitle.ifBlank { stringResource(R.string.cast_bottom_sheet_title) },
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
+
+                            if (seasonNumber > 0 && episodeNumber > 0) {
+                                Text(
+                                    text = "${stringResource(R.string.tv_season_number, seasonNumber)} • ${stringResource(R.string.tv_episode_number, episodeNumber)}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.padding(top = 4.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                                )
+                                Text(
+                                    text = stringResource(R.string.cast_remote_canvas_title, deviceName),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        // Timeline & Seekbar
+                        val dur = duration.coerceAtLeast(0L)
+                        val pos = if (isScrubbing) (scrubFraction * dur).toLong() else currentPosition.coerceAtLeast(0L)
+                        val sliderProgress = if (dur > 0L) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp)
+                        ) {
+                            WatchProgressSlider(
+                                value = sliderProgress,
+                                onValueChange = { fraction ->
+                                    isScrubbing = true
+                                    scrubFraction = fraction
+                                },
+                                onValueChangeFinished = {
+                                    val targetMs = (scrubFraction * dur).toLong()
+                                    currentPosition = targetMs
+                                    controller.seekTo(targetMs)
+                                    try {
+                                        CastContext.getSharedInstance(context).sessionManager.currentCastSession?.remoteMediaClient?.seek(
+                                            MediaSeekOptions.Builder().setPosition(targetMs).build()
+                                        )
+                                    } catch (_: Exception) {}
+                                    isScrubbing = false
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = formatTime(pos),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = formatTime(dur),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        // Transport Controls: Rewind 10s, Play/Pause, Forward 10s
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            FilledTonalIconButton(
+                                onClick = { seekDelta(-10_000L) },
+                                modifier = Modifier.size(46.dp),
+                                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FastRewind,
+                                    contentDescription = stringResource(R.string.player_rewind_10),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(24.dp))
+
+                            FilledIconButton(
+                                onClick = togglePlayPause,
+                                modifier = Modifier.size(56.dp),
+                                colors = IconButtonDefaults.filledIconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                    contentDescription = if (isPlaying) stringResource(R.string.pause_desc) else stringResource(R.string.play_desc),
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(24.dp))
+
+                            FilledTonalIconButton(
+                                onClick = { seekDelta(10_000L) },
+                                modifier = Modifier.size(46.dp),
+                                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FastForward,
+                                    contentDescription = stringResource(R.string.player_forward_10),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+
+                        // "Ver en este teléfono" button
+                        OutlinedButton(
+                            onClick = onDisconnect,
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.primary
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PhoneAndroid,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = stringResource(R.string.cast_remote_canvas_play_locally),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Portrait Layout (Adaptive for standard phones and foldable cover screens)
+                Spacer(modifier = Modifier.weight(0.6f))
+
+                // Responsive Featured Media Artwork Card
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ),
+                    modifier = Modifier
+                        .fillMaxHeight(0.32f)
+                        .aspectRatio(2f / 3f)
+                ) {
+                    if (!posterUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = posterUrl,
+                            contentDescription = mediaTitle,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tv,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(54.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = mediaTitle.ifBlank { stringResource(R.string.cast_bottom_sheet_title) },
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+
+                if (seasonNumber > 0 && episodeNumber > 0) {
+                    Text(
+                        text = "${stringResource(R.string.tv_season_number, seasonNumber)} • ${stringResource(R.string.tv_episode_number, episodeNumber)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(MaterialTheme.colorScheme.primary, CircleShape)
+                    )
+                    Text(
+                        text = stringResource(R.string.cast_remote_canvas_title, deviceName),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // Timeline & Seekbar
+                val dur = duration.coerceAtLeast(0L)
+                val pos = if (isScrubbing) (scrubFraction * dur).toLong() else currentPosition.coerceAtLeast(0L)
+                val sliderProgress = if (dur > 0L) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp)
+                ) {
+                    WatchProgressSlider(
+                        value = sliderProgress,
+                        onValueChange = { fraction ->
+                            isScrubbing = true
+                            scrubFraction = fraction
+                        },
+                        onValueChangeFinished = {
+                            val targetMs = (scrubFraction * dur).toLong()
+                            currentPosition = targetMs
+                            controller.seekTo(targetMs)
+                            try {
+                                CastContext.getSharedInstance(context).sessionManager.currentCastSession?.remoteMediaClient?.seek(
+                                    MediaSeekOptions.Builder().setPosition(targetMs).build()
+                                )
+                            } catch (_: Exception) {}
+                            isScrubbing = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = formatTime(pos),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = formatTime(dur),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Text(
-                text = mediaTitle.ifBlank { stringResource(R.string.cast_bottom_sheet_title) },
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-
-            if (seasonNumber > 0 && episodeNumber > 0) {
-                Text(
-                    text = "${stringResource(R.string.tv_season_number, seasonNumber)} • ${stringResource(R.string.tv_episode_number, episodeNumber)}",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.padding(top = 8.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .background(MaterialTheme.colorScheme.primary, CircleShape)
-                )
-                Text(
-                    text = stringResource(R.string.cast_remote_canvas_title, deviceName),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            // Timeline & Seekbar
-            val dur = duration.coerceAtLeast(0L)
-            val pos = if (isScrubbing) (scrubFraction * dur).toLong() else currentPosition.coerceAtLeast(0L)
-            val sliderProgress = if (dur > 0L) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp)
-            ) {
-                WatchProgressSlider(
-                    value = sliderProgress,
-                    onValueChange = { fraction ->
-                        isScrubbing = true
-                        scrubFraction = fraction
-                    },
-                    onValueChangeFinished = {
-                        val targetMs = (scrubFraction * dur).toLong()
-                        controller.seekTo(targetMs)
-                        currentPosition = targetMs
-                        isScrubbing = false
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                // Transport Controls: Rewind 10s, Play/Pause, Forward 10s
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
                 ) {
+                    FilledTonalIconButton(
+                        onClick = { seekDelta(-10_000L) },
+                        modifier = Modifier.size(52.dp),
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FastRewind,
+                            contentDescription = stringResource(R.string.player_rewind_10),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(32.dp))
+
+                    FilledIconButton(
+                        onClick = togglePlayPause,
+                        modifier = Modifier.size(72.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isPlaying) stringResource(R.string.pause_desc) else stringResource(R.string.play_desc),
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(32.dp))
+
+                    FilledTonalIconButton(
+                        onClick = { seekDelta(10_000L) },
+                        modifier = Modifier.size(52.dp),
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FastForward,
+                            contentDescription = stringResource(R.string.player_forward_10),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+
+                // "Ver en este teléfono" button
+                OutlinedButton(
+                    onClick = onDisconnect,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.primary
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .padding(top = 4.dp, bottom = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PhoneAndroid,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = formatTime(pos),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = formatTime(dur),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = stringResource(R.string.cast_remote_canvas_play_locally),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Medium
                     )
                 }
-            }
-
-            // Transport Controls: Rewind 10s, Play/Pause, Forward 10s
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                FilledTonalIconButton(
-                    onClick = {
-                        val newPos = (controller.currentPosition - 10_000L).coerceAtLeast(0L)
-                        controller.seekTo(newPos)
-                        currentPosition = newPos
-                    },
-                    modifier = Modifier.size(52.dp),
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurface
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.FastRewind,
-                        contentDescription = stringResource(R.string.player_rewind_10),
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(32.dp))
-
-                FilledIconButton(
-                    onClick = {
-                        if (isPlaying) {
-                            controller.pause()
-                        } else {
-                            controller.play()
-                        }
-                        isPlaying = !isPlaying
-                    },
-                    modifier = Modifier.size(72.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    )
-                ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) stringResource(R.string.pause_desc) else stringResource(R.string.play_desc),
-                        modifier = Modifier.size(40.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(32.dp))
-
-                FilledTonalIconButton(
-                    onClick = {
-                        val newPos = (controller.currentPosition + 10_000L).coerceAtMost(controller.duration.coerceAtLeast(0L))
-                        controller.seekTo(newPos)
-                        currentPosition = newPos
-                    },
-                    modifier = Modifier.size(52.dp),
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurface
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.FastForward,
-                        contentDescription = stringResource(R.string.player_forward_10),
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-            }
-
-            // "Ver en este teléfono" button
-            OutlinedButton(
-                onClick = onDisconnect,
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.primary
-                ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-                modifier = Modifier
-                    .padding(top = 4.dp, bottom = 8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.PhoneAndroid,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.cast_remote_canvas_play_locally),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Medium
-                )
             }
         }
     }

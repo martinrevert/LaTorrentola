@@ -23,8 +23,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -95,7 +98,7 @@ class TorrentDownloadService : Service() {
     private val streamServers = ConcurrentHashMap<String, VerifiedTorrentHttpServer>()
 
     /** Player intents for ready transfers and jobs awaiting their startup buffer. */
-    private val readyPlayerIntents = ConcurrentHashMap<String, Intent>()
+    private val readyPlayerIntents = _readyPlayerIntents
 
     /** Jobs whose player should open as soon as their startup buffer is verified. */
     private val openWhenReadyHashes = ConcurrentHashMap.newKeySet<String>()
@@ -170,7 +173,17 @@ class TorrentDownloadService : Service() {
                 synchronized(queueLock) {
                     if (downloadQueue.none { it.infoHash == hash } && hash != activeInfoHash) {
                         downloadQueue.addLast(
-                            DownloadRequest(hash, stored.magnetUri, stored.title, stored.castWhenReady)
+                            DownloadRequest(
+                                infoHash = hash,
+                                magnetUri = stored.magnetUri,
+                                title = stored.title,
+                                castWhenReady = stored.castWhenReady,
+                                seriesId = stored.seriesId ?: 0,
+                                seasonNumber = stored.seasonNumber ?: 0,
+                                episodeNumber = stored.episodeNumber ?: 0,
+                                movieId = stored.movieId ?: 0,
+                                posterUrl = stored.posterUrl
+                            )
                         )
                     }
                 }
@@ -203,13 +216,31 @@ class TorrentDownloadService : Service() {
                 stopSelf(startId)
                 return START_NOT_STICKY
             }
+            val castWhenReady = intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false)
+            val posterUrl = intent.getStringExtra(EXTRA_POSTER_URL)
             val readyIntent = readyPlayerIntents[infoHash]
             if (readyIntent != null) {
                 intent.extras?.let { readyIntent.putExtras(it) }
+                readyIntent.putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, castWhenReady)
+                if (!posterUrl.isNullOrBlank()) {
+                    readyIntent.putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, posterUrl)
+                }
+                if (intent.hasExtra(EXTRA_SERIES_ID)) {
+                    readyIntent.putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, intent.getIntExtra(EXTRA_SERIES_ID, 0))
+                }
+                if (intent.hasExtra(EXTRA_SEASON_NUMBER)) {
+                    readyIntent.putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, intent.getIntExtra(EXTRA_SEASON_NUMBER, 0))
+                }
+                if (intent.hasExtra(EXTRA_EPISODE_NUMBER)) {
+                    readyIntent.putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0))
+                }
+                if (intent.hasExtra(EXTRA_MOVIE_ID)) {
+                    readyIntent.putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, intent.getIntExtra(EXTRA_MOVIE_ID, 0))
+                }
             }
             serviceScope.launch {
                 preemptActiveTransfersAndPlayback(infoHash, null)
-                openReadyPlayer(infoHash)
+                openReadyPlayer(infoHash, castWhenReady)
             }
             return START_STICKY
         }
@@ -366,7 +397,7 @@ class TorrentDownloadService : Service() {
         var seasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
         var episodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
         var movieId = intent.getIntExtra(EXTRA_MOVIE_ID, 0)
-        val posterUrl = intent.getStringExtra(EXTRA_POSTER_URL)
+        var posterUrl = intent.getStringExtra(EXTRA_POSTER_URL)
         val magnetUri = intent.getStringExtra(EXTRA_MAGNET_URI).orEmpty()
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank {
             getString(R.string.torrent_download_title)
@@ -381,21 +412,26 @@ class TorrentDownloadService : Service() {
             return START_NOT_STICKY
         }
 
-        if (seriesId <= 0 && movieId <= 0) {
-            try {
-                val existingRecord = runBlocking(Dispatchers.IO) { torrentDownloadDao.get(infoHash) }
-                if (existingRecord != null) {
-                    if ((existingRecord.seriesId ?: 0) > 0) {
-                        seriesId = existingRecord.seriesId ?: 0
-                        if (seasonNumber <= 0) seasonNumber = existingRecord.seasonNumber ?: 0
-                        if (episodeNumber <= 0) episodeNumber = existingRecord.episodeNumber ?: 0
-                    }
-                    if ((existingRecord.movieId ?: 0) > 0) {
-                        movieId = existingRecord.movieId ?: 0
-                    }
+        try {
+            val existingRecord = runBlocking(Dispatchers.IO) { torrentDownloadDao.get(infoHash) }
+            if (existingRecord != null) {
+                if (seriesId <= 0 && (existingRecord.seriesId ?: 0) > 0) {
+                    seriesId = existingRecord.seriesId ?: 0
                 }
-            } catch (_: Exception) {}
-        }
+                if (seasonNumber <= 0 && (existingRecord.seasonNumber ?: 0) > 0) {
+                    seasonNumber = existingRecord.seasonNumber ?: 0
+                }
+                if (episodeNumber <= 0 && (existingRecord.episodeNumber ?: 0) > 0) {
+                    episodeNumber = existingRecord.episodeNumber ?: 0
+                }
+                if (movieId <= 0 && (existingRecord.movieId ?: 0) > 0) {
+                    movieId = existingRecord.movieId ?: 0
+                }
+                if (posterUrl.isNullOrBlank() && !existingRecord.posterUrl.isNullOrBlank()) {
+                    posterUrl = existingRecord.posterUrl
+                }
+            }
+        } catch (_: Exception) {}
 
         openWhenReadyHashes.add(infoHash)
         updateBufferState(
@@ -485,7 +521,8 @@ class TorrentDownloadService : Service() {
                         seriesId = seriesId,
                         seasonNumber = seasonNumber,
                         episodeNumber = episodeNumber,
-                        movieId = movieId
+                        movieId = movieId,
+                        posterUrl = posterUrl
                     )
                 )
                 updateBufferState(
@@ -515,7 +552,8 @@ class TorrentDownloadService : Service() {
                     seriesId = seriesId,
                     seasonNumber = seasonNumber,
                     episodeNumber = episodeNumber,
-                    movieId = movieId
+                    movieId = movieId,
+                    posterUrl = posterUrl
                 )
             )
             synchronized(queueLock) {
@@ -644,9 +682,14 @@ class TorrentDownloadService : Service() {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
         readyPlayerIntents[infoHash] = playerIntent
+        _readyStreamEvents.tryEmit(playerIntent)
 
         withContext(Dispatchers.Main) {
-            startActivity(playerIntent)
+            try {
+                startActivity(playerIntent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Cannot start activity from background service: ${e.message}")
+            }
         }
     }
 
@@ -655,12 +698,20 @@ class TorrentDownloadService : Service() {
      *
      * @param infoHash Stable local torrent job identifier.
      */
-    private suspend fun openReadyPlayer(infoHash: String) {
+    private suspend fun openReadyPlayer(infoHash: String, castWhenReady: Boolean? = null) {
         val readyIntent = readyPlayerIntents[infoHash]
         val server = streamServers[infoHash]
         if (readyIntent != null && server != null) {
+            if (castWhenReady != null) {
+                readyIntent.putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, castWhenReady)
+            }
+            _readyStreamEvents.tryEmit(Intent(readyIntent))
             withContext(Dispatchers.Main.immediate) {
-                startActivity(Intent(readyIntent))
+                try {
+                    startActivity(Intent(readyIntent))
+                } catch (e: Exception) {
+                    Log.w(TAG, "Cannot start activity from background service: ${e.message}")
+                }
             }
             return
         }
@@ -669,6 +720,7 @@ class TorrentDownloadService : Service() {
         // Check if the torrent exists in our local Room database to resurrect streaming automatically.
         val stored = torrentDownloadDao.get(infoHash)
         if (stored != null) {
+            val effectiveCast = castWhenReady ?: stored.castWhenReady
             val completedFile = stored.mediaPath?.let(::File)?.takeIf { it.isFile && it.canRead() }
             if (stored.state == STATE_COMPLETED && completedFile != null) {
                 openWhenReadyHashes.remove(infoHash)
@@ -676,17 +728,19 @@ class TorrentDownloadService : Service() {
                     infoHash = infoHash,
                     title = stored.title,
                     file = completedFile,
-                    castWhenReady = stored.castWhenReady,
+                    castWhenReady = effectiveCast,
                     seriesId = stored.seriesId ?: 0,
                     seasonNumber = stored.seasonNumber ?: 0,
                     episodeNumber = stored.episodeNumber ?: 0,
-                    movieId = stored.movieId ?: 0
+                    movieId = stored.movieId ?: 0,
+                    posterUrl = stored.posterUrl
                 )
                 return
             }
 
             openWhenReadyHashes.add(infoHash)
             if (infoHash == activeInfoHash) {
+                activeRequest?.castWhenReady = effectiveCast
                 return
             }
 
@@ -714,13 +768,14 @@ class TorrentDownloadService : Service() {
                             infoHash = infoHash,
                             magnetUri = stored.magnetUri,
                             title = stored.title,
-                            castWhenReady = stored.castWhenReady,
+                            castWhenReady = effectiveCast,
                             seriesId = stored.seriesId ?: 0,
                             seasonNumber = stored.seasonNumber ?: 0,
                             episodeNumber = stored.episodeNumber ?: 0,
                             movieId = stored.movieId ?: 0,
                             resumePositionMs = resumePos,
-                            durationMs = dur
+                            durationMs = dur,
+                            posterUrl = stored.posterUrl
                         )
                     )
                 }
@@ -1294,7 +1349,14 @@ class TorrentDownloadService : Service() {
                         )
                         updateDownloadRecord(request, STATE_READY, progress, target.file.absolutePath, numSeeds, numPeers)
                         if (openWhenReadyHashes.remove(infoHash)) {
-                            withContext(Dispatchers.Main) { startActivity(playerIntent) }
+                            _readyStreamEvents.tryEmit(playerIntent)
+                            withContext(Dispatchers.Main) {
+                                try {
+                                    startActivity(playerIntent)
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Cannot start activity from background service: ${e.message}")
+                                }
+                            }
                         }
                         readyNotified = true
                     }
@@ -1500,6 +1562,13 @@ class TorrentDownloadService : Service() {
         numSeeds: Int = 0,
         numPeers: Int = 0
     ) {
+        val existing = torrentDownloadDao.get(request.infoHash)
+        val sId = if (request.seriesId > 0) request.seriesId else existing?.seriesId
+        val sNum = if (request.seasonNumber > 0) request.seasonNumber else existing?.seasonNumber
+        val eNum = if (request.episodeNumber > 0) request.episodeNumber else existing?.episodeNumber
+        val mId = if (request.movieId > 0) request.movieId else existing?.movieId
+        val poster = if (!request.posterUrl.isNullOrBlank()) request.posterUrl else existing?.posterUrl
+
         torrentDownloadDao.upsert(
             TorrentDownload(
                 infoHash = request.infoHash,
@@ -1510,12 +1579,13 @@ class TorrentDownloadService : Service() {
                 mediaPath = mediaPath,
                 castWhenReady = request.castWhenReady,
                 updatedAtMillis = System.currentTimeMillis(),
-                seriesId = request.seriesId,
-                seasonNumber = request.seasonNumber,
-                episodeNumber = request.episodeNumber,
-                movieId = request.movieId,
+                seriesId = sId,
+                seasonNumber = sNum,
+                episodeNumber = eNum,
+                movieId = mId,
                 numSeeds = numSeeds,
-                numPeers = numPeers
+                numPeers = numPeers,
+                posterUrl = poster
             )
         )
     }
@@ -1700,6 +1770,12 @@ class TorrentDownloadService : Service() {
         const val STATE_FAILED = "FAILED"
         /** Minimum verified startup buffer before playback may be offered (5 MB). */
         const val STARTUP_BUFFER_BYTES = 5L * 1024L * 1024L
+
+        private val _readyPlayerIntents = ConcurrentHashMap<String, Intent>()
+        fun getReadyPlayerIntent(infoHash: String): Intent? = _readyPlayerIntents[infoHash]
+
+        private val _readyStreamEvents = MutableSharedFlow<Intent>(replay = 0, extraBufferCapacity = 10)
+        val readyStreamEvents: SharedFlow<Intent> = _readyStreamEvents.asSharedFlow()
 
         private val _activeBufferState = MutableStateFlow<TorrentBufferState?>(null)
         val activeBufferState: StateFlow<TorrentBufferState?> = _activeBufferState.asStateFlow()

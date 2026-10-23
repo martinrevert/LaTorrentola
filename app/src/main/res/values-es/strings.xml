@@ -366,4 +366,6 @@
     <string name="player_rewind_10">Retroceder 10 segundos</string>
     <string name="player_forward_10">Adelantar 10 segundos</string>
     <string name="player_stats_nerds">Estadísticas avanzadas</string>
+    <string name="pip_expand_desc">Ampliar a pantalla completa</string>
+    <string name="pip_close_desc">Cerrar reproductor flotante</string>
 </resources>

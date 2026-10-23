@@ -437,11 +437,8 @@ fun CastBottomSheet(
                             isConnecting = isConnecting,
                             onClick = {
                                 connectingRouteId = route.id
+                                onDismissRequest()
                                 mediaRouter.selectRoute(route)
-                                coroutineScope.launch {
-                                    delay(600.milliseconds)
-                                    onDismissRequest()
-                                }
                             }
                         )
                     }
@@ -470,11 +467,8 @@ fun CastBottomSheet(
                             isConnecting = isConnecting,
                             onClick = {
                                 connectingRouteId = route.id
+                                onDismissRequest()
                                 mediaRouter.selectRoute(route)
-                                coroutineScope.launch {
-                                    delay(600.milliseconds)
-                                    onDismissRequest()
-                                }
                             }
                         )
                     }
@@ -507,11 +501,8 @@ fun CastBottomSheet(
                             isConnecting = isConnecting,
                             onClick = {
                                 connectingRouteId = route.id
+                                onDismissRequest()
                                 mediaRouter.selectRoute(route)
-                                coroutineScope.launch {
-                                    delay(600.milliseconds)
-                                    onDismissRequest()
-                                }
                             }
                         )
                     }

@@ -86,43 +86,52 @@ class PlaybackService : MediaSessionService() {
                 override fun evaluate(request: CastTrackSelectorRequest): CastTrackSelectorResult {
                     val builder = request.buildResultUpon()
                     val params = request.trackSelectionParameters
+                    val selectedGroups = request.currentlySelectedTrackGroups.toMutableSet()
 
-                    // If text is disabled, clear text selections
-                    if (params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)) {
-                        val newSelections = request.currentlySelectedTrackGroups.filter { it.type != C.TRACK_TYPE_TEXT }
-                        builder.setSelections(com.google.common.collect.ImmutableSet.copyOf(newSelections))
-                        return builder.build()
-                    }
-
-                    // Find the preferred text track from ExoPlayer parameters
-                    val textTrackGroups = request.trackGroupList.filter { it.type == C.TRACK_TYPE_TEXT }
-                    if (textTrackGroups.isEmpty()) return builder.build()
-
-                    var targetGroup: androidx.media3.common.TrackGroup? = null
-                    
-                    // 1. Check direct override
-                    val override = params.overrides.values.firstOrNull { it.mediaTrackGroup.type == C.TRACK_TYPE_TEXT }
-                    if (override != null) {
-                        targetGroup = override.mediaTrackGroup
-                    } else {
-                        // 2. Check preferred language
-                        val prefLang = params.preferredTextLanguages.firstOrNull()
-                        if (prefLang != null) {
-                            targetGroup = textTrackGroups.firstOrNull { 
-                                it.getFormat(0).language?.equals(prefLang, ignoreCase = true) == true 
-                            }
+                    // 1. Audio Track Evaluation
+                    val audioTrackGroups = request.trackGroupList.filter { it.type == C.TRACK_TYPE_AUDIO }
+                    if (audioTrackGroups.isNotEmpty()) {
+                        val audioOverride = params.overrides.values.firstOrNull { it.mediaTrackGroup.type == C.TRACK_TYPE_AUDIO }
+                        val targetAudioGroup = if (audioOverride != null) {
+                            audioOverride.mediaTrackGroup
+                        } else {
+                            val prefAudioLang = params.preferredAudioLanguages.firstOrNull()
+                            if (prefAudioLang != null) {
+                                audioTrackGroups.firstOrNull {
+                                    it.getFormat(0).language?.equals(prefAudioLang, ignoreCase = true) == true
+                                }
+                            } else null
+                        }
+                        if (targetAudioGroup != null) {
+                            selectedGroups.removeAll { it.type == C.TRACK_TYPE_AUDIO }
+                            selectedGroups.add(targetAudioGroup)
                         }
                     }
-                    
-                    // 3. Fallback to first available text track
-                    if (targetGroup == null) {
-                        targetGroup = textTrackGroups.first()
+
+                    // 2. Text Track Evaluation
+                    if (params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)) {
+                        selectedGroups.removeAll { it.type == C.TRACK_TYPE_TEXT }
+                    } else {
+                        val textTrackGroups = request.trackGroupList.filter { it.type == C.TRACK_TYPE_TEXT }
+                        if (textTrackGroups.isNotEmpty()) {
+                            val textOverride = params.overrides.values.firstOrNull { it.mediaTrackGroup.type == C.TRACK_TYPE_TEXT }
+                            val targetTextGroup = if (textOverride != null) {
+                                textOverride.mediaTrackGroup
+                            } else {
+                                val prefLang = params.preferredTextLanguages.firstOrNull()
+                                if (prefLang != null) {
+                                    textTrackGroups.firstOrNull {
+                                        it.getFormat(0).language?.equals(prefLang, ignoreCase = true) == true
+                                    }
+                                } else null
+                            } ?: textTrackGroups.first()
+
+                            selectedGroups.removeAll { it.type == C.TRACK_TYPE_TEXT }
+                            selectedGroups.add(targetTextGroup)
+                        }
                     }
 
-                    val selectedGroups = request.currentlySelectedTrackGroups.filter { it.type != C.TRACK_TYPE_TEXT }.toMutableSet()
-                    selectedGroups.add(targetGroup)
                     builder.setSelections(com.google.common.collect.ImmutableSet.copyOf(selectedGroups))
-                    
                     return builder.build()
                 }
             }
@@ -237,6 +246,17 @@ class PlaybackService : MediaSessionService() {
                         }
 
                         val queueItemBuilder = MediaQueueItem.Builder(newMediaInfoBuilder.build())
+                            .setAutoplay(true)
+
+                        if (!defaultQueueItem.startTime.isNaN() && defaultQueueItem.startTime > 0.0) {
+                            queueItemBuilder.setStartTime(defaultQueueItem.startTime)
+                        }
+                        if (!defaultQueueItem.preloadTime.isNaN() && defaultQueueItem.preloadTime > 0.0) {
+                            queueItemBuilder.setPreloadTime(defaultQueueItem.preloadTime)
+                        }
+                        defaultQueueItem.customData?.let {
+                            queueItemBuilder.setCustomData(it)
+                        }
                         if (castMediaTracks.isNotEmpty()) {
                             queueItemBuilder.setActiveTrackIds(longArrayOf(1L))
                         }
@@ -248,7 +268,15 @@ class PlaybackService : MediaSessionService() {
 
             remotePlayerInstance.setSessionAvailabilityListener(object : SessionAvailabilityListener {
                 override fun onCastSessionAvailable() {
-                    Log.i(TAG, "Cast session available")
+                    Log.i(TAG, "Cast session available - ensuring active playback continues")
+                    val wasPlaying = localPlayer?.isPlaying == true || localPlayer?.playWhenReady == true
+                    if (wasPlaying) {
+                        serviceScope.launch {
+                            delay(400.milliseconds)
+                            remotePlayer?.playWhenReady = true
+                            remotePlayer?.play()
+                        }
+                    }
                 }
 
                 override fun onCastSessionUnavailable() {
@@ -292,6 +320,19 @@ class PlaybackService : MediaSessionService() {
                                     lastAppliedStyleContentId = null
                                     lastActivatedTrackContentId = null
                                     applyCastSubtitleStyle(session)
+                                    val client = session.remoteMediaClient
+                                    if (client != null) {
+                                        val wasPlaying = localPlayer?.isPlaying == true || localPlayer?.playWhenReady == true
+                                        if (wasPlaying) {
+                                            serviceScope.launch {
+                                                delay(600.milliseconds)
+                                                if (client.mediaStatus?.playerState == com.google.android.gms.cast.MediaStatus.PLAYER_STATE_PAUSED) {
+                                                    client.play()
+                                                    Log.i(TAG, "Cast session started in paused state; resumed playing automatically")
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 override fun onSessionResumed(session: com.google.android.gms.cast.framework.CastSession, wasSuspended: Boolean) {
                                     lastAppliedStyleContentId = null

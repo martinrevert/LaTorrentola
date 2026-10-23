@@ -193,6 +193,24 @@ When implementing, touching, or refactoring remote network storage (SMB / NFS) a
      - `Access-Control-Allow-Headers: *`
      - `Access-Control-Allow-Private-Network: true`
 
+### ⏯️ Player Transport Controls, Play/Pause State Authority & Race Condition Prevention Mandate (STRICT)
+To eliminate state desynchronization, inverted buttons, and jarring UX across ExoPlayer and Google Cast:
+1. **Zero Speculative State Toggling (STRICT PROHIBITION)**:
+   - **PROHIBITION**: NEVER use blind speculative state flipping (`isPlaying = !isPlaying`).
+   - When handling play/pause clicks:
+     - Check the current state explicitly (`val shouldPause = isPlaying`).
+     - Set the exact target boolean (`isPlaying = false` or `isPlaying = true`) for immediate, responsive visual feedback.
+     - Dispatch the target command (`pause()` or `play()`).
+2. **Google Cast Direct State Authority (`RemoteMediaClient`)**:
+   - In Google Cast mode, `RemoteMediaClient` is the single source of truth for receiver state.
+   - `RemoteCastCanvas` MUST register a `RemoteMediaClient.Callback` to listen directly to `onStatusUpdated()` (`MediaStatus.PLAYER_STATE_PLAYING` vs `PLAYER_STATE_PAUSED`).
+   - Transport controls in Cast mode MUST command BOTH `rmc.pause()` / `rmc.play()` AND `controller.pause()` / `controller.play()`.
+   - The 250ms periodic position ticker MUST poll `rmc.mediaStatus.playerState` to ensure automatic self-healing within $\le 250\text{ms}$ if IPC events lag.
+3. **Clean Cast Transition UX (Zero BottomSheet Flashing)**:
+   - When a user taps a Cast device in `CastBottomSheet`, `onDismissRequest()` MUST be called immediately.
+   - **PROHIBITION**: NEVER use artificial delays (`delay(600.milliseconds)`) before closing device selection sheets. Artificial delays cause the sheet to recompose into the "Reproduciendo..." connected layout for a split second before vanishing ("fogonazo").
+   - `LocalPlayerActivity` MUST automatically dismiss `showCastBottomSheet = false` via `LaunchedEffect(isCasting)` whenever `isCasting` activates, guaranteeing a clean, immediate handoff to `RemoteCastCanvas`.
+
 ### Previews
 - Every UI Component MUST include `@Preview` functions covering: Light Mode, Dark Mode, Mobile form-factor, and TV form-factor (using appropriate theme wrappers).
 
@@ -209,3 +227,4 @@ Before marking a task complete, verify:
 7. [ ] Did I use `pwsh` or `powershell` (on Windows) or `bash` with `./gradlew` (on Linux) for terminal commands?
 8. [ ] Did I run unit tests (`testDebugUnitTest`) as validation instead of assembling release/debug APKs?
 9. [ ] If modifying remote storage/streaming, did I preserve session caching, asynchronous prefetching, and keep hot-path read loops free of Log.d?
+10. [ ] If modifying player controls or Cast handoff, did I avoid speculative `!isPlaying` flips, bind to `RemoteMediaClient`, and ensure zero bottom sheet flashing on Cast start?
