@@ -4,7 +4,11 @@ import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
 import com.martinrevert.latorrentola.model.user.DownloadedEpisode
+import com.martinrevert.latorrentola.network.TorrentioRepository
+import com.martinrevert.latorrentola.model.torrent.PlaybackCompatibility
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
+import com.martinrevert.latorrentola.model.torrent.TorrentRelease
+import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
 import com.martinrevert.latorrentola.network.EztvRepository
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
@@ -28,6 +32,7 @@ class TvEpisodeDetailViewModelTest {
 
     private val tmdbRepository: TmdbRepository = mockk(relaxed = true)
     private val eztvRepository: EztvRepository = mockk(relaxed = true)
+    private val torrentioRepository: TorrentioRepository = mockk(relaxed = true)
     private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
     private val preferenceManager: PreferenceManager = mockk(relaxed = true)
     private val downloadsFlow = MutableStateFlow<List<DownloadedEpisode>>(emptyList())
@@ -42,6 +47,7 @@ class TvEpisodeDetailViewModelTest {
         viewModel = TvEpisodeDetailViewModel(
             tmdbRepository,
             eztvRepository,
+            torrentioRepository,
             userLibraryRepository,
             preferenceManager
         )
@@ -247,6 +253,77 @@ class TvEpisodeDetailViewModelTest {
         assertThat(nextInfo!![2]).isEqualTo(1)
         assertThat(nextInfo[3]).isEqualTo(6)
         assertThat(nextInfo[4]).isEqualTo("Episode 6")
+
+        job.cancel()
+    }
+
+    @Test
+    fun `loadEpisode merges EZTV and Torrentio into releasesByQuality`() = runTest {
+        val seriesId = 10
+        val seasonNum = 1
+        val episodeNum = 2
+        val seriesName = "Breaking Bad"
+
+        val eztvTorrent = EztvTorrent(title = "Breaking.Bad.S01E02.720p.HDTV", hash = "eztv_hash_1", seeds = 15)
+        val eztvRelease = TorrentRelease(
+            hash = "eztv_hash_1",
+            title = "Breaking.Bad.S01E02.720p.HDTV",
+            provider = "EZTV",
+            qualityGroup = VideoQualityGroup.HD_720P,
+            resolutionLabel = "720p HD",
+            videoCodec = "x264",
+            audioCodec = "AC3 5.1",
+            formattedSize = "1.0 GB",
+            sizeBytes = 1000000000L,
+            seeds = 15,
+            peers = 5,
+            magnetUrl = "magnet:?xt=urn:btih:eztv_hash_1",
+            compatibility = PlaybackCompatibility.NATIVE
+        )
+        val torrentioRelease1080p = TorrentRelease(
+            hash = "torrentio_ep_1080p",
+            title = "Breaking.Bad.S01E02.1080p.BluRay.DTS-HD.MA.5.1",
+            provider = "1337x",
+            qualityGroup = VideoQualityGroup.FHD_1080P,
+            resolutionLabel = "1080p FHD",
+            videoCodec = "x264",
+            audioCodec = "DTS-HD MA 5.1",
+            formattedSize = "4.5 GB",
+            sizeBytes = 4500000000L,
+            seeds = 45,
+            peers = 10,
+            magnetUrl = "magnet:?xt=urn:btih:torrentio_ep_1080p",
+            compatibility = PlaybackCompatibility.AUDIO_REQUIRES_PASSTHROUGH_OR_EXTERNAL
+        )
+
+        coEvery { tmdbRepository.getTvDetails(seriesId) } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary(
+            id = seriesId,
+            name = seriesName
+        )
+        coEvery { tmdbRepository.getTvImdbId(seriesId) } returns "tt0903747"
+        coEvery { eztvRepository.getTorrentsForEpisode("tt0903747", seasonNum, episodeNum) } returns listOf(eztvTorrent)
+        coEvery { torrentioRepository.fromEztvTorrent(eztvTorrent) } returns eztvRelease
+        coEvery { torrentioRepository.getSeriesTorrents("tt0903747", seasonNum, episodeNum) } returns listOf(torrentioRelease1080p)
+
+        val job = backgroundScope.launch {
+            viewModel.uiState.collect {}
+        }
+
+        viewModel.loadEpisode(
+            seriesId = seriesId,
+            seasonNumber = seasonNum,
+            episodeNumber = episodeNum,
+            seriesName = seriesName
+        )
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertThat(state).isInstanceOf(TvEpisodeDetailUiState.Success::class.java)
+        val success = state as TvEpisodeDetailUiState.Success
+        assertThat(success.releasesByQuality).containsKey(VideoQualityGroup.HD_720P)
+        assertThat(success.releasesByQuality).containsKey(VideoQualityGroup.FHD_1080P)
+        assertThat(success.releasesByQuality[VideoQualityGroup.FHD_1080P]).hasSize(1)
+        assertThat(success.releasesByQuality[VideoQualityGroup.HD_720P]).hasSize(1)
 
         job.cancel()
     }

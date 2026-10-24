@@ -7,6 +7,9 @@ import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.model.user.DownloadedMovie
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
+import com.martinrevert.latorrentola.network.TorrentioRepository
+import com.martinrevert.latorrentola.model.torrent.TorrentRelease
+import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
@@ -29,6 +32,7 @@ import kotlin.time.Duration.Companion.seconds
  * Loads movie and actor details and coordinates favorites, downloads, and spoken summaries.
  *
  * @property ytsRepository retrieves YTS movie details and records genre visits.
+ * @property torrentioRepository retrieves high-fidelity torrent streams from Torrentio.
  * @property userLibraryRepository observes downloads and stores new download records.
  * @property tmdbRepository retrieves actor information and movie IMDb IDs.
  * @property voiceManager speaks movie titles and summaries.
@@ -38,6 +42,7 @@ import kotlin.time.Duration.Companion.seconds
 @HiltViewModel
 class DetailViewModel @Inject constructor(
     private val ytsRepository: YtsRepository,
+    private val torrentioRepository: TorrentioRepository,
     private val userLibraryRepository: UserLibraryRepository,
     private val tmdbRepository: TmdbRepository,
     private val voiceManager: VoiceManager,
@@ -108,9 +113,9 @@ class DetailViewModel @Inject constructor(
     fun setMovie(movie: Movie) {
         viewModelScope.launch {
             // Optimization: Show passed movie immediately to avoid blank loading screen
-            // We check favorite status quickly and show what we have
             val isFavorite = ytsRepository.isFavorite(movie.id)
-            _uiState.value = DetailUiState.Success(movie, isFavorite)
+            val initialYts = buildInitialYtsReleases(movie)
+            _uiState.value = DetailUiState.Success(movie, isFavorite, groupAndSortReleases(initialYts))
 
             try {
                 // Fetch full details (cast, images, etc.) in the background
@@ -126,7 +131,14 @@ class DetailViewModel @Inject constructor(
                     }
                 }
 
-                _uiState.value = DetailUiState.Success(fullMovie, isFavorite)
+                // Fetch Torrentio options in background
+                val fullYtsReleases = buildInitialYtsReleases(fullMovie)
+                val torrentioReleases = if (!imdbId.isNullOrBlank()) {
+                    torrentioRepository.getMovieTorrents(imdbId)
+                } else emptyList()
+
+                val mergedReleases = groupAndSortReleases(fullYtsReleases + torrentioReleases)
+                _uiState.value = DetailUiState.Success(fullMovie, isFavorite, mergedReleases)
                 
                 // Clear any existing voice job before starting a new one
                 voiceJob?.cancel()
@@ -147,7 +159,8 @@ class DetailViewModel @Inject constructor(
                 } else movie
 
                 val isFavorite = ytsRepository.isFavorite(movie.id)
-                _uiState.value = DetailUiState.Success(movieWithCast, isFavorite)
+                val ytsReleases = buildInitialYtsReleases(movieWithCast)
+                _uiState.value = DetailUiState.Success(movieWithCast, isFavorite, groupAndSortReleases(ytsReleases))
                 
                 voiceJob?.cancel()
                 voiceJob = viewModelScope.launch {
@@ -174,7 +187,13 @@ class DetailViewModel @Inject constructor(
                         }
                     }
 
-                    _uiState.value = DetailUiState.Success(fullMovie, isFavorite)
+                    val ytsReleases = buildInitialYtsReleases(fullMovie)
+                    val torrentioReleases = if (!imdbId.isNullOrBlank()) {
+                        torrentioRepository.getMovieTorrents(imdbId)
+                    } else emptyList()
+
+                    val mergedReleases = groupAndSortReleases(ytsReleases + torrentioReleases)
+                    _uiState.value = DetailUiState.Success(fullMovie, isFavorite, mergedReleases)
                     
                     voiceJob?.cancel()
                     voiceJob = viewModelScope.launch {
@@ -375,6 +394,25 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    /** Converts YTS torrents into [TorrentRelease] representations. */
+    private fun buildInitialYtsReleases(movie: Movie): List<TorrentRelease> {
+        return movie.torrents?.map { torrentioRepository.fromYtsTorrent(it, movie.title.orEmpty()) } ?: emptyList()
+    }
+
+    /** Deduplicates by infoHash, groups by video quality, and sorts each group by seeds descending. */
+    private fun groupAndSortReleases(releases: List<TorrentRelease>): Map<VideoQualityGroup, List<TorrentRelease>> {
+        return releases
+            .distinctBy { it.hash.lowercase() }
+            .groupBy { it.qualityGroup }
+            .mapValues { entry ->
+                entry.value.sortedWith(
+                    compareByDescending<TorrentRelease> { it.seeds }
+                        .thenByDescending { it.sizeBytes ?: 0L }
+                )
+            }
+            .toSortedMap(compareBy { it.ordinal })
+    }
+
     /** Cancels ongoing speech when this view model is cleared. */
     override fun onCleared() {
         voiceJob?.cancel()
@@ -391,8 +429,13 @@ sealed interface DetailUiState {
      *
      * @property movie Loaded movie metadata.
      * @property isFavorite Whether the movie is in the user's favorites.
+     * @property releasesByQuality Torrents grouped by quality and sorted by seeds descending.
      */
-    data class Success(val movie: Movie, val isFavorite: Boolean) : DetailUiState
+    data class Success(
+        val movie: Movie,
+        val isFavorite: Boolean,
+        val releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>> = emptyMap()
+    ) : DetailUiState
     /**
      * Query resolved to a TV series on TMDB.
      *

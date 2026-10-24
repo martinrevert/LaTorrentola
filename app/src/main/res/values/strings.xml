@@ -368,6 +368,15 @@
     <string name="player_stats_nerds">Stats for nerds</string>
     <string name="pip_expand_desc">Expand to fullscreen</string>
     <string name="pip_close_desc">Close floating player</string>
+    <!-- Torrentio & Quality Groups -->
+    <string name="quality_group_4k">4K Ultra HD</string>
+    <string name="quality_group_1080p">1080p Full HD</string>
+    <string name="quality_group_720p">720p HD</string>
+    <string name="quality_group_other">Standard Definition &amp; Other</string>
+    <string name="compatibility_compatible">Native Playback</string>
+    <string name="compatibility_avr_passthrough">⚠ Audio for AVR / Passthrough</string>
+    <string name="compatibility_video_unsupported">⚠ Video unsupported locally</string>
+    <string name="torrent_seeds_count">%1$d seeds</string>
 
     <string name="asset_statements" translatable="false">[]</string>
 </resources>

@@ -58,7 +58,10 @@ import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.Abs
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.options.IFramePlayerOptions
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.model.torrent.TorrentRelease
+import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
 import com.martinrevert.latorrentola.ui.components.MovieTorrentShimmerCard
+import com.martinrevert.latorrentola.ui.components.TorrentReleaseShimmerCard
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
 import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
 import com.martinrevert.latorrentola.model.YTS.Movie
@@ -160,6 +163,9 @@ fun MovieDetailScreen(
         onTorrentClick = { movie, torrent ->
             viewModel.markAsDownloaded(movie, torrent.hash ?: "", torrent.quality ?: "")
         },
+        onReleaseClick = { movie, release ->
+            viewModel.markAsDownloaded(movie, release.hash, release.qualityGroup.name)
+        },
         onAddLanguageToFilter = { language ->
             viewModel.addLanguageToFilter(language) { error ->
                 Toast.makeText(context, error.asString(resources), Toast.LENGTH_LONG).show()
@@ -207,11 +213,13 @@ private fun MovieDetailScreenContent(
     onShareClick: (Movie) -> Unit,
     onFavoriteToggle: (Movie) -> Unit,
     onTorrentClick: (Movie, Torrent) -> Unit,
+    onReleaseClick: (Movie, TorrentRelease) -> Unit = { _, _ -> },
     onAddLanguageToFilter: (String) -> Unit,
     onCastClick: (String) -> Unit,
     onDismissActorSheet: () -> Unit,
     onActorCreditClick: (TmdbCastCredit) -> Unit
 ) {
+    val context = LocalContext.current
     val hazeState = rememberHazeState()
     val isInspection = LocalInspectionMode.current
     val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
@@ -312,11 +320,40 @@ private fun MovieDetailScreenContent(
                 is DetailUiState.Success -> {
                     MovieDetailContent(
                         movie = uiState.movie,
+                        releasesByQuality = uiState.releasesByQuality,
                         downloadedHashes = downloadedHashes,
                         torrentHandlingMode = torrentHandlingMode,
                         isWideScreen = isWideScreen,
                         isTv = isTv,
                         onTorrentClick = { onTorrentClick(uiState.movie, it) },
+                        onReleaseClick = { release ->
+                            val moviePoster = uiState.movie.mediumCoverImage ?: uiState.movie.largeCoverImage
+                            val magnetUri = release.magnetUrl.orEmpty().ifBlank {
+                                TorrentLaunchHelper.buildMagnetUri(release.hash, release.title)
+                            }
+                            val result = TorrentLaunchHelper.launch(
+                                context = context,
+                                mode = torrentHandlingMode,
+                                magnetUri = magnetUri,
+                                title = release.title,
+                                movieId = uiState.movie.id,
+                                posterUrl = moviePoster,
+                                requiredSizeBytes = release.sizeBytes
+                            )
+                            when (result) {
+                                TorrentLaunchResult.Started -> {
+                                    onReleaseClick(uiState.movie, release)
+                                    val matchingYts = uiState.movie.torrents?.firstOrNull { it.hash.equals(release.hash, ignoreCase = true) }
+                                    if (matchingYts != null) {
+                                        onTorrentClick(uiState.movie, matchingYts)
+                                    }
+                                }
+                                is TorrentLaunchResult.InsufficientStorage -> {
+                                    insufficientStorageState.value = Pair(result.availableBytes, result.requiredBytes)
+                                }
+                                else -> {}
+                            }
+                        },
                         onAddLanguageToFilter = onAddLanguageToFilter,
                         onCastClick = onCastClick,
                         onInsufficientStorage = { available, required ->
@@ -367,11 +404,13 @@ private fun MovieDetailScreenContent(
 @Composable
 fun MovieDetailContent(
     movie: Movie,
+    releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>> = emptyMap(),
     downloadedHashes: Set<String>,
     torrentHandlingMode: TorrentHandlingMode = TorrentHandlingMode.EXTERNAL_CLIENT,
     isWideScreen: Boolean,
     isTv: Boolean,
     onTorrentClick: (Torrent) -> Unit,
+    onReleaseClick: ((TorrentRelease) -> Unit)? = null,
     onAddLanguageToFilter: (String) -> Unit,
     onCastClick: (String) -> Unit,
     onInsufficientStorage: (Long, Long) -> Unit = { _, _ -> },
@@ -464,32 +503,73 @@ fun MovieDetailContent(
                 castList = movie.cast,
                 onCastClick = onCastClick,
                 nextFocusRequester = firstTorrentFocusRequester.takeIf {
-                    isTv && !movie.torrents.isNullOrEmpty()
+                    isTv && (!movie.torrents.isNullOrEmpty() || releasesByQuality.isNotEmpty())
                 }
             )
             Spacer(modifier = Modifier.height(16.dp))
         }
         
         Text(text = stringResource(R.string.torrents_header), style = MaterialTheme.typography.titleLarge)
+        Spacer(modifier = Modifier.height(8.dp))
         Column(
             modifier = Modifier.fillMaxWidth()
         ) {
-            movie.torrents?.forEachIndexed { index, torrent ->
-                val isFirstItem = index == 0 && movie.ytTrailerCode.isNullOrEmpty()
-                TorrentItem(
-                    movie = movie,
-                    torrent = torrent,
-                    isDownloaded = downloadedHashes.contains(torrent.hash),
-                    onTorrentClick = onTorrentClick,
-                    handlingMode = torrentHandlingMode,
-                    onInsufficientStorage = onInsufficientStorage,
-                    focusRequester = when {
-                        isTv && index == 0 && !movie.cast.isNullOrEmpty() ->
-                            firstTorrentFocusRequester
-                        isFirstItem -> contentFocusRequester
-                        else -> null
+            if (releasesByQuality.isNotEmpty()) {
+                var isFirstRelease = true
+                releasesByQuality.forEach { (qualityGroup, releases) ->
+                    if (releases.isNotEmpty()) {
+                        val groupHeader = when (qualityGroup) {
+                            VideoQualityGroup.UHD_4K -> stringResource(R.string.quality_group_4k)
+                            VideoQualityGroup.FHD_1080P -> stringResource(R.string.quality_group_1080p)
+                            VideoQualityGroup.HD_720P -> stringResource(R.string.quality_group_720p)
+                            VideoQualityGroup.OTHER -> stringResource(R.string.quality_group_other)
+                        }
+                        Text(
+                            text = groupHeader,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+                        )
+                        releases.forEach { release ->
+                            val isFirst = isFirstRelease && movie.ytTrailerCode.isNullOrEmpty()
+                            val focusReq = when {
+                                isTv && isFirstRelease && !movie.cast.isNullOrEmpty() -> firstTorrentFocusRequester
+                                isFirst -> contentFocusRequester
+                                else -> null
+                            }
+                            isFirstRelease = false
+                            TorrentReleaseShimmerCard(
+                                release = release,
+                                isDownloaded = downloadedHashes.contains(release.hash.lowercase()),
+                                onClick = { onReleaseClick?.invoke(release) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .then(if (focusReq != null) Modifier.focusRequester(focusReq) else Modifier),
+                                focusRequester = focusReq
+                            )
+                        }
                     }
-                )
+                }
+            } else {
+                movie.torrents?.forEachIndexed { index, torrent ->
+                    val isFirstItem = index == 0 && movie.ytTrailerCode.isNullOrEmpty()
+                    TorrentItem(
+                        movie = movie,
+                        torrent = torrent,
+                        isDownloaded = downloadedHashes.contains(torrent.hash),
+                        onTorrentClick = onTorrentClick,
+                        handlingMode = torrentHandlingMode,
+                        onInsufficientStorage = onInsufficientStorage,
+                        focusRequester = when {
+                            isTv && index == 0 && !movie.cast.isNullOrEmpty() ->
+                                firstTorrentFocusRequester
+                            isFirstItem -> contentFocusRequester
+                            else -> null
+                        }
+                    )
+                }
             }
         }
     }

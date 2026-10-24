@@ -165,11 +165,11 @@ class OpenSubtitlesRepository @Inject constructor(
                     candidateDirectories.add(subtitleDirectory)
                 }
             }
-        }
-
-        val cacheSubDir = File(context.cacheDir, SUBTITLE_DIRECTORY).canonicalFile
-        if (cacheSubDir.isDirectory) {
-            candidateDirectories.add(cacheSubDir)
+        } else {
+            val cacheSubDir = File(context.cacheDir, SUBTITLE_DIRECTORY).canonicalFile
+            if (cacheSubDir.isDirectory) {
+                candidateDirectories.add(cacheSubDir)
+            }
         }
 
         val subtitleFile = candidateDirectories

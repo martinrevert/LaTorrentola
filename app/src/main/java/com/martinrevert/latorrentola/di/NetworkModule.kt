@@ -121,6 +121,25 @@ object NetworkModule {
         return retrofit.create(EztvService::class.java)
     }
 
+    /** Creates a Retrofit instance for Torrentio. */
+    @Provides
+    @Singleton
+    @TorrentioRetrofit
+    fun provideTorrentioRetrofit(okHttpClient: OkHttpClient): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(Constants.TORRENTIO_BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            .client(okHttpClient)
+            .build()
+    }
+
+    /** Creates the Torrentio Retrofit service. */
+    @Provides
+    @Singleton
+    fun provideTorrentioService(@TorrentioRetrofit retrofit: Retrofit): com.martinrevert.latorrentola.network.TorrentioService {
+        return retrofit.create(com.martinrevert.latorrentola.network.TorrentioService::class.java)
+    }
+
     /**
      * Provides an isolated HTTPS-only OpenSubtitles client with an explicit host allowlist.
      */
@@ -216,3 +235,9 @@ annotation class OpenSubtitlesRetrofit
 @javax.inject.Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class OpenSubtitlesHttpClient
+
+/** Hilt qualifier for the Torrentio Retrofit client. */
+@javax.inject.Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class TorrentioRetrofit
+

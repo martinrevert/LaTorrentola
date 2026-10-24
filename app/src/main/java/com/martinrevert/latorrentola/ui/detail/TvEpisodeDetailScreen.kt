@@ -37,7 +37,10 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import com.martinrevert.latorrentola.model.torrent.TorrentRelease
+import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
 import com.martinrevert.latorrentola.ui.components.EpisodeTorrentShimmerCard
+import com.martinrevert.latorrentola.ui.components.TorrentReleaseShimmerCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -174,6 +177,7 @@ fun TvEpisodeDetailScreen(
                     seriesName = state.seriesName,
                     episode = state.episode,
                     torrents = state.torrents,
+                    releasesByQuality = state.releasesByQuality,
                     isDownloaded = state.isDownloaded,
                     progressPercent = progressPercent,
                     downloadedHashes = state.downloadedHashes,
@@ -181,6 +185,40 @@ fun TvEpisodeDetailScreen(
                     episodeSummaryFocusRequester = if (isTv) episodeSummaryFocusRequester else null,
                     firstTorrentFocusRequester = if (isTv) firstTorrentFocusRequester else null,
                     onHeaderLongClick = { showOptionDialog = true },
+                    onReleaseClick = { release ->
+                        val title = "%s S%02dE%02d %s".format(
+                            state.seriesName,
+                            state.episode.seasonNumber,
+                            state.episode.episodeNumber,
+                            release.title
+                        )
+                        val nextEpisodeInfo = viewModel.getNextEpisodeInfo()?.let { ArrayList(it.map { item -> item.toString() }) }
+                        val magnetUri = release.magnetUrl.orEmpty().ifBlank {
+                            TorrentLaunchHelper.buildMagnetUri(release.hash, release.title)
+                        }
+                        when (
+                            val result = TorrentLaunchHelper.launch(
+                                context,
+                                torrentHandlingMode,
+                                magnetUri,
+                                title,
+                                nextEpisodeInfo,
+                                seriesId = seriesId,
+                                seasonNumber = state.episode.seasonNumber,
+                                episodeNumber = state.episode.episodeNumber,
+                                posterUrl = state.posterUrl,
+                                requiredSizeBytes = release.sizeBytes
+                            )
+                        ) {
+                            TorrentLaunchResult.Started -> {
+                                viewModel.markEpisodeAsDownloaded(release)
+                            }
+                            is TorrentLaunchResult.InsufficientStorage -> {
+                                insufficientStorageState.value = Pair(result.availableBytes, result.requiredBytes)
+                            }
+                            else -> {}
+                        }
+                    },
                     onTorrentClick = { torrent ->
                         val title = "%s S%02dE%02d %s".format(
                             state.seriesName,
@@ -268,6 +306,7 @@ private fun EpisodeDetailContent(
     seriesName: String,
     episode: TmdbTvEpisode,
     torrents: List<EztvTorrent>,
+    releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>> = emptyMap(),
     isDownloaded: Boolean = false,
     progressPercent: Int? = null,
     downloadedHashes: Set<String> = emptySet(),
@@ -275,6 +314,7 @@ private fun EpisodeDetailContent(
     episodeSummaryFocusRequester: FocusRequester?,
     firstTorrentFocusRequester: FocusRequester?,
     onHeaderLongClick: (() -> Unit)? = null,
+    onReleaseClick: ((TorrentRelease) -> Unit)? = null,
     onTorrentClick: (EztvTorrent) -> Unit
 ) {
     val context = LocalContext.current
@@ -301,7 +341,7 @@ private fun EpisodeDetailContent(
             onLongClick = onHeaderLongClick,
             modifier = Modifier.fillMaxWidth(),
             summaryFocusRequester = episodeSummaryFocusRequester,
-            nextFocusRequester = firstTorrentFocusRequester.takeIf { torrents.isNotEmpty() }
+            nextFocusRequester = firstTorrentFocusRequester.takeIf { torrents.isNotEmpty() || releasesByQuality.isNotEmpty() }
         )
 
         Text(
@@ -312,7 +352,45 @@ private fun EpisodeDetailContent(
             modifier = Modifier.padding(top = 8.dp)
         )
 
-        if (torrents.isEmpty()) {
+        if (releasesByQuality.isNotEmpty()) {
+            var isFirstRelease = true
+            releasesByQuality.forEach { (qualityGroup, releases) ->
+                if (releases.isNotEmpty()) {
+                    val groupHeader = when (qualityGroup) {
+                        VideoQualityGroup.UHD_4K -> stringResource(R.string.quality_group_4k)
+                        VideoQualityGroup.FHD_1080P -> stringResource(R.string.quality_group_1080p)
+                        VideoQualityGroup.HD_720P -> stringResource(R.string.quality_group_720p)
+                        VideoQualityGroup.OTHER -> stringResource(R.string.quality_group_other)
+                    }
+                    Text(
+                        text = groupHeader,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+                    )
+                    releases.forEach { release ->
+                        val isFirst = isFirstRelease
+                        isFirstRelease = false
+                        val isTorrentDownloaded = downloadedHashes.contains(release.hash.lowercase())
+                        TorrentReleaseShimmerCard(
+                            release = release,
+                            isDownloaded = isTorrentDownloaded,
+                            onClick = { onReleaseClick?.invoke(release) },
+                            modifier = if (
+                                isFirst &&
+                                firstTorrentFocusRequester != null &&
+                                episodeSummaryFocusRequester != null
+                            ) {
+                                Modifier
+                                    .focusRequester(firstTorrentFocusRequester)
+                                    .focusProperties { up = episodeSummaryFocusRequester }
+                            } else Modifier
+                        )
+                    }
+                }
+            }
+        } else if (torrents.isEmpty()) {
             Text(
                 text = stringResource(R.string.tv_no_torrents_found),
                 style = MaterialTheme.typography.bodyLarge,

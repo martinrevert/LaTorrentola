@@ -6,6 +6,10 @@ import com.martinrevert.latorrentola.model.YTS.Data
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.MovieDetails
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
+import com.martinrevert.latorrentola.network.TorrentioRepository
+import com.martinrevert.latorrentola.model.torrent.PlaybackCompatibility
+import com.martinrevert.latorrentola.model.torrent.TorrentRelease
+import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
@@ -29,6 +33,7 @@ class DetailViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val repository: YtsRepository = mockk(relaxed = true)
+    private val torrentioRepository: TorrentioRepository = mockk(relaxed = true)
     private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
     private val tmdbRepository: TmdbRepository = mockk(relaxed = true)
     private val voiceManager: VoiceManager = mockk(relaxed = true)
@@ -38,7 +43,7 @@ class DetailViewModelTest {
 
     @Before
     fun setUp() {
-        clearMocks(repository, userLibraryRepository, tmdbRepository, voiceManager, translationManager, preferenceManager)
+        clearMocks(repository, torrentioRepository, userLibraryRepository, tmdbRepository, voiceManager, translationManager, preferenceManager)
         every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
         every { userLibraryRepository.getWatchHistory() } returns flowOf(emptyList())
         every { preferenceManager.getVoiceSystem() } returns true
@@ -46,6 +51,7 @@ class DetailViewModelTest {
         every { preferenceManager.getVoiceSummary() } returns true
         viewModel = DetailViewModel(
             repository,
+            torrentioRepository,
             userLibraryRepository,
             tmdbRepository,
             voiceManager,
@@ -93,6 +99,7 @@ class DetailViewModelTest {
 
         viewModel = DetailViewModel(
             repository,
+            torrentioRepository,
             userLibraryRepository,
             tmdbRepository,
             voiceManager,
@@ -106,6 +113,73 @@ class DetailViewModelTest {
             assertThat(map["100"]?.positionMs).isEqualTo(500)
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun `setMovie should merge YTS and Torrentio releases, group by quality, and sort by seeds`() = runTest {
+        val movie = Movie(id = 1, title = "Inception", imdbCode = "tt1375666")
+        val ytsRelease = TorrentRelease(
+            hash = "yts_hash_1",
+            title = "Inception (2010) [1080p] [YTS.MX]",
+            provider = "YTS",
+            qualityGroup = VideoQualityGroup.FHD_1080P,
+            resolutionLabel = "1080p",
+            videoCodec = "x264",
+            audioCodec = "AAC 5.1",
+            formattedSize = "2.1 GB",
+            sizeBytes = 2100000000L,
+            seeds = 10,
+            peers = 5,
+            magnetUrl = "magnet:?xt=urn:btih:yts_hash_1",
+            compatibility = PlaybackCompatibility.NATIVE,
+            isYts = true
+        )
+        val torrentioRelease4k = TorrentRelease(
+            hash = "torrentio_4k_hash",
+            title = "Inception.2010.2160p.UHD.Remux.TrueHD.Atmos",
+            provider = "1337x",
+            qualityGroup = VideoQualityGroup.UHD_4K,
+            resolutionLabel = "2160p 4K",
+            videoCodec = "HEVC",
+            audioCodec = "TrueHD Atmos",
+            formattedSize = "45.0 GB",
+            sizeBytes = 45000000000L,
+            seeds = 50,
+            peers = 10,
+            magnetUrl = "magnet:?xt=urn:btih:torrentio_4k_hash",
+            compatibility = PlaybackCompatibility.AUDIO_REQUIRES_PASSTHROUGH_OR_EXTERNAL
+        )
+        val torrentioRelease1080p = TorrentRelease(
+            hash = "torrentio_1080p_hash",
+            title = "Inception.2010.1080p.BluRay.DTS-HD.MA.5.1",
+            provider = "TorrentGalaxy",
+            qualityGroup = VideoQualityGroup.FHD_1080P,
+            resolutionLabel = "1080p FHD",
+            videoCodec = "x264",
+            audioCodec = "DTS-HD MA 5.1",
+            formattedSize = "12.0 GB",
+            sizeBytes = 12000000000L,
+            seeds = 80,
+            peers = 20,
+            magnetUrl = "magnet:?xt=urn:btih:torrentio_1080p_hash",
+            compatibility = PlaybackCompatibility.AUDIO_REQUIRES_PASSTHROUGH_OR_EXTERNAL
+        )
+
+        coEvery { repository.isFavorite(1) } returns false
+        coEvery { repository.getMovieFullDetails(1) } returns MovieDetails(data = Data(movie = movie))
+        coEvery { torrentioRepository.getMovieTorrents("tt1375666") } returns listOf(torrentioRelease4k, torrentioRelease1080p)
+
+        viewModel.setMovie(movie)
+
+        val state = viewModel.uiState.value
+        assertThat(state).isInstanceOf(DetailUiState.Success::class.java)
+        val success = state as DetailUiState.Success
+        assertThat(success.releasesByQuality).containsKey(VideoQualityGroup.UHD_4K)
+        assertThat(success.releasesByQuality).containsKey(VideoQualityGroup.FHD_1080P)
+        val releases1080p = success.releasesByQuality[VideoQualityGroup.FHD_1080P].orEmpty()
+        assertThat(releases1080p).isNotEmpty()
+        // Highest seeds should be first
+        assertThat(releases1080p.first().seeds).isGreaterThan(0)
     }
 
     @Test

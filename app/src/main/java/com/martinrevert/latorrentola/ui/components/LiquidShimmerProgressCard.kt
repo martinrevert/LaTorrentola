@@ -60,6 +60,8 @@ import androidx.tv.material3.Surface as TvSurface
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
+import com.martinrevert.latorrentola.model.torrent.PlaybackCompatibility
+import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.Torrent
 import com.martinrevert.latorrentola.service.TorrentDownloadService
@@ -495,6 +497,211 @@ fun EpisodeTorrentShimmerCard(
                     stringResource(R.string.tv_episode_downloaded)
                 } else {
                     stringResource(R.string.tv_download_torrent_desc)
+                },
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+    }
+}
+
+/**
+ * Unified torrent release card supporting YTS, EZTV, and Torrentio releases.
+ * Displays source, audio codec badges, hardware compatibility warnings, file size, and live liquid shimmer buffering.
+ */
+@Composable
+fun TorrentReleaseShimmerCard(
+    release: TorrentRelease,
+    isDownloaded: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    focusRequester: FocusRequester? = null,
+    themeMode: Int? = null
+) {
+    val activeBuffer by TorrentDownloadService.activeBufferState.collectAsState()
+    val torrentHash = release.hash
+    val isActive = remember(activeBuffer, torrentHash) {
+        torrentHash.isNotBlank() && activeBuffer?.infoHash.equals(torrentHash, ignoreCase = true)
+    }
+
+    val readyProgress = when {
+        isActive -> activeBuffer?.readyProgress ?: 0f
+        isDownloaded -> 1.0f
+        else -> 0f
+    }
+    val downloadSpeed = if (isActive) activeBuffer?.downloadSpeedBytes ?: 0L else 0L
+    val seeds = if (isActive && (activeBuffer?.numSeeds ?: 0) > 0) activeBuffer?.numSeeds ?: release.seeds else release.seeds
+    val peers = if (isActive && (activeBuffer?.numPeers ?: 0) > 0) activeBuffer?.numPeers ?: release.peers else release.peers
+
+    LiquidShimmerProgressSurface(
+        progress = readyProgress,
+        isActive = isActive,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        focusRequester = focusRequester,
+        themeMode = themeMode,
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                // Title
+                Text(
+                    text = release.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                // Badges row: Provider • Resolution • Video Codec • Audio Codec
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Source badge (e.g. YTS, EZTV, 1337x, etc.)
+                    Text(
+                        text = release.provider,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier
+                            .clip(MaterialTheme.shapes.extraSmall)
+                            .background(MaterialTheme.colorScheme.tertiaryContainer)
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+
+                    // Resolution badge
+                    if (release.resolutionLabel.isNotBlank()) {
+                        Text(
+                            text = release.resolutionLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier
+                                .clip(MaterialTheme.shapes.extraSmall)
+                                .background(MaterialTheme.colorScheme.secondaryContainer)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    // Video Codec if present
+                    if (!release.videoCodec.isNullOrBlank()) {
+                        Text(
+                            text = release.videoCodec,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .clip(MaterialTheme.shapes.extraSmall)
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    // Audio Codec badge (always shown, AAC for YTS)
+                    if (!release.audioCodec.isNullOrBlank()) {
+                        Text(
+                            text = release.audioCodec,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier
+                                .clip(MaterialTheme.shapes.extraSmall)
+                                .background(MaterialTheme.colorScheme.primaryContainer)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                // Compatibility warning badge if needed
+                when (release.compatibility) {
+                    PlaybackCompatibility.AUDIO_REQUIRES_PASSTHROUGH_OR_EXTERNAL -> {
+                        Text(
+                            text = stringResource(R.string.compatibility_avr_passthrough),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier
+                                .clip(MaterialTheme.shapes.extraSmall)
+                                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                    PlaybackCompatibility.VIDEO_UNSUPPORTED -> {
+                        Text(
+                            text = stringResource(R.string.compatibility_video_unsupported),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier
+                                .clip(MaterialTheme.shapes.extraSmall)
+                                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                    else -> {}
+                }
+
+                // Size and Seeds/Peers or Live Transfer
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (release.formattedSize.isNotBlank()) {
+                        Text(
+                            text = release.formattedSize,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (isActive) {
+                        Text(
+                            text = "${(readyProgress * 100).toInt()}% · ${formatTransferRate(downloadSpeed)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        val peersText = if (peers > 0) {
+                            stringResource(R.string.tv_torrent_peers_info, seeds, peers)
+                        } else {
+                            stringResource(R.string.torrent_seeds_count, seeds)
+                        }
+                        Text(
+                            text = peersText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            // Action / download state badge
+            Icon(
+                imageVector = when {
+                    isActive -> Icons.Default.Download
+                    isDownloaded -> Icons.Default.CloudDone
+                    else -> Icons.Default.PlayArrow
+                },
+                contentDescription = if (isActive) {
+                    stringResource(R.string.tv_download_torrent_desc)
+                } else if (isDownloaded) {
+                    stringResource(R.string.downloaded_desc)
+                } else {
+                    stringResource(R.string.play_desc)
                 },
                 tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.size(28.dp)

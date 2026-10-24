@@ -16,6 +16,9 @@ object Constants {
     /** Base URL for the EZTV television torrent API. */
     const val EZTV_BASE_URL = "https://eztvx.to/api/"
 
+    /** Base URL for the Torrentio Stremio addon public API. */
+    const val TORRENTIO_BASE_URL = "https://torrentio.strem.fun/"
+
     /** Default page size requested from paginated movie endpoints. */
     const val PAGE_SIZE = 50
 
