@@ -377,6 +377,8 @@
     <string name="compatibility_avr_passthrough">⚠ Audio for AVR / Passthrough</string>
     <string name="compatibility_video_unsupported">⚠ Video unsupported locally</string>
     <string name="torrent_seeds_count">%1$d seeds</string>
+    <string name="settings_test_crash">Test Crashlytics</string>
+    <string name="settings_test_crash_desc">Forces an intentional crash to verify Firebase reporting</string>
 
     <string name="asset_statements" translatable="false">[]</string>
 </resources>

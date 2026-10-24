@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -120,7 +121,8 @@ fun SettingsScreen(
             onSaveOpenSubtitlesCredentials = { username, password ->
                 viewModel.saveOpenSubtitlesCredentials(username, password)
             },
-            onClearOpenSubtitlesCredentials = { viewModel.clearOpenSubtitlesCredentials() }
+            onClearOpenSubtitlesCredentials = { viewModel.clearOpenSubtitlesCredentials() },
+            onTestCrash = { viewModel.triggerTestCrash() }
         )
     }
 
@@ -160,7 +162,8 @@ private fun SettingsScreenContent(
     onSetAutoPlayQualitySelectionMethod: (AutoPlayQualitySelectionMethod) -> Unit,
     onSetStorageLocation: (String) -> Unit,
     onSaveOpenSubtitlesCredentials: (String, String) -> Unit,
-    onClearOpenSubtitlesCredentials: () -> Unit
+    onClearOpenSubtitlesCredentials: () -> Unit,
+    onTestCrash: () -> Unit = {}
 ) {
     val configuration = LocalConfiguration.current
     val isWideScreen = configuration.screenWidthDp >= 600 || isTv
@@ -268,6 +271,9 @@ private fun SettingsScreenContent(
                     )
 
                     Spacer(modifier = Modifier.weight(1f))
+
+                    TestCrashSetting(isTv = isTv, onTestCrash = onTestCrash)
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     AppVersionInfo(isTv = isTv)
                     Spacer(modifier = Modifier.height(16.dp))
@@ -469,6 +475,10 @@ private fun SettingsScreenContent(
                     leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) }
                 )
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TestCrashSetting(isTv = isTv, onTestCrash = onTestCrash)
+
                 Spacer(modifier = Modifier.height(24.dp))
                 
                 AppVersionInfo(isTv = isTv)
@@ -478,6 +488,95 @@ private fun SettingsScreenContent(
         }
     }
 }
+}
+
+/**
+ * Renders a test crash button to verify Crashlytics report delivery.
+ */
+@Composable
+private fun TestCrashSetting(isTv: Boolean, onTestCrash: () -> Unit) {
+    if (isTv) {
+        androidx.tv.material3.Surface(
+            onClick = onTestCrash,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusHighlight(shape = RoundedCornerShape(12.dp)),
+            shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(TvMaterialTheme.shapes.medium),
+            colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
+                containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                contentColor = TvMaterialTheme.colorScheme.onSurfaceVariant,
+                focusedContainerColor = TvMaterialTheme.colorScheme.errorContainer,
+                focusedContentColor = TvMaterialTheme.colorScheme.onErrorContainer
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                androidx.tv.material3.Icon(
+                    imageVector = Icons.Default.BugReport,
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                    tint = TvMaterialTheme.colorScheme.error
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    androidx.tv.material3.Text(
+                        text = stringResource(R.string.settings_test_crash),
+                        style = TvMaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = TvMaterialTheme.colorScheme.onSurface
+                    )
+                    androidx.tv.material3.Text(
+                        text = stringResource(R.string.settings_test_crash_desc),
+                        style = TvMaterialTheme.typography.bodySmall,
+                        color = TvMaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    } else {
+        OutlinedCard(
+            onClick = onTestCrash,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusHighlight(shape = RoundedCornerShape(12.dp)),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.outlinedCardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.BugReport,
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                    tint = MaterialTheme.colorScheme.error
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.settings_test_crash),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_test_crash_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
 }
 
 /**

@@ -36,13 +36,20 @@ import javax.inject.Singleton
 class AuthRepository internal constructor(
     private val firebaseAuth: FirebaseAuth,
     @ApplicationContext private val context: Context,
-    private val credentialManager: CredentialManager
+    private val credentialManager: CredentialManager,
+    private val crashlyticsManager: CrashlyticsManager = CrashlyticsManager()
 ) {
     @Inject
     constructor(
         firebaseAuth: FirebaseAuth,
+        @ApplicationContext context: Context,
+        crashlyticsManager: CrashlyticsManager
+    ) : this(firebaseAuth, context, CredentialManager.create(context), crashlyticsManager)
+
+    constructor(
+        firebaseAuth: FirebaseAuth,
         @ApplicationContext context: Context
-    ) : this(firebaseAuth, context, CredentialManager.create(context))
+    ) : this(firebaseAuth, context, CredentialManager.create(context), CrashlyticsManager())
 
     /** Mutable backing stream updated whenever Firebase authentication changes. */
     private val _currentUserFlow = MutableStateFlow(firebaseAuth.currentUser)
@@ -52,7 +59,14 @@ class AuthRepository internal constructor(
     /** Keeps [authStateFlow] synchronized with Firebase Auth state changes. */
     init {
         firebaseAuth.addAuthStateListener { auth ->
-            _currentUserFlow.value = auth.currentUser
+            val user = auth.currentUser
+            _currentUserFlow.value = user
+            if (user != null) {
+                crashlyticsManager.setUserId(user.uid)
+                user.email?.let { crashlyticsManager.setCustomKey("user_email", it) }
+            } else {
+                crashlyticsManager.setUserId(null)
+            }
         }
     }
 

@@ -30,6 +30,7 @@ class SettingsViewModelTest {
     private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
     private val authRepository: AuthRepository = mockk(relaxed = true)
     private val context: Context = mockk(relaxed = true)
+    private val crashlyticsManager: com.martinrevert.latorrentola.network.CrashlyticsManager = mockk(relaxed = true)
     private lateinit var viewModel: SettingsViewModel
     private val themeFlow = MutableStateFlow(PreferenceManager.THEME_DARK)
 
@@ -60,7 +61,8 @@ class SettingsViewModelTest {
             firebaseMessagingInitializer,
             userLibraryRepository,
             authRepository,
-            context
+            context,
+            crashlyticsManager
         )
     }
 
@@ -158,5 +160,11 @@ class SettingsViewModelTest {
         viewModel.setStorageLocation("/storage/usb1")
         verify { preferenceManager.setStorageLocation("/storage/usb1") }
         assertThat(viewModel.uiState.value.storageLocation).isEqualTo("/storage/usb1")
+    }
+
+    @Test
+    fun `triggerTestCrash should delegate to crashlyticsManager`() {
+        viewModel.triggerTestCrash()
+        verify { crashlyticsManager.triggerTestCrash() }
     }
 }

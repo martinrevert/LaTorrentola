@@ -35,6 +35,7 @@ googleid = "1.2.1"
 tv-material = "1.1.0"
 tv-foundation = "1.0.0"
 firebaseCrashlytics = "3.0.8"
+firebaseCrashlyticsSdk = "21.0.1"
 firebaseMessaging = "24.1.2"
 youtubePlayer = "13.0.0"
 libtorrent4j = "2.1.0-39"
@@ -89,6 +90,7 @@ mlkit-translate = { group = "com.google.mlkit", name = "translate", version.ref 
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging-ktx", version.ref = "firebaseMessaging" }
 firebase-auth = { group = "com.google.firebase", name = "firebase-auth-ktx", version.ref = "firebaseAuth" }
 firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore-ktx", version.ref = "firebaseFirestore" }
+firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashlytics", version.ref = "firebaseCrashlyticsSdk" }
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
 androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
 androidx-credentials-play-services-auth = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }

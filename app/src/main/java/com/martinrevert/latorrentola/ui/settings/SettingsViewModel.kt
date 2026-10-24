@@ -36,7 +36,8 @@ class SettingsViewModel @Inject constructor(
     private val firebaseMessagingInitializer: FirebaseMessagingInitializer,
     private val userLibraryRepository: com.martinrevert.latorrentola.network.UserLibraryRepository,
     private val authRepository: com.martinrevert.latorrentola.network.AuthRepository,
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val crashlyticsManager: com.martinrevert.latorrentola.network.CrashlyticsManager = com.martinrevert.latorrentola.network.CrashlyticsManager()
 ) : ViewModel() {
 
     /** Mutable backing state for settings displayed by the screen. */
@@ -271,6 +272,10 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(availableStorageLocations = availableLocations)
     }
 
+    /** Dispatches an intentional crash to test Crashlytics report delivery. */
+    fun triggerTestCrash() {
+        crashlyticsManager.triggerTestCrash()
+    }
 }
 
 /**
