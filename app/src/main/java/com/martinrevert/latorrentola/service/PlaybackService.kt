@@ -217,6 +217,16 @@ class PlaybackService : MediaSessionService() {
             remotePlayerInstance.setSessionAvailabilityListener(object : SessionAvailabilityListener {
                 override fun onCastSessionAvailable() {
                     Log.i(TAG, "Cast session available - ensuring active playback continues")
+                    try {
+                        remotePlayer?.let { player ->
+                            player.trackSelectionParameters = player.trackSelectionParameters
+                                .buildUpon()
+                                .clearOverrides()
+                                .build()
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed clearing overrides on Cast session available: ${e.message}")
+                    }
                     val wasPlaying = localPlayer?.isPlaying == true || localPlayer?.playWhenReady == true
                     if (wasPlaying) {
                         serviceScope.launch {
@@ -336,6 +346,10 @@ class PlaybackService : MediaSessionService() {
                     if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
                         saveCurrentProgress(proxyPlayer)
                     }
+                }
+
+                override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                    Log.d(TAG, "Cast tracks changed: ${tracks.groups.size} groups available on receiver")
                 }
             })
 

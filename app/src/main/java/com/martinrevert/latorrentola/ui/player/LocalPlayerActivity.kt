@@ -512,8 +512,18 @@ class LocalPlayerActivity : FragmentActivity() {
                         val isCasting = deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE
 
                         LaunchedEffect(isCasting) {
-                            if (isCasting && showCastBottomSheet) {
-                                showCastBottomSheet = false
+                            if (isCasting) {
+                                if (showCastBottomSheet) {
+                                    showCastBottomSheet = false
+                                }
+                                try {
+                                    controller.trackSelectionParameters = controller.trackSelectionParameters
+                                        .buildUpon()
+                                        .clearOverrides()
+                                        .build()
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Failed clearing overrides upon cast transition: ${e.message}")
+                                }
                             }
                         }
 
@@ -1690,6 +1700,7 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     private fun selectDefaultSubtitleIfNeeded(controller: Player) {
+        if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE) return
         val textGroups = controller.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
         if (textGroups.isEmpty()) return
 
@@ -2283,7 +2294,7 @@ class LocalPlayerActivity : FragmentActivity() {
         val parameters = controller.trackSelectionParameters.buildUpon()
             .clearOverridesOfType(media3Type)
             .setTrackTypeDisabled(media3Type, type == PlaybackTrackType.SUBTITLE && option == null)
-        if (option?.group != null && option.trackIndex != null) {
+        if (option?.group != null && option.trackIndex != null && controller.deviceInfo.playbackType != DeviceInfo.PLAYBACK_TYPE_REMOTE) {
             controller.trackSelectionParameters = parameters
                 .setOverrideForType(TrackSelectionOverride(option.group, listOf(option.trackIndex)))
                 .build()
