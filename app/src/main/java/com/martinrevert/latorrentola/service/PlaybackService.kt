@@ -82,59 +82,7 @@ class PlaybackService : MediaSessionService() {
                 .build()
             localPlayer = exoPlayer
 
-            val trackSelector = object : CastTrackSelector() {
-                override fun evaluate(request: CastTrackSelectorRequest): CastTrackSelectorResult {
-                    val builder = request.buildResultUpon()
-                    val params = request.trackSelectionParameters
-                    val selectedGroups = request.currentlySelectedTrackGroups.toMutableSet()
-
-                    // 1. Audio Track Evaluation
-                    val audioTrackGroups = request.trackGroupList.filter { it.type == C.TRACK_TYPE_AUDIO }
-                    if (audioTrackGroups.isNotEmpty()) {
-                        val audioOverride = params.overrides.values.firstOrNull { it.mediaTrackGroup.type == C.TRACK_TYPE_AUDIO }
-                        val targetAudioGroup = if (audioOverride != null) {
-                            audioOverride.mediaTrackGroup
-                        } else {
-                            val prefAudioLang = params.preferredAudioLanguages.firstOrNull()
-                            if (prefAudioLang != null) {
-                                audioTrackGroups.firstOrNull {
-                                    it.getFormat(0).language?.equals(prefAudioLang, ignoreCase = true) == true
-                                }
-                            } else null
-                        }
-                        if (targetAudioGroup != null) {
-                            selectedGroups.removeAll { it.type == C.TRACK_TYPE_AUDIO }
-                            selectedGroups.add(targetAudioGroup)
-                        }
-                    }
-
-                    // 2. Text Track Evaluation
-                    if (params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)) {
-                        selectedGroups.removeAll { it.type == C.TRACK_TYPE_TEXT }
-                    } else {
-                        val textTrackGroups = request.trackGroupList.filter { it.type == C.TRACK_TYPE_TEXT }
-                        if (textTrackGroups.isNotEmpty()) {
-                            val textOverride = params.overrides.values.firstOrNull { it.mediaTrackGroup.type == C.TRACK_TYPE_TEXT }
-                            val targetTextGroup = if (textOverride != null) {
-                                textOverride.mediaTrackGroup
-                            } else {
-                                val prefLang = params.preferredTextLanguages.firstOrNull()
-                                if (prefLang != null) {
-                                    textTrackGroups.firstOrNull {
-                                        it.getFormat(0).language?.equals(prefLang, ignoreCase = true) == true
-                                    }
-                                } else null
-                            } ?: textTrackGroups.first()
-
-                            selectedGroups.removeAll { it.type == C.TRACK_TYPE_TEXT }
-                            selectedGroups.add(targetTextGroup)
-                        }
-                    }
-
-                    builder.setSelections(com.google.common.collect.ImmutableSet.copyOf(selectedGroups))
-                    return builder.build()
-                }
-            }
+            val trackSelector = AppCastTrackSelector()
 
             val remotePlayerInstance = RemoteCastPlayer.Builder(this)
                 .setTrackSelector(trackSelector)
