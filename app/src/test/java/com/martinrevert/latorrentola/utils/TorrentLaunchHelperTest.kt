@@ -25,7 +25,17 @@ class TorrentLaunchHelperTest {
 
         assertThat(uri).startsWith("magnet:?xt=urn:btih:abc123def456")
         assertThat(uri).contains("dn=Inception")
-        assertThat(uri).contains("tr=udp://open.demonii.com:1337/announce")
+        assertThat(uri).contains("tr=udp://tracker.opentrackr.org:1337/announce")
+    }
+
+    @Test
+    fun `ensureTrackers should append live trackers to bare magnet`() {
+        val bareMagnet = "magnet:?xt=urn:btih:abc123def456&dn=Test"
+        val augmented = TorrentLaunchHelper.ensureTrackers(bareMagnet)
+
+        assertThat(augmented).startsWith("magnet:?xt=urn:btih:abc123def456&dn=Test")
+        assertThat(augmented).contains("tr=udp://tracker.opentrackr.org:1337/announce")
+        assertThat(augmented).contains("tr=udp://open.stealth.si:80/announce")
     }
 
     @Test

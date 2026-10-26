@@ -9,6 +9,7 @@ import android.util.Log
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.network.UserLibraryRepository
+import com.martinrevert.latorrentola.network.PublicTrackersRepository
 import com.martinrevert.latorrentola.ui.player.LocalPlayerActivity
 import com.martinrevert.latorrentola.model.torrent.TorrentDownload
 import com.martinrevert.latorrentola.utils.MediaIdHelper
@@ -78,6 +79,10 @@ class TorrentDownloadService : Service() {
     /** Repository managing user favorites, downloads, and watch history sync. */
     @Inject
     lateinit var userLibraryRepository: UserLibraryRepository
+
+    /** Repository managing live public BitTorrent trackers. */
+    @Inject
+    lateinit var publicTrackersRepository: PublicTrackersRepository
 
     /** Background work scope owned by this service instance. */
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -948,11 +953,22 @@ class TorrentDownloadService : Service() {
         }
         manager.addListener(alertListener)
 
+        // Non-blocking background check for stale tracker cache (>24h)
+        serviceScope.launch {
+            try {
+                publicTrackersRepository.refreshTrackersIfStale()
+            } catch (e: Exception) {
+                Log.w(TAG, "Non-critical: background tracker refresh error: ${e.message}")
+            }
+        }
+
+        val effectiveMagnetUri = TorrentLaunchHelper.ensureTrackers(request.magnetUri)
+
         synchronized(sessionLock) {
             sessionManager = manager
             manager.start(sessionParams)
             manager.download(
-                request.magnetUri,
+                effectiveMagnetUri,
                 downloadDirectory,
                 TorrentFlags.SEQUENTIAL_DOWNLOAD
             )

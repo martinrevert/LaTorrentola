@@ -25,9 +25,9 @@ object TorrentSessionConfig {
         pack.setInteger(settings_pack.int_types.hashing_threads.swigValue(), hashingThreads)
 
         // 2. Peer connections & unchoking limits: generous enough for fast swarm reciprocity
-        val connections = if (isTv || isLowRam) 80 else 120
-        val maxPeers = if (isTv || isLowRam) 120 else 200
-        val unchokeSlots = if (isTv || isLowRam) 6 else 10
+        val connections = if (isTv || isLowRam) 150 else 250
+        val maxPeers = if (isTv || isLowRam) 1000 else 2000
+        val unchokeSlots = if (isTv || isLowRam) 12 else 20
         pack.connectionsLimit(connections)
         pack.setInteger(settings_pack.int_types.max_peerlist_size.swigValue(), maxPeers)
         pack.setInteger(settings_pack.int_types.unchoke_slots_limit.swigValue(), unchokeSlots)

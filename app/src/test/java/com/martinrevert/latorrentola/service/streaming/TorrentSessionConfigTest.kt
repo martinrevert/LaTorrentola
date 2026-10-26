@@ -26,7 +26,9 @@ class TorrentSessionConfigTest {
         val params = TorrentSessionConfig.buildSessionParams(isTv = true)
         val sp = params.settings
 
-        assertThat(sp.connectionsLimit()).isEqualTo(80)
+        assertThat(sp.connectionsLimit()).isEqualTo(150)
+        assertThat(sp.getInteger(settings_pack.int_types.max_peerlist_size.swigValue())).isEqualTo(1000)
+        assertThat(sp.getInteger(settings_pack.int_types.unchoke_slots_limit.swigValue())).isEqualTo(12)
         assertThat(sp.activeSeeds()).isEqualTo(0)
         assertThat(sp.uploadRateLimit()).isEqualTo(0)
         assertThat(sp.getInteger(settings_pack.int_types.aio_threads.swigValue())).isEqualTo(2)
@@ -39,7 +41,9 @@ class TorrentSessionConfigTest {
         val params = TorrentSessionConfig.buildSessionParams(isTv = false)
         val sp = params.settings
 
-        assertThat(sp.connectionsLimit()).isEqualTo(120)
+        assertThat(sp.connectionsLimit()).isEqualTo(250)
+        assertThat(sp.getInteger(settings_pack.int_types.max_peerlist_size.swigValue())).isEqualTo(2000)
+        assertThat(sp.getInteger(settings_pack.int_types.unchoke_slots_limit.swigValue())).isEqualTo(20)
         assertThat(sp.activeSeeds()).isEqualTo(0)
         assertThat(sp.uploadRateLimit()).isEqualTo(0)
         assertThat(sp.getInteger(settings_pack.int_types.aio_threads.swigValue())).isEqualTo(2)

@@ -44,13 +44,19 @@ object TorrentLaunchHelper {
      *
      * @param hash Torrent info hash.
      * @param title Human-readable media title.
-     * @return Formatted BTIH magnet URI with the app's standard trackers.
+     * @return Formatted BTIH magnet URI with active high-availability public trackers.
      */
     fun buildMagnetUri(hash: String, title: String): String {
         val encodedTitle = URLEncoder.encode(title, Charsets.UTF_8.name())
-        return "magnet:?xt=urn:btih:$hash&dn=$encodedTitle" +
-            "&tr=udp://open.demonii.com:1337/announce" +
-            "&tr=udp://tracker.openbittorrent.com:80"
+        val baseMagnet = "magnet:?xt=urn:btih:$hash&dn=$encodedTitle"
+        return com.martinrevert.latorrentola.network.PublicTrackersRepository.ensureTrackersInMagnet(baseMagnet)
+    }
+
+    /**
+     * Ensures that any given [magnetUri] contains the active high-availability public trackers.
+     */
+    fun ensureTrackers(magnetUri: String): String {
+        return com.martinrevert.latorrentola.network.PublicTrackersRepository.ensureTrackersInMagnet(magnetUri)
     }
 
     /**
