@@ -31,6 +31,15 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.tv.material3.IconButton as TvIconButton
 import androidx.compose.material3.*
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.runtime.LaunchedEffect
+import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -224,8 +233,7 @@ private fun SettingsScreenContent(
             )
         }
     ) { padding ->
-        val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-        val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val layoutDirection = LocalLayoutDirection.current
 
         Box(
             modifier = Modifier
@@ -234,22 +242,31 @@ private fun SettingsScreenContent(
                 .consumeWindowInsets(padding)
         ) {
         if (isWideScreen) {
+            val leftScrollState = rememberScrollState()
+            val rightScrollState = rememberScrollState()
+            val horizontalPadding = if (isTv) 48.dp else 24.dp
+            val startPadding = maxOf(horizontalPadding, padding.calculateStartPadding(layoutDirection))
+            val endPadding = maxOf(horizontalPadding, padding.calculateEndPadding(layoutDirection))
+            val topPadding = padding.calculateTopPadding() + 8.dp
+            val bottomPadding = padding.calculateBottomPadding() + 16.dp
+
             Row(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(
-                        top = 64.dp + statusBarHeight + 16.dp,
-                        bottom = 16.dp + navBarHeight,
-                        start = 24.dp,
-                        end = 24.dp
+                        top = topPadding,
+                        bottom = bottomPadding,
+                        start = startPadding,
+                        end = endPadding
                     ),
-                horizontalArrangement = Arrangement.spacedBy(48.dp)
+                horizontalArrangement = Arrangement.spacedBy(if (isTv) 48.dp else 24.dp)
             ) {
                 // Left Column: User, Theme, Actions
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight(),
+                        .fillMaxHeight()
+                        .verticalScroll(leftScrollState),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     if (userPhotoUrl != null || userName != null) {
@@ -272,13 +289,13 @@ private fun SettingsScreenContent(
                         onClick = onExternalMediaClick
                     )
 
-                    Spacer(modifier = Modifier.weight(1f))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-                    TestCrashSetting(isTv = isTv, onTestCrash = onTestCrash)
+                    TestCrashSetting(isTv = isTv, onTestCrash = onTestCrash, themeMode = uiState.theme)
                     Spacer(modifier = Modifier.height(16.dp))
 
                     AppVersionInfo(isTv = isTv)
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(32.dp))
                 }
 
                 // Right Column: Toggles and Language Filter
@@ -286,7 +303,7 @@ private fun SettingsScreenContent(
                     modifier = Modifier
                         .weight(1.2f)
                         .fillMaxHeight()
-                        .verticalScroll(rememberScrollState()),
+                        .verticalScroll(rightScrollState),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     SettingsToggle(
@@ -369,16 +386,21 @@ private fun SettingsScreenContent(
                 }
             }
         } else {
+            val startPadding = maxOf(16.dp, padding.calculateStartPadding(layoutDirection))
+            val endPadding = maxOf(16.dp, padding.calculateEndPadding(layoutDirection))
+            val topPadding = padding.calculateTopPadding() + 8.dp
+            val bottomPadding = padding.calculateBottomPadding() + 16.dp
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(scrollState)
                     .imePadding()
                     .padding(
-                        top = 64.dp + statusBarHeight + 16.dp,
-                        bottom = 16.dp + navBarHeight,
-                        start = 16.dp,
-                        end = 16.dp
+                        top = topPadding,
+                        bottom = bottomPadding,
+                        start = startPadding,
+                        end = endPadding
                     ),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -493,7 +515,7 @@ private fun SettingsScreenContent(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                TestCrashSetting(isTv = isTv, onTestCrash = onTestCrash)
+                TestCrashSetting(isTv = isTv, onTestCrash = onTestCrash, themeMode = uiState.theme)
 
                 Spacer(modifier = Modifier.height(24.dp))
                 
@@ -510,10 +532,30 @@ private fun SettingsScreenContent(
  * Renders a test crash button to verify Crashlytics report delivery.
  */
 @Composable
-private fun TestCrashSetting(isTv: Boolean, onTestCrash: () -> Unit) {
+private fun TestCrashSetting(
+    isTv: Boolean,
+    onTestCrash: () -> Unit,
+    themeMode: Int? = null
+) {
+    var showConfirmDialog by remember { mutableStateOf(false) }
+
+    if (showConfirmDialog) {
+        ConfirmCrashDialog(
+            isTv = isTv,
+            onConfirm = {
+                showConfirmDialog = false
+                onTestCrash()
+            },
+            onDismiss = {
+                showConfirmDialog = false
+            },
+            themeMode = themeMode
+        )
+    }
+
     if (isTv) {
         androidx.tv.material3.Surface(
-            onClick = onTestCrash,
+            onClick = { showConfirmDialog = true },
             modifier = Modifier
                 .fillMaxWidth()
                 .focusHighlight(shape = RoundedCornerShape(12.dp)),
@@ -555,7 +597,7 @@ private fun TestCrashSetting(isTv: Boolean, onTestCrash: () -> Unit) {
         }
     } else {
         OutlinedCard(
-            onClick = onTestCrash,
+            onClick = { showConfirmDialog = true },
             modifier = Modifier
                 .fillMaxWidth()
                 .focusHighlight(shape = RoundedCornerShape(12.dp)),
@@ -591,6 +633,129 @@ private fun TestCrashSetting(isTv: Boolean, onTestCrash: () -> Unit) {
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Confirmation dialog before triggering an intentional test crash.
+ */
+@Composable
+private fun ConfirmCrashDialog(
+    isTv: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    themeMode: Int? = null
+) {
+    val context = LocalContext.current
+    val effectiveThemeMode = remember(context, themeMode) {
+        themeMode ?: PreferenceManager(context).getTheme()
+    }
+
+    if (isTv) {
+        TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
+            val cancelFocusRequester = remember { FocusRequester() }
+
+            LaunchedEffect(Unit) {
+                delay(150.milliseconds)
+                try {
+                    cancelFocusRequester.requestFocus()
+                } catch (_: Exception) {}
+            }
+
+            Dialog(
+                onDismissRequest = onDismiss,
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                androidx.tv.material3.Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = androidx.tv.material3.SurfaceDefaults.colors(
+                        containerColor = TvMaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.98f),
+                        contentColor = TvMaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier
+                        .width(420.dp)
+                        .padding(16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.Start
+                    ) {
+                        androidx.tv.material3.Text(
+                            text = stringResource(R.string.settings_test_crash_confirm_title),
+                            style = TvMaterialTheme.typography.titleLarge,
+                            color = TvMaterialTheme.colorScheme.onSurface
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        androidx.tv.material3.Text(
+                            text = stringResource(R.string.settings_test_crash_confirm_desc),
+                            style = TvMaterialTheme.typography.bodyMedium,
+                            color = TvMaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)
+                        ) {
+                            androidx.tv.material3.Button(
+                                onClick = onDismiss,
+                                colors = androidx.tv.material3.ButtonDefaults.colors(
+                                    containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                                    contentColor = TvMaterialTheme.colorScheme.onSurfaceVariant,
+                                    focusedContainerColor = TvMaterialTheme.colorScheme.primaryContainer,
+                                    focusedContentColor = TvMaterialTheme.colorScheme.onPrimaryContainer
+                                ),
+                                modifier = Modifier.focusRequester(cancelFocusRequester)
+                            ) {
+                                androidx.tv.material3.Text(text = stringResource(R.string.cancel))
+                            }
+
+                            androidx.tv.material3.Button(
+                                onClick = onConfirm,
+                                colors = androidx.tv.material3.ButtonDefaults.colors(
+                                    containerColor = TvMaterialTheme.colorScheme.error,
+                                    contentColor = TvMaterialTheme.colorScheme.onError,
+                                    focusedContainerColor = TvMaterialTheme.colorScheme.errorContainer,
+                                    focusedContentColor = TvMaterialTheme.colorScheme.onErrorContainer
+                                )
+                            ) {
+                                androidx.tv.material3.Text(text = stringResource(R.string.settings_test_crash_confirm_action))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        LaTorrentolaTheme(themeMode = effectiveThemeMode) {
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                title = {
+                    Text(text = stringResource(R.string.settings_test_crash_confirm_title))
+                },
+                text = {
+                    Text(text = stringResource(R.string.settings_test_crash_confirm_desc))
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = onConfirm,
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text(text = stringResource(R.string.settings_test_crash_confirm_action))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = onDismiss) {
+                        Text(text = stringResource(R.string.cancel))
+                    }
+                }
+            )
         }
     }
 }
@@ -1029,32 +1194,84 @@ private fun LogoutButton(isTv: Boolean, onClick: () -> Unit) {
 /** Displays the installed application version. */
 @Composable
 private fun AppVersionInfo(isTv: Boolean = false) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        if (isTv) {
-            androidx.tv.material3.Text(
-                text = stringResource(R.string.app_version, BuildConfig.VERSION_NAME),
-                style = TvMaterialTheme.typography.labelMedium,
-                color = TvMaterialTheme.colorScheme.onSurfaceVariant
+    val context = LocalContext.current
+    if (isTv) {
+        androidx.tv.material3.Surface(
+            onClick = {
+                Toast.makeText(
+                    context,
+                    "${context.getString(R.string.app_name)} v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                    Toast.LENGTH_SHORT
+                ).show()
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusHighlight(shape = RoundedCornerShape(12.dp)),
+            shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(TvMaterialTheme.shapes.medium),
+            colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
+                containerColor = TvMaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                contentColor = TvMaterialTheme.colorScheme.onSurfaceVariant,
+                focusedContainerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+                focusedContentColor = TvMaterialTheme.colorScheme.onSurface
+            ),
+            scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.02f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp, horizontal = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                androidx.tv.material3.Text(
+                    text = stringResource(R.string.app_version, BuildConfig.VERSION_NAME),
+                    style = TvMaterialTheme.typography.labelMedium,
+                    color = TvMaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+                androidx.tv.material3.Text(
+                    text = stringResource(R.string.app_build, BuildConfig.VERSION_CODE),
+                    style = TvMaterialTheme.typography.labelSmall,
+                    color = TvMaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    } else {
+        OutlinedCard(
+            onClick = {
+                Toast.makeText(
+                    context,
+                    "${context.getString(R.string.app_name)} v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                    Toast.LENGTH_SHORT
+                ).show()
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusHighlight(shape = RoundedCornerShape(12.dp)),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.outlinedCardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.5f)
             )
-            androidx.tv.material3.Text(
-                text = stringResource(R.string.app_build, BuildConfig.VERSION_CODE),
-                style = TvMaterialTheme.typography.labelSmall,
-                color = TvMaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-            )
-        } else {
-            Text(
-                text = stringResource(R.string.app_version, BuildConfig.VERSION_NAME),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = stringResource(R.string.app_build, BuildConfig.VERSION_CODE),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp, horizontal = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = stringResource(R.string.app_version, BuildConfig.VERSION_NAME),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = stringResource(R.string.app_build, BuildConfig.VERSION_CODE),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }

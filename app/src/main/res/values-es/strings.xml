@@ -381,4 +381,7 @@
     <string name="torrent_seeds_count">%1$d seeds</string>
     <string name="settings_test_crash">Probar Crashlytics</string>
     <string name="settings_test_crash_desc">Fuerza un cierre inesperado para verificar reportes en Firebase</string>
+    <string name="settings_test_crash_confirm_title">¿Forzar cierre de prueba?</string>
+    <string name="settings_test_crash_confirm_desc">Esto cerrará la aplicación de inmediato para verificar los reportes de Crashlytics. ¿Deseas continuar?</string>
+    <string name="settings_test_crash_confirm_action">Cerrar app</string>
 </resources>

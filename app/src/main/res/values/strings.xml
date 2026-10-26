@@ -381,6 +381,9 @@
     <string name="torrent_seeds_count">%1$d seeds</string>
     <string name="settings_test_crash">Test Crashlytics</string>
     <string name="settings_test_crash_desc">Forces an intentional crash to verify Firebase reporting</string>
+    <string name="settings_test_crash_confirm_title">Trigger Test Crash?</string>
+    <string name="settings_test_crash_confirm_desc">This will close the application immediately to verify Crashlytics crash reporting. Are you sure?</string>
+    <string name="settings_test_crash_confirm_action">Crash App</string>
 
     <string name="asset_statements" translatable="false">[]</string>
 </resources>

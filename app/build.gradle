@@ -134,6 +134,7 @@ def getGitBranch(providers) {
 }
 
 def gitBranch = getGitBranch(providers)
+def safeBranch = gitBranch.replaceAll(/[^A-Za-z0-9.-]/, "-")
 
 android {
     namespace = 'com.martinrevert.latorrentola'
@@ -215,10 +216,12 @@ android {
 
     buildTypes {
         debug {
+            versionNameSuffix "-${safeBranch}-debug"
             enableUnitTestCoverage = true
             signingConfig = signingConfigs.debug
         }
         release {
+            versionNameSuffix "-${safeBranch}-release"
             signingConfig = signingConfigs.release
             minifyEnabled = true
             shrinkResources = true
@@ -254,7 +257,6 @@ tasks.matching { it.name.startsWith("compile") && it.name.contains("Kotlin") }.c
 
 // Global base name for all generated archives (APKs, AABs, etc.)
 base {
-    def safeBranch = gitBranch.replaceAll(/[^A-Za-z0-9.-]/, "-")
     archivesName.set("${safeBranch}-LaTorrentola-v3.0.$gitVersionCount")
 }
 

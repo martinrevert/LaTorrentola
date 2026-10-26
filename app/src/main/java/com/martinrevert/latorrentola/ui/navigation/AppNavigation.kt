@@ -2,11 +2,15 @@
 
 package com.martinrevert.latorrentola.ui.navigation
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.martinrevert.latorrentola.utils.PreferenceManager
@@ -111,6 +115,71 @@ sealed interface Route : NavKey {
     ) : Route
 }
 
+/**
+ * Resolves the host [Activity] from a given [Context], traversing through [ContextWrapper]s if necessary.
+ */
+internal fun Context.findActivity(): Activity? {
+    var ctx = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
+}
+
+/**
+ * Encapsulates safe back stack operations to prevent [IllegalArgumentException]: NavDisplay backstack cannot be empty.
+ */
+internal object NavBackStackHandler {
+    /**
+     * Safely pops the top destination if there is more than 1 entry in the back stack.
+     * If only 1 entry remains, it calls [onFinish] to finish the activity and exit the app instead of emptying the stack.
+     */
+    fun pop(backStack: MutableList<*>, onFinish: () -> Unit) {
+        if (backStack.size > 1) {
+            backStack.removeLastOrNull()
+        } else {
+            onFinish()
+        }
+    }
+
+    /**
+     * Resets the entire back stack to [targetRoute] without ever leaving the stack empty.
+     * By adding [targetRoute] first and removing preceding elements, the stack size is always >= 1.
+     */
+    fun <T : Any> resetTo(backStack: MutableList<in T>, targetRoute: T) {
+        Snapshot.withMutableSnapshot {
+            backStack.add(targetRoute)
+            while (backStack.size > 1) {
+                backStack.removeAt(0)
+            }
+        }
+    }
+
+    /**
+     * Navigates to [targetRoute] while replacing an existing [Route.Detail] if present at the top,
+     * ensuring the back stack is never momentarily empty.
+     */
+    fun <T : Any> replaceTopDetail(backStack: MutableList<in T>, targetRoute: T) {
+        Snapshot.withMutableSnapshot {
+            val shouldReplace = (backStack as List<*>).lastOrNull() is Route.Detail
+            backStack.add(targetRoute)
+            if (shouldReplace && backStack.size > 1) {
+                backStack.removeAt(backStack.size - 2)
+            }
+        }
+    }
+
+    /**
+     * Ensures [backStack] has at least one entry, adding [fallbackRoute] if empty.
+     */
+    fun <T : Any> ensureNotEmpty(backStack: MutableList<in T>, fallbackRoute: T) {
+        if (backStack.isEmpty()) {
+            backStack.add(fallbackRoute)
+        }
+    }
+}
+
 /** Creates the authenticated navigation graph and consumes pending deep-link data. */
 @Composable
 fun AppNavigation(
@@ -126,16 +195,23 @@ fun AppNavigation(
     val preferenceManager = remember(context) { PreferenceManager(context) }
     val themeMode by preferenceManager.themeFlow.collectAsState(initial = preferenceManager.getTheme())
     
-    val backStack = rememberNavBackStack(if (isLoggedIn) Route.Home else Route.Login)
+    val initialRoute = if (isLoggedIn) Route.Home else Route.Login
+    val backStack = rememberNavBackStack(initialRoute)
+    NavBackStackHandler.ensureNotEmpty(backStack, initialRoute)
+
+    val popBackStack = remember(context, backStack) {
+        {
+            NavBackStackHandler.pop(backStack) {
+                context.findActivity()?.finish()
+            }
+        }
+    }
 
     // Handle session expiry or logout from other parts of the app
     LaunchedEffect(currentUser) {
         if (currentUser == null && backStack.firstOrNull() != Route.Login) {
             authViewModel.resetAuthState()
-            while (backStack.isNotEmpty()) {
-                backStack.removeLastOrNull()
-            }
-            backStack.add(Route.Login)
+            NavBackStackHandler.resetTo(backStack, Route.Login)
         }
     }
 
@@ -158,7 +234,7 @@ fun AppNavigation(
 
     NavDisplay(
         backStack = backStack,
-        onBack = { backStack.removeLastOrNull() },
+        onBack = popBackStack,
         entryProvider = entryProvider {
             entry<Route.Login> {
                 LoginScreen(
@@ -166,10 +242,7 @@ fun AppNavigation(
                     themeMode = themeMode,
                     onLoginSuccess = {
                         authViewModel.resetAuthState()
-                        while (backStack.isNotEmpty()) {
-                            backStack.removeLastOrNull()
-                        }
-                        backStack.add(Route.Home)
+                        NavBackStackHandler.resetTo(backStack, Route.Home)
                     }
                 )
             }
@@ -220,12 +293,9 @@ fun AppNavigation(
                 }
                 MovieDetailScreen(
                     viewModel = viewModel,
-                    onBackClick = { backStack.removeLastOrNull() },
+                    onBackClick = popBackStack,
                     onTvSeriesClick = { seriesId ->
-                        if (backStack.lastOrNull() is Route.Detail) {
-                            backStack.removeLastOrNull()
-                        }
-                        backStack.add(Route.TvDetail(seriesId))
+                        NavBackStackHandler.replaceTopDetail(backStack, Route.TvDetail(seriesId))
                     }
                 )
             }
@@ -238,13 +308,10 @@ fun AppNavigation(
                     userName = user?.displayName,
                     userEmail = user?.email,
                     themeMode = themeMode,
-                    onBackClick = { backStack.removeLastOrNull() },
+                    onBackClick = popBackStack,
                     onLogoutClick = {
                         authViewModel.signOut()
-                        while (backStack.isNotEmpty()) {
-                            backStack.removeLastOrNull()
-                        }
-                        backStack.add(Route.Login)
+                        NavBackStackHandler.resetTo(backStack, Route.Login)
                     },
                     onDownloadsClick = { backStack.add(Route.Downloads) },
                     onExternalMediaClick = { backStack.add(Route.ExternalMedia) }
@@ -252,13 +319,13 @@ fun AppNavigation(
             }
             entry<Route.Downloads> {
                 TorrentDownloadsScreen(
-                    onBackClick = { backStack.removeLastOrNull() }
+                    onBackClick = popBackStack
                 )
             }
             entry<Route.ExternalMedia> {
                 ExternalMediaBrowserScreen(
                     themeMode = themeMode,
-                    onBackClick = { backStack.removeLastOrNull() }
+                    onBackClick = popBackStack
                 )
             }
             entry<Route.Search> { searchKey ->
@@ -275,7 +342,7 @@ fun AppNavigation(
                     onTvSeriesClick = { series ->
                         backStack.add(Route.TvDetail(series.id))
                     },
-                    onBackClick = { backStack.removeLastOrNull() }
+                    onBackClick = popBackStack
                 )
             }
             entry<Route.TvGenre> { genreKey ->
@@ -289,7 +356,7 @@ fun AppNavigation(
                     onSeriesClick = { series ->
                         backStack.add(Route.TvDetail(series.id))
                     },
-                    onBackClick = { backStack.removeLastOrNull() }
+                    onBackClick = popBackStack
                 )
             }
             entry<Route.TvDetail> { detailKey ->
@@ -311,7 +378,7 @@ fun AppNavigation(
                             )
                         )
                     },
-                    onBackClick = { backStack.removeLastOrNull() },
+                    onBackClick = popBackStack,
                     onFilmographyCreditClick = { credit: TmdbCastCredit ->
                         if (credit.mediaType == "tv") {
                             backStack.add(Route.TvDetail(credit.id))
@@ -337,7 +404,7 @@ fun AppNavigation(
                     episodeNumber = episodeKey.episodeNumber,
                     seriesName = episodeKey.seriesName,
                     episodeJson = episodeKey.episodeJson,
-                    onBackClick = { backStack.removeLastOrNull() }
+                    onBackClick = popBackStack
                 )
             }
         }
