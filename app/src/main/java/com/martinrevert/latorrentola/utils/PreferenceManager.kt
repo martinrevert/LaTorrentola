@@ -38,6 +38,9 @@ class PreferenceManager @Inject constructor(
     /** Observable storage location identifier. */
     val storageLocationFlow: StateFlow<String> get() = _storageLocationFlow.asStateFlow()
 
+    /** Observable setting for converting multichannel AAC 5.1 to AC3 5.1. */
+    val convertAac51ToAc3Flow: StateFlow<Boolean> get() = _convertAac51ToAc3Flow.asStateFlow()
+
     /** Listener to mirror changes from SharedPreferences directly into reactive StateFlows. */
     private val preferenceChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
@@ -47,6 +50,7 @@ class PreferenceManager @Inject constructor(
             KEY_TORRENT_HANDLING_MODE -> _torrentHandlingModeFlow.value = getTorrentHandlingMode()
             KEY_AUTO_PLAY_QUALITY_SELECTION_METHOD -> _autoPlayQualitySelectionFlow.value = getAutoPlayQualitySelectionMethod()
             KEY_STORAGE_LOCATION -> _storageLocationFlow.value = getStorageLocation()
+            KEY_CONVERT_AAC51_TO_AC3 -> _convertAac51ToAc3Flow.value = getConvertAac51ToAc3()
         }
     }
 
@@ -57,6 +61,7 @@ class PreferenceManager @Inject constructor(
         _torrentHandlingModeFlow.value = getTorrentHandlingMode()
         _autoPlayQualitySelectionFlow.value = getAutoPlayQualitySelectionMethod()
         _storageLocationFlow.value = getStorageLocation()
+        _convertAac51ToAc3Flow.value = getConvertAac51ToAc3()
         sharedPreferences.registerOnSharedPreferenceChangeListener(preferenceChangeListener)
     }
 
@@ -238,6 +243,15 @@ class PreferenceManager @Inject constructor(
         return if (value.isBlank() || value.startsWith("remote:")) "internal" else value
     }
 
+    /** Persists whether multichannel AAC 5.1 tracks should be transcoded to AC3 5.1 for SPDIF/ARC surround passthrough. */
+    fun setConvertAac51ToAc3(enabled: Boolean) {
+        sharedPreferences.edit { putBoolean(KEY_CONVERT_AAC51_TO_AC3, enabled) }
+        _convertAac51ToAc3Flow.value = enabled
+    }
+
+    /** Returns whether AAC 5.1 to AC3 5.1 transcoding is enabled (defaults to false). */
+    fun getConvertAac51ToAc3(): Boolean = sharedPreferences.getBoolean(KEY_CONVERT_AAC51_TO_AC3, false)
+
     companion object {
         /** Preference key controlling general voice guidance. */
         private const val KEY_VOICE_SYSTEM = "voice_system"
@@ -269,6 +283,8 @@ class PreferenceManager @Inject constructor(
         private const val KEY_AUTO_PLAY_QUALITY_SELECTION_METHOD = "auto_play_quality_selection_method"
         /** Preference key for the download storage location. */
         private const val KEY_STORAGE_LOCATION = "storage_location"
+        /** Preference key controlling AAC 5.1 to AC3 5.1 transcoding. */
+        private const val KEY_CONVERT_AAC51_TO_AC3 = "convert_aac51_to_ac3"
         private const val KEY_SUBTITLE_FONT_NAME = "subtitle_font_name"
         private const val KEY_SUBTITLE_SIZE_FRACTION = "subtitle_size_fraction"
         private const val KEY_SUBTITLE_FG_COLOR = "subtitle_fg_color"
@@ -303,6 +319,8 @@ class PreferenceManager @Inject constructor(
         private val _autoPlayQualitySelectionFlow = MutableStateFlow(AutoPlayQualitySelectionMethod.OFF)
         /** Mutable backing stream for the configured download storage location shared across instances. */
         private val _storageLocationFlow = MutableStateFlow("internal")
+        /** Mutable backing stream for AAC 5.1 to AC3 5.1 conversion preference shared across instances. */
+        private val _convertAac51ToAc3Flow = MutableStateFlow(false)
     }
 }
 

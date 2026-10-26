@@ -33,3 +33,50 @@ target_link_libraries(
     android
     log
 )
+
+# -----------------------------------------------------------------------------
+# FFmpeg Media3 Extension (libffmpegJNI.so)
+# -----------------------------------------------------------------------------
+set(ffmpeg_location "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg")
+set(ffmpeg_binaries "${ffmpeg_location}/android-libs/${ANDROID_ABI}")
+
+if(EXISTS "${ffmpeg_binaries}/libavcodec.a")
+    add_library(avcodec STATIC IMPORTED)
+    set_target_properties(avcodec PROPERTIES IMPORTED_LOCATION "${ffmpeg_binaries}/libavcodec.a")
+
+    add_library(avutil STATIC IMPORTED)
+    set_target_properties(avutil PROPERTIES IMPORTED_LOCATION "${ffmpeg_binaries}/libavutil.a")
+
+    add_library(swresample STATIC IMPORTED)
+    set_target_properties(swresample PROPERTIES IMPORTED_LOCATION "${ffmpeg_binaries}/libswresample.a")
+
+    add_library(
+        ffmpegJNI
+        SHARED
+        ffmpeg_jni.cc
+    )
+
+    target_include_directories(
+        ffmpegJNI
+        PRIVATE
+        ${ffmpeg_binaries}/include
+        ${ffmpeg_location}
+    )
+
+    target_link_libraries(
+        ffmpegJNI
+        PRIVATE
+        avcodec
+        swresample
+        avutil
+        android
+        log
+    )
+
+    target_link_options(
+        ffmpegJNI
+        PRIVATE
+        "-Wl,-Bsymbolic"
+    )
+endif()
+

@@ -65,6 +65,8 @@
     <string name="settings_voice_translation">Translate movie summary</string>
     <string name="settings_vibrator">Vibrate on events</string>
     <string name="settings_push">Push Notifications</string>
+    <string name="settings_convert_aac51_to_ac3">Convert AAC 5.1 to AC3 5.1</string>
+    <string name="settings_convert_aac51_to_ac3_summary">Re-encodes multichannel AAC 5.1 audio tracks to Dolby Digital (AC3) for compatibility with Home Theater receivers and soundbars over SPDIF / HDMI ARC. Stereo tracks (AAC 2.0) are not modified.</string>
     <string name="settings_theme">Theme</string>
     <string name="torrent_mode_title">Torrent handling</string>
     <string name="torrent_mode_external">External torrent client</string>

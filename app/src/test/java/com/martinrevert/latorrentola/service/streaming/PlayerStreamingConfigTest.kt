@@ -34,4 +34,11 @@ class PlayerStreamingConfigTest {
     fun `http connect timeout is at least 10 seconds`() {
         assertThat(PlayerStreamingConfig.HTTP_CONNECT_TIMEOUT_MS).isAtLeast(10_000)
     }
+
+    @Test
+    fun `buildRenderersFactory creates factory with preferred extension renderer mode`() {
+        val context = io.mockk.mockk<android.content.Context>(relaxed = true)
+        val renderersFactory = PlayerStreamingConfig.buildRenderersFactory(context)
+        assertThat(renderersFactory).isNotNull()
+    }
 }

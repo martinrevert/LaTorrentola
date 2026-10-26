@@ -76,7 +76,8 @@ class SettingsViewModel @Inject constructor(
             availableStorageLocations = availableLocations,
             openSubtitlesUsername = openSubtitlesCredentials?.username.orEmpty(),
             openSubtitlesPassword = openSubtitlesCredentials?.password.orEmpty(),
-            openSubtitlesCredentialsConfigured = openSubtitlesCredentials != null
+            openSubtitlesCredentialsConfigured = openSubtitlesCredentials != null,
+            convertAac51ToAc3 = preferenceManager.getConvertAac51ToAc3()
         )
         syncSettings()
         observeSettingsChanges()
@@ -116,6 +117,13 @@ class SettingsViewModel @Inject constructor(
             preferenceManager.storageLocationFlow.collect { location ->
                 if (_uiState.value.storageLocation != location) {
                     _uiState.value = _uiState.value.copy(storageLocation = location)
+                }
+            }
+        }
+        viewModelScope.launch {
+            preferenceManager.convertAac51ToAc3Flow.collect { enabled ->
+                if (_uiState.value.convertAac51ToAc3 != enabled) {
+                    _uiState.value = _uiState.value.copy(convertAac51ToAc3 = enabled)
                 }
             }
         }
@@ -232,6 +240,16 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
+     * Updates and persists whether multichannel AAC 5.1 tracks should be transcoded to AC3 5.1.
+     *
+     * @param enabled Whether AAC 5.1 to AC3 5.1 transcoding is active.
+     */
+    fun setConvertAac51ToAc3(enabled: Boolean) {
+        preferenceManager.setConvertAac51ToAc3(enabled)
+        _uiState.value = _uiState.value.copy(convertAac51ToAc3 = enabled)
+    }
+
+    /**
      * Encrypts and stores the user's OpenSubtitles login.
      *
      * @param username Account username.
@@ -310,5 +328,6 @@ data class SettingsUiState(
     val availableStorageLocations: List<StorageLocation> = emptyList(),
     val openSubtitlesUsername: String = "",
     val openSubtitlesPassword: String = "",
-    val openSubtitlesCredentialsConfigured: Boolean = false
+    val openSubtitlesCredentialsConfigured: Boolean = false,
+    val convertAac51ToAc3: Boolean = false
 )

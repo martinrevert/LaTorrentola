@@ -4,3 +4,8 @@
 [submodule ".agents/skills"]
 	path = .agents/skills
 	url = https://github.com/android/skills.git
+[submodule "app/src/main/cpp/ffmpeg"]
+	path = app/src/main/cpp/ffmpeg
+	url = https://github.com/FFmpeg/FFmpeg.git
+	branch = master
+	ignore = dirty

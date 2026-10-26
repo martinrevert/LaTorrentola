@@ -48,11 +48,13 @@ class SettingsViewModelTest {
         every { preferenceManager.getTorrentHandlingMode() } returns TorrentHandlingMode.EXTERNAL_CLIENT
         every { preferenceManager.getAutoPlayQualitySelectionMethod() } returns com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod.OFF
         every { preferenceManager.getStorageLocation() } returns "internal"
+        every { preferenceManager.getConvertAac51ToAc3() } returns false
         every { preferenceManager.themeFlow } returns themeFlow
         every { preferenceManager.filteredLanguagesFlow } returns MutableStateFlow("es")
         every { preferenceManager.minimumRatingFlow } returns MutableStateFlow(PreferenceManager.DEFAULT_MINIMUM_RATING)
         every { preferenceManager.autoPlayQualitySelectionFlow } returns MutableStateFlow(com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod.OFF)
         every { preferenceManager.storageLocationFlow } returns MutableStateFlow("internal")
+        every { preferenceManager.convertAac51ToAc3Flow } returns MutableStateFlow(false)
         every { authRepository.authStateFlow } returns MutableStateFlow(null)
         
         viewModel = SettingsViewModel(
@@ -104,6 +106,15 @@ class SettingsViewModelTest {
         verify { preferenceManager.setTorrentHandlingMode(TorrentHandlingMode.LOCAL_PLAYBACK) }
         assertThat(viewModel.uiState.value.torrentHandlingMode)
             .isEqualTo(TorrentHandlingMode.LOCAL_PLAYBACK)
+    }
+
+    @Test
+    fun `setConvertAac51ToAc3 should update preference and state`() {
+        every { preferenceManager.setConvertAac51ToAc3(any()) } returns Unit
+        viewModel.setConvertAac51ToAc3(true)
+
+        verify { preferenceManager.setConvertAac51ToAc3(true) }
+        assertThat(viewModel.uiState.value.convertAac51ToAc3).isTrue()
     }
 
     /** Checks that subtitle account credentials are stored and cleared through the secure store. */

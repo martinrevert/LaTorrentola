@@ -75,8 +75,10 @@ class PlaybackService : MediaSessionService() {
             val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
                 .setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
 
+            val renderersFactory = PlayerStreamingConfig.buildRenderersFactory(this)
+
             // Build the local player
-            val exoPlayer = ExoPlayer.Builder(this)
+            val exoPlayer = ExoPlayer.Builder(this, renderersFactory)
                 .setLoadControl(loadControl)
                 .setMediaSourceFactory(mediaSourceFactory)
                 .build()

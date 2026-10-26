@@ -89,4 +89,68 @@ object PlayerStreamingConfig {
         }
         return defaultFactory
     }
+
+    /**
+     * Builds a RenderersFactory that prefers software extension decoders (such as FFmpeg)
+     * when hardware decoders are unavailable or fail to support the audio format (e.g. AC3, DTS, TrueHD),
+     * and wraps the audio sink with [Ac3TranscodingAudioSink] to support real-time AAC 5.1 -> AC3 5.1
+     * passthrough for SPDIF/ARC soundbars when enabled.
+     */
+    fun buildRenderersFactory(
+        context: android.content.Context,
+        preferenceManager: com.martinrevert.latorrentola.utils.PreferenceManager? = null
+    ): androidx.media3.exoplayer.RenderersFactory {
+        val prefs = preferenceManager ?: com.martinrevert.latorrentola.utils.PreferenceManager(context)
+        return object : androidx.media3.exoplayer.DefaultRenderersFactory(context) {
+            init {
+                setExtensionRendererMode(EXTENSION_RENDERER_MODE_PREFER)
+            }
+
+            override fun buildAudioSink(
+                context: android.content.Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): androidx.media3.exoplayer.audio.AudioSink {
+                val defaultSink = androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .build()
+                return Ac3TranscodingAudioSink(defaultSink, context, prefs)
+            }
+
+            override fun buildAudioRenderers(
+                context: android.content.Context,
+                extensionRendererMode: Int,
+                mediaCodecSelector: androidx.media3.exoplayer.mediacodec.MediaCodecSelector,
+                enableDecoderFallback: Boolean,
+                audioSink: androidx.media3.exoplayer.audio.AudioSink,
+                eventHandler: android.os.Handler,
+                eventListener: androidx.media3.exoplayer.audio.AudioRendererEventListener,
+                out: java.util.ArrayList<androidx.media3.exoplayer.Renderer>
+            ) {
+                val wrappedEventListener = object : androidx.media3.exoplayer.audio.AudioRendererEventListener by eventListener {
+                    override fun onAudioInputFormatChanged(
+                        format: androidx.media3.common.Format,
+                        decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?
+                    ) {
+                        if (audioSink is Ac3TranscodingAudioSink) {
+                            audioSink.setSourceAudioFormat(format)
+                        }
+                        eventListener.onAudioInputFormatChanged(format, decoderReuseEvaluation)
+                    }
+                }
+
+                super.buildAudioRenderers(
+                    context,
+                    extensionRendererMode,
+                    mediaCodecSelector,
+                    enableDecoderFallback,
+                    audioSink,
+                    eventHandler,
+                    wrappedEventListener,
+                    out
+                )
+            }
+        }
+    }
 }

@@ -34,6 +34,7 @@
 # Preserve JNI wrappers invoked from libtorrent4j and libnfs C/C++ libraries
 -keep class org.libtorrent4j.swig.libtorrent_jni { *; }
 -keep class com.martinrevert.latorrentola.service.storage.remote.LibNfsNative { *; }
+-keep class androidx.media3.decoder.ffmpeg.** { *; }
 -keepclasseswithmembernames class * {
     native <methods>;
 }

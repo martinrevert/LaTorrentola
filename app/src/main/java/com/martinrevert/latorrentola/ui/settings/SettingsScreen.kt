@@ -112,6 +112,7 @@ fun SettingsScreen(
             onToggleVoiceTranslation = { viewModel.toggleVoiceTranslation(it) },
             onToggleVibrator = { viewModel.toggleVibrator(it) },
             onTogglePushEnabled = { viewModel.togglePushEnabled(it) },
+            onToggleConvertAac51ToAc3 = { viewModel.setConvertAac51ToAc3(it) },
             onSetTheme = { viewModel.setTheme(it) },
             onSetFilteredLanguages = { viewModel.setFilteredLanguages(it) },
             onSetMinimumRating = { viewModel.setMinimumRating(it) },
@@ -155,6 +156,7 @@ private fun SettingsScreenContent(
     onToggleVoiceTranslation: (Boolean) -> Unit,
     onToggleVibrator: (Boolean) -> Unit,
     onTogglePushEnabled: (Boolean) -> Unit,
+    onToggleConvertAac51ToAc3: (Boolean) -> Unit = {},
     onSetTheme: (Int) -> Unit,
     onSetFilteredLanguages: (String) -> Unit,
     onSetMinimumRating: (Float) -> Unit,
@@ -317,6 +319,13 @@ private fun SettingsScreenContent(
                         )
                     }
 
+                    SettingsToggle(
+                        title = stringResource(R.string.settings_convert_aac51_to_ac3),
+                        subtitle = stringResource(R.string.settings_convert_aac51_to_ac3_summary),
+                        checked = uiState.convertAac51ToAc3,
+                        onCheckedChange = onToggleConvertAac51ToAc3
+                    )
+
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                     TorrentModeSetting(
@@ -409,6 +418,13 @@ private fun SettingsScreenContent(
                         onCheckedChange = onTogglePushEnabled
                     )
                 }
+
+                SettingsToggle(
+                    title = stringResource(R.string.settings_convert_aac51_to_ac3),
+                    subtitle = stringResource(R.string.settings_convert_aac51_to_ac3_summary),
+                    checked = uiState.convertAac51ToAc3,
+                    onCheckedChange = onToggleConvertAac51ToAc3
+                )
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
@@ -1345,6 +1361,7 @@ private fun MinimumRatingSetting(
 fun SettingsToggle(
     title: String,
     checked: Boolean,
+    subtitle: String? = null,
     enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
@@ -1361,6 +1378,15 @@ fun SettingsToggle(
                     text = title,
                     style = androidx.tv.material3.MaterialTheme.typography.bodyLarge
                 )
+            },
+            supportingContent = subtitle?.let {
+                {
+                    androidx.tv.material3.Text(
+                        text = it,
+                        style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
+                        color = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             },
             trailingContent = {
                 androidx.tv.material3.Switch(
@@ -1381,7 +1407,16 @@ fun SettingsToggle(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                Text(text = title, style = MaterialTheme.typography.bodyLarge)
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
         }
     }

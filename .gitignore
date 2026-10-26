@@ -18,6 +18,7 @@ build/
 app/.cxx/
 .externalNativeBuild/
 app/.externalNativeBuild/
+app/src/main/cpp/ffmpeg/android-libs/
 
 # Gradle files
 .gradle/
