@@ -262,30 +262,25 @@ class TorrentDownloadService : Service() {
             val requestedHash = intent.getStringExtra(EXTRA_INFO_HASH).orEmpty()
             if (requestedHash.isNotBlank()) {
                 val shouldPause = intent.action == ACTION_PAUSE
-                val isActive = synchronized(queueLock) {
-                    if (activeInfoHash == requestedHash) {
-                        if (shouldPause) pausedInfoHash = requestedHash
-                        true
-                    } else {
-                        if (shouldPause) {
+                if (shouldPause) {
+                    val isActive = synchronized(queueLock) {
+                        if (activeInfoHash == requestedHash) {
+                            pausedInfoHash = requestedHash
+                            true
+                        } else {
                             downloadQueue.removeAll { it.infoHash == requestedHash }
+                            false
                         }
-                        false
                     }
-                }
-                if (isActive) {
-                    synchronized(sessionLock) {
-                        sessionManager
-                            ?.find(Sha1Hash.parseHex(requestedHash))
-                            ?.takeIf { it.isValid }
-                            ?.let { handle ->
-                                if (shouldPause) handle.pause() else handle.resume()
+                    serviceScope.launch(Dispatchers.IO) {
+                        if (isActive) {
+                            synchronized(sessionLock) {
+                                sessionManager
+                                    ?.find(Sha1Hash.parseHex(requestedHash))
+                                    ?.takeIf { it.isValid }
+                                    ?.pause()
                             }
-                    }
-                }
-                serviceScope.launch {
-                    val stored = torrentDownloadDao.get(requestedHash) ?: return@launch
-                    if (shouldPause) {
+                        }
                         updateDownloadState(requestedHash, STATE_PAUSED)
                         if (!isActive) {
                             withContext(Dispatchers.Main) {
@@ -294,10 +289,10 @@ class TorrentDownloadService : Service() {
                                 }
                             }
                         }
-                    } else if (isActive) {
-                        pausedInfoHash = null
-                        updateDownloadState(requestedHash, STATE_DOWNLOADING)
-                    } else {
+                    }
+                } else {
+                    serviceScope.launch(Dispatchers.IO) {
+                        val stored = torrentDownloadDao.get(requestedHash) ?: return@launch
                         preemptActiveTransfersAndPlayback(requestedHash, stored.title)
                         val resumed = stored.copy(
                             state = STATE_QUEUED,
@@ -305,9 +300,7 @@ class TorrentDownloadService : Service() {
                         )
                         torrentDownloadDao.upsert(resumed)
                         synchronized(queueLock) {
-                            if (activeInfoHash != requestedHash &&
-                                downloadQueue.none { it.infoHash == requestedHash }
-                            ) {
+                            if (downloadQueue.none { it.infoHash == requestedHash }) {
                                 downloadQueue.addFirst(
                                     DownloadRequest(
                                         resumed.infoHash,
@@ -333,13 +326,13 @@ class TorrentDownloadService : Service() {
             val activeHash = synchronized(queueLock) { activeInfoHash }
             if (activeHash != null) {
                 pausedInfoHash = activeHash
-                synchronized(sessionLock) {
-                    sessionManager
-                        ?.find(Sha1Hash.parseHex(activeHash))
-                        ?.takeIf { it.isValid }
-                        ?.pause()
-                }
-                serviceScope.launch {
+                serviceScope.launch(Dispatchers.IO) {
+                    synchronized(sessionLock) {
+                        sessionManager
+                            ?.find(Sha1Hash.parseHex(activeHash))
+                            ?.takeIf { it.isValid }
+                            ?.pause()
+                    }
                     updateDownloadState(activeHash, STATE_PAUSED)
                     val activeTitle = activeRequest?.title ?: getString(R.string.torrent_download_title)
                     updateBufferState(
@@ -417,8 +410,21 @@ class TorrentDownloadService : Service() {
             return START_NOT_STICKY
         }
 
-        try {
-            val existingRecord = runBlocking(Dispatchers.IO) { torrentDownloadDao.get(infoHash) }
+        openWhenReadyHashes.add(infoHash)
+        updateBufferState(
+            TorrentBufferState(
+                infoHash = infoHash,
+                title = title,
+                state = STATE_BUFFERING,
+                readyProgress = 0.05f,
+                totalProgress = 0f,
+                downloadSpeedBytes = 0L,
+                numSeeds = 0,
+                numPeers = 0
+            )
+        )
+        serviceScope.launch(Dispatchers.IO) {
+            val existingRecord = try { torrentDownloadDao.get(infoHash) } catch (_: Exception) { null }
             if (existingRecord != null) {
                 if (seriesId <= 0 && (existingRecord.seriesId ?: 0) > 0) {
                     seriesId = existingRecord.seriesId ?: 0
@@ -436,22 +442,6 @@ class TorrentDownloadService : Service() {
                     posterUrl = existingRecord.posterUrl
                 }
             }
-        } catch (_: Exception) {}
-
-        openWhenReadyHashes.add(infoHash)
-        updateBufferState(
-            TorrentBufferState(
-                infoHash = infoHash,
-                title = title,
-                state = STATE_BUFFERING,
-                readyProgress = 0.05f,
-                totalProgress = 0f,
-                downloadSpeedBytes = 0L,
-                numSeeds = 0,
-                numPeers = 0
-            )
-        )
-        serviceScope.launch {
             val castWhenReady = intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false)
             val existingIntent = readyPlayerIntents[infoHash]
             if (existingIntent != null) {
@@ -467,7 +457,7 @@ class TorrentDownloadService : Service() {
                 return@launch
             }
             preemptActiveTransfersAndPlayback(infoHash, title)
-            val existing = torrentDownloadDao.get(infoHash)
+            val existing = existingRecord ?: torrentDownloadDao.get(infoHash)
             val completedFile = existing
                 ?.takeIf { it.state == STATE_COMPLETED }
                 ?.mediaPath
@@ -1628,12 +1618,10 @@ class TorrentDownloadService : Service() {
                 sessionManager = null
                 m
             } ?: return@withContext
-            synchronized(sessionLock) {
-                try {
-                    manager.stop()
-                } catch (e: Exception) {
-                    Log.w(TAG, "Error stopping SessionManager", e)
-                }
+            try {
+                manager.stop()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error stopping SessionManager", e)
             }
         }
     }
@@ -1702,15 +1690,15 @@ class TorrentDownloadService : Service() {
 
     /** Closes the session from the teardown helper thread without blocking the main thread. */
     private fun runBlockingStopSession() {
-        val manager = synchronized(sessionLock) { sessionManager } ?: return
-        synchronized(sessionLock) {
-            if (sessionManager === manager) {
-                try {
-                    manager.stop()
-                } finally {
-                    sessionManager = null
-                }
-            }
+        val manager = synchronized(sessionLock) {
+            val m = sessionManager
+            sessionManager = null
+            m
+        } ?: return
+        try {
+            manager.stop()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error stopping SessionManager during destroy", e)
         }
     }
 

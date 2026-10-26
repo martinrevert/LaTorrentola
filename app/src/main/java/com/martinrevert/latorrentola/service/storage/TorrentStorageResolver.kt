@@ -122,15 +122,21 @@ object TorrentStorageResolver {
                     }
 
                     val dir: File? = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        volume.directory
+                        try {
+                            volume.directory
+                        } catch (_: Throwable) {
+                            null
+                        }
                     } else {
+                        null
+                    }) ?: run {
                         try {
                             val getPath = volume.javaClass.getMethod("getPath")
                             (getPath.invoke(volume) as? String)?.let { File(it) }
                         } catch (_: Throwable) {
                             null
                         }
-                    }) ?: volume.uuid?.let { File("/storage", it) }
+                    } ?: volume.uuid?.let { File("/storage", it) }
 
                     if (dir != null) {
                         val desc = try {
@@ -201,8 +207,16 @@ object TorrentStorageResolver {
             )
         }
 
-        // 4. Discover via direct filesystem scans (/storage, /mnt/media_rw, /mnt)
-        val candidateMountParents = listOf(File("/storage"), File("/mnt/media_rw"), File("/mnt"))
+        // 4. Discover via direct filesystem scans (/storage, /mnt/media_rw, /mnt, /mnt/usb, etc.)
+        val candidateMountParents = listOf(
+            File("/storage"),
+            File("/mnt/media_rw"),
+            File("/mnt"),
+            File("/mnt/usb"),
+            File("/mnt/usb_storage"),
+            File("/mnt/usb_drive"),
+            File("/mnt/disks")
+        )
         for (parent in candidateMountParents) {
             if (parent.exists() && parent.isDirectory) {
                 val children = try { parent.listFiles() } catch (_: Throwable) { null }
@@ -210,7 +224,7 @@ object TorrentStorageResolver {
                     for (child in children) {
                         val name = child.name.lowercase()
                         if (name in setOf("emulated", "self", "knox", "sdcard", "secure", "asec", "obb")) continue
-                        if (child.isDirectory && child.canRead() && child.exists()) {
+                        if (child.isDirectory && child.exists()) {
                             logI("Filesystem scan: found candidate ${child.absolutePath}")
                             discoveredVolumes.add(
                                 DiscoveredVolume(
@@ -236,11 +250,12 @@ object TorrentStorageResolver {
                         val mountPoint = parts[1]
                         val fsType = parts[2].lowercase()
                         if ((mountPoint.startsWith("/storage/") && !mountPoint.startsWith("/storage/emulated") && !mountPoint.startsWith("/storage/self")) ||
-                            mountPoint.startsWith("/mnt/media_rw/")
+                            mountPoint.startsWith("/mnt/media_rw/") ||
+                            mountPoint.startsWith("/mnt/usb")
                         ) {
                             if (fsType in setOf("vfat", "fat32", "exfat", "ntfs", "fuse", "ext4", "f2fs", "esdfs", "sdcardfs")) {
                                 val mountDir = File(mountPoint)
-                                if (mountDir.exists() && mountDir.isDirectory && mountDir.canRead()) {
+                                if (mountDir.exists() && mountDir.isDirectory) {
                                     logI("/proc/mounts: found candidate ${mountDir.absolutePath} ($fsType)")
                                     discoveredVolumes.add(
                                         DiscoveredVolume(

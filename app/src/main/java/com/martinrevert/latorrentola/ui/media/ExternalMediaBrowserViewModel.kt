@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.os.Build
 import android.os.Environment
+import com.martinrevert.latorrentola.service.storage.StorageEvent
 import com.martinrevert.latorrentola.service.storage.StorageEvents
 import com.martinrevert.latorrentola.service.storage.StorageLocation
 import com.martinrevert.latorrentola.service.storage.TorrentStorageResolver
@@ -121,6 +122,12 @@ class ExternalMediaBrowserViewModel @Inject constructor(
                         "StorageVolumeCallback state changed: ${volume.directory} (state=${volume.state})"
                     )
                     loadUsbLocations()
+                    if (volume.state == Environment.MEDIA_MOUNTED) {
+                        viewModelScope.launch {
+                            kotlinx.coroutines.delay(1200)
+                            loadUsbLocations()
+                        }
+                    }
                 }
             }
             try {
@@ -134,8 +141,14 @@ class ExternalMediaBrowserViewModel @Inject constructor(
 
     private fun observeStorageEvents() {
         viewModelScope.launch {
-            StorageEvents.events.collect {
+            StorageEvents.events.collect { event ->
                 loadUsbLocations()
+                if (event is StorageEvent.Mounted) {
+                    kotlinx.coroutines.delay(1200)
+                    loadUsbLocations()
+                    kotlinx.coroutines.delay(1300)
+                    loadUsbLocations()
+                }
             }
         }
     }
@@ -162,10 +175,16 @@ class ExternalMediaBrowserViewModel @Inject constructor(
                 emptyList()
             }
             val hasRemovable = locations.any { it.isRemovable }
-            val currentSelectedId = _uiState.value.selectedUsbLocation?.id
-            val stillAvailable = locations.firstOrNull { it.id == currentSelectedId }
-            val target = stillAvailable
-                ?: (if (hasRemovable) locations.firstOrNull { it.isRemovable } else locations.firstOrNull())
+            val currentSelected = _uiState.value.selectedUsbLocation
+            val stillAvailable = locations.firstOrNull { it.id == currentSelected?.id }
+            val target = when {
+                stillAvailable != null && stillAvailable.isRemovable -> stillAvailable
+                hasRemovable && (currentSelected == null || !currentSelected.isRemovable) ->
+                    locations.firstOrNull { it.isRemovable }
+                stillAvailable != null -> stillAvailable
+                hasRemovable -> locations.firstOrNull { it.isRemovable }
+                else -> locations.firstOrNull()
+            }
 
             val hasAllFilesAccess = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 try {

@@ -56,7 +56,11 @@ class RemoteStorageManager @Inject constructor(
     suspend fun listUsbFiles(directory: File): List<RemoteFileItem> = withContext(Dispatchers.IO) {
         if (!directory.exists() || !directory.isDirectory) return@withContext emptyList()
 
-        val files = directory.listFiles() ?: return@withContext emptyList()
+        val files = directory.listFiles()
+        if (files == null) {
+            Log.w("RemoteStorageManager", "listFiles() returned null for directory: ${directory.absolutePath} (canRead=${directory.canRead()}, exists=${directory.exists()})")
+            return@withContext emptyList()
+        }
         files.filter { !it.name.startsWith(".") }
             .map { file ->
                 RemoteFileItem(

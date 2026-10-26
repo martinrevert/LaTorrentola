@@ -77,6 +77,43 @@ fun isPlayableMedia(fileName: String): Boolean {
     return ext in setOf("mp4", "mkv", "avi", "webm", "ts", "mov", "m4v", "wmv", "flv", "vob", "mpg", "mpeg")
 }
 
+/**
+ * Launches system settings for all-files access permission with sequential fallbacks.
+ * Prevents ActivityNotFoundException on Android TV and custom vendor ROMs that lack
+ * ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION.
+ */
+fun launchAllFilesAccessSettings(context: Context) {
+    val packageName = context.packageName
+    val attempts = buildList {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // 1. Direct app-specific all files access screen
+            add(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                data = Uri.parse("package:$packageName")
+            })
+            // 2. Generic all files access list
+            add(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+        }
+        // 3. Application details settings (App Info)
+        add(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:$packageName")
+        })
+        // 4. Manage applications settings
+        add(Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS))
+        // 5. Root system settings
+        add(Intent(Settings.ACTION_SETTINGS))
+    }
+
+    for (intent in attempts) {
+        try {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            return
+        } catch (_: Exception) {
+            // Try next fallback in chain
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExternalMediaBrowserScreen(
@@ -92,6 +129,19 @@ fun ExternalMediaBrowserScreen(
     }
     val uiState by viewModel.uiState.collectAsState()
     val isTv = remember(context) { context.isTvDevice() }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshUsbLocations()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -620,20 +670,7 @@ private fun UsbMediaView(
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
-                            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                                try {
-                                    Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                                        data = Uri.parse("package:${context.packageName}")
-                                    }
-                                } catch (_: Exception) {
-                                    Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                                }
-                            } else {
-                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                    data = Uri.parse("package:${context.packageName}")
-                                }
-                            }
-                            context.startActivity(intent)
+                            launchAllFilesAccessSettings(context)
                         }
                     ) {
                         Text(stringResource(R.string.usb_permission_grant_button))
@@ -1252,20 +1289,7 @@ private fun TvUsbMediaView(
                     Spacer(modifier = Modifier.width(12.dp))
                     TvButton(
                         onClick = {
-                            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                                try {
-                                    Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                                        data = Uri.parse("package:${context.packageName}")
-                                    }
-                                } catch (_: Exception) {
-                                    Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                                }
-                            } else {
-                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                    data = Uri.parse("package:${context.packageName}")
-                                }
-                            }
-                            context.startActivity(intent)
+                            launchAllFilesAccessSettings(context)
                         },
                         modifier = Modifier.focusHighlight(shape = RoundedCornerShape(8.dp))
                     ) {
@@ -1396,12 +1420,27 @@ private fun TvUsbMediaView(
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(uiState.usbFiles) { item ->
-                TvMediaFileRow(item = item, onClick = { onItemClick(item) })
+        if (uiState.usbFiles.isEmpty() && !uiState.isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                TvText(
+                    text = stringResource(R.string.external_media_empty_usb),
+                    style = TvMaterialTheme.typography.bodyLarge,
+                    color = TvMaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(uiState.usbFiles) { item ->
+                    TvMediaFileRow(item = item, onClick = { onItemClick(item) })
+                }
             }
         }
     }

@@ -619,6 +619,39 @@ class ExternalMediaBrowserViewModelTest {
         assertThat(viewModel.uiState.value.selectedTab).isEqualTo(ExternalMediaTab.USB)
         assertThat(viewModel.uiState.value.usbLocations).isNotEmpty()
     }
+
+    @Test
+    fun `loadUsbLocations auto-selects removable USB drive when available and previously on internal`() = runTest {
+        mockkObject(TorrentStorageResolver)
+        try {
+            val internalLoc = StorageLocation(
+                id = TorrentStorageResolver.LOCATION_INTERNAL,
+                displayName = "Internal",
+                rootDirectory = tempFolder.newFolder("internal_test"),
+                isRemovable = false,
+                availableBytes = 5000L,
+                totalBytes = 10000L
+            )
+            val usbLoc = StorageLocation(
+                id = "/storage/usb1",
+                displayName = "USB Drive",
+                rootDirectory = tempFolder.newFolder("usb1_test"),
+                isRemovable = true,
+                availableBytes = 8000L,
+                totalBytes = 16000L
+            )
+
+            every { TorrentStorageResolver.getAvailableStorageLocations(any()) } returns listOf(internalLoc, usbLoc)
+
+            viewModel.loadUsbLocations()
+            advanceUntilIdle()
+
+            assertThat(viewModel.uiState.value.selectedUsbLocation?.id).isEqualTo(usbLoc.id)
+            assertThat(viewModel.uiState.value.currentUsbFolder?.absolutePath).isEqualTo(usbLoc.rootDirectory.absolutePath)
+        } finally {
+            unmockkObject(TorrentStorageResolver)
+        }
+    }
 }
 
 
