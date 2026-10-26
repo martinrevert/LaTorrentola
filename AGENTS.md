@@ -40,6 +40,7 @@
 - Responsive UI (Phone/Tablet/Foldable), System Bars -> **LOAD:** `adaptive` AND `edge-to-edge`
 - `AuthRepository`, Firestore, FCM -> **LOAD:** `firebase-basics` AND `firebase-auth-basics`
 - Magnet links (`Intent.ACTION_VIEW`) -> **LOAD:** `android-intent-security`
+- ProGuard, R8, Shrinking, Build Optimization, Keep Rules -> **LOAD:** `performance/r8-analyzer`
 
 ---
 
@@ -216,6 +217,27 @@ To eliminate state desynchronization, inverted buttons, and jarring UX across Ex
    - **PROHIBITION**: NEVER use artificial delays (`delay(600.milliseconds)`) before closing device selection sheets. Artificial delays cause the sheet to recompose into the "Reproduciendo..." connected layout for a split second before vanishing ("fogonazo").
    - `LocalPlayerActivity` MUST automatically dismiss `showCastBottomSheet = false` via `LaunchedEffect(isCasting)` whenever `isCasting` activates, guaranteeing a clean, immediate handoff to `RemoteCastCanvas`.
 
+### ⚡ R8, ProGuard & App Shrinking Mandate (STRICT - ZERO REGRESSION)
+To preserve maximum runtime performance, fast startup time, minimal APK/AAB size, and high optimization scores:
+1. **PROHIBITION: No Blanket / Package-Wide Wildcard Keeps**:
+   - **STRICT PROHIBITION**: NEVER introduce broad wildcard keeps on app packages (e.g., `-keep class com.martinrevert.latorrentola.model.** { *; }`, `utils.**`, `ui.navigation.**`, or `database.**`).
+   - Broad keeps freeze all fields, constructors, and methods, completely blocking R8 from dead-code stripping, member inlining, and identifier obfuscation.
+2. **PROHIBITION: No Redundant Third-Party Library Keeps**:
+   - Modern libraries (Coil 3, ML Kit, YouTube Player, Navigation 3, Room, Hilt, Retrofit, OkHttp) already package their own embedded consumer keep rules in their AAR/JAR dependencies.
+   - **STRICT PROHIBITION**: NEVER add manual blanket keeps for libraries (e.g., `-keep class coil3.** { *; }`, `-keep class com.google.mlkit.** { *; }`, or `-keep class androidx.navigation3.** { *; }`). Only use targeted `-dontwarn` suppressions for optional desktop classes (e.g., SMB / BouncyCastle).
+3. **Surgical Serialization & Firestore Rules**:
+   - Model retention MUST remain strictly annotation-driven:
+     - `@SerializedName` fields: `-keepclassmembers class * { @com.google.gson.annotations.SerializedName <fields>; }`.
+     - Firestore documents: Retain only models annotated with `@IgnoreExtraProperties` (`public <init>(); <fields>; <methods>;`).
+     - Kotlinx Serialization: Always use `-keep,allowoptimization @kotlinx.serialization.Serializable class * { *; }`.
+4. **Zero Global Optimization Disables**:
+   - **STRICT PROHIBITION**: NEVER add `-dontoptimize`, `-dontshrink`, or `-dontobfuscate` to `proguard-rules.pro`.
+5. **Reflection & Manifest Entry Points**:
+   - Classes instantiated reflectively by the system (e.g., `AppCastOptionsProvider`) must ONLY keep their public constructor (`public <init>();`), NEVER `{ *; }`.
+   - Native JNI entry points (`libtorrent_jni`, `LibNfsNative`) must be explicitly preserved for C/C++ interop.
+6. **Java Toolchain Pinning in `gradle.properties`**:
+   - Preserve `org.gradle.java.installations.auto-detect=false` and `paths` pointing to Android Studio JBR to prevent AGP `JdkImageTransform` from picking up broken external JDKs during system module assembly.
+
 ### Previews
 - Every UI Component MUST include `@Preview` functions covering: Light Mode, Dark Mode, Mobile form-factor, and TV form-factor (using appropriate theme wrappers).
 
@@ -233,3 +255,4 @@ Before marking a task complete, verify:
 8. [ ] Did I run unit tests (`testDebugUnitTest`) as validation instead of assembling release/debug APKs?
 9. [ ] If modifying remote storage/streaming, did I preserve session caching, asynchronous prefetching, and keep hot-path read loops free of Log.d?
 10. [ ] If modifying player controls or Cast handoff, did I avoid speculative `!isPlaying` flips, bind to `RemoteMediaClient`, and ensure zero bottom sheet flashing on Cast start?
+11. [ ] If modifying proguard-rules.pro, models, or dependencies, did I avoid blanket package wildcards ({ *; }), verify library consumer rules, and ensure R8 optimizations/inlining remain unhindered?
