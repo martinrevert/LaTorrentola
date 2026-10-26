@@ -63,6 +63,7 @@ COMMON_OPTIONS="
 
 cd "${FFMPEG_DIR}"
 sed -i 's/ac3_encoder_select=.*/ac3_encoder_select="ac3dsp audiodsp me_cmp audio_frame_queue"/' configure
+sed -i 's/eac3_encoder_select=.*/eac3_encoder_select="ac3dsp audiodsp me_cmp audio_frame_queue"/' configure
 
 build_abi() {
     local ABI="$1"
