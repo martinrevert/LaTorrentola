@@ -1,90 +1,57 @@
-# Project specific ProGuard rules
+# =====================================================================
+# LaTorrentola - Optimized R8 / ProGuard Configuration
+# =====================================================================
 
-# Kotlinx Serialization
+# 1. Attributes & Annotations
+# Preserve essential attributes for reflection, generics, and stack traces
 -keepattributes *Annotation*, InnerClasses, EnclosingMethod, Signature, Exceptions
--keepclassmembers class com.martinrevert.latorrentola.** {
+
+# 2. Kotlinx Serialization
+# Retain serializer metadata while allowing R8 to inline, merge, and optimize
+-keepclassmembers class * {
     *** Companion;
-    *** $serializer;
 }
-# Keep serializable classes but allow optimization by default
--keep,allowoptimization @kotlinx.serialization.Serializable class com.martinrevert.latorrentola.** { *; }
--keepnames class kotlinx.serialization.internal.GeneratedSerializer { *; }
+-keepclasseswithmembers class * {
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep,allowoptimization @kotlinx.serialization.Serializable class * { *; }
 
-# Gson
--keepattributes Signature
--keepattributes *Annotation*
--keep class com.google.gson.annotations.SerializedName { *; }
+# 3. Gson
+# Preserve only fields explicitly annotated with @SerializedName
+-keepclassmembers class * {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
 
-# Firestore / Models
-# Firestore uses reflection to map documents to these classes.
-# We must keep the class names and all members (fields/methods) from obfuscation.
-# This "hard keep" overrides the more general allowobfuscation rule for these packages.
--keep class com.martinrevert.latorrentola.model.** { *; }
--keepclassmembers class com.martinrevert.latorrentola.model.** {
+# 4. Firestore / Cloud Sync Models
+# Retain constructor and property getters/setters for models mapped by Firestore
+-keep @com.google.firebase.firestore.IgnoreExtraProperties class * {
+    public <init>();
     <fields>;
     <methods>;
-    public <init>(...);
 }
 
-# Explicitly keep classes annotated for Firestore
--keep @com.google.firebase.firestore.IgnoreExtraProperties class * { *; }
--keepclassmembers @com.google.firebase.firestore.IgnoreExtraProperties class * { *; }
-
--keepattributes RuntimeVisibleAnnotations, RuntimeInvisibleAnnotations, Signature
-
-# Retrofit 2 / OKHttp
--dontwarn org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
--dontwarn javax.annotation.**
--dontwarn kotlin.Unit
-
-# Hilt / Dagger
-# Rules are automatically generated and applied by the Hilt Gradle Plugin.
-
-# Room
--keep class * extends androidx.room.RoomDatabase
--keep class com.martinrevert.latorrentola.database.** { *; }
-
-# Coil 3
--keep class coil3.** { *; }
-
-# YouTube Player
--keep class com.pierfrancescosoffritti.androidyoutubeplayer.** { *; }
-
-# libtorrent4j JNI entry points
+# 5. Native / JNI Entry Points
+# Preserve JNI wrappers invoked from libtorrent4j and libnfs C/C++ libraries
 -keep class org.libtorrent4j.swig.libtorrent_jni { *; }
-
-# Google Cast loads this options provider by its manifest metadata class name.
--keep class com.martinrevert.latorrentola.service.AppCastOptionsProvider { *; }
-
-# Navigation 3
--keep class androidx.navigation3.** { *; }
--keep interface androidx.navigation3.** { *; }
--keep class com.martinrevert.latorrentola.ui.navigation.** { *; }
--keepclassmembers class com.martinrevert.latorrentola.ui.navigation.Route* { *; }
-
-# ML Kit
--keep class com.google.mlkit.** { *; }
--dontwarn com.google.mlkit.**
-
-# Keep entry points for reflection-heavy utilities
--keep class com.martinrevert.latorrentola.utils.** {
-  public <fields>;
-  public <methods>;
-}
-
-# Keep the HiltViewModel annotation usage for safety
--keep @dagger.hilt.android.lifecycle.HiltViewModel class * extends androidx.lifecycle.ViewModel
-
-# SMB / Kerberos / RMI / Expression Language (smbj / ASN.1 / BouncyCastle dependencies)
--dontwarn java.rmi.UnmarshalException
--dontwarn javax.el.**
--dontwarn org.ietf.jgss.**
--dontwarn com.hierynomus.**
--dontwarn org.bouncycastle.**
-
-# libnfs native JNI entry points
 -keep class com.martinrevert.latorrentola.service.storage.remote.LibNfsNative { *; }
 -keepclasseswithmembernames class * {
     native <methods>;
 }
 
+# 6. Google Cast Framework
+# Google Cast reflection needs the constructor of the options provider declared in Manifest
+-keep class com.martinrevert.latorrentola.service.AppCastOptionsProvider {
+    public <init>();
+}
+
+# 7. Third-Party Warning Suppressions (-dontwarn)
+# Suppress references to missing desktop Java classes in SMB / BouncyCastle / Retrofit
+-dontwarn java.rmi.UnmarshalException
+-dontwarn javax.el.**
+-dontwarn org.ietf.jgss.**
+-dontwarn com.hierynomus.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
+-dontwarn javax.annotation.**
+-dontwarn kotlin.Unit
+-dontwarn com.google.mlkit.**
