@@ -37,7 +37,9 @@ local.properties
 captures/
 .vscode/
 
-# Android Studio AI agent & internal artifacts
+# AI Agent Skills & IDE Artifacts
+/.agents/*
+!/.agents/skills
 .android-studio/
 .artifacts/
 
@@ -53,4 +55,3 @@ app/keys/release.keystore
 .kotlin/
 .DS_Store
 Thumbs.db
-/.agents/

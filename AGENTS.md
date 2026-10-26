@@ -27,7 +27,12 @@
 ---
 
 ## 🎯 3. SKILL ACTIVATION TRIGGERS (MANDATORY)
-**IF** your task involves any of the following domains, **THEN** you MUST load the corresponding Android Studio Skill via the `read_file` tool on the skill's path before writing code:
+**Official Skills Submodule (`https://github.com/android/skills.git`)**:
+- Skills are managed via Git Submodule at `.agents/skills` (compatible with Antigravity IDE and Android Studio) and linked via junction at `.android-studio/skills`.
+- **On a new development machine**: Run `git submodule update --init --recursive` (and on Windows `mklink /J .android-studio\skills .agents\skills` if `.android-studio/skills` junction is missing).
+- **To pull upstream skill updates**: Run `git submodule update --remote --merge .agents/skills`.
+
+**IF** your task involves any of the following domains, **THEN** you MUST load the corresponding Android Studio / Antigravity Skill via the `read_file` tool on the skill's path before writing code:
 
 - `isTvDevice() == true`, `androidx.tv`, or D-pad Focus -> **LOAD:** `leanback-to-compose-tv-migration`
 - `LocalPlayerActivity`, `ExoPlayer`, Chromecast -> **LOAD:** `media3-cast-integration`
