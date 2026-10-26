@@ -136,4 +136,46 @@ class StreamingPiecePlannerTest {
         assertThat(plan.piecesToPrioritize).contains(6)
         assertThat(plan.deadlines.containsKey(6)).isTrue()
     }
+
+    @Test
+    fun `calculateStartupBufferBytes scales proportionally with bounds`() {
+        // Small file (700 MB): 700 MB * 0.003 = 2.1 MB -> clamped to MIN (8 MB)
+        val smallFile = 700L * 1024L * 1024L
+        assertThat(StreamingPiecePlanner.calculateStartupBufferBytes(smallFile))
+            .isEqualTo(8L * 1024L * 1024L)
+
+        // Mid file (4 GB): 4 * 1024 * 1024 * 1024 * 0.003 = 12.88 MB
+        val midFile = 4L * 1024L * 1024L * 1024L
+        val midBuffer = StreamingPiecePlanner.calculateStartupBufferBytes(midFile)
+        assertThat(midBuffer).isGreaterThan(8L * 1024L * 1024L)
+        assertThat(midBuffer).isLessThan(32L * 1024L * 1024L)
+
+        // Huge 4K remux file (25 GB): 25 GB * 0.003 = 75 MB -> clamped to MAX (32 MB)
+        val hugeFile = 25L * 1024L * 1024L * 1024L
+        assertThat(StreamingPiecePlanner.calculateStartupBufferBytes(hugeFile))
+            .isEqualTo(32L * 1024L * 1024L)
+
+        // Zero or negative file length returns minimum safe buffer
+        assertThat(StreamingPiecePlanner.calculateStartupBufferBytes(0L))
+            .isEqualTo(8L * 1024L * 1024L)
+    }
+
+    @Test
+    fun `calculateTailBytes adapts based on container and file size`() {
+        val normalMp4 = 1L * 1024L * 1024L * 1024L
+        assertThat(StreamingPiecePlanner.calculateTailBytes(normalMp4, isMkv = false))
+            .isEqualTo(2_000_000L)
+
+        val normalMkv = 2L * 1024L * 1024L * 1024L
+        assertThat(StreamingPiecePlanner.calculateTailBytes(normalMkv, isMkv = true))
+            .isEqualTo(5_000_000L)
+
+        val largeMkv = 8L * 1024L * 1024L * 1024L // 8 GB
+        assertThat(StreamingPiecePlanner.calculateTailBytes(largeMkv, isMkv = true))
+            .isEqualTo(6_000_000L)
+
+        val huge4kRemux = 20L * 1024L * 1024L * 1024L // 20 GB
+        assertThat(StreamingPiecePlanner.calculateTailBytes(huge4kRemux, isMkv = true))
+            .isEqualTo(8_000_000L)
+    }
 }

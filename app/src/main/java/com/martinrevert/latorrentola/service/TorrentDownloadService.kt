@@ -1028,20 +1028,52 @@ class TorrentDownloadService : Service() {
                                         }
 
                                         val resumePiece = planner.calculateResumePiece(request.resumePositionMs, request.durationMs)
+                                        val startupBytes = planner.startupBufferBytes
                                         val initialPlan = planner.planForRange(
                                             requestedStart = 0L,
-                                            requestedEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES),
+                                            requestedEnd = minOf(target.length - 1, startupBytes),
                                             tracker = tracker
                                         )
+
+                                        // 1. Immediately prioritize startup head pieces WITH tight deadlines
                                         for (p in initialPlan.piecesToPrioritize) {
                                             handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                            try { handle.setPieceDeadline(p, 150) } catch (_: Exception) {}
                                         }
-                                        handle.setSequentialRange(resumePiece, target.lastPiece)
-                                        if (resumePiece > target.firstPiece) {
-                                            for (p in resumePiece..minOf(resumePiece + 32, target.lastPiece)) {
-                                                handle.piecePriority(p, Priority.TOP_PRIORITY)
+
+                                        // 2. Immediately prioritize container tail pieces (MKV Cues / MP4 moov) WITH tight deadlines
+                                        val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
+                                            target.file.extension.equals("webm", ignoreCase = true) ||
+                                            target.file.extension.equals("mp4", ignoreCase = true)
+                                        if (isIndexedContainer) {
+                                            val tailBytes = planner.tailBytes
+                                            val tailPieceStart = ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
+                                            for (p in tailPieceStart..target.lastPiece) {
+                                                if (!tracker.isPieceVerified(p)) {
+                                                    handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                                    try { handle.setPieceDeadline(p, 150) } catch (_: Exception) {}
+                                                }
                                             }
                                         }
+
+                                        // 3. Immediately prioritize resume pieces if starting mid-video
+                                        if (resumePiece > target.firstPiece) {
+                                            for (p in resumePiece..minOf(resumePiece + 3, target.lastPiece)) {
+                                                if (!tracker.isPieceVerified(p)) {
+                                                    handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                                    try { handle.setPieceDeadline(p, 150) } catch (_: Exception) {}
+                                                }
+                                            }
+                                        }
+
+                                        // 4. Bound initial sequential download range strictly to the first 32 pieces during buffering
+                                        // so that connected peers do NOT scatter bandwidth to the end of the movie!
+                                        val initialSeqEnd = if (resumePiece > target.firstPiece) {
+                                            minOf(resumePiece + 32, target.lastPiece)
+                                        } else {
+                                            minOf(target.firstPiece + 32, target.lastPiece)
+                                        }
+                                        handle.setSequentialRange(resumePiece, initialSeqEnd)
                                     }
                                 }
                             }
@@ -1053,36 +1085,47 @@ class TorrentDownloadService : Service() {
                         updateDownloadRecord(request, STATE_BUFFERING, 0, target.file.absolutePath)
                     }
 
-                    // Periodic startup buffer enforcement: reinforce priorities every 3 seconds without hammering JNI
+                    // Periodic startup buffer enforcement: reinforce priorities every 1 second without hammering JNI
                     if (!readyNotified && target != null) {
                         val nowLoop = System.currentTimeMillis()
-                        if (nowLoop - lastPriorityUpdateTime >= 3000L) {
+                        if (nowLoop - lastPriorityUpdateTime >= 1000L) {
                             lastPriorityUpdateTime = nowLoop
                             val tracker = pieceTracker
                             val planner = piecePlanner
                             if (tracker != null && planner != null) {
                                 synchronized(sessionLock) {
                                     if (sessionManager === manager && handle.isValid) {
+                                        val startupBytes = planner.startupBufferBytes
                                         val initialPlan = planner.planForRange(
                                             requestedStart = 0L,
-                                            requestedEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES),
+                                            requestedEnd = minOf(target.length - 1, startupBytes),
                                             tracker = tracker
                                         )
                                         for (p in initialPlan.piecesToPrioritize) {
                                             handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                            try { handle.setPieceDeadline(p, 500) } catch (_: Exception) {}
+                                            try { handle.setPieceDeadline(p, 150) } catch (_: Exception) {}
                                         }
 
                                         val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
                                             target.file.extension.equals("webm", ignoreCase = true) ||
                                             target.file.extension.equals("mp4", ignoreCase = true)
                                         if (isIndexedContainer) {
-                                            val tailBytes = minOf(target.length, 5L * 1024L * 1024L)
+                                            val tailBytes = planner.tailBytes
                                             val tailPieceStart = ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
                                             for (p in tailPieceStart..target.lastPiece) {
                                                 if (!tracker.isPieceVerified(p)) {
                                                     handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                                    try { handle.setPieceDeadline(p, 500) } catch (_: Exception) {}
+                                                    try { handle.setPieceDeadline(p, 150) } catch (_: Exception) {}
+                                                }
+                                            }
+                                        }
+
+                                        val resumeP = planner.calculateResumePiece(request.resumePositionMs, request.durationMs)
+                                        if (resumeP > target.firstPiece) {
+                                            for (p in resumeP..minOf(resumeP + 3, target.lastPiece)) {
+                                                if (!tracker.isPieceVerified(p)) {
+                                                    handle.piecePriority(p, Priority.TOP_PRIORITY)
+                                                    try { handle.setPieceDeadline(p, 150) } catch (_: Exception) {}
                                                 }
                                             }
                                         }
@@ -1135,13 +1178,18 @@ class TorrentDownloadService : Service() {
                     val computedReadyProgress = if (readyIntent != null || readyNotified) {
                         1.0f
                     } else if (target != null && tracker != null) {
-                        val startupEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES - 1)
+                        val startupBytes = piecePlanner?.startupBufferBytes ?: StreamingPiecePlanner.calculateStartupBufferBytes(target.length)
+                        val startupEnd = minOf(target.length - 1, startupBytes - 1)
                         val headPieces = ((target.fileOffset + startupEnd) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
                         val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
                             target.file.extension.equals("webm", ignoreCase = true) ||
                             target.file.extension.equals("mp4", ignoreCase = true)
-                        val tailBytes = minOf(target.length, 2L * 1024L * 1024L)
-                        val tailPieceStart = if (isIndexedContainer) {
+                        val tailBytes = if (isIndexedContainer) {
+                            piecePlanner?.tailBytes ?: StreamingPiecePlanner.calculateTailBytes(target.length, true)
+                        } else {
+                            0L
+                        }
+                        val tailPieceStart = if (isIndexedContainer && tailBytes > 0L) {
                             ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
                         } else {
                             target.lastPiece + 1
@@ -1198,13 +1246,18 @@ class TorrentDownloadService : Service() {
                     )
 
                     val isReady = !readyNotified && target != null && tracker != null && run {
-                        val startupEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES - 1)
+                        val startupBytes = piecePlanner?.startupBufferBytes ?: StreamingPiecePlanner.calculateStartupBufferBytes(target.length)
+                        val startupEnd = minOf(target.length - 1, startupBytes - 1)
                         val headVerified = tracker.isRangeVerified(0, startupEnd)
                         val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
                             target.file.extension.equals("webm", ignoreCase = true) ||
                             target.file.extension.equals("mp4", ignoreCase = true)
-                        val tailVerified = if (isIndexedContainer) {
-                            val tailBytes = minOf(target.length, 2L * 1024L * 1024L)
+                        val tailBytes = if (isIndexedContainer) {
+                            piecePlanner?.tailBytes ?: StreamingPiecePlanner.calculateTailBytes(target.length, true)
+                        } else {
+                            0L
+                        }
+                        val tailVerified = if (isIndexedContainer && tailBytes > 0L) {
                             val tailStart = maxOf(0L, target.length - tailBytes)
                             tracker.isRangeVerified(tailStart, target.length - 1L)
                         } else {
@@ -1316,6 +1369,16 @@ class TorrentDownloadService : Service() {
                         }
                         streamServers[infoHash]?.stop()
                         streamServers[infoHash] = server
+
+                        // Now that initial buffer is verified and ready, unlock sequential download across the entire media file
+                        synchronized(sessionLock) {
+                            if (sessionManager === manager && handle.isValid) {
+                                val resumePiece = piecePlanner?.calculateResumePiece(request.resumePositionMs, request.durationMs) ?: target.firstPiece
+                                try {
+                                    handle.setSequentialRange(resumePiece, target.lastPiece)
+                                } catch (_: Throwable) {}
+                            }
+                        }
 
 
                         val playerIntent = Intent(this@TorrentDownloadService, LocalPlayerActivity::class.java)
@@ -1510,7 +1573,8 @@ class TorrentDownloadService : Service() {
         handle: org.libtorrent4j.TorrentHandle,
         target: MediaTarget
     ): Boolean {
-        val startupEnd = minOf(target.length - 1, STARTUP_BUFFER_BYTES - 1)
+        val startupBytes = StreamingPiecePlanner.calculateStartupBufferBytes(target.length)
+        val startupEnd = minOf(target.length - 1, startupBytes - 1)
         return isVerifiedRange(handle, target, 0, startupEnd)
     }
 
@@ -1772,8 +1836,8 @@ class TorrentDownloadService : Service() {
         const val STATE_COMPLETED = "COMPLETED"
         /** Transfer failed and is available for an explicit retry. */
         const val STATE_FAILED = "FAILED"
-        /** Minimum verified startup buffer before playback may be offered (5 MB). */
-        const val STARTUP_BUFFER_BYTES = 5L * 1024L * 1024L
+        /** Minimum verified startup buffer before playback may be offered (8 MB minimum). */
+        const val STARTUP_BUFFER_BYTES = 8L * 1024L * 1024L
 
         private val _readyPlayerIntents = ConcurrentHashMap<String, Intent>()
         fun getReadyPlayerIntent(infoHash: String): Intent? = _readyPlayerIntents[infoHash]
