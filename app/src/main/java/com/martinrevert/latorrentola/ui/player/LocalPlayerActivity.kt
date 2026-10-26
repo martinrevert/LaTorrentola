@@ -175,6 +175,7 @@ import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.martinrevert.latorrentola.utils.MediaControllerHelper
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.SubtitleView
 import androidx.media3.ui.compose.modifiers.resizeWithContentScale
@@ -1293,8 +1294,7 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     private fun connectToMediaSession() {
-        val sessionToken = SessionToken(this, ComponentName(this, PlaybackService::class.java))
-        controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
+        controllerFuture = MediaControllerHelper.buildControllerAsync(this)
         controllerFuture?.addListener({
             try {
                 val controller = controllerFuture?.get()
@@ -2927,7 +2927,9 @@ class LocalPlayerActivity : FragmentActivity() {
                 castContext?.sessionManager?.removeSessionManagerListener(listener, CastSession::class.java)
             } catch (_: Exception) {}
         }
-        controllerFuture?.let { MediaController.releaseFuture(it) }
+        MediaControllerHelper.releaseFuture(controllerFuture)
+        controllerFuture = null
+        mediaController = null
         if (activeActivityRef?.get() == this) {
             activeActivityRef = null
         }

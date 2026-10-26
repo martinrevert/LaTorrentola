@@ -23,6 +23,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.IntentSanitizer
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.martinrevert.latorrentola.utils.MediaControllerHelper
+import com.google.common.util.concurrent.ListenableFuture
 import com.martinrevert.latorrentola.network.FirebaseMessagingConfig
 import com.martinrevert.latorrentola.network.FirebaseMessagingInitializer
 import com.martinrevert.latorrentola.service.PlaybackService
@@ -54,6 +56,8 @@ class MainActivity : FragmentActivity() {
     /** Supplies the persisted theme selection to the Compose content. */
     @Inject
     lateinit var preferenceManager: PreferenceManager
+
+    private var streamControllerFuture: ListenableFuture<MediaController>? = null
 
     /** Full movie payload awaiting consumption by [AppNavigation]. */
     private var movieJsonToOpen by mutableStateOf<String?>(null)
@@ -99,8 +103,9 @@ class MainActivity : FragmentActivity() {
                         }
                         startActivity(launchIntent)
                     } else {
-                        val sessionToken = SessionToken(this@MainActivity, ComponentName(this@MainActivity, PlaybackService::class.java))
-                        val controllerFuture = MediaController.Builder(this@MainActivity, sessionToken).buildAsync()
+                        MediaControllerHelper.releaseFuture(streamControllerFuture)
+                        val controllerFuture = MediaControllerHelper.buildControllerAsync(this@MainActivity)
+                        streamControllerFuture = controllerFuture
                         controllerFuture.addListener({
                             try {
                                 val controller = controllerFuture.get()
@@ -252,5 +257,11 @@ class MainActivity : FragmentActivity() {
         } else {
             firebaseMessagingInitializer.subscribeToDefaultTopic()
         }
+    }
+
+    override fun onDestroy() {
+        MediaControllerHelper.releaseFuture(streamControllerFuture)
+        streamControllerFuture = null
+        super.onDestroy()
     }
 }

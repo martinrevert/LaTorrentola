@@ -76,6 +76,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.martinrevert.latorrentola.utils.MediaControllerHelper
 import androidx.mediarouter.media.MediaRouteSelector
 import androidx.mediarouter.media.MediaRouter
 import com.google.android.gms.cast.CastMediaControlIntent
@@ -116,8 +117,7 @@ fun TorrentDownloadsScreen(
     // Connect to MediaController to track active playback
     var mediaController by remember { mutableStateOf<MediaController?>(null) }
     DisposableEffect(context) {
-        val sessionToken = SessionToken(context, ComponentName(context, PlaybackService::class.java))
-        val controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
+        val controllerFuture = MediaControllerHelper.buildControllerAsync(context)
         controllerFuture.addListener({
             try {
                 mediaController = controllerFuture.get()
@@ -125,9 +125,8 @@ fun TorrentDownloadsScreen(
         }, ContextCompat.getMainExecutor(context))
 
         onDispose {
-            mediaController?.let {
-                MediaController.releaseFuture(controllerFuture)
-            }
+            MediaControllerHelper.releaseFuture(controllerFuture)
+            mediaController = null
         }
     }
 
