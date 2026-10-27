@@ -184,6 +184,81 @@ class PlaybackService : MediaSessionService() {
                             else -> "video/mp4"
                         }
 
+                        // Extract and attach audio tracks for Cast to inherit ExoPlayer track selection
+                        val audioMediaTracks = mutableListOf<MediaTrack>()
+                        var activeAudioTrackId: Long? = null
+                        val preferredAudioLang = localPlayer?.trackSelectionParameters?.preferredAudioLanguages?.firstOrNull() ?: "en"
+
+                        val audioGroups = localPlayer?.currentTracks?.groups?.filter { it.type == C.TRACK_TYPE_AUDIO }.orEmpty()
+                        if (audioGroups.isNotEmpty()) {
+                            var audioId = 101L
+                            for (group in audioGroups) {
+                                for (i in 0 until group.length) {
+                                    val format = group.getTrackFormat(i)
+                                    val lang = format.language?.takeIf { it.isNotBlank() && it != "und" } ?: "en"
+                                    val label = format.label?.takeIf { it.isNotBlank() } ?: "Audio ${audioMediaTracks.size + 1} ($lang)"
+                                    val trackId = audioId++
+                                    audioMediaTracks.add(
+                                        MediaTrack.Builder(trackId, MediaTrack.TYPE_AUDIO)
+                                            .setName(label)
+                                            .setLanguage(lang)
+                                            .build()
+                                    )
+                                    val isSelected = group.isTrackSelected(i) || lang.equals(preferredAudioLang, ignoreCase = true)
+                                    if (isSelected && activeAudioTrackId == null) {
+                                        activeAudioTrackId = trackId
+                                    }
+                                }
+                            }
+                        }
+
+                        if (audioMediaTracks.isEmpty()) {
+                            val localFilePath = try {
+                                val u = android.net.Uri.parse(uriStr)
+                                if (u.scheme == "file") u.path else if (u.scheme == null && uriStr.startsWith("/")) uriStr else null
+                            } catch (_: Exception) { null }
+                            if (!localFilePath.isNullOrBlank()) {
+                                try {
+                                    val f = File(localFilePath)
+                                    if (f.exists() && f.isFile && f.length() > 0L) {
+                                        val extractor = android.media.MediaExtractor()
+                                        extractor.setDataSource(f.absolutePath)
+                                        var audioId = 101L
+                                        for (i in 0 until extractor.trackCount) {
+                                            val format = extractor.getTrackFormat(i)
+                                            val formatMime = format.getString(android.media.MediaFormat.KEY_MIME).orEmpty()
+                                            if (formatMime.startsWith("audio/")) {
+                                                val lang = if (format.containsKey(android.media.MediaFormat.KEY_LANGUAGE)) format.getString(android.media.MediaFormat.KEY_LANGUAGE) else "en"
+                                                val safeLang = lang?.takeIf { it.isNotBlank() && it != "und" } ?: "en"
+                                                val trackId = audioId++
+                                                audioMediaTracks.add(
+                                                    MediaTrack.Builder(trackId, MediaTrack.TYPE_AUDIO)
+                                                        .setName("Audio ${audioMediaTracks.size + 1} ($safeLang)")
+                                                        .setLanguage(safeLang)
+                                                        .build()
+                                                )
+                                                if (safeLang.equals(preferredAudioLang, ignoreCase = true) && activeAudioTrackId == null) {
+                                                    activeAudioTrackId = trackId
+                                                }
+                                            }
+                                        }
+                                        extractor.release()
+                                    }
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Failed extracting audio tracks from file for Cast: ${e.message}")
+                                }
+                            }
+                        }
+
+                        if (activeAudioTrackId == null && audioMediaTracks.isNotEmpty()) {
+                            activeAudioTrackId = audioMediaTracks.firstOrNull { it.language?.startsWith("en", ignoreCase = true) == true }?.id
+                                ?: audioMediaTracks.first().id
+                        }
+
+                        val allMediaTracks = mutableListOf<MediaTrack>()
+                        allMediaTracks.addAll(castMediaTracks)
+                        allMediaTracks.addAll(audioMediaTracks)
+
                         val newMediaInfoBuilder = MediaInfo.Builder(targetUrl)
                             .setContentUrl(targetUrl)
                             .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
@@ -191,8 +266,8 @@ class PlaybackService : MediaSessionService() {
                             .setMetadata(defaultMediaInfo.metadata)
                             .setCustomData(defaultMediaInfo.customData)
 
-                        if (castMediaTracks.isNotEmpty()) {
-                            newMediaInfoBuilder.setMediaTracks(castMediaTracks)
+                        if (allMediaTracks.isNotEmpty()) {
+                            newMediaInfoBuilder.setMediaTracks(allMediaTracks)
                         }
 
                         val queueItemBuilder = MediaQueueItem.Builder(newMediaInfoBuilder.build())
@@ -207,8 +282,16 @@ class PlaybackService : MediaSessionService() {
                         defaultQueueItem.customData?.let {
                             queueItemBuilder.setCustomData(it)
                         }
+                        val initialActiveTrackIds = mutableListOf<Long>()
                         if (castMediaTracks.isNotEmpty()) {
-                            queueItemBuilder.setActiveTrackIds(longArrayOf(1L))
+                            initialActiveTrackIds.add(1L)
+                        }
+                        if (activeAudioTrackId != null) {
+                            initialActiveTrackIds.add(activeAudioTrackId)
+                        }
+                        if (initialActiveTrackIds.isNotEmpty()) {
+                            queueItemBuilder.setActiveTrackIds(initialActiveTrackIds.toLongArray())
+                            Log.i(TAG, "Cast initial active track IDs set: $initialActiveTrackIds (activeAudioTrackId=$activeAudioTrackId)")
                         }
 
                         return queueItemBuilder.build()
@@ -244,6 +327,20 @@ class PlaybackService : MediaSessionService() {
                     serviceScope.launch {
                         delay(200.milliseconds)
                         localPlayer?.let { exo ->
+                            try {
+                                remotePlayer?.let { remote ->
+                                    val remoteAudioLang = remote.trackSelectionParameters.preferredAudioLanguages.firstOrNull()
+                                    if (!remoteAudioLang.isNullOrBlank()) {
+                                        exo.trackSelectionParameters = exo.trackSelectionParameters
+                                            .buildUpon()
+                                            .setPreferredAudioLanguage(remoteAudioLang)
+                                            .build()
+                                        Log.i(TAG, "Synced audio language from Cast back to ExoPlayer: $remoteAudioLang")
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed syncing audio language from Cast to ExoPlayer: ${e.message}")
+                            }
                             if (lastCastPositionMs > 0L) {
                                 exo.seekTo(lastCastPositionMs)
                             }

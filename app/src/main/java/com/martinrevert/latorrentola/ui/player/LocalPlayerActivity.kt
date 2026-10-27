@@ -525,6 +525,10 @@ class LocalPlayerActivity : FragmentActivity() {
                                 } catch (e: Exception) {
                                     Log.w(TAG, "Failed clearing overrides upon cast transition: ${e.message}")
                                 }
+                            } else {
+                                // Returning from Cast back to local ExoPlayer: guarantee preferred audio & subtitles are sustained
+                                selectDefaultAudioTrackIfNeeded(controller)
+                                selectDefaultSubtitleIfNeeded(controller)
                             }
                         }
 
@@ -597,11 +601,13 @@ class LocalPlayerActivity : FragmentActivity() {
                                     }
                                     override fun onTracksChanged(tracks: Tracks) {
                                         selectDefaultSubtitleIfNeeded(controller)
+                                        selectDefaultAudioTrackIfNeeded(controller)
                                         prepareSubtitleTrackIfNeeded(tracks)
                                     }
                                 }
                                 controller.addListener(listener)
                                 selectDefaultSubtitleIfNeeded(controller)
+                                selectDefaultAudioTrackIfNeeded(controller)
                                 onDispose {
                                     controller.removeListener(listener)
                                 }
@@ -1365,6 +1371,7 @@ class LocalPlayerActivity : FragmentActivity() {
                 controller.addListener(object : Player.Listener {
                     override fun onTracksChanged(tracks: Tracks) {
                         selectDefaultSubtitleIfNeeded(controller)
+                        selectDefaultAudioTrackIfNeeded(controller)
                         prepareSubtitleTrackIfNeeded(tracks)
                         updateCachedAudioTracks(tracks)
                     }
@@ -1531,6 +1538,7 @@ class LocalPlayerActivity : FragmentActivity() {
 
                 val deviceLang = Locale.getDefault().language
                 val defaultTrackParams = controller.trackSelectionParameters.buildUpon()
+                    .setPreferredAudioLanguages("en", "eng")
                     .setPreferredTextLanguage(deviceLang)
                     .setPreferredTextRoleFlags(C.ROLE_FLAG_CAPTION or C.ROLE_FLAG_SUBTITLE)
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
@@ -1617,6 +1625,7 @@ class LocalPlayerActivity : FragmentActivity() {
             controller.addListener(object : Player.Listener {
                 override fun onTracksChanged(tracks: Tracks) {
                     selectDefaultSubtitleIfNeeded(controller)
+                    selectDefaultAudioTrackIfNeeded(controller)
                     prepareSubtitleTrackIfNeeded(tracks)
                     updateCachedAudioTracks(tracks)
                 }
@@ -1673,6 +1682,7 @@ class LocalPlayerActivity : FragmentActivity() {
             })
 
             selectDefaultSubtitleIfNeeded(controller)
+            selectDefaultAudioTrackIfNeeded(controller)
             prepareSubtitleTrackIfNeeded(controller.currentTracks)
         }
     }
@@ -1744,6 +1754,45 @@ class LocalPlayerActivity : FragmentActivity() {
                 controller.trackSelectionParameters = params
                 Log.i(TAG, "Auto-selected subtitle track: lang=${targetGroup.getFormat(targetIndex).language}")
             }
+        }
+    }
+
+    private fun selectDefaultAudioTrackIfNeeded(controller: Player) {
+        if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE) return
+        val audioGroups = controller.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+        if (audioGroups.isEmpty()) return
+
+        var isEnglishSelected = false
+        var englishGroup: TrackGroup? = null
+        var englishTrackIndex: Int? = null
+
+        for (group in audioGroups) {
+            for (i in 0 until group.length) {
+                val format = group.getTrackFormat(i)
+                val lang = format.language?.lowercase(Locale.ROOT).orEmpty()
+                val label = format.label?.lowercase(Locale.ROOT).orEmpty()
+                val isEnglish = lang == "en" || lang == "eng" || lang.startsWith("en") ||
+                        label.contains("english") || label.contains("inglés") || label.contains("ingles")
+                if (isEnglish) {
+                    if (group.isTrackSelected(i)) {
+                        isEnglishSelected = true
+                    }
+                    if (englishGroup == null) {
+                        englishGroup = group.mediaTrackGroup
+                        englishTrackIndex = i
+                    }
+                }
+            }
+        }
+
+        // If English is available and not currently selected, prioritize English by default
+        if (!isEnglishSelected && englishGroup != null && englishTrackIndex != null) {
+            val params = controller.trackSelectionParameters.buildUpon()
+                .setPreferredAudioLanguages("en", "eng")
+                .setOverrideForType(TrackSelectionOverride(englishGroup, listOf(englishTrackIndex)))
+                .build()
+            controller.trackSelectionParameters = params
+            Log.i(TAG, "selectDefaultAudioTrackIfNeeded: English audio auto-selected at track index $englishTrackIndex")
         }
     }
 
@@ -2294,6 +2343,19 @@ class LocalPlayerActivity : FragmentActivity() {
         val parameters = controller.trackSelectionParameters.buildUpon()
             .clearOverridesOfType(media3Type)
             .setTrackTypeDisabled(media3Type, type == PlaybackTrackType.SUBTITLE && option == null)
+
+        if (type == PlaybackTrackType.AUDIO && option != null) {
+            val selectedLang = option.group?.let { g ->
+                option.trackIndex?.let { idx -> g.getFormat(idx).language }
+            } ?: run {
+                val rmc = CastContext.getSharedInstance()?.sessionManager?.currentCastSession?.remoteMediaClient
+                rmc?.mediaInfo?.mediaTracks?.firstOrNull { it.id == option.castTrackId }?.language
+            }
+            if (!selectedLang.isNullOrBlank() && selectedLang != "und") {
+                parameters.setPreferredAudioLanguage(selectedLang)
+            }
+        }
+
         if (option?.group != null && option.trackIndex != null && controller.deviceInfo.playbackType != DeviceInfo.PLAYBACK_TYPE_REMOTE) {
             controller.trackSelectionParameters = parameters
                 .setOverrideForType(TrackSelectionOverride(option.group, listOf(option.trackIndex)))

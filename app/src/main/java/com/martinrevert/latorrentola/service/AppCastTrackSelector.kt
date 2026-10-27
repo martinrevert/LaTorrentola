@@ -34,14 +34,16 @@ class AppCastTrackSelector : CastTrackSelector() {
                     ?: audioOverride.mediaTrackGroup.getFormat(0).language?.let { overrideLang ->
                         audioTrackGroups.firstOrNull { it.getFormat(0).language?.equals(overrideLang, ignoreCase = true) == true }
                     }
+                    ?: audioTrackGroups.firstOrNull { it.getFormat(0).language?.startsWith("en", ignoreCase = true) == true }
                     ?: audioTrackGroups.first()
             } else {
-                val prefAudioLang = params.preferredAudioLanguages.firstOrNull()
-                if (prefAudioLang != null) {
-                    audioTrackGroups.firstOrNull {
-                        it.getFormat(0).language?.equals(prefAudioLang, ignoreCase = true) == true
-                    }
-                } else null
+                val prefAudioLang = params.preferredAudioLanguages.firstOrNull() ?: "en"
+                audioTrackGroups.firstOrNull {
+                    it.getFormat(0).language?.equals(prefAudioLang, ignoreCase = true) == true ||
+                    it.getFormat(0).language?.startsWith(prefAudioLang, ignoreCase = true) == true
+                } ?: audioTrackGroups.firstOrNull {
+                    it.getFormat(0).language?.startsWith("en", ignoreCase = true) == true
+                } ?: audioTrackGroups.first()
             }
 
             if (targetAudioGroup != null && availableGroups.contains(targetAudioGroup)) {

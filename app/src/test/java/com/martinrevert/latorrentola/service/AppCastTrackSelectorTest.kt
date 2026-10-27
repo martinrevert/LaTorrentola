@@ -116,4 +116,58 @@ class AppCastTrackSelectorTest {
 
         assertThat(result.selections.any { it.type == C.TRACK_TYPE_TEXT }).isFalse()
     }
+
+    @Test
+    fun `evaluate selects English audio track by default when multiple audio tracks are available`() {
+        val italianAudioGroup = TrackGroup("audio_it", Format.Builder().setSampleMimeType(MimeTypes.AUDIO_AAC).setLanguage("it").build())
+        val englishAudioGroup = TrackGroup("audio_en", Format.Builder().setSampleMimeType(MimeTypes.AUDIO_AAC).setLanguage("en").build())
+
+        val availableGroups = listOf(italianAudioGroup, englishAudioGroup)
+        val params = TrackSelectionParameters.Builder().build()
+
+        val request = createRequest(availableGroups, setOf(italianAudioGroup), params)
+
+        val result = selector.evaluate(request)
+
+        // Must select English audio track by default even if Italian was initially set on receiver
+        assertThat(result.selections).contains(englishAudioGroup)
+        assertThat(result.selections).doesNotContain(italianAudioGroup)
+    }
+
+    @Test
+    fun `evaluate respects preferredAudioLanguages when specified`() {
+        val italianAudioGroup = TrackGroup("audio_it", Format.Builder().setSampleMimeType(MimeTypes.AUDIO_AAC).setLanguage("it").build())
+        val englishAudioGroup = TrackGroup("audio_en", Format.Builder().setSampleMimeType(MimeTypes.AUDIO_AAC).setLanguage("en").build())
+
+        val availableGroups = listOf(italianAudioGroup, englishAudioGroup)
+        val params = TrackSelectionParameters.Builder()
+            .setPreferredAudioLanguage("it")
+            .build()
+
+        val request = createRequest(availableGroups, emptySet(), params)
+
+        val result = selector.evaluate(request)
+
+        assertThat(result.selections).contains(italianAudioGroup)
+        assertThat(result.selections).doesNotContain(englishAudioGroup)
+    }
+
+    @Test
+    fun `evaluate matches audio override by language when foreign group was overridden`() {
+        val localForeignAudioGroup = TrackGroup("foreign_it", Format.Builder().setSampleMimeType(MimeTypes.AUDIO_AC3).setLanguage("it").build())
+        val castItalianAudioGroup = TrackGroup("cast_it", Format.Builder().setSampleMimeType(MimeTypes.AUDIO_AAC).setLanguage("it").build())
+        val castEnglishAudioGroup = TrackGroup("cast_en", Format.Builder().setSampleMimeType(MimeTypes.AUDIO_AAC).setLanguage("en").build())
+
+        val availableGroups = listOf(castItalianAudioGroup, castEnglishAudioGroup)
+        val params = TrackSelectionParameters.Builder()
+            .addOverride(TrackSelectionOverride(localForeignAudioGroup, 0))
+            .build()
+
+        val request = createRequest(availableGroups, emptySet(), params)
+
+        val result = selector.evaluate(request)
+
+        assertThat(result.selections).contains(castItalianAudioGroup)
+        assertThat(result.selections).doesNotContain(localForeignAudioGroup)
+    }
 }
