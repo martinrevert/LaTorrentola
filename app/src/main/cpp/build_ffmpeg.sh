@@ -62,6 +62,12 @@ COMMON_OPTIONS="
 "
 
 cd "${FFMPEG_DIR}"
+
+GIT_DIR="$(git rev-parse --git-dir 2>/dev/null || true)"
+if [ -n "${GIT_DIR}" ] && [ -d "${GIT_DIR}/info" ]; then
+    grep -qxF 'android-libs/' "${GIT_DIR}/info/exclude" 2>/dev/null || echo 'android-libs/' >> "${GIT_DIR}/info/exclude"
+fi
+
 sed -i 's/ac3_encoder_select=.*/ac3_encoder_select="ac3dsp audiodsp me_cmp audio_frame_queue"/' configure
 sed -i 's/eac3_encoder_select=.*/eac3_encoder_select="ac3dsp audiodsp me_cmp audio_frame_queue"/' configure
 
@@ -120,6 +126,9 @@ build_abi "armeabi-v7a" "arm" "armv7-a" "armv7a-linux-androideabi" "-march=armv7
 
 # 3. x86_64 (PC Emulators)
 build_abi "x86_64" "x86_64" "x86-64" "x86_64-linux-android" "" "" "--disable-asm"
+
+# Revert temporary configure edits so the ffmpeg submodule remains clean
+git checkout configure 2>/dev/null || true
 
 echo ""
 echo "=== All FFmpeg Android libraries built successfully! ==="

@@ -2894,6 +2894,7 @@ class LocalPlayerActivity : FragmentActivity() {
         }
     }
 
+    @android.annotation.SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         val controller = mediaController
         val isCasting = controller?.deviceInfo?.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE

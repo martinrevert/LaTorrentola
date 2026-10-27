@@ -1194,13 +1194,14 @@ private fun LogoutButton(isTv: Boolean, onClick: () -> Unit) {
 /** Displays the installed application version. */
 @Composable
 private fun AppVersionInfo(isTv: Boolean = false) {
+    val appName = stringResource(R.string.app_name)
     val context = LocalContext.current
     if (isTv) {
         androidx.tv.material3.Surface(
             onClick = {
                 Toast.makeText(
                     context,
-                    "${context.getString(R.string.app_name)} v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                    "$appName v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                     Toast.LENGTH_SHORT
                 ).show()
             },
@@ -1241,7 +1242,7 @@ private fun AppVersionInfo(isTv: Boolean = false) {
             onClick = {
                 Toast.makeText(
                     context,
-                    "${context.getString(R.string.app_name)} v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                    "$appName v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                     Toast.LENGTH_SHORT
                 ).show()
             },

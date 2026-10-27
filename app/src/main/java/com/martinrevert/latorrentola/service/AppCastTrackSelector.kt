@@ -1,3 +1,4 @@
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 package com.martinrevert.latorrentola.service
 
 import androidx.media3.cast.CastTrackSelector

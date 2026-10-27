@@ -14,6 +14,7 @@ import com.martinrevert.latorrentola.BuildConfig
  */
 class AppCastOptionsProvider : OptionsProvider {
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     override fun getCastOptions(context: Context): CastOptions {
         val configuredAppId = BuildConfig.CAST_APP_ID.trim()
         val effectiveAppId = if (configuredAppId.isNotEmpty()) {
