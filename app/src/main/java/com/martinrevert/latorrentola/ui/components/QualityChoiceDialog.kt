@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -49,6 +49,7 @@ import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
+import com.martinrevert.latorrentola.model.torrent.groupByQuality
 import com.martinrevert.latorrentola.network.NextEpisodeEvaluation
 import com.martinrevert.latorrentola.network.SeriesContinuationState
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
@@ -73,6 +74,8 @@ import kotlinx.coroutines.delay
  * @param onTorrentSelected Callback when user chooses a specific release.
  * @param onDismiss Callback when user cancels or dismisses the dialog.
  * @param evaluation Optional [NextEpisodeEvaluation] with TMDB series continuation status and upcoming air dates.
+ * @param releasesByQuality Optional pre-grouped map of releases by quality group.
+ * @param downloadedHashes Optional set of release infohashes already saved in user downloads.
  * @param themeMode Optional explicit theme mode override.
  */
 @Composable
@@ -87,6 +90,8 @@ fun NextEpisodeTorrentDialog(
     onTorrentSelected: (TorrentRelease) -> Unit,
     onDismiss: () -> Unit,
     evaluation: NextEpisodeEvaluation? = null,
+    releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>>? = null,
+    downloadedHashes: Set<String> = emptySet(),
     themeMode: Int? = null
 ) {
     val context = LocalContext.current
@@ -97,14 +102,31 @@ fun NextEpisodeTorrentDialog(
     val firstItemFocusRequester = remember { FocusRequester() }
     val closeButtonFocusRequester = remember { FocusRequester() }
 
+    val effectiveReleasesByQuality = remember(releases, releasesByQuality) {
+        if (!releasesByQuality.isNullOrEmpty()) {
+            releasesByQuality.toSortedMap(compareBy { it.ordinal })
+        } else {
+            releases.groupByQuality()
+        }
+    }
+    val hasReleases = remember(effectiveReleasesByQuality) {
+        effectiveReleasesByQuality.values.any { it.isNotEmpty() }
+    }
+    val firstRelease = remember(effectiveReleasesByQuality) {
+        effectiveReleasesByQuality.values.firstOrNull { it.isNotEmpty() }?.firstOrNull()
+    }
+    val lastRelease = remember(effectiveReleasesByQuality) {
+        effectiveReleasesByQuality.values.lastOrNull { it.isNotEmpty() }?.lastOrNull()
+    }
+
     BackHandler(onBack = onDismiss)
 
     // Ensure deterministic TV D-pad focus in all scenarios (Loading, Error, Empty, or Populated)
     if (isTv) {
-        LaunchedEffect(isLoading, error, releases, evaluation) {
+        LaunchedEffect(isLoading, error, hasReleases, evaluation) {
             delay(100.milliseconds)
             try {
-                if (!isLoading && releases.isNotEmpty()) {
+                if (!isLoading && hasReleases) {
                     firstItemFocusRequester.requestFocus()
                 } else {
                     closeButtonFocusRequester.requestFocus()
@@ -114,7 +136,7 @@ fun NextEpisodeTorrentDialog(
     }
 
     val effectiveSeriesName = evaluation?.seriesName?.takeIf { it.isNotBlank() } ?: seriesName
-    val isStatusOnlyMode = !isLoading && releases.isEmpty() && evaluation != null &&
+    val isStatusOnlyMode = !isLoading && !hasReleases && evaluation != null &&
         evaluation.state != SeriesContinuationState.NEXT_EPISODE_READY
 
     Dialog(
@@ -203,7 +225,7 @@ fun NextEpisodeTorrentDialog(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 120.dp, max = if (isTv) 360.dp else 280.dp),
+                                .heightIn(min = 120.dp, max = if (isTv) 380.dp else 300.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             when {
@@ -233,7 +255,7 @@ fun NextEpisodeTorrentDialog(
                                         modifier = Modifier.padding(16.dp)
                                     )
                                 }
-                                releases.isEmpty() -> {
+                                !hasReleases -> {
                                     val statusMessage = when (evaluation?.state) {
                                         SeriesContinuationState.SERIES_ENDED ->
                                             stringResource(R.string.series_status_ended_message)
@@ -284,33 +306,64 @@ fun NextEpisodeTorrentDialog(
                                     )
                                 }
                                 else -> {
+                                    val firstQualityKey = effectiveReleasesByQuality.keys.firstOrNull {
+                                        effectiveReleasesByQuality[it]?.isNotEmpty() == true
+                                    }
                                     LazyColumn(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .heightIn(min = 120.dp, max = if (isTv) 280.dp else 220.dp),
+                                            .heightIn(min = 120.dp, max = if (isTv) 380.dp else 300.dp),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        itemsIndexed(releases) { index, release ->
-                                            val itemModifier = Modifier
-                                                .then(if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
-                                                .then(
-                                                    if (isTv) {
-                                                        Modifier.focusProperties {
-                                                            if (index == releases.lastIndex) down = closeButtonFocusRequester
-                                                            if (index == 0) up = closeButtonFocusRequester
-                                                        }
-                                                    } else {
-                                                        Modifier
+                                        effectiveReleasesByQuality.forEach { (qualityGroup, groupReleases) ->
+                                            if (groupReleases.isNotEmpty()) {
+                                                item(key = "header_${qualityGroup.name}") {
+                                                    val groupHeader = when (qualityGroup) {
+                                                        VideoQualityGroup.UHD_4K -> stringResource(R.string.quality_group_4k)
+                                                        VideoQualityGroup.FHD_1080P -> stringResource(R.string.quality_group_1080p)
+                                                        VideoQualityGroup.HD_720P -> stringResource(R.string.quality_group_720p)
+                                                        VideoQualityGroup.OTHER -> stringResource(R.string.quality_group_other)
                                                     }
-                                                )
+                                                    Text(
+                                                        text = groupHeader,
+                                                        style = MaterialTheme.typography.titleMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.padding(
+                                                            top = if (qualityGroup == firstQualityKey) 4.dp else 12.dp,
+                                                            bottom = 4.dp
+                                                        )
+                                                    )
+                                                }
+                                                items(
+                                                    items = groupReleases,
+                                                    key = { release -> "${qualityGroup.name}_${release.hash.ifBlank { release.title }}_${release.provider}" }
+                                                ) { release ->
+                                                    val isFirst = release == firstRelease
+                                                    val isLast = release == lastRelease
+                                                    val itemModifier = Modifier
+                                                        .then(if (isFirst) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
+                                                        .then(
+                                                            if (isTv) {
+                                                                Modifier.focusProperties {
+                                                                    if (isLast) down = closeButtonFocusRequester
+                                                                    if (isFirst) up = closeButtonFocusRequester
+                                                                }
+                                                            } else {
+                                                                Modifier
+                                                            }
+                                                        )
 
-                                            TorrentReleaseShimmerCard(
-                                                release = release,
-                                                isDownloaded = false,
-                                                onClick = { onTorrentSelected(release) },
-                                                modifier = itemModifier,
-                                                themeMode = effectiveThemeMode
-                                            )
+                                                    val isTorrentDownloaded = downloadedHashes.contains(release.hash.lowercase())
+                                                    TorrentReleaseShimmerCard(
+                                                        release = release,
+                                                        isDownloaded = isTorrentDownloaded,
+                                                        onClick = { onTorrentSelected(release) },
+                                                        modifier = itemModifier,
+                                                        themeMode = effectiveThemeMode
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -328,7 +381,7 @@ fun NextEpisodeTorrentDialog(
                                 modifier = Modifier
                                     .focusRequester(closeButtonFocusRequester)
                                     .then(
-                                        if (isTv && releases.isNotEmpty()) {
+                                        if (isTv && hasReleases) {
                                             Modifier.focusProperties {
                                                 up = FocusRequester.Default
                                             }
@@ -562,6 +615,19 @@ private fun NextEpisodeTorrentDialogPreviewReleases() {
             episodeNumber = 1,
             episodeName = "Pilot",
             releases = listOf(
+                TorrentRelease(
+                    hash = "hash4k",
+                    title = "Breaking.Bad.S01E01.2160p.UHD.HDR.x265",
+                    qualityGroup = VideoQualityGroup.UHD_4K,
+                    resolutionLabel = "4K",
+                    audioCodec = "DTS-HD MA 5.1",
+                    videoCodec = "x265",
+                    sizeBytes = 4258291200L,
+                    formattedSize = "3.96 GB",
+                    seeds = 220,
+                    peers = 30,
+                    provider = "Torrentio"
+                ),
                 TorrentRelease(
                     hash = "hash1080",
                     title = "Breaking.Bad.S01E01.1080p.WEB-DL.x264",

@@ -15,10 +15,16 @@ import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
 import com.martinrevert.latorrentola.utils.TorrentLaunchResult
 import dagger.hilt.android.lifecycle.HiltViewModel
+import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
+import com.martinrevert.latorrentola.model.torrent.groupByQuality
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -35,6 +41,25 @@ class TvPlayerViewModel @Inject constructor(
 
     private val _nextEpisodeReleases = MutableStateFlow<List<TorrentRelease>>(emptyList())
     val nextEpisodeReleases: StateFlow<List<TorrentRelease>> = _nextEpisodeReleases.asStateFlow()
+
+    /** Releases for the next episode grouped by video quality and sorted by seeds/size descending. */
+    val nextEpisodeReleasesByQuality: StateFlow<Map<VideoQualityGroup, List<TorrentRelease>>> =
+        _nextEpisodeReleases.map { it.groupByQuality() }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.Eagerly,
+                initialValue = emptyMap()
+            )
+
+    /** Set of infohashes for episodes already downloaded in the user's library. */
+    val downloadedHashes: StateFlow<Set<String>> = userLibraryRepository.getDownloadedEpisodes()
+        .map { list -> list.mapNotNull { it.hash.takeIf(String::isNotBlank)?.trim()?.lowercase() }.toSet() }
+        .catch { emit(emptySet()) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptySet()
+        )
 
     private val _nextEpisodeEvaluation = MutableStateFlow<NextEpisodeEvaluation?>(null)
     val nextEpisodeEvaluation: StateFlow<NextEpisodeEvaluation?> = _nextEpisodeEvaluation.asStateFlow()

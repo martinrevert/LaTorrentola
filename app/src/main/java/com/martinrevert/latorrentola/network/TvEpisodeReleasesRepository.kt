@@ -7,6 +7,7 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails
 import com.martinrevert.latorrentola.model.TMDB.UpcomingEpisodeSchedule
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
+import com.martinrevert.latorrentola.model.torrent.groupByQuality
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -481,16 +482,7 @@ class TvEpisodeReleasesRepository @Inject constructor(
 
             val eztvReleases = eztvList.map { torrentioRepository.fromEztvTorrent(it) }
             val allReleases = eztvReleases + torrentioList
-            val grouped = allReleases
-                .distinctBy { it.hash.lowercase() }
-                .groupBy { it.qualityGroup }
-                .mapValues { entry ->
-                    entry.value.sortedWith(
-                        compareByDescending<TorrentRelease> { it.seeds }
-                            .thenByDescending { it.sizeBytes ?: 0L }
-                    )
-                }
-                .toSortedMap(compareBy { it.ordinal })
+            val grouped = allReleases.groupByQuality()
 
             Pair(eztvList, grouped)
         }

@@ -13,6 +13,7 @@ import com.martinrevert.latorrentola.utils.PreferenceManager
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Rule
@@ -82,6 +83,58 @@ class TvPlayerViewModelTest {
         assertThat(viewModel.nextEpisodeReleases.value.first().hash).isEqualTo("torrentiohash")
         assertThat(viewModel.nextEpisodeData.value?.seriesName).isEqualTo("Test Show")
         assertThat(viewModel.nextEpisodeData.value?.episodeNumber).isEqualTo(2)
+        assertThat(viewModel.nextEpisodeReleasesByQuality.value).containsKey(VideoQualityGroup.FHD_1080P)
+        assertThat(viewModel.nextEpisodeReleasesByQuality.value).containsKey(VideoQualityGroup.HD_720P)
+        assertThat(viewModel.nextEpisodeReleasesByQuality.value[VideoQualityGroup.FHD_1080P]).containsExactly(release1)
+        assertThat(viewModel.nextEpisodeReleasesByQuality.value[VideoQualityGroup.HD_720P]).containsExactly(release2)
+    }
+
+    @Test
+    fun `downloadedHashes emits lowercase hashes of downloaded episodes`() = runTest {
+        val downloaded = listOf(
+            com.martinrevert.latorrentola.model.user.DownloadedEpisode(
+                seriesId = 100,
+                seasonNumber = 1,
+                episodeNumber = 1,
+                hash = "ABCDEF123456"
+            )
+        )
+        io.mockk.every { userLibraryRepository.getDownloadedEpisodes() } returns kotlinx.coroutines.flow.flowOf(downloaded)
+
+        val vm = TvPlayerViewModel(
+            tvEpisodeReleasesRepository,
+            tmdbRepository,
+            userLibraryRepository,
+            preferenceManager
+        )
+        val job = backgroundScope.launch {
+            vm.downloadedHashes.collect {}
+        }
+        testScheduler.advanceUntilIdle()
+
+        assertThat(vm.downloadedHashes.value).containsExactly("abcdef123456")
+        job.cancel()
+    }
+
+    @Test
+    fun `downloadedHashes catches exceptions from repository and emits empty set`() = runTest {
+        io.mockk.every { userLibraryRepository.getDownloadedEpisodes() } returns kotlinx.coroutines.flow.flow {
+            throw RuntimeException("Firestore connection error")
+        }
+
+        val vm = TvPlayerViewModel(
+            tvEpisodeReleasesRepository,
+            tmdbRepository,
+            userLibraryRepository,
+            preferenceManager
+        )
+        val job = backgroundScope.launch {
+            vm.downloadedHashes.collect {}
+        }
+        testScheduler.advanceUntilIdle()
+
+        assertThat(vm.downloadedHashes.value).isEmpty()
+        job.cancel()
     }
 
     @Test

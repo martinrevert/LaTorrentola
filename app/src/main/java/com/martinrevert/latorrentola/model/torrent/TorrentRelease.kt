@@ -95,3 +95,22 @@ data class TorrentRelease(
     val isOriginalEztv: Boolean
         get() = provider.equals("EZTV", ignoreCase = true)
 }
+
+/**
+ * Deduplicates releases by infoHash, groups them by video quality ([VideoQualityGroup]),
+ * and sorts each group by seeds descending, then size descending.
+ * The resulting map is sorted by [VideoQualityGroup] ordinal (4K UHD -> 1080p FHD -> 720p HD -> Other).
+ */
+fun List<TorrentRelease>.groupByQuality(): Map<VideoQualityGroup, List<TorrentRelease>> {
+    return this
+        .distinctBy { if (it.hash.isNotBlank()) it.hash.trim().lowercase() else "${it.title}_${it.provider}" }
+        .groupBy { it.qualityGroup }
+        .mapValues { entry ->
+            entry.value.sortedWith(
+                compareByDescending<TorrentRelease> { it.seeds }
+                    .thenByDescending { it.sizeBytes ?: 0L }
+            )
+        }
+        .toSortedMap(compareBy { it.ordinal })
+}
+

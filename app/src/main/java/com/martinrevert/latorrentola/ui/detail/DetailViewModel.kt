@@ -10,6 +10,7 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
 import com.martinrevert.latorrentola.network.TorrentioRepository
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
+import com.martinrevert.latorrentola.model.torrent.groupByQuality
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
@@ -401,16 +402,7 @@ class DetailViewModel @Inject constructor(
 
     /** Deduplicates by infoHash, groups by video quality, and sorts each group by seeds descending. */
     private fun groupAndSortReleases(releases: List<TorrentRelease>): Map<VideoQualityGroup, List<TorrentRelease>> {
-        return releases
-            .distinctBy { it.hash.lowercase() }
-            .groupBy { it.qualityGroup }
-            .mapValues { entry ->
-                entry.value.sortedWith(
-                    compareByDescending<TorrentRelease> { it.seeds }
-                        .thenByDescending { it.sizeBytes ?: 0L }
-                )
-            }
-            .toSortedMap(compareBy { it.ordinal })
+        return releases.groupByQuality()
     }
 
     /** Cancels ongoing speech when this view model is cleared. */

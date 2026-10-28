@@ -816,6 +816,8 @@ class LocalPlayerActivity : FragmentActivity() {
                     if (showNextEpisodeDialog) {
                         val nextData by tvPlayerViewModel.nextEpisodeData.collectAsState()
                         val releases by tvPlayerViewModel.nextEpisodeReleases.collectAsState()
+                        val releasesByQuality by tvPlayerViewModel.nextEpisodeReleasesByQuality.collectAsState()
+                        val downloadedHashes by tvPlayerViewModel.downloadedHashes.collectAsState()
                         val evaluation by tvPlayerViewModel.nextEpisodeEvaluation.collectAsState()
                         val isLoading by tvPlayerViewModel.isLoading.collectAsState()
                         val error by tvPlayerViewModel.error.collectAsState()
@@ -832,9 +834,12 @@ class LocalPlayerActivity : FragmentActivity() {
                             episodeNumber = targetEpisode,
                             episodeName = targetEpName,
                             releases = releases,
+                            releasesByQuality = releasesByQuality,
+                            downloadedHashes = downloadedHashes,
                             isLoading = isLoading,
                             error = error,
                             evaluation = evaluation,
+                            themeMode = themeMode,
                             onTorrentSelected = { torrent ->
                                 lifecycleScope.launch {
                                     val result = tvPlayerViewModel.downloadEpisode(
