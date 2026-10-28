@@ -62,11 +62,21 @@ class TvEpisodeDetailViewModelTest {
             name = seriesName,
             posterPath = "/poster_path.jpg"
         )
-        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, seasonNum) } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
+        coEvery {
+            tmdbRepository.getTvSeasonDetails(
+                seriesId,
+                seasonNum
+            )
+        } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
             id = 1,
             seasonNumber = seasonNum,
             episodes = listOf(
-                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(id = 2, episodeNumber = episodeNum, seasonNumber = seasonNum, name = "Ep 2")
+                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(
+                    id = 2,
+                    episodeNumber = episodeNum,
+                    seasonNumber = seasonNum,
+                    name = "Ep 2"
+                )
             )
         )
         val sampleTorrent = EztvTorrent(title = "Breaking.Bad.S01E02.720p", hash = "abc123hash")
@@ -103,11 +113,21 @@ class TvEpisodeDetailViewModelTest {
         val seasonNum = 1
         val episodeNum = 2
 
-        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, seasonNum) } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
+        coEvery {
+            tmdbRepository.getTvSeasonDetails(
+                seriesId,
+                seasonNum
+            )
+        } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
             id = 1,
             seasonNumber = seasonNum,
             episodes = listOf(
-                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(id = 2, episodeNumber = episodeNum, seasonNumber = seasonNum, name = "Ep 2")
+                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(
+                    id = 2,
+                    episodeNumber = episodeNum,
+                    seasonNumber = seasonNum,
+                    name = "Ep 2"
+                )
             )
         )
 
@@ -156,11 +176,21 @@ class TvEpisodeDetailViewModelTest {
             EztvTorrent(title = "Breaking.Bad.S01E02.720p", hash = "release-one"),
             EztvTorrent(title = "Breaking.Bad.S01E02.1080p", hash = "release-two")
         )
-        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, seasonNum) } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
+        coEvery {
+            tmdbRepository.getTvSeasonDetails(
+                seriesId,
+                seasonNum
+            )
+        } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
             id = 1,
             seasonNumber = seasonNum,
             episodes = listOf(
-                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(id = 2, episodeNumber = episodeNum, seasonNumber = seasonNum, name = "Ep 2")
+                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(
+                    id = 2,
+                    episodeNumber = episodeNum,
+                    seasonNumber = seasonNum,
+                    name = "Ep 2"
+                )
             )
         )
         coEvery {
@@ -245,8 +275,20 @@ class TvEpisodeDetailViewModelTest {
             id = 100,
             seasonNumber = 1,
             episodes = listOf(
-                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(id = 1, episodeNumber = 5, seasonNumber = 1, name = "Episode 5", airDate = "2023-01-01"),
-                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(id = 2, episodeNumber = 6, seasonNumber = 1, name = "Episode 6", airDate = "2023-01-08")
+                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(
+                    id = 1,
+                    episodeNumber = 5,
+                    seasonNumber = 1,
+                    name = "Episode 5",
+                    airDate = "2023-01-01"
+                ),
+                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(
+                    id = 2,
+                    episodeNumber = 6,
+                    seasonNumber = 1,
+                    name = "Episode 6",
+                    airDate = "2023-01-08"
+                )
             )
         )
 
@@ -324,11 +366,21 @@ class TvEpisodeDetailViewModelTest {
             id = seriesId,
             name = seriesName
         )
-        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, seasonNum) } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
+        coEvery {
+            tmdbRepository.getTvSeasonDetails(
+                seriesId,
+                seasonNum
+            )
+        } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
             id = 1,
             seasonNumber = seasonNum,
             episodes = listOf(
-                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(id = 2, episodeNumber = episodeNum, seasonNumber = seasonNum, name = "Ep 2")
+                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(
+                    id = 2,
+                    episodeNumber = episodeNum,
+                    seasonNumber = seasonNum,
+                    name = "Ep 2"
+                )
             )
         )
         coEvery {

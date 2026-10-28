@@ -67,7 +67,13 @@ class TvPlayerViewModelTest {
             tvEpisodeReleasesRepository.getEpisodeReleasesBySeriesId(seriesId, seasonNum, epNum)
         } returns listOf(release1, release2)
 
-        viewModel.fetchReleasesForNextEpisode(seriesId, seasonNum, epNum, seriesName = "Test Show", episodeName = "Episode 2")
+        viewModel.fetchReleasesForNextEpisode(
+            seriesId,
+            seasonNum,
+            epNum,
+            seriesName = "Test Show",
+            episodeName = "Episode 2"
+        )
         testScheduler.advanceUntilIdle()
 
         assertThat(viewModel.nextEpisodeReleases.value).hasSize(2)

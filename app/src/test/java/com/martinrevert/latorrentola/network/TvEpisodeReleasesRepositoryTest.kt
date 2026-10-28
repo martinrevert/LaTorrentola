@@ -47,7 +47,8 @@ class TvEpisodeReleasesRepositoryTest {
         )
         coEvery { tmdbRepository.getTvSeasonDetails(seriesId, seasonNumber) } returns seasonDetails
 
-        val nextInfo = repository.resolveNextEpisodeInfo(seriesId, "Game of Thrones", seasonNumber, currentEpisodeNumber)
+        val nextInfo =
+            repository.resolveNextEpisodeInfo(seriesId, "Game of Thrones", seasonNumber, currentEpisodeNumber)
 
         assertThat(nextInfo).isNotNull()
         assertThat(nextInfo!![0]).isEqualTo("1399")
@@ -81,7 +82,8 @@ class TvEpisodeReleasesRepositoryTest {
         coEvery { tmdbRepository.getTvSeasonDetails(seriesId, 1) } returns season1Details
         coEvery { tmdbRepository.getTvSeasonDetails(seriesId, 2) } returns season2Details
 
-        val nextInfo = repository.resolveNextEpisodeInfo(seriesId, "Game of Thrones", seasonNumber, currentEpisodeNumber)
+        val nextInfo =
+            repository.resolveNextEpisodeInfo(seriesId, "Game of Thrones", seasonNumber, currentEpisodeNumber)
 
         assertThat(nextInfo).isNotNull()
         assertThat(nextInfo!![2]).isEqualTo("2")
@@ -132,7 +134,10 @@ class TvEpisodeReleasesRepositoryTest {
         )
 
         coEvery { eztvRepository.getTorrentsForEpisode(imdbId, season, episode) } returns listOf(eztvTorrent)
-        coEvery { torrentioRepository.getSeriesTorrents(imdbId, season, episode) } returns listOf(torrentioDuplicate, torrentioUnique)
+        coEvery { torrentioRepository.getSeriesTorrents(imdbId, season, episode) } returns listOf(
+            torrentioDuplicate,
+            torrentioUnique
+        )
         coEvery { torrentioRepository.fromEztvTorrent(eztvTorrent) } returns eztvMapped
 
         val releases = repository.getEpisodeReleases(imdbId, season, episode)
@@ -162,7 +167,13 @@ class TvEpisodeReleasesRepositoryTest {
             provider = "Torrentio"
         )
 
-        coEvery { eztvRepository.getTorrentsForEpisode(imdbId, season, episode) } throws RuntimeException("EZTV offline")
+        coEvery {
+            eztvRepository.getTorrentsForEpisode(
+                imdbId,
+                season,
+                episode
+            )
+        } throws RuntimeException("EZTV offline")
         coEvery { torrentioRepository.getSeriesTorrents(imdbId, season, episode) } returns listOf(torrentioRelease)
 
         val releases = repository.getEpisodeReleases(imdbId, season, episode)
@@ -231,7 +242,14 @@ class TvEpisodeReleasesRepositoryTest {
     @Test
     fun `fromEztvTorrent delegates to torrentioRepository`() {
         val eztvTorrent = EztvTorrent(title = "Test", hash = "hash1")
-        val release = TorrentRelease(hash = "hash1", title = "Test", qualityGroup = VideoQualityGroup.OTHER, resolutionLabel = "SD", audioCodec = "", provider = "EZTV")
+        val release = TorrentRelease(
+            hash = "hash1",
+            title = "Test",
+            qualityGroup = VideoQualityGroup.OTHER,
+            resolutionLabel = "SD",
+            audioCodec = "",
+            provider = "EZTV"
+        )
 
         coEvery { torrentioRepository.fromEztvTorrent(eztvTorrent) } returns release
 

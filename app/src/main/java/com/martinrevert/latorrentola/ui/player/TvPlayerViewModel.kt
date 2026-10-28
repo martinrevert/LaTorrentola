@@ -71,7 +71,8 @@ class TvPlayerViewModel @Inject constructor(
             )
 
             try {
-                val releases = tvEpisodeReleasesRepository.getEpisodeReleasesBySeriesId(seriesId, seasonNumber, episodeNumber)
+                val releases =
+                    tvEpisodeReleasesRepository.getEpisodeReleasesBySeriesId(seriesId, seasonNumber, episodeNumber)
                 if (releases.isEmpty()) {
                     val imdbId = tmdbRepository.getTvImdbId(seriesId)
                     if (imdbId.isNullOrEmpty()) {
@@ -98,7 +99,12 @@ class TvPlayerViewModel @Inject constructor(
             _nextEpisodeData.value = null
 
             try {
-                val nextInfo = tvEpisodeReleasesRepository.resolveNextEpisodeInfo(seriesId, "", currentSeasonNumber, currentEpisodeNumber)
+                val nextInfo = tvEpisodeReleasesRepository.resolveNextEpisodeInfo(
+                    seriesId,
+                    "",
+                    currentSeasonNumber,
+                    currentEpisodeNumber
+                )
                 if (nextInfo != null && nextInfo.size >= 5) {
                     val nextSeriesId = nextInfo[0].toInt()
                     val nextSeriesName = nextInfo[1]
@@ -114,7 +120,8 @@ class TvPlayerViewModel @Inject constructor(
                         episodeName = nextEpName
                     )
 
-                    val releases = tvEpisodeReleasesRepository.getEpisodeReleasesBySeriesId(seriesId, nextSeason, nextEp)
+                    val releases =
+                        tvEpisodeReleasesRepository.getEpisodeReleasesBySeriesId(seriesId, nextSeason, nextEp)
                     if (releases.isEmpty()) {
                         val imdbId = tmdbRepository.getTvImdbId(seriesId)
                         if (imdbId.isNullOrEmpty()) {
@@ -211,7 +218,8 @@ class TvPlayerViewModel @Inject constructor(
         seriesName: String,
         seasonNumber: Int,
         episodeNumber: Int
-    ): ArrayList<String>? = tvEpisodeReleasesRepository.resolveNextEpisodeInfo(seriesId, seriesName, seasonNumber, episodeNumber)
+    ): ArrayList<String>? =
+        tvEpisodeReleasesRepository.resolveNextEpisodeInfo(seriesId, seriesName, seasonNumber, episodeNumber)
 }
 
 /**
