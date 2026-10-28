@@ -389,4 +389,13 @@
     <string name="actor_search_desc">Search by Actor</string>
     <string name="actor_search_placeholder">Search actors or actresses…</string>
     <string name="actor_bio_chip">Biography</string>
+    <string name="series_status_ended_title">Series Ended</string>
+    <string name="series_status_ended_message">You have reached the end of the available episodes. According to TMDB, this series has ended and there will be no more episodes.</string>
+    <string name="series_status_returning_title">Season Up to Date</string>
+    <string name="series_status_returning_message">There are no more episodes with available torrents right now. This series continues and will return with new episodes.</string>
+    <string name="series_status_returning_with_date_message">There are no more episodes with available torrents right now. This series continues and the next episode is scheduled for %1$s.</string>
+    <string name="series_status_unaired_episode_message">There are no torrents available yet for S%1$02dE%2$02d. This episode is scheduled to air on %3$s.</string>
+    <string name="series_status_remaining_ended_message">Although this series has finished airing on TMDB, you still have %1$d remaining episode(s) in the series, but no torrents were found right now for S%2$02dE%3$02d.</string>
+    <string name="series_status_remaining_continuing_message">There are still %1$d episode(s) ahead and the series continues, but no torrents are currently available for S%2$02dE%3$02d.</string>
+    <string name="series_status_understood">Got it</string>
 </resources>

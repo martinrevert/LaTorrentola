@@ -387,4 +387,13 @@
     <string name="actor_search_desc">Buscar por Actor</string>
     <string name="actor_search_placeholder">Buscar actores o actrices…</string>
     <string name="actor_bio_chip">Biografía</string>
+    <string name="series_status_ended_title">Serie finalizada</string>
+    <string name="series_status_ended_message">Has llegado al final de los capítulos disponibles. Según TMDB, la serie ha finalizado y no habrá más episodios.</string>
+    <string name="series_status_returning_title">Temporada al día</string>
+    <string name="series_status_returning_message">No hay más capítulos con torrents disponibles por ahora. La serie continúa en emisión/producción y volverá con nuevos episodios.</string>
+    <string name="series_status_returning_with_date_message">No hay más capítulos con torrents disponibles por ahora. La serie continúa y el próximo estreno está previsto para el %1$s.</string>
+    <string name="series_status_unaired_episode_message">Aún no hay torrents disponibles para S%1$02dE%2$02d. Su estreno está programado para el %3$s.</string>
+    <string name="series_status_remaining_ended_message">Aunque la serie ya finalizó su emisión en TMDB, aún quedan %1$d capítulo(s) restantes por ver, pero no se encontraron torrents disponibles para S%2$02dE%3$02d.</string>
+    <string name="series_status_remaining_continuing_message">Aún quedan %1$d capítulo(s) restantes y la serie continúa, pero por el momento no hay torrents disponibles para S%2$02dE%3$02d.</string>
+    <string name="series_status_understood">Entendido</string>
 </resources>

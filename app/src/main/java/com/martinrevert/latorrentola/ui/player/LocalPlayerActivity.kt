@@ -784,15 +784,23 @@ class LocalPlayerActivity : FragmentActivity() {
                         DeleteTorrentDownloadsDialog(
                             mediaTitle = mediaTitle,
                             onConfirmDelete = {
-                                if (torrentInfoHash.isNotBlank()) {
-                                    val deleteIntent = Intent(this@LocalPlayerActivity, TorrentDownloadService::class.java).apply {
-                                        action = TorrentDownloadService.ACTION_DELETE
-                                        putExtra(TorrentDownloadService.EXTRA_INFO_HASH, torrentInfoHash)
-                                    }
-                                    startService(deleteIntent)
-                                }
+                                val hashToDelete = torrentInfoHash
                                 showDeletePromptDialog = false
-                                proceedAfterPlaybackEnded()
+                                try {
+                                    mediaController?.stop()
+                                    mediaController?.clearMediaItems()
+                                    SubtitleServerRegistry.stopAll()
+                                } catch (_: Exception) {}
+                                lifecycleScope.launch {
+                                    if (hashToDelete.isNotBlank()) {
+                                        TorrentDownloadService.deleteTorrentSynchronously(
+                                            this@LocalPlayerActivity,
+                                            hashToDelete,
+                                            torrentDownloadDao
+                                        )
+                                    }
+                                    proceedAfterPlaybackEnded()
+                                }
                             },
                             onKeep = {
                                 showDeletePromptDialog = false
@@ -808,11 +816,12 @@ class LocalPlayerActivity : FragmentActivity() {
                     if (showNextEpisodeDialog) {
                         val nextData by tvPlayerViewModel.nextEpisodeData.collectAsState()
                         val releases by tvPlayerViewModel.nextEpisodeReleases.collectAsState()
+                        val evaluation by tvPlayerViewModel.nextEpisodeEvaluation.collectAsState()
                         val isLoading by tvPlayerViewModel.isLoading.collectAsState()
                         val error by tvPlayerViewModel.error.collectAsState()
 
-                        val targetSeriesId = nextData?.seriesId?.takeIf { it > 0 } ?: nextEpisodeSeriesId
-                        val targetSeriesName = nextData?.seriesName?.takeIf { it.isNotBlank() } ?: nextEpisodeSeriesName
+                        val targetSeriesId = nextData?.seriesId?.takeIf { it > 0 } ?: nextEpisodeSeriesId.takeIf { it > 0 } ?: currentSeriesId
+                        val targetSeriesName = nextData?.seriesName?.takeIf { it.isNotBlank() } ?: nextEpisodeSeriesName.takeIf { it.isNotBlank() } ?: mediaTitle
                         val targetSeason = nextData?.seasonNumber?.takeIf { it > 0 } ?: nextEpisodeSeasonNumber
                         val targetEpisode = nextData?.episodeNumber?.takeIf { it > 0 } ?: nextEpisodeEpisodeNumber
                         val targetEpName = nextData?.episodeName?.takeIf { it.isNotBlank() } ?: nextEpisodeEpisodeName
@@ -825,6 +834,7 @@ class LocalPlayerActivity : FragmentActivity() {
                             releases = releases,
                             isLoading = isLoading,
                             error = error,
+                            evaluation = evaluation,
                             onTorrentSelected = { torrent ->
                                 lifecycleScope.launch {
                                     val result = tvPlayerViewModel.downloadEpisode(
@@ -836,7 +846,9 @@ class LocalPlayerActivity : FragmentActivity() {
                                         targetEpisode,
                                         targetEpName
                                     )
-                                    if (result is TorrentLaunchResult.InsufficientStorage) {
+                                    if (result == TorrentLaunchResult.Started) {
+                                        showNextEpisodeDialog = false
+                                    } else if (result is TorrentLaunchResult.InsufficientStorage) {
                                         insufficientStorageData = Pair(result.availableBytes, result.requiredBytes)
                                         showNextEpisodeDialog = false
                                     } else if (result == TorrentLaunchResult.NoExternalClient || result == TorrentLaunchResult.CastUnavailable) {
@@ -1809,94 +1821,67 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     private fun proceedAfterPlaybackEnded() {
-        val isTvEpisode = hasNextEpisodeInfo || (currentSeriesId > 0 && currentSeasonNumber > 0 && currentEpisodeNumber > 0)
+        val effectiveSeriesId = currentSeriesId.takeIf { it > 0 } ?: nextEpisodeSeriesId
+        val isTvEpisode = hasNextEpisodeInfo || (effectiveSeriesId > 0 && currentSeasonNumber > 0 && currentEpisodeNumber > 0)
         if (!isTvEpisode) {
             finish()
             return
         }
 
-        when (val autoPlayMode = preferenceManager.getAutoPlayQualitySelectionMethod()) {
-            AutoPlayQualitySelectionMethod.DO_NOTHING -> {}
-            AutoPlayQualitySelectionMethod.OFF -> {
-                fetchNextEpisodeData()
-                showNextEpisodeDialog = true
-            }
-            AutoPlayQualitySelectionMethod.BY_QUALITY,
-            AutoPlayQualitySelectionMethod.BY_SEED_PEERS -> {
-                lifecycleScope.launch {
-                    try {
-                        val nextInfo = if (hasNextEpisodeInfo) {
-                            listOf(
-                                nextEpisodeSeriesId.toString(),
-                                nextEpisodeSeriesName,
-                                nextEpisodeSeasonNumber.toString(),
-                                nextEpisodeEpisodeNumber.toString(),
-                                nextEpisodeEpisodeName
-                            )
-                        } else {
-                            tvPlayerViewModel.getNextEpisodeInfo(
-                                seriesId = currentSeriesId,
-                                seriesName = mediaTitle,
-                                seasonNumber = currentSeasonNumber,
-                                episodeNumber = currentEpisodeNumber
-                            )
-                        }
+        val autoPlayMode = preferenceManager.getAutoPlayQualitySelectionMethod()
+        if (autoPlayMode == AutoPlayQualitySelectionMethod.DO_NOTHING) {
+            return
+        }
 
-                        if (nextInfo != null && nextInfo.size >= 5) {
-                            val nextSeriesId = nextInfo[0].toIntOrNull() ?: currentSeriesId
-                            val nextSeriesName = nextInfo[1]
-                            val nextSeason = nextInfo[2].toIntOrNull() ?: currentSeasonNumber
-                            val nextEp = nextInfo[3].toIntOrNull() ?: (currentEpisodeNumber + 1)
-                            val nextEpName = nextInfo[4]
+        showNextEpisodeDialog = true
+        lifecycleScope.launch {
+            try {
+                val evaluation = tvPlayerViewModel.evaluateNextEpisode(
+                    seriesId = effectiveSeriesId,
+                    seriesName = nextEpisodeSeriesName.ifBlank { mediaTitle },
+                    currentSeasonNumber = currentSeasonNumber,
+                    currentEpisodeNumber = currentEpisodeNumber
+                )
 
-                            val imdbId = tmdbRepository.getTvImdbId(nextSeriesId)
-                            val releases = if (!imdbId.isNullOrEmpty()) {
-                                tvPlayerViewModel.getReleasesForEpisode(imdbId, nextSeason, nextEp)
-                            } else emptyList()
-
-                            if (releases.isNotEmpty()) {
-                                val selectedRelease = if (autoPlayMode == AutoPlayQualitySelectionMethod.BY_QUALITY) {
-                                    releases.maxByOrNull { release ->
-                                        when (release.qualityGroup) {
-                                            VideoQualityGroup.UHD_4K -> 4
-                                            VideoQualityGroup.FHD_1080P -> 3
-                                            VideoQualityGroup.HD_720P -> 2
-                                            VideoQualityGroup.OTHER -> 1
-                                        }
-                                    } ?: releases.first()
-                                } else {
-                                    releases.maxByOrNull { it.seeds + it.peers } ?: releases.first()
-                                }
-
-                                val result = tvPlayerViewModel.downloadEpisode(
-                                    this@LocalPlayerActivity,
-                                    selectedRelease,
-                                    nextSeriesId,
-                                    nextSeriesName,
-                                    nextSeason,
-                                    nextEp,
-                                    nextEpName
-                                )
-
-                                if (result is TorrentLaunchResult.InsufficientStorage) {
-                                    insufficientStorageData = Pair(result.availableBytes, result.requiredBytes)
-                                } else if (result == TorrentLaunchResult.NoExternalClient || result == TorrentLaunchResult.CastUnavailable) {
-                                    fetchNextEpisodeData()
-                                    showNextEpisodeDialog = true
-                                }
-                            } else {
-                                fetchNextEpisodeData()
-                                showNextEpisodeDialog = true
+                if (evaluation.state == com.martinrevert.latorrentola.network.SeriesContinuationState.NEXT_EPISODE_READY &&
+                    evaluation.releases.isNotEmpty() &&
+                    (autoPlayMode == AutoPlayQualitySelectionMethod.BY_QUALITY ||
+                        autoPlayMode == AutoPlayQualitySelectionMethod.BY_SEED_PEERS)
+                ) {
+                    val releases = evaluation.releases
+                    val selectedRelease = if (autoPlayMode == AutoPlayQualitySelectionMethod.BY_QUALITY) {
+                        releases.maxByOrNull { release ->
+                            when (release.qualityGroup) {
+                                VideoQualityGroup.UHD_4K -> 4
+                                VideoQualityGroup.FHD_1080P -> 3
+                                VideoQualityGroup.HD_720P -> 2
+                                VideoQualityGroup.OTHER -> 1
                             }
-                        } else {
-                            finish()
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed auto-playing next episode: ${e.message}", e)
-                        fetchNextEpisodeData()
-                        showNextEpisodeDialog = true
+                        } ?: releases.first()
+                    } else {
+                        releases.maxByOrNull { it.seeds + it.peers } ?: releases.first()
+                    }
+
+                    val result = tvPlayerViewModel.downloadEpisode(
+                        this@LocalPlayerActivity,
+                        selectedRelease,
+                        evaluation.seriesId,
+                        evaluation.seriesName,
+                        evaluation.nextSeasonNumber,
+                        evaluation.nextEpisodeNumber,
+                        evaluation.nextEpisodeName
+                    )
+
+                    if (result == TorrentLaunchResult.Started) {
+                        showNextEpisodeDialog = false
+                    } else if (result is TorrentLaunchResult.InsufficientStorage) {
+                        showNextEpisodeDialog = false
+                        insufficientStorageData = Pair(result.availableBytes, result.requiredBytes)
                     }
                 }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.e(TAG, "Failed evaluating next episode: ${e.message}", e)
             }
         }
     }

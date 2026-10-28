@@ -28,7 +28,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,27 +38,30 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface as TvSurface
-import androidx.compose.ui.tooling.preview.Preview
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
+import com.martinrevert.latorrentola.network.NextEpisodeEvaluation
+import com.martinrevert.latorrentola.network.SeriesContinuationState
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
-import kotlin.time.Duration.Companion.milliseconds
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 
 /**
- * Dialog displaying available torrent releases for the next episode.
+ * Dialog displaying available torrent releases for the next episode or clear series/season
+ * continuation status when no more torrents are available.
  *
  * @param seriesName Parent series display name.
  * @param seasonNumber Next episode season number.
@@ -70,6 +72,8 @@ import kotlinx.coroutines.delay
  * @param error Optional error message if release lookup failed.
  * @param onTorrentSelected Callback when user chooses a specific release.
  * @param onDismiss Callback when user cancels or dismisses the dialog.
+ * @param evaluation Optional [NextEpisodeEvaluation] with TMDB series continuation status and upcoming air dates.
+ * @param themeMode Optional explicit theme mode override.
  */
 @Composable
 fun NextEpisodeTorrentDialog(
@@ -82,6 +86,7 @@ fun NextEpisodeTorrentDialog(
     error: String?,
     onTorrentSelected: (TorrentRelease) -> Unit,
     onDismiss: () -> Unit,
+    evaluation: NextEpisodeEvaluation? = null,
     themeMode: Int? = null
 ) {
     val context = LocalContext.current
@@ -96,7 +101,7 @@ fun NextEpisodeTorrentDialog(
 
     // Ensure deterministic TV D-pad focus in all scenarios (Loading, Error, Empty, or Populated)
     if (isTv) {
-        LaunchedEffect(isLoading, error, releases) {
+        LaunchedEffect(isLoading, error, releases, evaluation) {
             delay(100.milliseconds)
             try {
                 if (!isLoading && releases.isNotEmpty()) {
@@ -107,6 +112,10 @@ fun NextEpisodeTorrentDialog(
             } catch (_: Exception) { }
         }
     }
+
+    val effectiveSeriesName = evaluation?.seriesName?.takeIf { it.isNotBlank() } ?: seriesName
+    val isStatusOnlyMode = !isLoading && releases.isEmpty() && evaluation != null &&
+        evaluation.state != SeriesContinuationState.NEXT_EPISODE_READY
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -133,44 +142,61 @@ fun NextEpisodeTorrentDialog(
                     ) {
                         // Header section
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            if (seriesName.isNotBlank()) {
+                            if (effectiveSeriesName.isNotBlank()) {
                                 Text(
-                                    text = seriesName,
+                                    text = effectiveSeriesName,
                                     style = MaterialTheme.typography.labelLarge,
                                     color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.SemiBold
                                 )
                             }
 
-                            val episodeTitleFormatted = if (episodeName.isNotBlank()) {
-                                "%s S%02dE%02d · %s".format(
-                                    stringResource(R.string.next_episode_dialog_title),
-                                    seasonNumber,
-                                    episodeNumber,
-                                    episodeName
-                                )
-                            } else {
-                                "%s S%02dE%02d".format(
-                                    stringResource(R.string.next_episode_dialog_title),
-                                    seasonNumber,
-                                    episodeNumber
-                                )
+                            val headerTitle = when (evaluation?.state) {
+                                SeriesContinuationState.SERIES_ENDED ->
+                                    stringResource(R.string.series_status_ended_title)
+                                SeriesContinuationState.SEASON_COMPLETE_SERIES_CONTINUES ->
+                                    stringResource(R.string.series_status_returning_title)
+                                else -> {
+                                    val sNum = evaluation?.nextSeasonNumber?.takeIf { it > 0 } ?: seasonNumber
+                                    val eNum = evaluation?.nextEpisodeNumber?.takeIf { it > 0 } ?: episodeNumber
+                                    val epTitle = evaluation?.nextEpisodeName?.takeIf { it.isNotBlank() } ?: episodeName
+                                    if (sNum > 0 && eNum > 0) {
+                                        if (epTitle.isNotBlank()) {
+                                            "%s S%02dE%02d · %s".format(
+                                                stringResource(R.string.next_episode_dialog_title),
+                                                sNum,
+                                                eNum,
+                                                epTitle
+                                            )
+                                        } else {
+                                            "%s S%02dE%02d".format(
+                                                stringResource(R.string.next_episode_dialog_title),
+                                                sNum,
+                                                eNum
+                                            )
+                                        }
+                                    } else {
+                                        stringResource(R.string.next_episode_dialog_title)
+                                    }
+                                }
                             }
 
                             Text(
-                                text = episodeTitleFormatted,
+                                text = headerTitle,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface
                             )
 
-                            Spacer(Modifier.height(2.dp))
+                            if (!isStatusOnlyMode) {
+                                Spacer(Modifier.height(2.dp))
 
-                            Text(
-                                text = stringResource(R.string.tv_available_torrents),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                                Text(
+                                    text = stringResource(R.string.tv_available_torrents),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
 
                         // Content area
@@ -208,8 +234,49 @@ fun NextEpisodeTorrentDialog(
                                     )
                                 }
                                 releases.isEmpty() -> {
+                                    val statusMessage = when (evaluation?.state) {
+                                        SeriesContinuationState.SERIES_ENDED ->
+                                            stringResource(R.string.series_status_ended_message)
+                                        SeriesContinuationState.SEASON_COMPLETE_SERIES_CONTINUES -> {
+                                            val nextDate = evaluation.nextEpisodeAirDate?.takeIf { it.isNotBlank() }
+                                            if (nextDate != null) {
+                                                stringResource(R.string.series_status_returning_with_date_message, nextDate)
+                                            } else {
+                                                stringResource(R.string.series_status_returning_message)
+                                            }
+                                        }
+                                        SeriesContinuationState.REMAINING_EPISODES_NO_TORRENTS -> {
+                                            val sNum = evaluation.nextSeasonNumber.takeIf { it > 0 } ?: seasonNumber
+                                            val eNum = evaluation.nextEpisodeNumber.takeIf { it > 0 } ?: episodeNumber
+                                            val airDate = evaluation.nextEpisodeAirDate?.takeIf { it.isNotBlank() }
+                                            if (evaluation.isNextEpisodeUnaired && airDate != null) {
+                                                stringResource(
+                                                    R.string.series_status_unaired_episode_message,
+                                                    sNum,
+                                                    eNum,
+                                                    airDate
+                                                )
+                                            } else if (evaluation.isSeriesContinuing) {
+                                                stringResource(
+                                                    R.string.series_status_remaining_continuing_message,
+                                                    maxOf(1, evaluation.remainingEpisodesCount),
+                                                    sNum,
+                                                    eNum
+                                                )
+                                            } else {
+                                                stringResource(
+                                                    R.string.series_status_remaining_ended_message,
+                                                    maxOf(1, evaluation.remainingEpisodesCount),
+                                                    sNum,
+                                                    eNum
+                                                )
+                                            }
+                                        }
+                                        else -> stringResource(R.string.next_episode_no_torrents)
+                                    }
+
                                     Text(
-                                        text = stringResource(R.string.next_episode_no_torrents),
+                                        text = statusMessage,
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant,
                                         textAlign = TextAlign.Center,
@@ -250,7 +317,7 @@ fun NextEpisodeTorrentDialog(
                             }
                         }
 
-                        // Bottom action row - clean, right-aligned Cancel button for TV & Mobile
+                        // Bottom action row - clean, right-aligned button for TV & Mobile
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.End,
@@ -272,7 +339,11 @@ fun NextEpisodeTorrentDialog(
                                     .focusHighlight(shape = MaterialTheme.shapes.small)
                             ) {
                                 Text(
-                                    text = stringResource(android.R.string.cancel),
+                                    text = if (isStatusOnlyMode) {
+                                        stringResource(R.string.series_status_understood)
+                                    } else {
+                                        stringResource(android.R.string.cancel)
+                                    },
                                     style = MaterialTheme.typography.labelLarge,
                                     color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary
                                 )

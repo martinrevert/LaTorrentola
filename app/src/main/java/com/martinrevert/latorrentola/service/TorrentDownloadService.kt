@@ -88,10 +88,12 @@ class TorrentDownloadService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Native libtorrent session used while the foreground transfer is active. */
-    private var sessionManager: SessionManager? = null
+    private var sessionManager: SessionManager?
+        get() = _sessionManager
+        set(value) { _sessionManager = value }
 
     /** Serializes ownership changes so native session shutdown occurs exactly once. */
-    private val sessionLock = Any()
+    private val sessionLock = _sessionLock
 
     /** Synchronizes requests submitted from the service's main-thread callbacks. */
     private val queueLock = Any()
@@ -100,13 +102,13 @@ class TorrentDownloadService : Service() {
     private val downloadQueue = ArrayDeque<DownloadRequest>()
 
     /** Verified-range endpoints kept alive for active playback and Cast sessions. */
-    private val streamServers = ConcurrentHashMap<String, VerifiedTorrentHttpServer>()
+    private val streamServers = _streamServers
 
     /** Player intents for ready transfers and jobs awaiting their startup buffer. */
     private val readyPlayerIntents = _readyPlayerIntents
 
     /** Jobs whose player should open as soon as their startup buffer is verified. */
-    private val openWhenReadyHashes = ConcurrentHashMap.newKeySet<String>()
+    private val openWhenReadyHashes = _openWhenReadyHashes
 
     /** Active transfers requested for deletion and awaiting native-session shutdown. */
     private val deletedActiveHashes = ConcurrentHashMap.newKeySet<String>()
@@ -373,6 +375,9 @@ class TorrentDownloadService : Service() {
                                 manager.find(Sha1Hash.parseHex(requestedHash))?.let(manager::remove)
                             }
                         }
+                        TorrentStorageResolver.findTorrentDirectory(this@TorrentDownloadService, requestedHash)?.deleteRecursively()
+                        File(filesDir, "$TORRENT_DIRECTORY/$requestedHash").deleteRecursively()
+                        torrentDownloadDao.delete(requestedHash)
                     } else {
                         TorrentStorageResolver.findTorrentDirectory(this@TorrentDownloadService, requestedHash)?.deleteRecursively()
                         File(filesDir, "$TORRENT_DIRECTORY/$requestedHash").deleteRecursively()
@@ -1840,6 +1845,12 @@ class TorrentDownloadService : Service() {
         const val STARTUP_BUFFER_BYTES = 8L * 1024L * 1024L
 
         private val _readyPlayerIntents = ConcurrentHashMap<String, Intent>()
+        private val _streamServers = ConcurrentHashMap<String, VerifiedTorrentHttpServer>()
+        private val _openWhenReadyHashes = ConcurrentHashMap.newKeySet<String>()
+        @Volatile
+        private var _sessionManager: SessionManager? = null
+        private val _sessionLock = Any()
+
         fun getReadyPlayerIntent(infoHash: String): Intent? = _readyPlayerIntents[infoHash]
 
         private val _readyStreamEvents = MutableSharedFlow<Intent>(replay = 0, extraBufferCapacity = 10)
@@ -1850,6 +1861,51 @@ class TorrentDownloadService : Service() {
 
         fun updateBufferState(state: TorrentBufferState?) {
             _activeBufferState.value = state
+        }
+
+        /**
+         * Synchronously stops active playback/servers and deletes all files for [infoHash] on [Dispatchers.IO],
+         * ensuring disk blocks are reclaimed by the OS before checking storage for the next episode.
+         */
+        suspend fun deleteTorrentSynchronously(
+            context: Context,
+            infoHash: String,
+            dao: TorrentDownloadDao
+        ) = withContext(Dispatchers.IO) {
+            if (infoHash.isBlank()) return@withContext
+            _readyPlayerIntents.remove(infoHash)
+            _openWhenReadyHashes.remove(infoHash)
+            _streamServers.remove(infoHash)?.stop()
+
+            try {
+                PlaybackService.stopPlayback(context, exceptInfoHash = null)
+            } catch (_: Exception) {}
+
+            synchronized(_sessionLock) {
+                _sessionManager?.let { manager ->
+                    try {
+                        manager.find(Sha1Hash.parseHex(infoHash))?.let(manager::remove)
+                    } catch (_: Exception) {}
+                }
+            }
+
+            val deleteIntent = Intent(context, TorrentDownloadService::class.java).apply {
+                action = ACTION_DELETE
+                putExtra(EXTRA_INFO_HASH, infoHash)
+            }
+            try {
+                context.startService(deleteIntent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to start TorrentDownloadService for deletion: ${e.message}")
+            }
+
+            val stored = try { dao.get(infoHash) } catch (_: Exception) { null }
+            stored?.mediaPath?.let(::File)?.let { mediaFile ->
+                try { mediaFile.delete() } catch (_: Exception) {}
+            }
+            try { TorrentStorageResolver.findTorrentDirectory(context, infoHash)?.deleteRecursively() } catch (_: Exception) {}
+            try { File(context.filesDir, "$TORRENT_DIRECTORY/$infoHash").deleteRecursively() } catch (_: Exception) {}
+            try { dao.delete(infoHash) } catch (_: Exception) {}
         }
 
         /**

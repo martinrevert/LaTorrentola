@@ -3,6 +3,8 @@ package com.martinrevert.latorrentola.ui.player
 import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
+import com.martinrevert.latorrentola.network.NextEpisodeEvaluation
+import com.martinrevert.latorrentola.network.SeriesContinuationState
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.TvEpisodeReleasesRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
@@ -133,5 +135,41 @@ class TvPlayerViewModelTest {
         coVerify(exactly = 1) {
             tvEpisodeReleasesRepository.resolveNextEpisodeInfo(seriesId, "Breaking Bad", seasonNum, currentEpNum)
         }
+    }
+
+    @Test
+    fun `evaluateNextEpisode updates state flows with repository evaluation`() = runTest {
+        val expectedEvaluation = NextEpisodeEvaluation(
+            state = SeriesContinuationState.SEASON_COMPLETE_SERIES_CONTINUES,
+            seriesId = 95396,
+            seriesName = "Severance",
+            isSeriesContinuing = true,
+            nextSeasonNumber = 3,
+            nextEpisodeNumber = 1,
+            nextEpisodeAirDate = "2027-01-15"
+        )
+        coEvery {
+            tvEpisodeReleasesRepository.evaluateNextEpisode(95396, "Severance", 2, 10)
+        } returns expectedEvaluation
+
+        val evaluation = viewModel.evaluateNextEpisode(95396, "Severance", 2, 10)
+
+        assertThat(evaluation).isEqualTo(expectedEvaluation)
+        assertThat(viewModel.nextEpisodeEvaluation.value).isEqualTo(expectedEvaluation)
+        assertThat(viewModel.nextEpisodeReleases.value).isEmpty()
+        assertThat(viewModel.isLoading.value).isFalse()
+    }
+
+    @Test
+    fun `evaluateNextEpisode handles exception gracefully and updates error state`() = runTest {
+        coEvery {
+            tvEpisodeReleasesRepository.evaluateNextEpisode(95396, "Severance", 2, 10)
+        } throws RuntimeException("Network error")
+
+        val evaluation = viewModel.evaluateNextEpisode(95396, "Severance", 2, 10)
+
+        assertThat(evaluation.state).isEqualTo(SeriesContinuationState.SERIES_ENDED)
+        assertThat(viewModel.error.value).isEqualTo("Network error")
+        assertThat(viewModel.isLoading.value).isFalse()
     }
 }

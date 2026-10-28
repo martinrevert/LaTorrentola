@@ -3,9 +3,9 @@ package com.martinrevert.latorrentola.network
 import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeason
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
-import com.martinrevert.latorrentola.model.torrent.PlaybackCompatibility
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
 import io.mockk.coEvery
@@ -142,11 +142,7 @@ class TvEpisodeReleasesRepositoryTest {
 
         val releases = repository.getEpisodeReleases(imdbId, season, episode)
 
-        // Deduplication by hash (case-insensitive):
-        // eztvMapped (hash: "hash_shared") and torrentioDuplicate (hash: "HASH_SHARED") should be deduplicated to 1 release.
-        // plus torrentioUnique (hash: "hash_torrentio_unique").
         assertThat(releases).hasSize(2)
-        // Highest seeds first: torrentioUnique has 250, hash_shared has 10
         assertThat(releases[0].hash).isEqualTo("hash_torrentio_unique")
         assertThat(releases[1].hash).isEqualTo("hash_shared")
     }
@@ -255,5 +251,178 @@ class TvEpisodeReleasesRepositoryTest {
 
         val result = repository.fromEztvTorrent(eztvTorrent)
         assertThat(result).isEqualTo(release)
+    }
+
+    @Test
+    fun `evaluateNextEpisode returns SERIES_ENDED when on final episode of an ended series`() = runTest {
+        val seriesId = 1396
+        coEvery { tmdbRepository.getTvDetails(seriesId) } returns TmdbTvSummary(
+            id = seriesId,
+            name = "Breaking Bad",
+            status = "Ended",
+            inProduction = false,
+            seasons = listOf(TmdbTvSeason(id = 5, seasonNumber = 5, episodeCount = 16))
+        )
+        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, 5) } returns TmdbTvSeasonDetails(
+            id = 5,
+            seasonNumber = 5,
+            episodes = listOf(
+                TmdbTvEpisode(id = 15, episodeNumber = 15, seasonNumber = 5, name = "Granite State"),
+                TmdbTvEpisode(id = 16, episodeNumber = 16, seasonNumber = 5, name = "Felina")
+            )
+        )
+        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, 6) } throws RuntimeException("404")
+
+        val eval = repository.evaluateNextEpisode(
+            seriesId = seriesId,
+            seriesName = "Breaking Bad",
+            currentSeasonNumber = 5,
+            currentEpisodeNumber = 16,
+            todayIso = "2026-10-28"
+        )
+
+        assertThat(eval.state).isEqualTo(SeriesContinuationState.SERIES_ENDED)
+        assertThat(eval.isSeriesContinuing).isFalse()
+        assertThat(eval.releases).isEmpty()
+    }
+
+    @Test
+    fun `evaluateNextEpisode returns SEASON_COMPLETE_SERIES_CONTINUES with calendar schedule when season finished and series continues`() = runTest {
+        val seriesId = 95396
+        val nextAirEp = TmdbTvEpisode(
+            id = 201,
+            episodeNumber = 1,
+            seasonNumber = 3,
+            name = "Hello Again",
+            airDate = "2027-01-15"
+        )
+        coEvery { tmdbRepository.getTvDetails(seriesId) } returns TmdbTvSummary(
+            id = seriesId,
+            name = "Severance",
+            status = "Returning Series",
+            inProduction = true,
+            nextEpisodeToAir = nextAirEp,
+            seasons = listOf(
+                TmdbTvSeason(id = 1, seasonNumber = 1, episodeCount = 9),
+                TmdbTvSeason(id = 2, seasonNumber = 2, episodeCount = 10)
+            )
+        )
+        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, 2) } returns TmdbTvSeasonDetails(
+            id = 2,
+            seasonNumber = 2,
+            episodes = listOf(
+                TmdbTvEpisode(id = 210, episodeNumber = 10, seasonNumber = 2, name = "Cold Harbor", airDate = "2025-03-21")
+            )
+        )
+        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, 3) } throws RuntimeException("404")
+
+        val eval = repository.evaluateNextEpisode(
+            seriesId = seriesId,
+            seriesName = "Severance",
+            currentSeasonNumber = 2,
+            currentEpisodeNumber = 10,
+            todayIso = "2026-10-28"
+        )
+
+        assertThat(eval.state).isEqualTo(SeriesContinuationState.SEASON_COMPLETE_SERIES_CONTINUES)
+        assertThat(eval.isSeriesContinuing).isTrue()
+        assertThat(eval.nextEpisodeAirDate).isEqualTo("2027-01-15")
+        assertThat(eval.upcomingSchedules).hasSize(1)
+        val schedule = eval.upcomingSchedules.first()
+        assertThat(schedule.buildCalendarEventTitle()).isEqualTo("Severance S03E01 · Hello Again")
+        assertThat(schedule.toEpochMillisUtc()).isNotNull()
+    }
+
+    @Test
+    fun `evaluateNextEpisode detects remaining episodes even when TMDB status is Ended`() = runTest {
+        val seriesId = 1396
+        coEvery { tmdbRepository.getTvDetails(seriesId) } returns TmdbTvSummary(
+            id = seriesId,
+            name = "Breaking Bad",
+            status = "Ended",
+            inProduction = false,
+            seasons = listOf(TmdbTvSeason(id = 5, seasonNumber = 5, episodeCount = 4))
+        )
+        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, 5) } returns TmdbTvSeasonDetails(
+            id = 5,
+            seasonNumber = 5,
+            episodes = listOf(
+                TmdbTvEpisode(id = 1, episodeNumber = 1, seasonNumber = 5, name = "Ep 1", airDate = "2012-07-15"),
+                TmdbTvEpisode(id = 2, episodeNumber = 2, seasonNumber = 5, name = "Ep 2", airDate = "2012-07-22"),
+                TmdbTvEpisode(id = 3, episodeNumber = 3, seasonNumber = 5, name = "Ep 3", airDate = "2012-07-29"),
+                TmdbTvEpisode(id = 4, episodeNumber = 4, seasonNumber = 5, name = "Ep 4", airDate = "2012-08-05")
+            )
+        )
+        coEvery { tmdbRepository.getTvImdbId(seriesId) } returns "tt0903747"
+        coEvery { eztvRepository.getTorrentsForEpisode("tt0903747", 5, 3) } returns emptyList()
+        coEvery { torrentioRepository.getSeriesTorrents("tt0903747", 5, 3) } returns emptyList()
+
+        val eval = repository.evaluateNextEpisode(
+            seriesId = seriesId,
+            seriesName = "Breaking Bad",
+            currentSeasonNumber = 5,
+            currentEpisodeNumber = 2,
+            todayIso = "2026-10-28"
+        )
+
+        assertThat(eval.state).isEqualTo(SeriesContinuationState.REMAINING_EPISODES_NO_TORRENTS)
+        assertThat(eval.isSeriesContinuing).isFalse()
+        assertThat(eval.remainingEpisodesCount).isEqualTo(2)
+        assertThat(eval.nextSeasonNumber).isEqualTo(5)
+        assertThat(eval.nextEpisodeNumber).isEqualTo(3)
+        assertThat(eval.upcomingSchedules).isEmpty()
+    }
+
+    @Test
+    fun `evaluateNextEpisode excludes historical air dates from upcomingSchedules`() = runTest {
+        val seriesId = 100
+        coEvery { tmdbRepository.getTvDetails(seriesId) } returns TmdbTvSummary(
+            id = seriesId,
+            name = "Test Series",
+            status = "Returning Series",
+            inProduction = true,
+            seasons = listOf(TmdbTvSeason(id = 1, seasonNumber = 1, episodeCount = 3))
+        )
+        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, 1) } returns TmdbTvSeasonDetails(
+            id = 1,
+            seasonNumber = 1,
+            episodes = listOf(
+                TmdbTvEpisode(id = 1, episodeNumber = 1, seasonNumber = 1, name = "Past Ep", airDate = "2020-01-01"),
+                TmdbTvEpisode(id = 2, episodeNumber = 2, seasonNumber = 1, name = "Today Ep", airDate = "2026-10-28"),
+                TmdbTvEpisode(id = 3, episodeNumber = 3, seasonNumber = 1, name = "Future Ep", airDate = "2026-11-05")
+            )
+        )
+        coEvery { tmdbRepository.getTvImdbId(seriesId) } returns "tt1234567"
+        coEvery { eztvRepository.getTorrentsForEpisode("tt1234567", 1, 2) } returns emptyList()
+        coEvery { torrentioRepository.getSeriesTorrents("tt1234567", 1, 2) } returns emptyList()
+
+        val eval = repository.evaluateNextEpisode(
+            seriesId = seriesId,
+            seriesName = "Test Series",
+            currentSeasonNumber = 1,
+            currentEpisodeNumber = 1,
+            todayIso = "2026-10-28"
+        )
+
+        assertThat(eval.upcomingSchedules).hasSize(2)
+        assertThat(eval.upcomingSchedules.map { it.airDateIso }).containsExactly("2026-10-28", "2026-11-05").inOrder()
+    }
+
+    @Test
+    fun `evaluateNextEpisode propagates network exceptions from TMDB repository`() = runTest {
+        val seriesId = 500
+        coEvery { tmdbRepository.getTvDetails(seriesId) } throws java.io.IOException("Network offline")
+
+        try {
+            repository.evaluateNextEpisode(
+                seriesId = seriesId,
+                seriesName = "Offline Series",
+                currentSeasonNumber = 1,
+                currentEpisodeNumber = 1
+            )
+            org.junit.Assert.fail("Expected IOException was not thrown")
+        } catch (e: java.io.IOException) {
+            assertThat(e.message).isEqualTo("Network offline")
+        }
     }
 }

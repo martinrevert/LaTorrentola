@@ -4,9 +4,10 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
-import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.user.DownloadedEpisode
+import com.martinrevert.latorrentola.network.NextEpisodeEvaluation
+import com.martinrevert.latorrentola.network.SeriesContinuationState
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.TvEpisodeReleasesRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
@@ -35,11 +36,65 @@ class TvPlayerViewModel @Inject constructor(
     private val _nextEpisodeReleases = MutableStateFlow<List<TorrentRelease>>(emptyList())
     val nextEpisodeReleases: StateFlow<List<TorrentRelease>> = _nextEpisodeReleases.asStateFlow()
 
+    private val _nextEpisodeEvaluation = MutableStateFlow<NextEpisodeEvaluation?>(null)
+    val nextEpisodeEvaluation: StateFlow<NextEpisodeEvaluation?> = _nextEpisodeEvaluation.asStateFlow()
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+
+    /**
+     * Evaluates the next episode after ([currentSeasonNumber], [currentEpisodeNumber]), checking
+     * torrent availability, remaining episodes in the season/series, TMDB continuation status,
+     * and upcoming air dates for future Google Calendar integration.
+     */
+    suspend fun evaluateNextEpisode(
+        seriesId: Int,
+        seriesName: String,
+        currentSeasonNumber: Int,
+        currentEpisodeNumber: Int
+    ): NextEpisodeEvaluation {
+        _isLoading.value = true
+        _error.value = null
+        _nextEpisodeReleases.value = emptyList()
+        _nextEpisodeEvaluation.value = null
+        return try {
+            val evaluation = tvEpisodeReleasesRepository.evaluateNextEpisode(
+                seriesId = seriesId,
+                seriesName = seriesName,
+                currentSeasonNumber = currentSeasonNumber,
+                currentEpisodeNumber = currentEpisodeNumber
+            )
+            _nextEpisodeEvaluation.value = evaluation
+            if (evaluation.nextSeasonNumber > 0 && evaluation.nextEpisodeNumber > 0) {
+                _nextEpisodeData.value = NextEpisodeData(
+                    seriesId = evaluation.seriesId,
+                    seriesName = evaluation.seriesName,
+                    seasonNumber = evaluation.nextSeasonNumber,
+                    episodeNumber = evaluation.nextEpisodeNumber,
+                    episodeName = evaluation.nextEpisodeName
+                )
+            } else {
+                _nextEpisodeData.value = null
+            }
+            _nextEpisodeReleases.value = evaluation.releases
+            evaluation
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            _error.value = e.localizedMessage ?: "Failed to evaluate next episode"
+            val fallback = NextEpisodeEvaluation(
+                state = SeriesContinuationState.SERIES_ENDED,
+                seriesId = seriesId,
+                seriesName = seriesName
+            )
+            _nextEpisodeEvaluation.value = fallback
+            fallback
+        } finally {
+            _isLoading.value = false
+        }
+    }
 
     fun fetchReleasesForNextEpisode(
         seriesId: Int,

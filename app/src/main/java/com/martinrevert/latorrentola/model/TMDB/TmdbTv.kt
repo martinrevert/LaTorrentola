@@ -3,6 +3,9 @@ package com.martinrevert.latorrentola.model.TMDB
 import com.google.gson.annotations.SerializedName
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 
 /** A paginated list of TMDB television series. */
 @Serializable
@@ -35,6 +38,7 @@ data class TmdbTvPage(
  * @property posterPath Relative poster image path.
  * @property backdropPath Relative backdrop image path.
  * @property firstAirDate First broadcast date in ISO format.
+ * @property lastAirDate Most recent broadcast date in ISO format.
  * @property voteAverage TMDB average user rating.
  * @property voteCount Number of TMDB user ratings.
  * @property popularity TMDB popularity score.
@@ -42,9 +46,12 @@ data class TmdbTvPage(
  * @property genres Full genre objects included in detail results.
  * @property originCountry Countries associated with the series.
  * @property originalLanguage Original language code.
- * @property status Current or final production status.
+ * @property status Current or final production status (e.g. "Returning Series", "Ended", "Canceled", "In Production").
+ * @property inProduction Whether TMDB marks the series as actively in production.
  * @property numberOfSeasons Number of seasons reported by TMDB.
  * @property numberOfEpisodes Number of episodes reported by TMDB.
+ * @property lastEpisodeToAir Most recent aired episode reported by TMDB.
+ * @property nextEpisodeToAir Next scheduled episode to air reported by TMDB, when available.
  * @property seasons Season summaries included in detail results.
  * @property aggregateCredits Aggregate cast and crew response, when requested.
  */
@@ -71,6 +78,9 @@ data class TmdbTvSummary(
     @SerializedName("first_air_date")
     @SerialName("first_air_date")
     val firstAirDate: String? = null,
+    @SerializedName("last_air_date")
+    @SerialName("last_air_date")
+    val lastAirDate: String? = null,
     @SerializedName("vote_average")
     @SerialName("vote_average")
     val voteAverage: Double? = null,
@@ -95,12 +105,21 @@ data class TmdbTvSummary(
     @SerializedName("status")
     @SerialName("status")
     val status: String? = null,
+    @SerializedName("in_production")
+    @SerialName("in_production")
+    val inProduction: Boolean? = null,
     @SerializedName("number_of_seasons")
     @SerialName("number_of_seasons")
     val numberOfSeasons: Int? = null,
     @SerializedName("number_of_episodes")
     @SerialName("number_of_episodes")
     val numberOfEpisodes: Int? = null,
+    @SerializedName("last_episode_to_air")
+    @SerialName("last_episode_to_air")
+    val lastEpisodeToAir: TmdbTvEpisode? = null,
+    @SerializedName("next_episode_to_air")
+    @SerialName("next_episode_to_air")
+    val nextEpisodeToAir: TmdbTvEpisode? = null,
     @SerializedName("seasons")
     @SerialName("seasons")
     val seasons: List<TmdbTvSeason>? = emptyList(),
@@ -119,6 +138,90 @@ data class TmdbTvSummary(
     /** Four-digit year of the series' initial air date. */
     val firstAirYear: String
         get() = firstAirDate.orEmpty().take(4)
+
+    /** True when TMDB reports the series has definitively ended or been canceled. */
+    val isSeriesEnded: Boolean
+        get() {
+            if (inProduction == true || nextEpisodeToAir != null) return false
+            val normalized = status?.trim()?.lowercase(Locale.ROOT).orEmpty()
+            return normalized == "ended" || normalized == "canceled" || normalized == "cancelled"
+        }
+
+    /** True when TMDB reports the series is returning, in production, planned, or has a scheduled next episode. */
+    val isSeriesContinuing: Boolean
+        get() {
+            if (inProduction == true || nextEpisodeToAir != null) return true
+            val normalized = status?.trim()?.lowercase(Locale.ROOT).orEmpty()
+            return normalized == "returning series" ||
+                normalized == "in production" ||
+                normalized == "planned" ||
+                normalized == "pilot"
+        }
+}
+
+/**
+ * Structured schedule metadata for an upcoming TV episode or season premiere,
+ * prepared for future integration with the user's Google Calendar.
+ *
+ * @property seriesId Canonical TMDB series identifier.
+ * @property seriesName Display name of the television series.
+ * @property seasonNumber Season number of the scheduled episode or premiere.
+ * @property episodeNumber Episode number within the season (or null if only season premiere is known).
+ * @property episodeName Episode title if announced by TMDB.
+ * @property airDateIso Broadcast date in ISO-8601 format ("YYYY-MM-DD") from TMDB.
+ * @property overview Episode or season synopsis for calendar event description.
+ */
+@Serializable
+data class UpcomingEpisodeSchedule(
+    @SerializedName("series_id")
+    @SerialName("series_id")
+    val seriesId: Int,
+    @SerializedName("series_name")
+    @SerialName("series_name")
+    val seriesName: String,
+    @SerializedName("season_number")
+    @SerialName("season_number")
+    val seasonNumber: Int,
+    @SerializedName("episode_number")
+    @SerialName("episode_number")
+    val episodeNumber: Int? = null,
+    @SerializedName("episode_name")
+    @SerialName("episode_name")
+    val episodeName: String? = null,
+    @SerializedName("air_date_iso")
+    @SerialName("air_date_iso")
+    val airDateIso: String,
+    @SerializedName("overview")
+    @SerialName("overview")
+    val overview: String? = null
+) {
+    /**
+     * Parses [airDateIso] ("YYYY-MM-DD") into UTC epoch milliseconds for Google Calendar all-day event insertion,
+     * or returns `null` if the date string is malformed.
+     */
+    fun toEpochMillisUtc(): Long? {
+        if (airDateIso.isBlank()) return null
+        return try {
+            val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+                isLenient = false
+            }
+            parser.parse(airDateIso.take(10))?.time
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Formats a human-readable calendar event title (e.g., "Severance S02E01 · Hello, Ms. Cobel"). */
+    fun buildCalendarEventTitle(): String {
+        val code = if (episodeNumber != null && episodeNumber > 0) {
+            "S%02dE%02d".format(Locale.US, seasonNumber, episodeNumber)
+        } else {
+            "S%02d".format(Locale.US, seasonNumber)
+        }
+        val epLabel = episodeName?.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
+        return "$seriesName $code$epLabel".trim()
+    }
 }
 
 /**
@@ -336,4 +439,3 @@ data class TmdbTvExternalIds(
     @SerialName("tvdb_id")
     val tvdbId: Int? = null
 )
-
