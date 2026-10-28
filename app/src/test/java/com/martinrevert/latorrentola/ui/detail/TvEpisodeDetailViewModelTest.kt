@@ -3,14 +3,13 @@ package com.martinrevert.latorrentola.ui.detail
 import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
-import com.martinrevert.latorrentola.model.user.DownloadedEpisode
-import com.martinrevert.latorrentola.network.TorrentioRepository
 import com.martinrevert.latorrentola.model.torrent.PlaybackCompatibility
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
-import com.martinrevert.latorrentola.network.EztvRepository
+import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.network.TmdbRepository
+import com.martinrevert.latorrentola.network.TvEpisodeReleasesRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
 import com.martinrevert.latorrentola.utils.PreferenceManager
@@ -31,8 +30,7 @@ class TvEpisodeDetailViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val tmdbRepository: TmdbRepository = mockk(relaxed = true)
-    private val eztvRepository: EztvRepository = mockk(relaxed = true)
-    private val torrentioRepository: TorrentioRepository = mockk(relaxed = true)
+    private val tvEpisodeReleasesRepository: TvEpisodeReleasesRepository = mockk(relaxed = true)
     private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
     private val preferenceManager: PreferenceManager = mockk(relaxed = true)
     private val downloadsFlow = MutableStateFlow<List<DownloadedEpisode>>(emptyList())
@@ -46,8 +44,7 @@ class TvEpisodeDetailViewModelTest {
         every { preferenceManager.torrentHandlingModeFlow } returns torrentModeFlow
         viewModel = TvEpisodeDetailViewModel(
             tmdbRepository,
-            eztvRepository,
-            torrentioRepository,
+            tvEpisodeReleasesRepository,
             userLibraryRepository,
             preferenceManager
         )
@@ -65,10 +62,17 @@ class TvEpisodeDetailViewModelTest {
             name = seriesName,
             posterPath = "/poster_path.jpg"
         )
-        coEvery { tmdbRepository.getTvImdbId(seriesId) } returns "123456"
-        coEvery { eztvRepository.getTorrentsForEpisode("123456", seasonNum, episodeNum) } returns listOf(
-            EztvTorrent(title = "Breaking.Bad.S01E02.720p", hash = "abc123hash")
+        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, seasonNum) } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
+            id = 1,
+            seasonNumber = seasonNum,
+            episodes = listOf(
+                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(id = 2, episodeNumber = episodeNum, seasonNumber = seasonNum, name = "Ep 2")
+            )
         )
+        val sampleTorrent = EztvTorrent(title = "Breaking.Bad.S01E02.720p", hash = "abc123hash")
+        coEvery {
+            tvEpisodeReleasesRepository.getEpisodeReleasesWithQualityGrouping(seriesId, seasonNum, episodeNum)
+        } returns Pair(listOf(sampleTorrent), emptyMap())
 
         val job = backgroundScope.launch {
             viewModel.uiState.collect {}
@@ -99,7 +103,13 @@ class TvEpisodeDetailViewModelTest {
         val seasonNum = 1
         val episodeNum = 2
 
-        coEvery { tmdbRepository.getTvImdbId(seriesId) } returns "123456"
+        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, seasonNum) } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
+            id = 1,
+            seasonNumber = seasonNum,
+            episodes = listOf(
+                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(id = 2, episodeNumber = episodeNum, seasonNumber = seasonNum, name = "Ep 2")
+            )
+        )
 
         val job = backgroundScope.launch {
             viewModel.uiState.collect {}
@@ -142,13 +152,20 @@ class TvEpisodeDetailViewModelTest {
         val seasonNum = 1
         val episodeNum = 2
 
-        coEvery { tmdbRepository.getTvImdbId(seriesId) } returns "123456"
-        coEvery {
-            eztvRepository.getTorrentsForEpisode("123456", seasonNum, episodeNum)
-        } returns listOf(
+        val torrents = listOf(
             EztvTorrent(title = "Breaking.Bad.S01E02.720p", hash = "release-one"),
             EztvTorrent(title = "Breaking.Bad.S01E02.1080p", hash = "release-two")
         )
+        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, seasonNum) } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
+            id = 1,
+            seasonNumber = seasonNum,
+            episodes = listOf(
+                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(id = 2, episodeNumber = episodeNum, seasonNumber = seasonNum, name = "Ep 2")
+            )
+        )
+        coEvery {
+            tvEpisodeReleasesRepository.getEpisodeReleasesWithQualityGrouping(seriesId, seasonNum, episodeNum)
+        } returns Pair(torrents, emptyMap())
 
         val job = backgroundScope.launch {
             viewModel.uiState.collect {}
@@ -219,7 +236,7 @@ class TvEpisodeDetailViewModelTest {
     }
 
     @Test
-    fun `getNextEpisodeInfo returns next episode when available and valid`() = runTest {
+    fun `getNextEpisodeInfo returns cached next episode info from repository`() = runTest {
         val seriesId = 10
         val seasonNum = 1
         val episodeNum = 5
@@ -234,7 +251,9 @@ class TvEpisodeDetailViewModelTest {
         )
 
         coEvery { tmdbRepository.getTvSeasonDetails(seriesId, seasonNum) } returns mockSeasonDetails
-        coEvery { tmdbRepository.getTvImdbId(seriesId) } returns "123456"
+        coEvery {
+            tvEpisodeReleasesRepository.resolveNextEpisodeInfo(seriesId, "Breaking Bad", seasonNum, episodeNum)
+        } returns arrayListOf("10", "Breaking Bad", "1", "6", "Episode 6")
 
         val job = backgroundScope.launch {
             viewModel.uiState.collect {}
@@ -250,8 +269,8 @@ class TvEpisodeDetailViewModelTest {
 
         val nextInfo = viewModel.getNextEpisodeInfo()
         assertThat(nextInfo).isNotNull()
-        assertThat(nextInfo!![2]).isEqualTo(1)
-        assertThat(nextInfo[3]).isEqualTo(6)
+        assertThat(nextInfo!![2]).isEqualTo("1")
+        assertThat(nextInfo[3]).isEqualTo("6")
         assertThat(nextInfo[4]).isEqualTo("Episode 6")
 
         job.cancel()
@@ -296,14 +315,25 @@ class TvEpisodeDetailViewModelTest {
             compatibility = PlaybackCompatibility.AUDIO_REQUIRES_PASSTHROUGH_OR_EXTERNAL
         )
 
+        val grouped = mapOf(
+            VideoQualityGroup.HD_720P to listOf(eztvRelease),
+            VideoQualityGroup.FHD_1080P to listOf(torrentioRelease1080p)
+        )
+
         coEvery { tmdbRepository.getTvDetails(seriesId) } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary(
             id = seriesId,
             name = seriesName
         )
-        coEvery { tmdbRepository.getTvImdbId(seriesId) } returns "tt0903747"
-        coEvery { eztvRepository.getTorrentsForEpisode("tt0903747", seasonNum, episodeNum) } returns listOf(eztvTorrent)
-        coEvery { torrentioRepository.fromEztvTorrent(eztvTorrent) } returns eztvRelease
-        coEvery { torrentioRepository.getSeriesTorrents("tt0903747", seasonNum, episodeNum) } returns listOf(torrentioRelease1080p)
+        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, seasonNum) } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
+            id = 1,
+            seasonNumber = seasonNum,
+            episodes = listOf(
+                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(id = 2, episodeNumber = episodeNum, seasonNumber = seasonNum, name = "Ep 2")
+            )
+        )
+        coEvery {
+            tvEpisodeReleasesRepository.getEpisodeReleasesWithQualityGrouping(seriesId, seasonNum, episodeNum)
+        } returns Pair(listOf(eztvTorrent), grouped)
 
         val job = backgroundScope.launch {
             viewModel.uiState.collect {}

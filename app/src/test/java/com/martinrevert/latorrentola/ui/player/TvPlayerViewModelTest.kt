@@ -1,15 +1,15 @@
 package com.martinrevert.latorrentola.ui.player
 
 import com.google.common.truth.Truth.assertThat
-import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
-import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
-import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails
-import com.martinrevert.latorrentola.network.EztvRepository
+import com.martinrevert.latorrentola.model.torrent.TorrentRelease
+import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
 import com.martinrevert.latorrentola.network.TmdbRepository
+import com.martinrevert.latorrentola.network.TvEpisodeReleasesRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
@@ -21,7 +21,7 @@ class TvPlayerViewModelTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
 
-    private val eztvRepository: EztvRepository = mockk(relaxed = true)
+    private val tvEpisodeReleasesRepository: TvEpisodeReleasesRepository = mockk(relaxed = true)
     private val tmdbRepository: TmdbRepository = mockk(relaxed = true)
     private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
     private val preferenceManager: PreferenceManager = mockk(relaxed = true)
@@ -31,7 +31,7 @@ class TvPlayerViewModelTest {
     @Before
     fun setUp() {
         viewModel = TvPlayerViewModel(
-            eztvRepository,
+            tvEpisodeReleasesRepository,
             tmdbRepository,
             userLibraryRepository,
             preferenceManager
@@ -39,81 +39,93 @@ class TvPlayerViewModelTest {
     }
 
     @Test
-    fun `fetchReleasesForNextEpisode resets previous releases before fetching new ones`() = runTest {
+    fun `fetchReleasesForNextEpisode queries tvEpisodeReleasesRepository and updates releases`() = runTest {
         val seriesId = 100
         val seasonNum = 1
         val epNum = 2
 
-        coEvery { tmdbRepository.getTvImdbId(seriesId) } returns "123456"
-        coEvery { eztvRepository.getTorrentsForEpisode("123456", seasonNum, epNum) } returns listOf(
-            EztvTorrent(title = "Show.S01E02.1080p", hash = "hash123")
+        val release1 = TorrentRelease(
+            hash = "torrentiohash",
+            title = "Show.S01E02.1080p.HDR",
+            qualityGroup = VideoQualityGroup.FHD_1080P,
+            resolutionLabel = "1080p",
+            audioCodec = "DTS 5.1",
+            seeds = 120,
+            provider = "Torrentio"
+        )
+        val release2 = TorrentRelease(
+            hash = "eztvhash",
+            title = "Show.S01E02.720p",
+            qualityGroup = VideoQualityGroup.HD_720P,
+            resolutionLabel = "720p",
+            audioCodec = "AAC",
+            seeds = 50,
+            provider = "EZTV"
         )
 
-        viewModel.fetchReleasesForNextEpisode(seriesId, seasonNum, epNum)
+        coEvery {
+            tvEpisodeReleasesRepository.getEpisodeReleasesBySeriesId(seriesId, seasonNum, epNum)
+        } returns listOf(release1, release2)
+
+        viewModel.fetchReleasesForNextEpisode(seriesId, seasonNum, epNum, seriesName = "Test Show", episodeName = "Episode 2")
         testScheduler.advanceUntilIdle()
 
-        assertThat(viewModel.nextEpisodeReleases.value).hasSize(1)
-        assertThat(viewModel.nextEpisodeReleases.value.first().title).isEqualTo("Show.S01E02.1080p")
+        assertThat(viewModel.nextEpisodeReleases.value).hasSize(2)
+        assertThat(viewModel.nextEpisodeReleases.value.first().hash).isEqualTo("torrentiohash")
+        assertThat(viewModel.nextEpisodeData.value?.seriesName).isEqualTo("Test Show")
+        assertThat(viewModel.nextEpisodeData.value?.episodeNumber).isEqualTo(2)
     }
 
     @Test
-    fun `getNextEpisodeInfo resolves next episode in same season`() = runTest {
+    fun `fetchNextEpisodeAndReleases resolves next episode and fetches its releases`() = runTest {
+        val seriesId = 100
+        val currentSeason = 1
+        val currentEpisode = 1
+
+        val nextInfo = arrayListOf("100", "Breaking Bad", "1", "2", "Episode Two")
+        val nextRelease = TorrentRelease(
+            hash = "releasehash",
+            title = "Breaking.Bad.S01E02.1080p",
+            qualityGroup = VideoQualityGroup.FHD_1080P,
+            resolutionLabel = "1080p",
+            audioCodec = "AAC",
+            seeds = 80,
+            provider = "Torrentio"
+        )
+
+        coEvery {
+            tvEpisodeReleasesRepository.resolveNextEpisodeInfo(seriesId, "", currentSeason, currentEpisode)
+        } returns nextInfo
+
+        coEvery {
+            tvEpisodeReleasesRepository.getEpisodeReleasesBySeriesId(seriesId, 1, 2)
+        } returns listOf(nextRelease)
+
+        viewModel.fetchNextEpisodeAndReleases(seriesId, currentSeason, currentEpisode)
+        testScheduler.advanceUntilIdle()
+
+        assertThat(viewModel.nextEpisodeData.value?.seasonNumber).isEqualTo(1)
+        assertThat(viewModel.nextEpisodeData.value?.episodeNumber).isEqualTo(2)
+        assertThat(viewModel.nextEpisodeData.value?.episodeName).isEqualTo("Episode Two")
+        assertThat(viewModel.nextEpisodeReleases.value).containsExactly(nextRelease)
+    }
+
+    @Test
+    fun `getNextEpisodeInfo delegates to tvEpisodeReleasesRepository`() = runTest {
         val seriesId = 10
         val seasonNum = 1
         val currentEpNum = 1
+        val expectedInfo = arrayListOf("10", "Breaking Bad", "1", "2", "Ep 2")
 
-        val seasonDetails = TmdbTvSeasonDetails(
-            id = 1,
-            seasonNumber = 1,
-            episodes = listOf(
-                TmdbTvEpisode(id = 1, episodeNumber = 1, seasonNumber = 1, name = "Ep 1", airDate = "2023-01-01"),
-                TmdbTvEpisode(id = 2, episodeNumber = 2, seasonNumber = 1, name = "Ep 2", airDate = "2023-01-08")
-            )
-        )
+        coEvery {
+            tvEpisodeReleasesRepository.resolveNextEpisodeInfo(seriesId, "Breaking Bad", seasonNum, currentEpNum)
+        } returns expectedInfo
 
-        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, seasonNum) } returns seasonDetails
+        val result = viewModel.getNextEpisodeInfo(seriesId, "Breaking Bad", seasonNum, currentEpNum)
 
-        val nextInfo = viewModel.getNextEpisodeInfo(seriesId, "Breaking Bad", seasonNum, currentEpNum)
-
-        assertThat(nextInfo).isNotNull()
-        assertThat(nextInfo!![0]).isEqualTo("10")
-        assertThat(nextInfo[1]).isEqualTo("Breaking Bad")
-        assertThat(nextInfo[2]).isEqualTo("1")
-        assertThat(nextInfo[3]).isEqualTo("2")
-        assertThat(nextInfo[4]).isEqualTo("Ep 2")
-    }
-
-    @Test
-    fun `getNextEpisodeInfo resolves first episode of next season when on season finale`() = runTest {
-        val seriesId = 10
-        val seasonNum = 1
-        val currentEpNum = 2
-
-        val season1Details = TmdbTvSeasonDetails(
-            id = 1,
-            seasonNumber = 1,
-            episodes = listOf(
-                TmdbTvEpisode(id = 1, episodeNumber = 1, seasonNumber = 1, name = "Ep 1", airDate = "2023-01-01"),
-                TmdbTvEpisode(id = 2, episodeNumber = 2, seasonNumber = 1, name = "Ep 2", airDate = "2023-01-08")
-            )
-        )
-
-        val season2Details = TmdbTvSeasonDetails(
-            id = 2,
-            seasonNumber = 2,
-            episodes = listOf(
-                TmdbTvEpisode(id = 3, episodeNumber = 1, seasonNumber = 2, name = "Season 2 Ep 1", airDate = "2024-01-01")
-            )
-        )
-
-        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, 1) } returns season1Details
-        coEvery { tmdbRepository.getTvSeasonDetails(seriesId, 2) } returns season2Details
-
-        val nextInfo = viewModel.getNextEpisodeInfo(seriesId, "Breaking Bad", seasonNum, currentEpNum)
-
-        assertThat(nextInfo).isNotNull()
-        assertThat(nextInfo!![2]).isEqualTo("2")
-        assertThat(nextInfo[3]).isEqualTo("1")
-        assertThat(nextInfo[4]).isEqualTo("Season 2 Ep 1")
+        assertThat(result).isEqualTo(expectedInfo)
+        coVerify(exactly = 1) {
+            tvEpisodeReleasesRepository.resolveNextEpisodeInfo(seriesId, "Breaking Bad", seasonNum, currentEpNum)
+        }
     }
 }

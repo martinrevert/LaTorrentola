@@ -11,16 +11,13 @@ import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
-import com.martinrevert.latorrentola.network.EztvRepository
 import com.martinrevert.latorrentola.network.TmdbRepository
-import com.martinrevert.latorrentola.network.TorrentioRepository
+import com.martinrevert.latorrentola.network.TvEpisodeReleasesRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -35,16 +32,14 @@ import javax.inject.Inject
  * Manages state and torrent fetching for an individual TV series episode.
  *
  * @property tmdbRepository Access to TMDB episode metadata and external IDs.
- * @property eztvRepository Access to EZTV episode torrent releases.
- * @property torrentioRepository Access to Torrentio episode torrent releases.
+ * @property tvEpisodeReleasesRepository Single source of truth for unified episode torrent releases.
  * @property userLibraryRepository Firestore persistence for downloaded episode records.
- * @property preferenceManager provides the selected torrent handling mode.
+ * @property preferenceManager Provides the selected torrent handling mode.
  */
 @HiltViewModel
 class TvEpisodeDetailViewModel @Inject constructor(
     private val tmdbRepository: TmdbRepository,
-    private val eztvRepository: EztvRepository,
-    private val torrentioRepository: TorrentioRepository,
+    private val tvEpisodeReleasesRepository: TvEpisodeReleasesRepository,
     private val userLibraryRepository: UserLibraryRepository,
     private val preferenceManager: PreferenceManager
 ) : ViewModel() {
@@ -150,7 +145,7 @@ class TvEpisodeDetailViewModel @Inject constructor(
                     }
                 } else null
 
-                // 2. Get season details for episode resolution and next episode calculation
+                // 2. Get season details for episode resolution
                 val seasonDetails = tmdbRepository.getTvSeasonDetails(seriesId, seasonNumber)
                 currentSeasonDetails = seasonDetails
 
@@ -179,41 +174,20 @@ class TvEpisodeDetailViewModel @Inject constructor(
                 }
                 activeSeriesName = resolvedSeriesName
 
-                // 4. Resolve next episode info (same season or next season)
-                cachedNextEpisodeInfo =
-                    resolveNextEpisodeInfo(seriesId, resolvedSeriesName, seasonNumber, episode, seasonDetails)
+                // 4. Resolve next episode info via unified repository
+                cachedNextEpisodeInfo = tvEpisodeReleasesRepository.resolveNextEpisodeInfo(
+                    seriesId = seriesId,
+                    seriesName = resolvedSeriesName,
+                    seasonNumber = seasonNumber,
+                    currentEpisodeNumber = episode.episodeNumber
+                )
 
-                // 5. Resolve IMDb ID and fetch torrents (EZTV + Torrentio in parallel)
-                val imdbId = tmdbRepository.getTvImdbId(seriesId)
-                val (eztvTorrents, releasesByQuality) = if (!imdbId.isNullOrBlank()) {
-                    coroutineScope {
-                        val eztvDeferred = async { eztvRepository.getTorrentsForEpisode(imdbId, seasonNumber, episodeNumber) }
-                        val torrentioDeferred = async { torrentioRepository.getSeriesTorrents(imdbId, seasonNumber, episodeNumber) }
-
-                        val eztvList = try { eztvDeferred.await() } catch (e: Exception) {
-                            if (e is CancellationException) throw e
-                            emptyList()
-                        }
-                        val torrentioList = try { torrentioDeferred.await() } catch (e: Exception) {
-                            if (e is CancellationException) throw e
-                            emptyList()
-                        }
-
-                        val eztvReleases = eztvList.map { torrentioRepository.fromEztvTorrent(it) }
-                        val allReleases = eztvReleases + torrentioList
-                        val grouped = allReleases
-                            .distinctBy { it.hash.lowercase() }
-                            .groupBy { it.qualityGroup }
-                            .mapValues { entry ->
-                                entry.value.sortedWith(
-                                    compareByDescending<TorrentRelease> { it.seeds }
-                                        .thenByDescending { it.sizeBytes ?: 0L }
-                                )
-                            }
-                            .toSortedMap(compareBy { it.ordinal })
-                        Pair<List<EztvTorrent>, Map<VideoQualityGroup, List<TorrentRelease>>>(eztvList, grouped)
-                    }
-                } else Pair(emptyList(), emptyMap())
+                // 5. Fetch torrents via unified repository (EZTV + Torrentio in parallel)
+                val (eztvTorrents, releasesByQuality) = tvEpisodeReleasesRepository.getEpisodeReleasesWithQualityGrouping(
+                    seriesId = seriesId,
+                    seasonNumber = seasonNumber,
+                    episodeNumber = episodeNumber
+                )
 
                 _rawUiState.value = TvEpisodeDetailRawUiState.Success(
                     seriesName = resolvedSeriesName,
@@ -234,52 +208,7 @@ class TvEpisodeDetailViewModel @Inject constructor(
     }
 
     /**
-     * Resolves metadata for the next episode in the same season or the first episode of the next season.
-     */
-    private suspend fun resolveNextEpisodeInfo(
-        seriesId: Int,
-        seriesName: String,
-        seasonNumber: Int,
-        currentEp: TmdbTvEpisode,
-        seasonDetails: TmdbTvSeasonDetails
-    ): List<Any>? {
-        val episodesList = seasonDetails.episodes.orEmpty()
-        val currentIndex = episodesList.indexOfFirst { it.episodeNumber == currentEp.episodeNumber }
-
-        if (currentIndex >= 0 && currentIndex < episodesList.size - 1) {
-            val nextEpisode = episodesList[currentIndex + 1]
-            val nextSeason = nextEpisode.seasonNumber.takeIf { it > 0 } ?: seasonNumber
-            return listOf(
-                seriesId,
-                seriesName,
-                nextSeason,
-                nextEpisode.episodeNumber,
-                nextEpisode.name.orEmpty()
-            )
-        } else {
-            // Check next season for S(seasonNumber + 1)E01
-            try {
-                val nextSeasonDetails = tmdbRepository.getTvSeasonDetails(seriesId, seasonNumber + 1)
-                val firstEp = nextSeasonDetails.episodes.orEmpty().firstOrNull { it.episodeNumber == 1 }
-                if (firstEp != null) {
-                    val nextSeason = firstEp.seasonNumber.takeIf { it > 0 } ?: (seasonNumber + 1)
-                    return listOf(
-                        seriesId,
-                        seriesName,
-                        nextSeason,
-                        firstEp.episodeNumber,
-                        firstEp.name.orEmpty()
-                    )
-                }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-            }
-        }
-        return null
-    }
-
-    /**
-     * Records a download entry in Firestore when the user chooses a torrent release.
+     * Records a download entry in Firestore when the user chooses an [EztvTorrent].
      *
      * @param torrent EZTV torrent release selected by user.
      */
@@ -297,7 +226,7 @@ class TvEpisodeDetailViewModel @Inject constructor(
                     episodeNumber = activeEpisodeNumber,
                     episodeName = episode.name.orEmpty(),
                     releaseTitle = torrent.title,
-                    quality = extractQuality(torrent.title),
+                    extractQuality(torrent.title),
                     hash = validHash,
                     magnetUrl = torrent.magnetUrl,
                     timestamp = System.currentTimeMillis(),
@@ -361,7 +290,7 @@ class TvEpisodeDetailViewModel @Inject constructor(
             userLibraryRepository.markEpisodeAsCompleted(
                 seriesId = activeSeriesId,
                 seasonNumber = activeSeasonNumber,
-                episodeNumber = activeEpisodeNumber,
+                episodeNumber = episode.episodeNumber,
                 episodeTitle = episode.name.orEmpty(),
                 seriesName = seriesName,
                 stillPath = episode.stillPath
@@ -369,46 +298,60 @@ class TvEpisodeDetailViewModel @Inject constructor(
         }
     }
 
-    /** Clears watch progress and downloads for the active episode. */
-    fun markEpisodeAsUncompleted() {
+    /** Marks the active episode as uncompleted in Room and Firestore. */
+    fun markEpisodeAsUncompleted(episode: TmdbTvEpisode? = null) {
         viewModelScope.launch {
             userLibraryRepository.markEpisodeAsUncompleted(
                 seriesId = activeSeriesId,
                 seasonNumber = activeSeasonNumber,
-                episodeNumber = activeEpisodeNumber
+                episodeNumber = episode?.episodeNumber ?: activeEpisodeNumber
             )
         }
     }
+
+    /**
+     * Clears in-memory episode details state to prevent stale data display when navigating between episodes.
+     */
+    fun resetState() {
+        activeSeriesId = 0
+        activeSeasonNumber = 0
+        activeEpisodeNumber = 0
+        activeSeriesName = ""
+        currentEpisode = null
+        currentSeasonDetails = null
+        cachedNextEpisodeInfo = null
+        _rawUiState.value = TvEpisodeDetailRawUiState.Loading
+    }
 }
 
-/** Internal raw UI states for episode details before combining with download history. */
-private sealed interface TvEpisodeDetailRawUiState {
+/**
+ * Raw internal UI state representation for episode details before downloads are merged.
+ */
+sealed interface TvEpisodeDetailRawUiState {
     data object Loading : TvEpisodeDetailRawUiState
-
+    data class Error(val message: String) : TvEpisodeDetailRawUiState
     data class Success(
         val seriesName: String,
         val episode: TmdbTvEpisode,
         val torrents: List<EztvTorrent>,
-        val releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>> = emptyMap(),
+        val releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>>,
         val posterUrl: String? = null
     ) : TvEpisodeDetailRawUiState
-
-    data class Error(val message: String) : TvEpisodeDetailRawUiState
 }
 
-/** UI states for the episode detail screen. */
+/**
+ * UI state exposed to the episode detail view.
+ */
 sealed interface TvEpisodeDetailUiState {
     data object Loading : TvEpisodeDetailUiState
-
+    data class Error(val message: String) : TvEpisodeDetailUiState
     data class Success(
         val seriesName: String,
         val episode: TmdbTvEpisode,
         val torrents: List<EztvTorrent>,
-        val releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>> = emptyMap(),
-        val isDownloaded: Boolean = false,
+        val releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>>,
+        val isDownloaded: Boolean,
         val downloadedHashes: Set<String> = emptySet(),
         val posterUrl: String? = null
     ) : TvEpisodeDetailUiState
-
-    data class Error(val message: String) : TvEpisodeDetailUiState
-}
+}

@@ -196,6 +196,8 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
+import com.martinrevert.latorrentola.model.torrent.TorrentRelease
+import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.network.DownloadedSubtitle
@@ -1855,11 +1857,11 @@ class LocalPlayerActivity : FragmentActivity() {
                             if (releases.isNotEmpty()) {
                                 val selectedRelease = if (autoPlayMode == AutoPlayQualitySelectionMethod.BY_QUALITY) {
                                     releases.maxByOrNull { release ->
-                                        when {
-                                            release.title.contains("2160p", true) || release.title.contains("4k", true) -> 4
-                                            release.title.contains("1080p", true) -> 3
-                                            release.title.contains("720p", true) -> 2
-                                            else -> 1
+                                        when (release.qualityGroup) {
+                                            VideoQualityGroup.UHD_4K -> 4
+                                            VideoQualityGroup.FHD_1080P -> 3
+                                            VideoQualityGroup.HD_720P -> 2
+                                            VideoQualityGroup.OTHER -> 1
                                         }
                                     } ?: releases.first()
                                 } else {

@@ -4,11 +4,11 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
-import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
+import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.user.DownloadedEpisode
-import com.martinrevert.latorrentola.network.EztvRepository
 import com.martinrevert.latorrentola.network.TmdbRepository
+import com.martinrevert.latorrentola.network.TvEpisodeReleasesRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
@@ -19,12 +19,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.time.LocalDate
 import javax.inject.Inject
 
 @HiltViewModel
 class TvPlayerViewModel @Inject constructor(
-    private val eztvRepository: EztvRepository,
+    private val tvEpisodeReleasesRepository: TvEpisodeReleasesRepository,
     private val tmdbRepository: TmdbRepository,
     private val userLibraryRepository: UserLibraryRepository,
     private val preferenceManager: PreferenceManager
@@ -33,8 +32,8 @@ class TvPlayerViewModel @Inject constructor(
     private val _nextEpisodeData = MutableStateFlow<NextEpisodeData?>(null)
     val nextEpisodeData: StateFlow<NextEpisodeData?> = _nextEpisodeData.asStateFlow()
 
-    private val _nextEpisodeReleases = MutableStateFlow<List<EztvTorrent>>(emptyList())
-    val nextEpisodeReleases: StateFlow<List<EztvTorrent>> = _nextEpisodeReleases.asStateFlow()
+    private val _nextEpisodeReleases = MutableStateFlow<List<TorrentRelease>>(emptyList())
+    val nextEpisodeReleases: StateFlow<List<TorrentRelease>> = _nextEpisodeReleases.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -71,17 +70,18 @@ class TvPlayerViewModel @Inject constructor(
                 episodeName = episodeName
             )
 
-            val imdbId = tmdbRepository.getTvImdbId(seriesId)
-            if (!imdbId.isNullOrEmpty()) {
-                try {
-                    val releases = eztvRepository.getTorrentsForEpisode(imdbId, seasonNumber, episodeNumber)
-                    _nextEpisodeReleases.value = releases
-                } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                    _error.value = e.localizedMessage ?: "Unknown error"
+            try {
+                val releases = tvEpisodeReleasesRepository.getEpisodeReleasesBySeriesId(seriesId, seasonNumber, episodeNumber)
+                if (releases.isEmpty()) {
+                    val imdbId = tmdbRepository.getTvImdbId(seriesId)
+                    if (imdbId.isNullOrEmpty()) {
+                        _error.value = "Unable to find IMDb ID for series"
+                    }
                 }
-            } else {
-                _error.value = "Unable to find IMDb ID for series"
+                _nextEpisodeReleases.value = releases
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _error.value = e.localizedMessage ?: "Unknown error"
             }
             _isLoading.value = false
         }
@@ -98,7 +98,7 @@ class TvPlayerViewModel @Inject constructor(
             _nextEpisodeData.value = null
 
             try {
-                val nextInfo = getNextEpisodeInfo(seriesId, "", currentSeasonNumber, currentEpisodeNumber)
+                val nextInfo = tvEpisodeReleasesRepository.resolveNextEpisodeInfo(seriesId, "", currentSeasonNumber, currentEpisodeNumber)
                 if (nextInfo != null && nextInfo.size >= 5) {
                     val nextSeriesId = nextInfo[0].toInt()
                     val nextSeriesName = nextInfo[1]
@@ -114,13 +114,14 @@ class TvPlayerViewModel @Inject constructor(
                         episodeName = nextEpName
                     )
 
-                    val imdbId = tmdbRepository.getTvImdbId(seriesId)
-                    if (!imdbId.isNullOrEmpty()) {
-                        val releases = eztvRepository.getTorrentsForEpisode(imdbId, nextSeason, nextEp)
-                        _nextEpisodeReleases.value = releases
-                    } else {
-                        _error.value = "Unable to find IMDb ID for series"
+                    val releases = tvEpisodeReleasesRepository.getEpisodeReleasesBySeriesId(seriesId, nextSeason, nextEp)
+                    if (releases.isEmpty()) {
+                        val imdbId = tmdbRepository.getTvImdbId(seriesId)
+                        if (imdbId.isNullOrEmpty()) {
+                            _error.value = "Unable to find IMDb ID for series"
+                        }
                     }
+                    _nextEpisodeReleases.value = releases
                 } else {
                     _error.value = "No next episode available"
                 }
@@ -132,13 +133,12 @@ class TvPlayerViewModel @Inject constructor(
         }
     }
 
-    suspend fun getReleasesForEpisode(imdbId: String, seasonNumber: Int, episodeNumber: Int): List<EztvTorrent> {
-        return eztvRepository.getTorrentsForEpisode(imdbId, seasonNumber, episodeNumber)
-    }
+    suspend fun getReleasesForEpisode(imdbId: String, seasonNumber: Int, episodeNumber: Int): List<TorrentRelease> =
+        tvEpisodeReleasesRepository.getEpisodeReleases(imdbId, seasonNumber, episodeNumber)
 
     suspend fun downloadEpisode(
         context: Context,
-        release: EztvTorrent,
+        release: TorrentRelease,
         seriesId: Int,
         seriesName: String,
         seasonNumber: Int,
@@ -149,13 +149,10 @@ class TvPlayerViewModel @Inject constructor(
             val nextEpisodeInfo = getNextEpisodeInfo(seriesId, seriesName, seasonNumber, episodeNumber)
 
             val displayTitle = "%s S%02dE%02d %s".format(seriesName, seasonNumber, episodeNumber, release.title)
-            val magnetUrl = release.magnetUrl.takeIf { it.isNotEmpty() }
-                ?: TorrentLaunchHelper.buildMagnetUri(
-                    release.downloadInfoHash() ?: "",
-                    displayTitle
-                )
+            val magnetUrl = release.magnetUrl.takeIf { !it.isNullOrBlank() }
+                ?: TorrentLaunchHelper.buildMagnetUri(release.hash, displayTitle)
 
-            val sizeBytes = release.sizeBytes?.toLongOrNull()
+            val sizeBytes = release.sizeBytes
             val result = TorrentLaunchHelper.launch(
                 context,
                 preferenceManager.getTorrentHandlingMode(),
@@ -177,9 +174,10 @@ class TvPlayerViewModel @Inject constructor(
                         episodeNumber = episodeNumber,
                         episodeName = episodeName,
                         releaseTitle = release.title,
-                        quality = extractQuality(release.title),
-                        hash = release.downloadInfoHash()
-                            ?: "tv_${seriesId}_s${seasonNumber}_e${episodeNumber}",
+                        quality = release.qualityGroup.name,
+                        hash = release.hash.ifBlank {
+                            "tv_${seriesId}_s${seasonNumber}_e${episodeNumber}"
+                        },
                         magnetUrl = magnetUrl,
                         timestamp = System.currentTimeMillis()
                     )
@@ -195,72 +193,25 @@ class TvPlayerViewModel @Inject constructor(
         }
     }
 
+    suspend fun downloadEpisode(
+        context: Context,
+        release: EztvTorrent,
+        seriesId: Int,
+        seriesName: String,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        episodeName: String
+    ): TorrentLaunchResult {
+        val torrentRelease = tvEpisodeReleasesRepository.fromEztvTorrent(release)
+        return downloadEpisode(context, torrentRelease, seriesId, seriesName, seasonNumber, episodeNumber, episodeName)
+    }
+
     suspend fun getNextEpisodeInfo(
         seriesId: Int,
         seriesName: String,
         seasonNumber: Int,
         episodeNumber: Int
-    ): ArrayList<String>? {
-        if (seriesId <= 0 || seasonNumber <= 0 || episodeNumber <= 0) return null
-        return try {
-            var resolvedName = seriesName
-            if (resolvedName.isBlank()) {
-                try {
-                    resolvedName = tmdbRepository.getTvDetails(seriesId).name.orEmpty()
-                } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                }
-            }
-
-            val seasonDetails = tmdbRepository.getTvSeasonDetails(seriesId, seasonNumber)
-            val episodesList = seasonDetails.episodes.orEmpty()
-            val currentIndex = episodesList.indexOfFirst { it.episodeNumber == episodeNumber }
-
-            if (currentIndex >= 0 && currentIndex < episodesList.size - 1) {
-                val nextEp = episodesList[currentIndex + 1]
-                val nextSeasonNum = nextEp.seasonNumber.takeIf { it > 0 } ?: seasonNumber
-                arrayListOf(
-                    seriesId.toString(),
-                    resolvedName,
-                    nextSeasonNum.toString(),
-                    nextEp.episodeNumber.toString(),
-                    nextEp.name.orEmpty()
-                )
-            } else {
-                try {
-                    val nextSeasonDetails = tmdbRepository.getTvSeasonDetails(seriesId, seasonNumber + 1)
-                    val firstEp = nextSeasonDetails.episodes.orEmpty().firstOrNull { it.episodeNumber == 1 }
-                    if (firstEp != null) {
-                        val nextSeasonNum = firstEp.seasonNumber.takeIf { it > 0 } ?: (seasonNumber + 1)
-                        arrayListOf(
-                            seriesId.toString(),
-                            resolvedName,
-                            nextSeasonNum.toString(),
-                            firstEp.episodeNumber.toString(),
-                            firstEp.name.orEmpty()
-                        )
-                    } else null
-                } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                    null
-                }
-            }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            null
-        }
-    }
-
-    private fun extractQuality(title: String): String {
-        val lower = title.lowercase()
-        return when {
-            lower.contains("2160p") || lower.contains("4k") -> "2160p"
-            lower.contains("1080p") -> "1080p"
-            lower.contains("720p") -> "720p"
-            lower.contains("hdtv") -> "HDTV"
-            else -> "SD"
-        }
-    }
+    ): ArrayList<String>? = tvEpisodeReleasesRepository.resolveNextEpisodeInfo(seriesId, seriesName, seasonNumber, episodeNumber)
 }
 
 /**
