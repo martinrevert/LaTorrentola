@@ -384,4 +384,7 @@
     <string name="settings_test_crash_confirm_title">¿Forzar cierre de prueba?</string>
     <string name="settings_test_crash_confirm_desc">Esto cerrará la aplicación de inmediato para verificar los reportes de Crashlytics. ¿Deseas continuar?</string>
     <string name="settings_test_crash_confirm_action">Cerrar app</string>
+    <string name="actor_search_desc">Buscar por Actor</string>
+    <string name="actor_search_placeholder">Buscar actores o actrices…</string>
+    <string name="actor_bio_chip">Biografía</string>
 </resources>

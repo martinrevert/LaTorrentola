@@ -6,19 +6,19 @@ import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.date.DateLastVisit
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
+import com.martinrevert.latorrentola.network.AuthRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
-import com.martinrevert.latorrentola.network.AuthRepository
 import com.martinrevert.latorrentola.utils.MovieFilter
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
 import java.util.Date
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 
 /**
  * Loads and filters the home movie feed and exposes associated UI state.
@@ -36,6 +36,13 @@ class HomeViewModel @Inject constructor(
     private val preferenceManager: PreferenceManager,
     private val authRepository: AuthRepository
 ) : ViewModel() {
+
+    companion object {
+        private const val TARGET_INITIAL_BATCH = 18
+        private const val TARGET_LOAD_MORE_BATCH = 12
+        private const val MAX_PAGES_PER_BATCH = 5
+        private const val YTS_PAGE_SIZE = 20
+    }
 
     /** Mutable backing state for the home feed result. */
     private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
@@ -119,6 +126,8 @@ class HomeViewModel @Inject constructor(
 
     /** Accumulated movie results backing the paginated feed. */
     private val allMovies = mutableListOf<Movie>()
+    /** O(1) lookup set of movie IDs currently in [allMovies]. */
+    private val seenMovieIds = HashSet<Int>()
     /** Page number to request next from the YTS API. */
     private var currentPage = 1
     /** Whether a page request is currently running. */
@@ -127,6 +136,8 @@ class HomeViewModel @Inject constructor(
     private var canLoadMore = true
     /** Current feed request, canceled when filters trigger a refresh. */
     private var movieFetchJob: kotlinx.coroutines.Job? = null
+    /** Monotonic generation counter to ignore stale/cancelled coroutine completions. */
+    private var requestGeneration = 0L
 
     /** Starts observing visit metadata, genres, and preference synchronization. */
     init {
@@ -165,7 +176,8 @@ class HomeViewModel @Inject constructor(
         combine(
             preferenceManager.filteredLanguagesFlow,
             preferenceManager.minimumRatingFlow
-        ) { _, _ -> }
+        ) { langs, rating -> langs to rating }
+            .distinctUntilChanged()
             .onEach { refresh(force = true) }
             .launchIn(viewModelScope)
     }
@@ -175,7 +187,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             val visit = ytsRepository.getLastVisitDate()
             _lastVisitDate.value = visit?.date?.time
-            
+
             // Immediately update to current time for NEXT session
             ytsRepository.setLastVisitDate(DateLastVisit(id = 1, date = Date()))
         }
@@ -186,7 +198,7 @@ class HomeViewModel @Inject constructor(
         ytsRepository.getAllGenresWithCount()
             .onEach { stats ->
                 val topList = stats.map { it.genre }
-                
+
                 // If no history, show some defaults so the row isn't completely empty
                 if (topList.isEmpty()) {
                     _topGenres.value = listOf("Action", "Comedy", "Drama", "Horror", "Sci-Fi")
@@ -203,30 +215,48 @@ class HomeViewModel @Inject constructor(
         if (_selectedQuality.value == q) return
         _selectedQuality.value = q
         clearLastClickedMovieId()
-        refresh()
+        refresh(force = true)
     }
 
-    /** Loads the next page of filtered, deduplicated movies. */
+    /** Loads the next batch of filtered, deduplicated movies. */
     fun loadMovies() {
         if (isFetching || !canLoadMore) return
         isFetching = true
+        val generation = ++requestGeneration
         if (currentPage > 1) {
             _isLoadingMore.value = true
         }
-        
+
         movieFetchJob = viewModelScope.launch {
             try {
                 if (currentPage == 1) _uiState.value = HomeUiState.Loading
-                
-                var foundNewMovies = false
-                while (canLoadMore && !foundNewMovies) {
+
+                val targetBatchSize = if (currentPage == 1) TARGET_INITIAL_BATCH else TARGET_LOAD_MORE_BATCH
+                var addedInBatch = 0
+                var pagesFetchedInBatch = 0
+                var lastPageWasFull = true
+
+                while (
+                    canLoadMore &&
+                    (addedInBatch == 0 || (lastPageWasFull && addedInBatch < targetBatchSize && pagesFetchedInBatch < MAX_PAGES_PER_BATCH))
+                ) {
                     val result = ytsRepository.getMovies(
                         currentPage,
                         _selectedQuality.value,
                         preferenceManager.getMinimumRating()
                     )
+                    if (generation != requestGeneration) return@launch
                     val moviesFromApi = result.data?.movies
-                    
+
+                    if (moviesFromApi.isNullOrEmpty()) {
+                        canLoadMore = false
+                        break
+                    }
+
+                    lastPageWasFull = moviesFromApi.size >= YTS_PAGE_SIZE
+                    pagesFetchedInBatch++
+                    currentPage++
+
                     // Filter movies based on user settings
                     val excludedLangs = preferenceManager.getFilteredLanguages()
                     val filteredMovies = MovieFilter.filterMovies(
@@ -234,35 +264,30 @@ class HomeViewModel @Inject constructor(
                         excludedLangs,
                         minimumRating = preferenceManager.getMinimumRating()
                     )
-                        .distinctBy { it.id }
-                    
-                    if (filteredMovies.isNotEmpty()) {
-                        // Add only new movies (by id) to avoid duplicates
-                        val filteredNewMovies = filteredMovies.filter { newMovie ->
-                            allMovies.none { it.id == newMovie.id }
-                        }
-                        
-                        if (filteredNewMovies.isNotEmpty()) {
-                            allMovies.addAll(filteredNewMovies)
-                            _uiState.value = HomeUiState.Success(allMovies.toList())
-                            foundNewMovies = true
+
+                    for (movie in filteredMovies) {
+                        if (seenMovieIds.add(movie.id)) {
+                            allMovies.add(movie)
+                            addedInBatch++
                         }
                     }
-                    
-                    currentPage++
                 }
 
-                if (allMovies.isEmpty() && !canLoadMore) {
+                if (addedInBatch > 0) {
+                    _uiState.value = HomeUiState.Success(allMovies.toList())
+                } else if (allMovies.isEmpty() && !canLoadMore) {
                     _uiState.value = HomeUiState.Error(UiText.StringResource(R.string.error_no_movies_filtered))
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                if (allMovies.isEmpty()) {
+                if (generation == requestGeneration && allMovies.isEmpty()) {
                     _uiState.value = HomeUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
                 }
             } finally {
-                isFetching = false
-                _isLoadingMore.value = false
+                if (generation == requestGeneration) {
+                    isFetching = false
+                    _isLoadingMore.value = false
+                }
             }
         }
     }
@@ -274,32 +299,46 @@ class HomeViewModel @Inject constructor(
      */
     fun refresh(force: Boolean = false, showIndicator: Boolean = false) {
         if (isFetching && !force) return
-        
+
         movieFetchJob?.cancel()
-        
+        val generation = ++requestGeneration
+        isFetching = true
+        _isLoadingMore.value = false
+        _isRefreshing.value = showIndicator
+
         movieFetchJob = viewModelScope.launch {
-            isFetching = true
-            _isRefreshing.value = showIndicator
             try {
                 // reset pagination and current list
                 currentPage = 1
                 canLoadMore = true
                 allMovies.clear()
+                seenMovieIds.clear()
                 _uiState.value = HomeUiState.Loading
 
-                var foundNewMovies = false
-                while (canLoadMore && !foundNewMovies) {
+                var addedInBatch = 0
+                var pagesFetchedInBatch = 0
+                var lastPageWasFull = true
+
+                while (
+                    canLoadMore &&
+                    (addedInBatch == 0 || (lastPageWasFull && addedInBatch < TARGET_INITIAL_BATCH && pagesFetchedInBatch < MAX_PAGES_PER_BATCH))
+                ) {
                     val result = ytsRepository.getMovies(
                         currentPage,
                         _selectedQuality.value,
                         preferenceManager.getMinimumRating()
                     )
+                    if (generation != requestGeneration) return@launch
                     val moviesFromApi = result.data?.movies
 
                     if (moviesFromApi.isNullOrEmpty()) {
                         canLoadMore = false
                         break
                     }
+
+                    lastPageWasFull = moviesFromApi.size >= YTS_PAGE_SIZE
+                    pagesFetchedInBatch++
+                    currentPage++
 
                     // Filter movies based on user settings
                     val excludedLangs = preferenceManager.getFilteredLanguages()
@@ -308,37 +347,35 @@ class HomeViewModel @Inject constructor(
                         excludedLangs,
                         minimumRating = preferenceManager.getMinimumRating()
                     )
-                        .distinctBy { it.id }
 
-                    if (filteredMovies.isNotEmpty()) {
-                        // Add only new movies (by id) to avoid duplicates across pages
-                        val filteredNewMovies = filteredMovies.filter { newMovie ->
-                            allMovies.none { it.id == newMovie.id }
-                        }
-
-                        if (filteredNewMovies.isNotEmpty()) {
-                            allMovies.addAll(filteredNewMovies)
-                            _uiState.value = HomeUiState.Success(allMovies.toList())
-                            foundNewMovies = true
+                    for (movie in filteredMovies) {
+                        if (seenMovieIds.add(movie.id)) {
+                            allMovies.add(movie)
+                            addedInBatch++
                         }
                     }
-                    currentPage++
                 }
 
-                if (allMovies.isEmpty() && !canLoadMore) {
+                if (addedInBatch > 0) {
+                    _uiState.value = HomeUiState.Success(allMovies.toList())
+                } else if (allMovies.isEmpty() && !canLoadMore) {
                     _uiState.value = HomeUiState.Error(UiText.StringResource(R.string.error_no_movies_filtered))
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                if (allMovies.isEmpty()) {
+                if (generation == requestGeneration && allMovies.isEmpty()) {
                     _uiState.value = HomeUiState.Error(UiText.DynamicString(e.localizedMessage ?: "Unknown error"))
                 }
             } finally {
-                _isRefreshing.value = false
-                isFetching = false
+                if (generation == requestGeneration) {
+                    _isRefreshing.value = false
+                    _isLoadingMore.value = false
+                    isFetching = false
+                }
             }
         }
     }
+
     /** Stores the movie ID used to restore card focus. */
     fun setLastClickedMovieId(id: Int?) {
         _lastClickedMovieId.value = id
@@ -357,7 +394,6 @@ class HomeViewModel @Inject constructor(
             } else {
                 ytsRepository.addFavorite(movie)
             }
-            // Trigger UI update if needed, though Flow from Room would be better for this
         }
     }
 

@@ -24,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -36,6 +37,7 @@ import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.TvGenreSortChips
 import com.martinrevert.latorrentola.ui.components.TvSeriesGrid
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import kotlinx.coroutines.launch
 
 /**
  * Presents paginated TMDB series results for one selected TV genre.
@@ -61,13 +63,12 @@ fun TvGenreResultsScreen(
     val genres by viewModel.genres.collectAsState()
     val genreCatalogError by viewModel.genreCatalogError.collectAsState()
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
+    val lastClickedSeriesId by viewModel.lastClickedSeriesId.collectAsState()
     val gridState = rememberLazyGridState()
     val sortFocusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(genreId) { viewModel.setGenre(genreId) }
-    LaunchedEffect(genreId, selectedSort, descending) {
-        gridState.scrollToItem(0)
-    }
 
     Scaffold(
         topBar = {
@@ -110,8 +111,14 @@ fun TvGenreResultsScreen(
                 TvGenreSortChips(
                     selectedSort = selectedSort,
                     descending = descending,
-                    onSortClick = viewModel::setSort,
-                    onDirectionClick = viewModel::toggleDirection,
+                    onSortClick = { sort ->
+                        viewModel.setSort(sort)
+                        coroutineScope.launch { gridState.scrollToItem(0) }
+                    },
+                    onDirectionClick = {
+                        viewModel.toggleDirection()
+                        coroutineScope.launch { gridState.scrollToItem(0) }
+                    },
                     firstFocusRequester = sortFocusRequester
                 )
             }
@@ -134,8 +141,13 @@ fun TvGenreResultsScreen(
                         genres = genres,
                         state = gridState,
                         isLoadingMore = isLoadingMore,
-                        onSeriesClick = onSeriesClick,
+                        onSeriesClick = { series ->
+                            viewModel.setLastClickedSeriesId(series.id)
+                            onSeriesClick(series)
+                        },
                         onLoadMore = viewModel::loadMore,
+                        initialFocusId = lastClickedSeriesId,
+                        onFocusRestored = { viewModel.clearLastClickedSeriesId() },
                         contentPadding = PaddingValues(16.dp)
                     )
 

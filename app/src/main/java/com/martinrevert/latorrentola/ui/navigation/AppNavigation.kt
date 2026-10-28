@@ -13,11 +13,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import com.martinrevert.latorrentola.utils.PreferenceManager
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
+import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
+import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.auth.AuthViewModel
 import com.martinrevert.latorrentola.ui.auth.LoginScreen
 import com.martinrevert.latorrentola.ui.detail.DetailViewModel
@@ -26,20 +28,18 @@ import com.martinrevert.latorrentola.ui.detail.TvDetailScreen
 import com.martinrevert.latorrentola.ui.detail.TvDetailViewModel
 import com.martinrevert.latorrentola.ui.detail.TvEpisodeDetailScreen
 import com.martinrevert.latorrentola.ui.detail.TvEpisodeDetailViewModel
+import com.martinrevert.latorrentola.ui.downloads.TorrentDownloadsScreen
 import com.martinrevert.latorrentola.ui.home.HomeScreen
 import com.martinrevert.latorrentola.ui.home.HomeViewModel
-import com.martinrevert.latorrentola.ui.home.TvHomeViewModel
 import com.martinrevert.latorrentola.ui.home.TvGenreResultsScreen
 import com.martinrevert.latorrentola.ui.home.TvGenreResultsViewModel
+import com.martinrevert.latorrentola.ui.home.TvHomeViewModel
+import com.martinrevert.latorrentola.ui.media.ExternalMediaBrowserScreen
 import com.martinrevert.latorrentola.ui.search.SearchScreen
 import com.martinrevert.latorrentola.ui.search.SearchViewModel
 import com.martinrevert.latorrentola.ui.settings.SettingsScreen
 import com.martinrevert.latorrentola.ui.settings.SettingsViewModel
-import com.martinrevert.latorrentola.ui.downloads.TorrentDownloadsScreen
-import com.martinrevert.latorrentola.ui.media.ExternalMediaBrowserScreen
-import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
-import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
-import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -60,7 +60,7 @@ sealed interface Route : NavKey {
      * @property tmdbMovieTitle Fallback title used to find the movie in YTS.
      */
     @Serializable data class Detail(
-        val movieJson: String? = null, 
+        val movieJson: String? = null,
         val movieId: Int? = null,
         val query: String? = null,
         val tmdbMovieId: Int? = null,
@@ -73,16 +73,18 @@ sealed interface Route : NavKey {
     /** External and network storage media browser (USB, SMB, NFS). */
     @Serializable object ExternalMedia : Route
     /**
-     * Search destination with optional genre or text query.
+     * Search destination with optional genre, text query, TV mode, or Actor mode.
      *
      * @property genre Genre or collection key used to initialize the result list.
      * @property query Initial search text.
      * @property isTvMode Whether search opens in TV series mode.
+     * @property isActorMode Whether search opens in TMDB Actor search mode.
      */
     @Serializable data class Search(
         val genre: String? = null,
         val query: String? = null,
-        val isTvMode: Boolean = false
+        val isTvMode: Boolean = false,
+        val isActorMode: Boolean = false
     ) : Route
     /**
      * TV genre discovery destination.
@@ -183,7 +185,7 @@ internal object NavBackStackHandler {
 /** Creates the authenticated navigation graph and consumes pending deep-link data. */
 @Composable
 fun AppNavigation(
-    initialMovieJson: String? = null, 
+    initialMovieJson: String? = null,
     initialMovieId: Int? = null,
     initialSearchQuery: String? = null,
     onInitialDataHandled: () -> Unit = {}
@@ -194,7 +196,7 @@ fun AppNavigation(
     val context = LocalContext.current
     val preferenceManager = remember(context) { PreferenceManager(context) }
     val themeMode by preferenceManager.themeFlow.collectAsState(initial = preferenceManager.getTheme())
-    
+
     val initialRoute = if (isLoggedIn) Route.Home else Route.Login
     val backStack = rememberNavBackStack(initialRoute)
     NavBackStackHandler.ensureNotEmpty(backStack, initialRoute)
@@ -264,6 +266,9 @@ fun AppNavigation(
                     onSettingsClick = { backStack.add(Route.Settings) },
                     onSearchClick = { isTvMode ->
                         backStack.add(Route.Search(isTvMode = isTvMode))
+                    },
+                    onActorSearchClick = {
+                        backStack.add(Route.Search(isActorMode = true))
                     },
                     onFavoritesClick = { backStack.add(Route.Search("milista")) },
                     onGenreClick = { genre ->
@@ -335,12 +340,25 @@ fun AppNavigation(
                     initialGenre = searchKey.genre,
                     initialQuery = searchKey.query,
                     initialTvMode = searchKey.isTvMode,
+                    initialActorMode = searchKey.isActorMode,
                     onMovieClick = { movie ->
                         val movieJson = Json.encodeToString(Movie.serializer(), movie)
                         backStack.add(Route.Detail(movieJson = movieJson))
                     },
                     onTvSeriesClick = { series ->
                         backStack.add(Route.TvDetail(series.id))
+                    },
+                    onActorCreditClick = { credit: TmdbCastCredit ->
+                        if (credit.mediaType == "tv") {
+                            backStack.add(Route.TvDetail(credit.id))
+                        } else {
+                            backStack.add(
+                                Route.Detail(
+                                    tmdbMovieId = credit.id,
+                                    tmdbMovieTitle = credit.displayTitle
+                                )
+                            )
+                        }
                     },
                     onBackClick = popBackStack
                 )

@@ -21,6 +21,7 @@ interface TmdbService {
     suspend fun searchPerson(
         @Query("api_key") apiKey: String,
         @Query("query") query: String,
+        @Query("page") page: Int = 1,
         @Query("language") language: String = TmdbLanguage.current()
     ): TmdbSearchPersonResponse
 

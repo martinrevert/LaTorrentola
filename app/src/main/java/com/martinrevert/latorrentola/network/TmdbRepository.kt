@@ -3,15 +3,18 @@ package com.martinrevert.latorrentola.network
 import com.martinrevert.latorrentola.BuildConfig
 import com.martinrevert.latorrentola.database.TvGenreDao
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
+import com.martinrevert.latorrentola.model.TMDB.TmdbPersonResult
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvPage
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.model.TMDB.sortedByYearDescending
 import com.martinrevert.latorrentola.model.YTS.Cast
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 /**
  * Coordinates TMDB requests and converts lookup failures into nullable/result values.
@@ -27,6 +30,36 @@ class TmdbRepository @Inject constructor(
     /** API key injected through the app build configuration. */
     private val apiKey: String
         get() = BuildConfig.TMDB_API_KEY
+
+    /** In-memory cache of TMDB TV genres keyed by active language. */
+    @Volatile
+    private var cachedTvGenres: List<TmdbTvGenre>? = null
+
+    @Volatile
+    private var cachedTvGenresLanguage: String? = null
+
+    /** In-memory cache of TMDB TV series details by series ID. */
+    private val tvDetailsCache = ConcurrentHashMap<Int, TmdbTvSummary>()
+
+    /**
+     * Searches TMDB for people (actors/actresses) matching [query].
+     *
+     * @param query Search query text.
+     * @param page Page number to retrieve.
+     * @return Matching list of [TmdbPersonResult] entries.
+     */
+    suspend fun searchActors(query: String, page: Int = 1): List<TmdbPersonResult> {
+        if (apiKey.isEmpty() || query.isBlank()) return emptyList()
+        return try {
+            tmdbService.searchPerson(
+                apiKey = apiKey,
+                query = query,
+                page = page
+            ).results.orEmpty()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
 
     /**
      * Looks up an actor by name, then fetches their profile and combined credits.
@@ -55,7 +88,8 @@ class TmdbRepository @Inject constructor(
     }
 
     /**
-     * Loads actor details and combined credits using the person's TMDB identifier.
+     * Loads actor details and combined credits using the person's TMDB identifier,
+     * with combined cast credits sorted by year descending.
      *
      * @param personId TMDB person identifier from the TV cast record.
      * @return Actor detail on success, or the network/configuration failure.
@@ -66,13 +100,18 @@ class TmdbRepository @Inject constructor(
                 return Result.failure(IllegalStateException("TMDB API key not configured"))
             }
 
-            Result.success(
-                tmdbService.getPersonDetail(
-                    personId = personId,
-                    apiKey = apiKey,
-                    appendToResponse = "combined_credits"
-                )
+            val detail = tmdbService.getPersonDetail(
+                personId = personId,
+                apiKey = apiKey,
+                appendToResponse = "combined_credits"
             )
+            val sortedCast = detail.combinedCredits?.cast?.sortedByYearDescending()
+            val sortedDetail = if (sortedCast != null) {
+                detail.copy(combinedCredits = detail.combinedCredits.copy(cast = sortedCast))
+            } else {
+                detail
+            }
+            Result.success(sortedDetail)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -138,10 +177,20 @@ class TmdbRepository @Inject constructor(
         }
     }
 
-    /** Loads the TMDB television genre catalog. */
+    /** Loads the TMDB television genre catalog, using an in-memory cache per language. */
     suspend fun getTvGenres(): List<TmdbTvGenre> {
         requireConfiguredApiKey()
-        return tmdbService.getTvGenres(apiKey = apiKey).genres.orEmpty()
+        val currentLang = TmdbLanguage.current()
+        val existing = cachedTvGenres
+        if (existing != null && cachedTvGenresLanguage == currentLang && existing.isNotEmpty()) {
+            return existing
+        }
+        val fetched = tmdbService.getTvGenres(apiKey = apiKey).genres.orEmpty()
+        if (fetched.isNotEmpty()) {
+            cachedTvGenres = fetched
+            cachedTvGenresLanguage = currentLang
+        }
+        return fetched
     }
 
     /** Observes TMDB TV genre IDs ordered by local usage count. */
@@ -188,14 +237,17 @@ class TmdbRepository @Inject constructor(
     }
 
     /**
-     * Loads a series with its seasons and aggregate cast.
+     * Loads a series with its seasons and aggregate cast, caching the result in memory.
      *
      * @param seriesId TMDB TV series identifier.
      * @return The series detail response.
      */
     suspend fun getTvDetails(seriesId: Int): TmdbTvSummary {
         requireConfiguredApiKey()
-        return tmdbService.getTvDetails(seriesId = seriesId, apiKey = apiKey)
+        tvDetailsCache[seriesId]?.let { return it }
+        val fetched = tmdbService.getTvDetails(seriesId = seriesId, apiKey = apiKey)
+        tvDetailsCache[seriesId] = fetched
+        return fetched
     }
 
     /**

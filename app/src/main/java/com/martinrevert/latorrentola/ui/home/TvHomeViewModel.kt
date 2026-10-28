@@ -10,6 +10,8 @@ import com.martinrevert.latorrentola.network.TmdbTvFeed
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.Locale
+import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,8 +23,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.util.Locale
-import javax.inject.Inject
 
 /**
  * Loads TMDB TV feeds and orders TV genres using TV-only visit statistics.
@@ -94,6 +94,8 @@ class TvHomeViewModel @Inject constructor(
 
     /** Accumulated series backing the selected paginated feed. */
     private val allSeries = mutableListOf<TmdbTvSummary>()
+    /** O(1) lookup set of TV series IDs currently in [allSeries]. */
+    private val seenSeriesIds = HashSet<Int>()
     /** Page number to request next. */
     private var currentPage = 1
     /** Last available page reported by TMDB. */
@@ -129,9 +131,11 @@ class TvHomeViewModel @Inject constructor(
         requestGeneration++
         val generation = requestGeneration
         isFetching = true
+        _isLoadingMore.value = false
         currentPage = 1
         totalPages = 1
         allSeries.clear()
+        seenSeriesIds.clear()
         _uiState.value = TvHomeUiState.Loading
         feedJob = viewModelScope.launch {
             _isRefreshing.value = showIndicator
@@ -182,19 +186,27 @@ class TvHomeViewModel @Inject constructor(
         }
     }
 
-    /** Appends the next page for the currently selected TV feed. */
+    /** Appends the next page for the currently selected TV feed, skipping duplicate-only pages. */
     private suspend fun loadNextPage(generation: Long) {
         if (generation != requestGeneration) return
-        val requestedPage = currentPage
-        if (requestedPage > 1) _isLoadingMore.value = true
+        if (currentPage > 1) _isLoadingMore.value = true
         try {
-            val page = tmdbRepository.getHomeTvFeed(_selectedFeed.value, requestedPage)
-            if (generation != requestGeneration) return
-            totalPages = page.totalPages.coerceAtLeast(page.page)
-            allSeries.addAll(page.results.orEmpty().filterNot { candidate ->
-                allSeries.any { it.id == candidate.id }
-            })
-            currentPage = page.page + 1
+            var addedInBatch = 0
+            var pagesFetched = 0
+            while (currentPage <= totalPages && addedInBatch == 0 && pagesFetched < 3) {
+                val requestedPage = currentPage
+                val page = tmdbRepository.getHomeTvFeed(_selectedFeed.value, requestedPage)
+                if (generation != requestGeneration) return
+                totalPages = page.totalPages.coerceAtLeast(page.page)
+                for (candidate in page.results.orEmpty()) {
+                    if (seenSeriesIds.add(candidate.id)) {
+                        allSeries.add(candidate)
+                        addedInBatch++
+                    }
+                }
+                currentPage = page.page + 1
+                pagesFetched++
+            }
             if (allSeries.isEmpty()) {
                 _uiState.value = TvHomeUiState.Error(UiText.StringResource(R.string.tv_no_results))
             } else {

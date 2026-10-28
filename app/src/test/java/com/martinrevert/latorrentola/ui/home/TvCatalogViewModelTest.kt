@@ -81,6 +81,31 @@ class TvCatalogViewModelTest {
         coVerify(exactly = 1) { repository.getHomeTvFeed(TmdbTvFeed.ON_THE_AIR, 2) }
     }
 
+    /** Defaults to sorting by first air date descending (Year descending) and orders page results by year descending. */
+    @Test
+    fun `tv genre results default to first air date descending and sort by year descending`() = runTest {
+        coEvery { repository.getTvGenres() } returns listOf(TmdbTvGenre(id = 18, name = "Drama"))
+        coEvery { repository.discoverTvByGenre(18, "first_air_date.desc", 1) } returns TmdbTvPage(
+            page = 1,
+            totalPages = 1,
+            results = listOf(
+                TmdbTvSummary(id = 1, name = "Older", firstAirDate = "2019-05-01"),
+                TmdbTvSummary(id = 2, name = "Newest", firstAirDate = "2025-10-12"),
+                TmdbTvSummary(id = 3, name = "Middle", firstAirDate = "2022-01-15")
+            )
+        )
+
+        val viewModel = TvGenreResultsViewModel(repository)
+        assertThat(viewModel.sort.value).isEqualTo(TvGenreSort.FIRST_AIR_DATE)
+        assertThat(viewModel.descending.value).isTrue()
+
+        viewModel.setGenre(18)
+
+        val state = viewModel.uiState.value as TvGenreResultsUiState.Success
+        assertThat(state.series.map { it.id }).containsExactly(2, 3, 1).inOrder()
+        coVerify(exactly = 1) { repository.discoverTvByGenre(18, "first_air_date.desc", 1) }
+    }
+
     /** Applies TMDB sorting and loads more pages for the selected TV genre. */
     @Test
     fun `tv genre results use the selected sort and page`() = runTest {
@@ -115,5 +140,14 @@ class TvCatalogViewModelTest {
             (viewModel.uiState.value as TvGenreResultsUiState.Success).series.map { it.id }
         ).containsExactly(2, 3).inOrder()
         coVerify { repository.discoverTvByGenre(18, "vote_average.desc", 2) }
+    }
+
+    @Test
+    fun `tv genre results track and clear lastClickedSeriesId for focus restoration`() = runTest {
+        val viewModel = TvGenreResultsViewModel(repository)
+        viewModel.setLastClickedSeriesId(99)
+        assertThat(viewModel.lastClickedSeriesId.value).isEqualTo(99)
+        viewModel.clearLastClickedSeriesId()
+        assertThat(viewModel.lastClickedSeriesId.value).isNull()
     }
 }

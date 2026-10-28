@@ -15,7 +15,10 @@ import androidx.compose.ui.unit.dp
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.utils.isTvDevice
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+
+private const val PREFETCH_ITEM_THRESHOLD = 12
 
 /** Displays a responsive, focus-restorable grid of movie cards with pagination placeholders. */
 @OptIn(ExperimentalComposeUiApi::class)
@@ -43,11 +46,31 @@ fun MovieList(
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
 
+    val currentMovies by rememberUpdatedState(movies)
+    val currentIsLoadingMore by rememberUpdatedState(isLoadingMore)
+    val currentOnLoadMore by rememberUpdatedState(onLoadMore)
+
     val columns = when {
         isTv -> GridCells.Fixed(6) // Enforce exactly 6 columns on TV devices
         screenWidth < 600.dp -> GridCells.Fixed(2)
         screenWidth < 900.dp -> GridCells.Adaptive(minSize = 160.dp)
         else -> GridCells.Adaptive(minSize = 200.dp)
+    }
+
+    // Proactive prefetch before reaching the bottom of the grid
+    LaunchedEffect(state) {
+        snapshotFlow {
+            val lastVisible = state.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            val totalMovies = currentMovies.size
+            val nearBottom = totalMovies > 0 && lastVisible >= (totalMovies - PREFETCH_ITEM_THRESHOLD).coerceAtLeast(0)
+            Triple(nearBottom, totalMovies, currentIsLoadingMore)
+        }
+            .distinctUntilChanged()
+            .collect { (nearBottom, _, loading) ->
+                if (nearBottom && !loading) {
+                    currentOnLoadMore()
+                }
+            }
     }
 
     LazyVerticalGrid(
@@ -60,7 +83,11 @@ fun MovieList(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(movies, key = { it.id }) { movie ->
+        items(
+            items = movies,
+            key = { it.id },
+            contentType = { "movie" }
+        ) { movie ->
             val progress = watchHistoryMap[movie.id.toString()] ?: watchHistoryMap[movie.title]
             val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
             MovieItem(
@@ -73,18 +100,25 @@ fun MovieList(
                 onLongClick = onLongClick?.let { { it(movie.id) } },
                 onToggleSelection = onToggleSelection?.let { { it(movie.id) } },
                 shouldRequestFocus = movie.id == initialFocusId,
-                onFocusRestored = onFocusRestored
+                onFocusRestored = onFocusRestored,
+                isTv = isTv
             )
         }
         if (isLoadingMore) {
-            items(6, key = { "placeholder_$it" }) {
+            items(
+                count = 6,
+                key = { "placeholder_$it" },
+                contentType = { "placeholder" }
+            ) {
                 MovieItemPlaceholder(isTv = isTv)
             }
         }
-        item(key = "load_more_indicator") {
+        item(key = "load_more_indicator", contentType = "load_more") {
             Box(modifier = Modifier.size(48.dp)) {
-                LaunchedEffect(Unit) {
-                    onLoadMore()
+                LaunchedEffect(movies.size, isLoadingMore) {
+                    if (!isLoadingMore) {
+                        currentOnLoadMore()
+                    }
                 }
             }
         }
@@ -93,10 +127,15 @@ fun MovieList(
     // Focus restoration scroll: only run when initialFocusId changes
     LaunchedEffect(initialFocusId) {
         if (initialFocusId != null) {
-            snapshotFlow { movies }.first { list -> list.any { it.id == initialFocusId } }
-            val index = movies.indexOfFirst { it.id == initialFocusId }
+            val restoredMovies = snapshotFlow { currentMovies }.first { list ->
+                list.any { it.id == initialFocusId }
+            }
+            val index = restoredMovies.indexOfFirst { it.id == initialFocusId }
             if (index != -1) {
-                state.scrollToItem(index)
+                val isVisible = state.layoutInfo.visibleItemsInfo.any { it.index == index }
+                if (!isVisible) {
+                    state.scrollToItem(index)
+                }
             }
         }
     }

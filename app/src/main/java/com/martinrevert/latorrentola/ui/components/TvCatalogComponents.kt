@@ -1,7 +1,9 @@
 package com.martinrevert.latorrentola.ui.components
 
 import android.content.Intent
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,33 +18,26 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
@@ -54,23 +49,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
-import dagger.hilt.android.EntryPointAccessors
-import com.martinrevert.latorrentola.di.RepositoryEntryPoint
-import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
-import com.martinrevert.latorrentola.utils.PreferenceManager
-import kotlinx.coroutines.launch
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -79,15 +72,24 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.di.RepositoryEntryPoint
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.network.TmdbTvFeed
 import com.martinrevert.latorrentola.ui.home.TvGenreSort
+import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
+import dagger.hilt.android.EntryPointAccessors
 import java.util.Locale
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+
+private const val TV_PREFETCH_ITEM_THRESHOLD = 12
 
 /**
  * Shows the Movies and TV mode controls with deterministic horizontal TV focus traversal.
@@ -343,11 +345,29 @@ fun TvSeriesGrid(
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val genreNames = remember(genres) { genres.associate { it.id to it.name } }
     val currentSeries by rememberUpdatedState(series)
+    val currentIsLoadingMore by rememberUpdatedState(isLoadingMore)
+    val currentOnLoadMore by rememberUpdatedState(onLoadMore)
     val columns = when {
         isTv -> GridCells.Fixed(6)
         screenWidth < 600.dp -> GridCells.Fixed(2)
         screenWidth < 900.dp -> GridCells.Adaptive(minSize = 160.dp)
         else -> GridCells.Adaptive(minSize = 200.dp)
+    }
+
+    // Proactive prefetch before reaching the bottom of the grid
+    LaunchedEffect(state) {
+        snapshotFlow {
+            val lastVisible = state.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            val totalSeries = currentSeries.size
+            val nearBottom = totalSeries > 0 && lastVisible >= (totalSeries - TV_PREFETCH_ITEM_THRESHOLD).coerceAtLeast(0)
+            Triple(nearBottom, totalSeries, currentIsLoadingMore)
+        }
+            .distinctUntilChanged()
+            .collect { (nearBottom, _, loading) ->
+                if (nearBottom && !loading) {
+                    currentOnLoadMore()
+                }
+            }
     }
 
     LazyVerticalGrid(
@@ -360,24 +380,40 @@ fun TvSeriesGrid(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(series, key = { it.id }) { item ->
+        items(
+            items = series,
+            key = { it.id },
+            contentType = { "tv_series" }
+        ) { item ->
+            val itemGenres = remember(item.genreIds, genreNames) {
+                item.genreIds.orEmpty().mapNotNull(genreNames::get)
+            }
             TvSeriesCard(
                 series = item,
-                genres = item.genreIds.orEmpty().mapNotNull(genreNames::get),
+                genres = itemGenres,
                 hasDownloads = item.id in downloadedSeriesIds,
                 onClick = { onSeriesClick(item) },
                 shouldRequestFocus = item.id == initialFocusId,
-                onFocusRestored = onFocusRestored
+                onFocusRestored = onFocusRestored,
+                isTv = isTv
             )
         }
         if (isLoadingMore) {
-            items(6, key = { "tv-placeholder-$it" }) {
+            items(
+                count = 6,
+                key = { "tv-placeholder-$it" },
+                contentType = { "placeholder" }
+            ) {
                 MovieItemPlaceholder(isTv = isTv)
             }
         }
-        item(key = "tv-load-more") {
+        item(key = "tv-load-more", contentType = "load_more") {
             Box(modifier = Modifier.size(48.dp)) {
-                LaunchedEffect(series.size) { onLoadMore() }
+                LaunchedEffect(series.size, isLoadingMore) {
+                    if (!isLoadingMore) {
+                        currentOnLoadMore()
+                    }
+                }
             }
         }
     }
@@ -388,7 +424,12 @@ fun TvSeriesGrid(
                 items.any { it.id == initialFocusId }
             }
             val index = restoredSeries.indexOfFirst { it.id == initialFocusId }
-            if (index >= 0) state.scrollToItem(index)
+            if (index >= 0) {
+                val isVisible = state.layoutInfo.visibleItemsInfo.any { it.index == index }
+                if (!isVisible) {
+                    state.scrollToItem(index)
+                }
+            }
         }
     }
 }
@@ -404,25 +445,37 @@ fun TvSeriesCard(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     shouldRequestFocus: Boolean = false,
-    onFocusRestored: () -> Unit = {}
+    onFocusRestored: () -> Unit = {},
+    isTv: Boolean? = null
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
-    val isTv = remember(context) { context.isTvDevice() }
+    val effectiveIsTv = remember(context, isTv) { isTv ?: context.isTvDevice() }
     val focusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
-    val repository = remember(context) {
-        EntryPointAccessors.fromApplication(
-            context.applicationContext,
-            RepositoryEntryPoint::class.java
-        ).tmdbRepository()
+    val repository = remember(context, effectiveIsTv) {
+        if (!effectiveIsTv) {
+            EntryPointAccessors.fromApplication(
+                context.applicationContext,
+                RepositoryEntryPoint::class.java
+            ).tmdbRepository()
+        } else {
+            null
+        }
     }
     val title = series.name.orEmpty()
-    val genreText = genres.joinToString(", ")
+    val genreText = remember(genres) { genres.joinToString(", ") }
+    val ratingText = remember(series.voteAverage) {
+        series.voteAverage?.let { "⭐ ${"%.1f".format(Locale.US, it)}" }.orEmpty()
+    }
 
-    LaunchedEffect(shouldRequestFocus) {
-        if (shouldRequestFocus) {
-            delay(300)
+    if (shouldRequestFocus) {
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            try {
+                focusRequester.requestFocus()
+            } catch (_: Exception) {}
+            delay(150)
             try {
                 focusRequester.requestFocus()
             } catch (_: Exception) {}
@@ -430,7 +483,7 @@ fun TvSeriesCard(
     }
 
     Box {
-        if (isTv) {
+        if (effectiveIsTv) {
             Surface(
                 onClick = onClick,
                 onLongClick = onLongClick,
@@ -506,7 +559,7 @@ fun TvSeriesCard(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = series.voteAverage?.let { "⭐ ${"%.1f".format(Locale.US, it)}" }.orEmpty(),
+                                text = ratingText,
                                 style = androidx.tv.material3.MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
@@ -606,7 +659,7 @@ fun TvSeriesCard(
                                     IconButton(
                                         onClick = {
                                             scope.launch {
-                                                val imdbId = repository.getTvImdbId(series.id)
+                                                val imdbId = repository?.getTvImdbId(series.id)
                                                 val shareUrl = if (!imdbId.isNullOrBlank()) {
                                                     "https://www.imdb.com/title/tt${imdbId.removePrefix("tt")}"
                                                 } else {
@@ -636,7 +689,7 @@ fun TvSeriesCard(
                                     }
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = series.voteAverage?.let { "⭐ ${"%.1f".format(Locale.US, it)}" }.orEmpty(),
+                                        text = ratingText,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurface,

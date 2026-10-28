@@ -3,6 +3,10 @@
 package com.martinrevert.latorrentola.ui.home
 
 import android.content.res.Configuration
+import android.os.Build
+import androidx.compose.animation.core.EaseInOutCubic
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -10,65 +14,59 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.EaseInOutCubic
-import androidx.compose.ui.graphics.graphicsLayer
-import kotlinx.coroutines.launch
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import android.os.Build
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
-import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
+import com.martinrevert.latorrentola.network.TmdbTvFeed
+import com.martinrevert.latorrentola.ui.components.GenreBottomSheet
+import com.martinrevert.latorrentola.ui.components.GenreChips
+import com.martinrevert.latorrentola.ui.components.MovieList
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.QualityChips
-import com.martinrevert.latorrentola.ui.components.GenreChips
-import com.martinrevert.latorrentola.ui.components.GenreBottomSheet
-import com.martinrevert.latorrentola.ui.components.MovieList
-import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import com.martinrevert.latorrentola.ui.components.TvFeedChips
 import com.martinrevert.latorrentola.ui.components.TvGenreBottomSheet
 import com.martinrevert.latorrentola.ui.components.TvGenreChips
 import com.martinrevert.latorrentola.ui.components.TvSeriesGrid
-import com.martinrevert.latorrentola.network.TmdbTvFeed
+import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
-import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.isTvDevice
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.rememberHazeState
-import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.glass.hazeGlass
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
+import kotlinx.coroutines.launch
 
 /**
  * Connects movie and TV home state to the adaptive home layout.
@@ -81,6 +79,7 @@ import dev.chrisbanes.haze.glass.hazeGlass
  * @param onTvGenreClick Opens results for a selected TMDB TV genre.
  * @param onSettingsClick Opens settings.
  * @param onSearchClick Opens search in the selected catalog mode.
+ * @param onActorSearchClick Opens TMDB actor search.
  * @param onFavoritesClick Opens the user's movie favorites.
  * @param onGenreClick Opens the selected movie genre.
  */
@@ -94,6 +93,7 @@ fun HomeScreen(
     onTvGenreClick: (TmdbTvGenre) -> Unit,
     onSettingsClick: () -> Unit,
     onSearchClick: (isTvMode: Boolean) -> Unit,
+    onActorSearchClick: () -> Unit = {},
     onFavoritesClick: () -> Unit,
     onGenreClick: (String) -> Unit
 ) {
@@ -132,6 +132,7 @@ fun HomeScreen(
         onMovieLongClick = { movie -> selectedMovieForDialog = movie },
         onSettingsClick = onSettingsClick,
         onSearchClick = onSearchClick,
+        onActorSearchClick = onActorSearchClick,
         onFavoritesClick = onFavoritesClick,
         onGenreClick = onGenreClick,
         onQualityClick = { viewModel.setQuality(it) },
@@ -180,6 +181,7 @@ private fun HomeScreenContent(
     onMovieLongClick: (Movie) -> Unit = {},
     onSettingsClick: () -> Unit,
     onSearchClick: (isTvMode: Boolean) -> Unit,
+    onActorSearchClick: () -> Unit = {},
     onFavoritesClick: () -> Unit,
     onGenreClick: (String) -> Unit,
     onQualityClick: (String) -> Unit,
@@ -259,6 +261,7 @@ private fun HomeScreenContent(
                     userPhotoUrl = userPhotoUrl,
                     favoritesCount = favoritesCount,
                     onSearchClick = onSearchClick,
+                    onActorSearchClick = onActorSearchClick,
                     onFavoritesClick = onFavoritesClick,
                     onSettingsClick = onSettingsClick,
                     isTvMode = isTvMode,
@@ -266,6 +269,7 @@ private fun HomeScreenContent(
                     onTvClick = { selectMediaMode(true) },
                     focusDownRequester = homeControlsFocusRequester,
                     containerColor = topBarContainerColor,
+                    isTv = false,
                     modifier = if (hazeState != null) {
                         Modifier
                             .graphicsLayer { alpha = hazeAlpha }
@@ -294,13 +298,15 @@ private fun HomeScreenContent(
                         userPhotoUrl = userPhotoUrl,
                         favoritesCount = favoritesCount,
                         onSearchClick = onSearchClick,
+                        onActorSearchClick = onActorSearchClick,
                         onFavoritesClick = onFavoritesClick,
                         onSettingsClick = onSettingsClick,
                         isTvMode = isTvMode,
                         onMoviesClick = { selectMediaMode(false) },
                         onTvClick = { selectMediaMode(true) },
                         focusDownRequester = homeControlsFocusRequester,
-                        containerColor = MaterialTheme.colorScheme.surface
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        isTv = true
                     )
                     if (isTvMode) {
                         TvFeedChips(
@@ -383,12 +389,13 @@ private fun HomeScreenContent(
                 val pullRefreshState = rememberPullRefreshState(
                     if (isTvMode) tvIsRefreshing else isRefreshing,
                     onRefresh = {
-                    onSetLastClickedMovieId(null)
-                    if (isTvMode) tvHomeViewModel?.refresh(showIndicator = true) else onRefresh(true)
-                    scope.launch {
-                        (if (isTvMode) tvGridState else gridState).scrollToItem(0)
+                        onSetLastClickedMovieId(null)
+                        if (isTvMode) tvHomeViewModel?.refresh(showIndicator = true) else onRefresh(true)
+                        scope.launch {
+                            (if (isTvMode) tvGridState else gridState).scrollToItem(0)
+                        }
                     }
-                })
+                )
                 val measuredControlsOffset = if (homeControlsHeightPx > 0) {
                     with(density) { homeControlsHeightPx.toDp() } + 16.dp
                 } else {
@@ -455,7 +462,11 @@ private fun HomeScreenContent(
                                         .hazeGlass(input = HazeInput.Sources(hazeState))
                                 } else Modifier
                             )
-                            .onSizeChanged { homeControlsHeightPx = it.height }
+                            .onSizeChanged {
+                                if (homeControlsHeightPx != it.height) {
+                                    homeControlsHeightPx = it.height
+                                }
+                            }
                     ) {
                         if (isTvMode) {
                             TvFeedChips(
@@ -533,7 +544,6 @@ private fun HomeScreenContent(
             hazeState = hazeState
         )
     }
-
 }
 
 /** Displays the selected TMDB TV feed with matching loading, error, and poster states. */
@@ -588,18 +598,8 @@ private fun TvHomeContent(
 
 /**
  * Renders the shared Home application bar with theme-aware actions and TV focus links.
- *
- * @param userPhotoUrl Signed-in user's avatar image URL.
- * @param favoritesCount Number of favorite movies.
- * @param isTvMode Whether the TV catalog is active.
- * @param onMoviesClick Selects the YTS movie catalog.
- * @param onTvClick Selects the TMDB TV catalog.
- * @param onSearchClick Opens search in the selected catalog mode.
- * @param onFavoritesClick Opens movie favorites.
- * @param onSettingsClick Opens settings.
- * @param focusDownRequester First Home filter/mode focus target on TV.
- * @param containerColor Semantic app-bar surface color.
- * @param modifier Modifier for blur and layout.
+ * Hides the `"La Torrentola"` title text on narrow vertical screens (`screenWidthDp < 480`)
+ * so that all action buttons (including Actor Search) fit comfortably.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -610,12 +610,17 @@ private fun HomeTopAppBar(
     onMoviesClick: () -> Unit,
     onTvClick: () -> Unit,
     onSearchClick: (isTvMode: Boolean) -> Unit,
+    onActorSearchClick: () -> Unit,
     onFavoritesClick: () -> Unit,
     onSettingsClick: () -> Unit,
     focusDownRequester: FocusRequester,
     containerColor: Color,
+    isTv: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val configuration = LocalConfiguration.current
+    val showTitleText = isTv || configuration.screenWidthDp >= 480
+
     TopAppBar(
         modifier = modifier,
         colors = TopAppBarDefaults.topAppBarColors(containerColor = containerColor),
@@ -623,15 +628,19 @@ private fun HomeTopAppBar(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     painter = painterResource(R.drawable.ic_launcher_foreground),
-                    contentDescription = null,
+                    contentDescription = stringResource(R.string.app_name),
                     modifier = Modifier.size(32.dp),
                     tint = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.app_name),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                if (showTitleText) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.app_name),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         },
         actions = {
@@ -674,6 +683,17 @@ private fun HomeTopAppBar(
                     .focusProperties { down = focusDownRequester }
             ) {
                 Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search_desc))
+            }
+            IconButton(
+                onClick = onActorSearchClick,
+                modifier = Modifier
+                    .focusHighlight(shape = CircleShape)
+                    .focusProperties { down = focusDownRequester }
+            ) {
+                Icon(
+                    Icons.Default.PersonSearch,
+                    contentDescription = stringResource(R.string.actor_search_desc)
+                )
             }
             IconButton(
                 onClick = onFavoritesClick,

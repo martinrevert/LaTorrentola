@@ -37,6 +37,7 @@ import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
 import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
+import com.martinrevert.latorrentola.model.TMDB.sortedByYearDescending
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.PreferenceManager
@@ -161,7 +162,7 @@ fun ActorDetailBottomSheet(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                    .height(180.dp),
+                                        .height(180.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -242,7 +243,9 @@ private fun TvActorContent(
                 summaryFocusRequester = biographyFocusRequester
             )
 
-            val credits = actor.combinedCredits?.cast.orEmpty()
+            val credits = remember(actor.combinedCredits) {
+                actor.combinedCredits?.cast.orEmpty().sortedByYearDescending()
+            }
             if (credits.isNotEmpty()) {
                 Text(
                     text = stringResource(R.string.details_title),
@@ -257,7 +260,11 @@ private fun TvActorContent(
                         .focusProperties { up = biographyFocusRequester },
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(credits) { credit ->
+                    items(
+                        items = credits,
+                        key = { "${it.mediaType ?: "movie"}_${it.id}" },
+                        contentType = { "credit" }
+                    ) { credit ->
                         TvFilmographyItem(credit = credit, onCreditClick = onCreditClick)
                     }
                 }
@@ -465,7 +472,9 @@ private fun WideActorContent(
         ) {
             ActorBiography(actor)
 
-            val credits = actor.combinedCredits?.cast.orEmpty()
+            val credits = remember(actor.combinedCredits) {
+                actor.combinedCredits?.cast.orEmpty().sortedByYearDescending()
+            }
             if (credits.isNotEmpty()) {
                 Text(
                     text = stringResource(R.string.details_title),
@@ -475,7 +484,11 @@ private fun WideActorContent(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(credits) { credit ->
+                    items(
+                        items = credits,
+                        key = { "${it.mediaType ?: "movie"}_${it.id}" },
+                        contentType = { "credit" }
+                    ) { credit ->
                         FilmographyItem(credit = credit, onCreditClick = onCreditClick)
                     }
                 }
@@ -537,7 +550,9 @@ private fun MobileActorContent(
         ActorBiography(actor, modifier = Modifier.fillMaxWidth())
         Spacer(modifier = Modifier.height(20.dp))
 
-        val credits = actor.combinedCredits?.cast.orEmpty()
+        val credits = remember(actor.combinedCredits) {
+            actor.combinedCredits?.cast.orEmpty().sortedByYearDescending()
+        }
         if (credits.isNotEmpty()) {
             Text(
                 text = stringResource(R.string.details_title),
@@ -551,7 +566,11 @@ private fun MobileActorContent(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(credits) { credit ->
+                items(
+                    items = credits,
+                    key = { "${it.mediaType ?: "movie"}_${it.id}" },
+                    contentType = { "credit" }
+                ) { credit ->
                     FilmographyItem(credit = credit, onCreditClick = onCreditClick)
                 }
             }
@@ -624,7 +643,7 @@ private fun FilmographyItem(
  * @param isTv Whether to use the larger type scale for TV viewing distance.
  */
 @Composable
-private fun FilmographyMetadata(credit: TmdbCastCredit, isTv: Boolean = false) {
+internal fun FilmographyMetadata(credit: TmdbCastCredit, isTv: Boolean = false) {
     val type = when (credit.mediaType) {
         "movie" -> stringResource(R.string.filmography_type_movie)
         "tv" -> stringResource(R.string.filmography_type_tv)

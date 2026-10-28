@@ -51,7 +51,11 @@ data class TmdbPersonResult(
     @SerializedName("known_for_department")
     @SerialName("known_for_department")
     val knownForDepartment: String? = null
-)
+) {
+    /** Thumbnail TMDB profile image URL, or `null` if no profile is available. */
+    val fullProfileUrl: String?
+        get() = if (!profilePath.isNullOrEmpty()) "https://image.tmdb.org/t/p/w185$profilePath" else null
+}
 
 /**
  * TMDB actor details and combined credits.
@@ -183,6 +187,19 @@ data class TmdbCastCredit(
     /** Medium-sized TMDB poster URL, or `null` if no poster is available. */
     val fullPosterUrl: String?
         get() = if (!posterPath.isNullOrEmpty()) "https://image.tmdb.org/t/p/w342$posterPath" else null
+}
+
+/**
+ * Deduplicates cast credits by media type + ID and sorts them by release/first-air year descending,
+ * placing undated entries at the end.
+ */
+fun List<TmdbCastCredit>.sortedByYearDescending(): List<TmdbCastCredit> {
+    return this
+        .distinctBy { "${it.mediaType ?: "movie"}_${it.id}" }
+        .sortedWith(
+            compareByDescending<TmdbCastCredit> { it.displayYear.toIntOrNull() ?: 0 }
+                .thenByDescending { it.releaseDate ?: it.firstAirDate ?: "" }
+        )
 }
 
 /**

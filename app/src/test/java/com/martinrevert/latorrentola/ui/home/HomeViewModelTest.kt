@@ -79,14 +79,13 @@ class HomeViewModelTest {
             Movie(id = 2, title = "ES", language = "es", rating = "7")
         )
         every { preferenceManager.getFilteredLanguages() } returns "es"
-        
+
         // Return movies for page 1, then empty for page 2+ to avoid infinite loop in ViewModel
         coEvery { repository.getMovies(1, any(), any()) } returns MovieDetails(data = Data(movies = movies))
         coEvery { repository.getMovies(more(1), any(), any()) } returns MovieDetails(data = Data(movies = emptyList()))
 
         viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
-        // init already calls loadMovies()
-        
+
         val state = viewModel.uiState.value
         assertThat(state).isInstanceOf(HomeUiState.Success::class.java)
         val successState = state as HomeUiState.Success
@@ -95,10 +94,32 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `refresh should accumulate across multiple full pages when filtering leaves sparse batch`() = runTest {
+        every { preferenceManager.getFilteredLanguages() } returns "es"
+
+        // Page 1 has 20 items: 5 English (kept) + 15 Spanish (filtered out)
+        val page1 = (1..5).map { Movie(id = it, title = "EN $it", language = "en", rating = "7") } +
+            (6..20).map { Movie(id = it, title = "ES $it", language = "es", rating = "7") }
+        // Page 2 has 20 items: 15 English (kept) + 5 Spanish (filtered out)
+        val page2 = (21..35).map { Movie(id = it, title = "EN $it", language = "en", rating = "7") } +
+            (36..40).map { Movie(id = it, title = "ES $it", language = "es", rating = "7") }
+
+        coEvery { repository.getMovies(1, null, 6f) } returns MovieDetails(data = Data(movies = page1))
+        coEvery { repository.getMovies(2, null, 6f) } returns MovieDetails(data = Data(movies = page2))
+
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
+
+        val state = viewModel.uiState.value as HomeUiState.Success
+        assertThat(state.movies).hasSize(20)
+        coVerify(exactly = 1) { repository.getMovies(1, null, 6f) }
+        coVerify(exactly = 1) { repository.getMovies(2, null, 6f) }
+    }
+
+    @Test
     fun `refresh should clear existing movies and reload`() = runTest {
         val initialMovies = listOf(Movie(id = 1, title = "EN 1", language = "en", rating = "7"))
         coEvery { repository.getMovies(1, null, 6f) } returns MovieDetails(data = Data(movies = initialMovies))
-        
+
         viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
         assertThat(viewModel.uiState.value).isInstanceOf(HomeUiState.Success::class.java)
 
@@ -118,8 +139,7 @@ class HomeViewModelTest {
         coEvery { repository.getMovies(any(), any(), any()) } throws Exception("Network Error")
 
         viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
-        // Since init calls loadMovies, it might already be in error state
-        
+
         assertThat(viewModel.uiState.value).isInstanceOf(HomeUiState.Error::class.java)
         assertThat((viewModel.uiState.value as HomeUiState.Error).message)
             .isEqualTo(UiText.DynamicString("Network Error"))
@@ -129,7 +149,7 @@ class HomeViewModelTest {
     fun `setQuality should update state and refresh`() = runTest {
         coEvery { repository.getMovies(1, null, any()) } returns MovieDetails(data = Data(movies = listOf(Movie(id = 1, rating = "7"))))
         viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
-        
+
         coEvery { repository.getMovies(1, "720p", any()) } returns MovieDetails(data = Data(movies = listOf(Movie(id = 2, rating = "7"))))
         viewModel.setQuality("720p")
 
@@ -142,11 +162,11 @@ class HomeViewModelTest {
     fun `toggleFavorite should call repository`() = runTest {
         viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
         val movie = Movie(id = 1)
-        
+
         coEvery { repository.isFavorite(1) } returns false
         viewModel.toggleFavorite(movie)
         coVerify { repository.addFavorite(movie) }
-        
+
         coEvery { repository.isFavorite(1) } returns true
         viewModel.toggleFavorite(movie)
         coVerify { repository.removeFavorite(movie) }

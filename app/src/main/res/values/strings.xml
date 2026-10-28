@@ -386,4 +386,7 @@
     <string name="settings_test_crash_confirm_action">Crash App</string>
 
     <string name="asset_statements" translatable="false">[]</string>
+    <string name="actor_search_desc">Search by Actor</string>
+    <string name="actor_search_placeholder">Search actors or actresses…</string>
+    <string name="actor_bio_chip">Biography</string>
 </resources>

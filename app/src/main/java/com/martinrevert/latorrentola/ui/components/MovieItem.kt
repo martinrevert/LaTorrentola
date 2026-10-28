@@ -2,10 +2,6 @@ package com.martinrevert.latorrentola.ui.components
 
 import android.content.Intent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -16,20 +12,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,6 +34,7 @@ import coil3.compose.AsyncImagePainter
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+
 import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
 import kotlinx.coroutines.delay
@@ -65,29 +59,48 @@ fun MovieItem(
     onLongClick: (() -> Unit)? = null,
     onToggleSelection: (() -> Unit)? = null,
     shouldRequestFocus: Boolean = false,
-    onFocusRestored: () -> Unit = {}
+    onFocusRestored: () -> Unit = {},
+    isTv: Boolean? = null
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
-    val isTv = remember(context) { context.isTvDevice() }
+    val effectiveIsTv = remember(context, isTv) { isTv ?: context.isTvDevice() }
     val focusRequester = remember { FocusRequester() }
 
     val isPreview = LocalInspectionMode.current
-    var isImageLoading by remember { mutableStateOf(!isPreview) }
+    var isImageLoading by remember(movie.mediumCoverImage) { mutableStateOf(!isPreview) }
 
-    LaunchedEffect(shouldRequestFocus) {
-        if (shouldRequestFocus) {
-            delay(300)
+    val isRecent = remember(movie.dateUploadedUnix) {
+        val movieUploadTime = (movie.dateUploadedUnix ?: 0L) * 1000
+        val fifteenDaysInMs = 15L * 24 * 60 * 60 * 1000
+        movieUploadTime > (System.currentTimeMillis() - fifteenDaysInMs)
+    }
+
+    val genreText = remember(movie.genres, resources) {
+        movie.genres
+            ?.takeIf { it.isNotEmpty() }
+            ?.joinToString(", ") { GenreTranslation.getGenreText(it).asString(resources) }
+            .orEmpty()
+    }
+
+    if (shouldRequestFocus) {
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
             try {
                 focusRequester.requestFocus()
-            } catch (e: Exception) {
-                // Focus request might fail if not attached
+            } catch (_: Exception) {
+                // Focus request might fail if not yet attached
+            }
+            delay(150)
+            try {
+                focusRequester.requestFocus()
+            } catch (_: Exception) {
             }
         }
     }
 
     Box {
-        if (isTv) {
+        if (effectiveIsTv) {
             Surface(
                 onClick = onToggleSelection ?: onClick,
                 onLongClick = onLongClick,
@@ -110,22 +123,21 @@ fun MovieItem(
                     .tvDpadLongClickable(onLongClick)
             ) {
                 Column {
-                    Box {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(0.67f)
+                            .then(if (isImageLoading) Modifier.shimmer() else Modifier)
+                    ) {
                         AsyncImage(
                             model = movie.mediumCoverImage,
                             contentDescription = null,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(0.67f),
+                            modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
                             onState = { state ->
                                 isImageLoading = state is AsyncImagePainter.State.Loading
                             }
                         )
-
-                        val movieUploadTime = (movie.dateUploadedUnix ?: 0L) * 1000
-                        val fifteenDaysInMs = 15L * 24 * 60 * 60 * 1000
-                        val isRecent = movieUploadTime > (System.currentTimeMillis() - fifteenDaysInMs)
 
                         if (isRecent) {
                             Icon(
@@ -172,10 +184,9 @@ fun MovieItem(
                             overflow = TextOverflow.Ellipsis
                         )
 
-                        if (!movie.genres.isNullOrEmpty()) {
-                            val translatedGenres = movie.genres.map { GenreTranslation.getGenreText(it).asString() }
+                        if (genreText.isNotEmpty()) {
                             Text(
-                                text = translatedGenres.joinToString(", "),
+                                text = genreText,
                                 style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
                                 color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
@@ -228,22 +239,21 @@ fun MovieItem(
             ) {
                 Box {
                     Column {
-                        Box {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(0.67f)
+                                .then(if (isImageLoading) Modifier.shimmer() else Modifier)
+                        ) {
                             AsyncImage(
                                 model = movie.mediumCoverImage,
                                 contentDescription = null,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(0.67f),
+                                modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop,
                                 onState = { state ->
                                     isImageLoading = state is AsyncImagePainter.State.Loading
                                 }
                             )
-
-                            val movieUploadTime = (movie.dateUploadedUnix ?: 0L) * 1000
-                            val fifteenDaysInMs = 15L * 24 * 60 * 60 * 1000
-                            val isRecent = movieUploadTime > (System.currentTimeMillis() - fifteenDaysInMs)
 
                             if (isRecent) {
                                 Icon(
@@ -287,10 +297,9 @@ fun MovieItem(
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            if (!movie.genres.isNullOrEmpty()) {
-                                val translatedGenres = movie.genres.map { GenreTranslation.getGenreText(it).asString() }
+                            if (genreText.isNotEmpty()) {
                                 Text(
-                                    text = translatedGenres.joinToString(", "),
+                                    text = genreText,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
@@ -372,13 +381,6 @@ fun MovieItem(
                     .align(Alignment.TopEnd)
                     .padding(8.dp)
                     .size(32.dp)
-            )
-        }
-
-        if (isImageLoading) {
-            MovieItemPlaceholder(
-                isTv = isTv,
-                modifier = Modifier.matchParentSize()
             )
         }
     }

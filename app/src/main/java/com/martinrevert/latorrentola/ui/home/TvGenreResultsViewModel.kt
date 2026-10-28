@@ -8,13 +8,13 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 /**
  * Supported TMDB discovery sort fields for television genre results.
@@ -23,14 +23,14 @@ import javax.inject.Inject
  * @property labelResource Localized label shown to the user.
  */
 enum class TvGenreSort(val apiField: String, val labelResource: Int) {
+    /** Sort by first broadcast date (Year). */
+    FIRST_AIR_DATE("first_air_date", R.string.tv_sort_first_air_date),
     /** Sort by popularity score. */
     POPULARITY("popularity", R.string.tv_sort_popularity),
     /** Sort by average rating. */
     RATING("vote_average", R.string.tv_sort_rating),
     /** Sort by vote count. */
     VOTE_COUNT("vote_count", R.string.tv_sort_vote_count),
-    /** Sort by first broadcast date. */
-    FIRST_AIR_DATE("first_air_date", R.string.tv_sort_first_air_date),
     /** Sort alphabetically by localized series name. */
     NAME("name", R.string.tv_sort_name)
 }
@@ -49,8 +49,8 @@ class TvGenreResultsViewModel @Inject constructor(
     /** Current TV genre results state. */
     val uiState: StateFlow<TvGenreResultsUiState> = _uiState.asStateFlow()
 
-    /** Mutable backing state for TMDB result sort field. */
-    private val _sort = MutableStateFlow(TvGenreSort.POPULARITY)
+    /** Mutable backing state for TMDB result sort field (defaults to Year descending). */
+    private val _sort = MutableStateFlow(TvGenreSort.FIRST_AIR_DATE)
     /** Active TMDB sort field. */
     val sort: StateFlow<TvGenreSort> = _sort.asStateFlow()
 
@@ -74,6 +74,11 @@ class TvGenreResultsViewModel @Inject constructor(
     /** User-readable genre metadata error, when present. */
     val genreCatalogError: StateFlow<String?> = _genreCatalogError.asStateFlow()
 
+    /** Mutable backing state for series focus restoration on Back navigation. */
+    private val _lastClickedSeriesId = MutableStateFlow<Int?>(null)
+    /** Series ID to refocus when returning from the TV detail screen. */
+    val lastClickedSeriesId: StateFlow<Int?> = _lastClickedSeriesId.asStateFlow()
+
     /** TMDB genre ID associated with this destination. */
     private var genreId: Int? = null
     /** Page number to request next. */
@@ -84,6 +89,8 @@ class TvGenreResultsViewModel @Inject constructor(
     private var isFetching = false
     /** Accumulated deduplicated TV results. */
     private val allSeries = mutableListOf<TmdbTvSummary>()
+    /** O(1) lookup set of TV series IDs currently in [allSeries]. */
+    private val seenSeriesIds = HashSet<Int>()
     /** Current request, canceled when genre or sort changes. */
     private var requestJob: Job? = null
     /** Invalidates results from canceled requests. */
@@ -104,6 +111,7 @@ class TvGenreResultsViewModel @Inject constructor(
     fun setGenre(id: Int) {
         if (genreId == id) return
         genreId = id
+        clearLastClickedSeriesId()
         refresh()
     }
 
@@ -111,13 +119,25 @@ class TvGenreResultsViewModel @Inject constructor(
     fun setSort(value: TvGenreSort) {
         if (_sort.value == value) return
         _sort.value = value
+        clearLastClickedSeriesId()
         refresh()
     }
 
     /** Toggles ascending or descending order and reloads results. */
     fun toggleDirection() {
         _descending.value = !_descending.value
+        clearLastClickedSeriesId()
         refresh()
+    }
+
+    /** Stores the series identifier used to restore poster focus on Back navigation. */
+    fun setLastClickedSeriesId(id: Int?) {
+        _lastClickedSeriesId.value = id
+    }
+
+    /** Clears the pending series focus-restoration identifier. */
+    fun clearLastClickedSeriesId() {
+        _lastClickedSeriesId.value = null
     }
 
     /** Requests another page of the selected genre and sort. */
@@ -136,9 +156,11 @@ class TvGenreResultsViewModel @Inject constructor(
         requestGeneration++
         val generation = requestGeneration
         isFetching = true
+        _isLoadingMore.value = false
         currentPage = 1
         totalPages = 1
         allSeries.clear()
+        seenSeriesIds.clear()
         _uiState.value = TvGenreResultsUiState.Loading
         requestJob = viewModelScope.launch { loadNextPage(selectedGenre, generation) }
     }
@@ -152,17 +174,40 @@ class TvGenreResultsViewModel @Inject constructor(
     private suspend fun loadNextPage(selectedGenre: Int?, generation: Long) {
         val requestedGenreId = selectedGenre ?: return
         if (generation != requestGeneration) return
-        val requestedPage = currentPage
-        if (requestedPage > 1) _isLoadingMore.value = true
+        if (currentPage > 1) _isLoadingMore.value = true
         try {
             val sortBy = "${_sort.value.apiField}.${if (_descending.value) "desc" else "asc"}"
-            val page = tmdbRepository.discoverTvByGenre(requestedGenreId, sortBy, requestedPage)
-            if (generation != requestGeneration) return
-            totalPages = page.totalPages.coerceAtLeast(page.page)
-            allSeries.addAll(page.results.orEmpty().filterNot { candidate ->
-                allSeries.any { it.id == candidate.id }
-            })
-            currentPage = page.page + 1
+            var addedInBatch = 0
+            var pagesFetched = 0
+            while (currentPage <= totalPages && addedInBatch == 0 && pagesFetched < 3) {
+                val requestedPage = currentPage
+                val page = tmdbRepository.discoverTvByGenre(requestedGenreId, sortBy, requestedPage)
+                if (generation != requestGeneration) return
+                totalPages = page.totalPages.coerceAtLeast(page.page)
+                val pageItems = if (_sort.value == TvGenreSort.FIRST_AIR_DATE) {
+                    if (_descending.value) {
+                        page.results.orEmpty().sortedWith(
+                            compareByDescending<TmdbTvSummary> { it.firstAirYear.toIntOrNull() ?: 0 }
+                                .thenByDescending { it.firstAirDate.orEmpty() }
+                        )
+                    } else {
+                        page.results.orEmpty().sortedWith(
+                            compareBy<TmdbTvSummary> { it.firstAirYear.toIntOrNull() ?: Int.MAX_VALUE }
+                                .thenBy { it.firstAirDate.orEmpty() }
+                        )
+                    }
+                } else {
+                    page.results.orEmpty()
+                }
+                for (candidate in pageItems) {
+                    if (seenSeriesIds.add(candidate.id)) {
+                        allSeries.add(candidate)
+                        addedInBatch++
+                    }
+                }
+                currentPage = page.page + 1
+                pagesFetched++
+            }
             _uiState.value = if (allSeries.isEmpty()) {
                 TvGenreResultsUiState.Error(UiText.StringResource(R.string.tv_no_results))
             } else {

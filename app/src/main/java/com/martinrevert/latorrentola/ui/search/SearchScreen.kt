@@ -3,74 +3,95 @@
 package com.martinrevert.latorrentola.ui.search
 
 import android.app.Activity
-import android.content.res.Configuration
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Build
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.EaseInOutCubic
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.EaseInOutCubic
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalResources
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
-import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Surface
+import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
+import com.martinrevert.latorrentola.model.TMDB.TmdbPersonResult
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.ui.components.ActorDetailBottomSheet
+import com.martinrevert.latorrentola.ui.components.AdaptiveChip
 import com.martinrevert.latorrentola.ui.components.FavoritesChips
-import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
-import com.martinrevert.latorrentola.ui.components.MovieList
-import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
+import com.martinrevert.latorrentola.ui.components.FilmographyMetadata
 import com.martinrevert.latorrentola.ui.components.MovieItem
+import com.martinrevert.latorrentola.ui.components.MovieList
+import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.QualityChips
-import com.martinrevert.latorrentola.ui.components.TvSeriesGrid
 import com.martinrevert.latorrentola.ui.components.TvSeriesCard
-import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.ui.components.TvSeriesGrid
+import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
+import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.tooling.preview.PreviewLightDark
-import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.platform.LocalConfiguration
-import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
-import dev.chrisbanes.haze.rememberHazeState
-import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.glass.hazeGlass
-import dev.chrisbanes.haze.ExperimentalHazeApi
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import java.util.Locale
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 
 /**
  * Connects search fields, collection modes, and result actions to the search view model.
@@ -79,8 +100,10 @@ import java.util.Locale
  * @param initialGenre Optional movie collection or genre to display.
  * @param initialQuery Optional initial text query.
  * @param initialTvMode Whether search should initially use the TV series catalog.
+ * @param initialActorMode Whether search should initially use TMDB Actor search mode.
  * @param onMovieClick Opens a selected movie.
  * @param onTvSeriesClick Opens a selected TV series.
+ * @param onActorCreditClick Opens a selected TMDB movie or TV credit from actor filmography.
  * @param onBackClick Returns to the previous screen.
  */
 @Composable
@@ -89,17 +112,23 @@ fun SearchScreen(
     initialGenre: String? = null,
     initialQuery: String? = null,
     initialTvMode: Boolean = false,
+    initialActorMode: Boolean = false,
     onMovieClick: (Movie) -> Unit,
     onTvSeriesClick: (TmdbTvSummary) -> Unit = {},
+    onActorCreditClick: (TmdbCastCredit) -> Unit = {},
     onBackClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isTvMode by viewModel.isTvMode.collectAsState()
+    val isActorMode by viewModel.isActorMode.collectAsState()
+    val actorUiState by viewModel.actorUiState.collectAsState()
     val tvUiState by viewModel.tvUiState.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
     val downloadedSeriesIds by viewModel.downloadedSeriesIds.collectAsState()
     val favoriteTvSeries by viewModel.favoriteTvSeries.collectAsState()
     val tvGenres by viewModel.tvGenres.collectAsState()
     val lastClickedSeriesId by viewModel.lastClickedSeriesId.collectAsState()
+    val lastClickedCreditKey by viewModel.lastClickedCreditKey.collectAsState()
     val selectedQuality by viewModel.selectedQuality.collectAsState()
     val selectedFavoritesFilter by viewModel.selectedFavoritesFilter.collectAsState()
     val lastClickedMovieId by viewModel.lastClickedMovieId.collectAsState()
@@ -108,13 +137,12 @@ fun SearchScreen(
     val selectedFavoriteIds by viewModel.selectedFavoriteIds.collectAsState()
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val qualityOptions = viewModel.qualityOptions
-    var searchQuery by remember { mutableStateOf(initialQuery ?: "") }
-    var isShowingFavorites by remember(initialGenre) { mutableStateOf(initialGenre == "milista") }
-    var isShowingDownloads by remember(initialGenre) { mutableStateOf(initialGenre == "ya_vistas") }
-    var isShowingNew by remember(initialGenre) { mutableStateOf(initialGenre == "nuevas") }
-    var isShowingGenre by remember(initialGenre) { 
-        mutableStateOf(initialGenre != null && initialGenre != "milista" && initialGenre != "ya_vistas" && initialGenre != "nuevas") 
-    }
+
+    val isShowingFavorites = initialGenre == "milista" || initialGenre == "favorites"
+    val isShowingDownloads = initialGenre == "ya_vistas"
+    val isShowingNew = initialGenre == "nuevas"
+    val isShowingGenre = initialGenre != null && !isShowingFavorites && !isShowingDownloads && !isShowingNew
+
     val context = LocalContext.current
     val resources = LocalResources.current
     val isTv = remember(context) { context.isTvDevice() }
@@ -127,39 +155,30 @@ fun SearchScreen(
         if (result.resultCode == Activity.RESULT_OK) {
             val spokenText = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.get(0)
             spokenText?.let {
-                searchQuery = it
                 viewModel.search(it)
             }
         }
     }
 
-    LaunchedEffect(initialGenre, initialQuery, initialTvMode) {
-        viewModel.clearSelection()
-        viewModel.setTvMode(initialTvMode && initialGenre == null)
-        isShowingFavorites = initialGenre == "milista"
-        isShowingDownloads = initialGenre == "ya_vistas"
-        isShowingNew = initialGenre == "nuevas"
-        isShowingGenre = initialGenre != null && initialGenre != "milista" && initialGenre != "ya_vistas" && initialGenre != "nuevas"
-        
-        if (isShowingFavorites) {
-            viewModel.showFavorites()
-        } else if (isShowingDownloads) {
-            viewModel.showDownloadedMovies()
-        } else if (isShowingNew) {
-            viewModel.showNewMovies()
-        } else if (initialQuery != null) {
-            searchQuery = initialQuery
-            viewModel.search(initialQuery)
-        } else if (initialGenre != null) {
-            viewModel.searchByGenre(initialGenre)
-        } else {
-            viewModel.resetSearch()
+    LaunchedEffect(initialGenre, initialQuery, initialTvMode, initialActorMode) {
+        viewModel.initializeIfNeeded(
+            initialGenre = initialGenre,
+            initialQuery = initialQuery,
+            initialTvMode = initialTvMode && initialGenre == null,
+            initialActorMode = initialActorMode
+        )
+
+        val hasNoPendingItemFocus =
+            lastClickedMovieId == null && lastClickedSeriesId == null && lastClickedCreditKey == null
+        val isIdle = when {
+            initialActorMode -> actorUiState is SearchActorUiState.Idle
+            initialTvMode -> tvUiState is SearchTvUiState.Idle
+            else -> uiState is SearchUiState.Idle
         }
-        
-        if (isTv && !isShowingFavorites && !isShowingDownloads && !isShowingGenre && !isShowingNew) {
+        if (isTv && !isShowingFavorites && !isShowingDownloads && !isShowingGenre && !isShowingNew && isIdle && hasNoPendingItemFocus) {
             try {
                 focusRequester.requestFocus()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // Ignore if not attached
             }
         }
@@ -168,11 +187,14 @@ fun SearchScreen(
     SearchScreenContent(
         uiState = uiState,
         isTvMode = isTvMode,
+        isActorMode = isActorMode,
+        actorUiState = actorUiState,
         tvUiState = tvUiState,
         downloadedSeriesIds = downloadedSeriesIds,
         favoriteTvSeries = favoriteTvSeries,
         tvGenres = tvGenres,
         lastClickedSeriesId = lastClickedSeriesId,
+        lastClickedCreditKey = lastClickedCreditKey,
         selectedQuality = selectedQuality,
         lastClickedMovieId = lastClickedMovieId,
         downloadedMovieIds = downloadedMovieIds,
@@ -188,15 +210,8 @@ fun SearchScreen(
         isTv = isTv,
         isLoadingMore = isLoadingMore,
         focusRequester = focusRequester,
-        onSearchQueryChange = {
-            searchQuery = it
-            if (it.length > 2) {
-                isShowingFavorites = false
-                isShowingDownloads = false
-                isShowingNew = false
-                isShowingGenre = false
-                viewModel.search(it)
-            }
+        onSearchQueryChange = { newQuery ->
+            viewModel.onSearchQueryChange(newQuery)
         },
         onVoiceSearchClick = {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -206,12 +221,18 @@ fun SearchScreen(
             }
             try {
                 speechLauncher.launch(intent)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
             }
         },
         onQualityClick = { viewModel.setQuality(it) },
         selectedFavoritesFilter = selectedFavoritesFilter,
         onFavoritesFilterClick = { viewModel.setFavoritesFilter(it) },
+        onActorSelect = { viewModel.selectActor(it) },
+        onActorCreditClick = { credit ->
+            val creditKey = "${credit.mediaType ?: "movie"}_${credit.id}"
+            viewModel.setLastClickedCreditKey(creditKey)
+            onActorCreditClick(credit)
+        },
         onMovieClick = {
             if (selectedFavoriteIds.isNotEmpty()) {
                 viewModel.toggleFavoriteSelection(it.id)
@@ -237,7 +258,8 @@ fun SearchScreen(
         onClearSelection = { viewModel.clearSelection() },
         onDeleteSelectedFavorites = { viewModel.deleteSelectedFavorites() },
         onFocusRestored = { viewModel.clearLastClickedMovieId() },
-        onTvFocusRestored = { viewModel.clearLastClickedSeriesId() }
+        onTvFocusRestored = { viewModel.clearLastClickedSeriesId() },
+        onActorCreditFocusRestored = { viewModel.clearLastClickedCreditKey() }
     )
 
     selectedMovieForDialog?.let { movie ->
@@ -254,51 +276,20 @@ fun SearchScreen(
 
 /**
  * Renders the adaptive search interface and its current result collection.
- *
- * @param uiState Current movie search or movie-collection state.
- * @param isTvMode Whether the active catalog search targets TV series.
- * @param tvUiState Current TV catalog search state.
- * @param downloadedSeriesIds IDs of series with downloaded episodes.
- * @param favoriteTvSeries TV favorites displayed alongside favorite movies.
- * @param tvGenres Available TV genres used to label series cards.
- * @param lastClickedSeriesId Series ID to refocus when returning from details.
- * @param selectedQuality Current movie quality filter.
- * @param lastClickedMovieId Movie ID to refocus when returning from details.
- * @param downloadedMovieIds Movie IDs with download records.
- * @param selectedFavoriteIds Movie favorites selected for bulk removal.
- * @param qualityOptions Available movie quality filters.
- * @param searchQuery Current search text.
- * @param isShowingFavorites Whether the mixed favorites collection is active.
- * @param isShowingDownloads Whether downloaded movies are active.
- * @param isShowingNew Whether new movies are active.
- * @param isShowingGenre Whether a movie genre is active.
- * @param initialGenre Initial collection or genre key.
- * @param isTv Whether the device uses the TV layout.
- * @param isLoadingMore Whether additional results are loading.
- * @param focusRequester Search field focus target.
- * @param onSearchQueryChange Updates the active query.
- * @param onVoiceSearchClick Starts voice input.
- * @param onQualityClick Changes movie quality.
- * @param onMovieClick Opens or selects a movie.
- * @param onTvSeriesClick Opens a TV series.
- * @param onLongClick Selects a favorite movie.
- * @param onLoadMore Loads another catalog page.
- * @param onBackClick Returns to the previous screen.
- * @param onClearSelection Clears favorite movie selection.
- * @param onDeleteSelectedFavorites Removes selected favorite movies.
- * @param onFocusRestored Clears the pending movie focus target.
- * @param onTvFocusRestored Clears the pending TV focus target.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchScreenContent(
     uiState: SearchUiState,
     isTvMode: Boolean = false,
+    isActorMode: Boolean = false,
+    actorUiState: SearchActorUiState = SearchActorUiState.Idle,
     tvUiState: SearchTvUiState = SearchTvUiState.Idle,
     downloadedSeriesIds: Set<Int> = emptySet(),
     favoriteTvSeries: List<TmdbTvSummary> = emptyList(),
     tvGenres: List<TmdbTvGenre> = emptyList(),
     lastClickedSeriesId: Int? = null,
+    lastClickedCreditKey: String? = null,
     selectedQuality: String?,
     lastClickedMovieId: Int?,
     downloadedMovieIds: Set<Int>,
@@ -319,6 +310,8 @@ private fun SearchScreenContent(
     onQualityClick: (String) -> Unit,
     selectedFavoritesFilter: FavoritesFilter = FavoritesFilter.ALL,
     onFavoritesFilterClick: (FavoritesFilter) -> Unit = {},
+    onActorSelect: (TmdbPersonResult) -> Unit = {},
+    onActorCreditClick: (TmdbCastCredit) -> Unit = {},
     onMovieClick: (Movie) -> Unit,
     onMovieProgressLongClick: (Movie) -> Unit = {},
     onTvSeriesClick: (TmdbTvSummary) -> Unit = {},
@@ -328,13 +321,16 @@ private fun SearchScreenContent(
     onClearSelection: () -> Unit,
     onDeleteSelectedFavorites: () -> Unit,
     onFocusRestored: () -> Unit,
-    onTvFocusRestored: () -> Unit = {}
+    onTvFocusRestored: () -> Unit = {},
+    onActorCreditFocusRestored: () -> Unit = {}
 ) {
     val focusManager = LocalFocusManager.current
     val gridState = rememberLazyGridState()
     val qualityChipsFocusRequester = remember { FocusRequester() }
     val resultsFocusRequester = remember { FocusRequester() }
     val hazeState = if (!isTv) rememberHazeState() else null
+    var showActorBioSheet by remember { mutableStateOf(false) }
+    val actorBioSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val isInspection = LocalInspectionMode.current
     val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
     val topBarContainerColor = if (isPreAndroid12) {
@@ -358,13 +354,16 @@ private fun SearchScreenContent(
         label = "hazeAlpha"
     )
 
+    val hasTopChips = isShowingFavorites || (!isTvMode && !isActorMode) ||
+        (isActorMode && actorUiState is SearchActorUiState.Success)
+
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
                 modifier = Modifier
                     .focusProperties {
-                        down = if (isTvMode) resultsFocusRequester else qualityChipsFocusRequester
+                        down = if (hasTopChips) qualityChipsFocusRequester else resultsFocusRequester
                     }
                     .then(
                         if (hazeState != null) {
@@ -394,6 +393,7 @@ private fun SearchScreenContent(
                             onVoiceSearchClick = onVoiceSearchClick,
                             showVoiceSearch = !isTv,
                             isTvMode = isTvMode,
+                            isActorMode = isActorMode,
                             modifier = Modifier
                                 .focusRequester(focusRequester)
                                 .then(if (isTv) Modifier.focusHighlight() else Modifier)
@@ -421,8 +421,7 @@ private fun SearchScreenContent(
                             onClick = onBackClick,
                             modifier = Modifier.focusHighlight(shape = CircleShape)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(
-                                R.string.back_desc))
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back_desc))
                         }
                     }
                 },
@@ -455,6 +454,19 @@ private fun SearchScreenContent(
                             .focusRequester(qualityChipsFocusRequester)
                             .focusProperties { down = resultsFocusRequester }
                     )
+                } else if (isActorMode) {
+                    if (actorUiState is SearchActorUiState.Success) {
+                        ActorChipsRow(
+                            actors = actorUiState.actors,
+                            selectedActor = actorUiState.selectedActor,
+                            hasBiography = !actorUiState.actorDetail?.biography.isNullOrBlank(),
+                            onActorSelect = onActorSelect,
+                            onShowBioClick = { showActorBioSheet = true },
+                            modifier = Modifier
+                                .focusRequester(qualityChipsFocusRequester)
+                                .focusProperties { down = resultsFocusRequester }
+                        )
+                    }
                 } else if (!isTvMode) {
                     QualityChips(
                         options = qualityOptions,
@@ -476,24 +488,180 @@ private fun SearchScreenContent(
                         .weight(1f)
                         .fillMaxWidth()
                 ) {
-                    if (isTvMode) {
+                    when {
+                        isActorMode -> {
+                            when (actorUiState) {
+                                SearchActorUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(text = stringResource(R.string.start_searching))
+                                }
+                                SearchActorUiState.Loading -> MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                                SearchActorUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(text = stringResource(R.string.no_results))
+                                }
+                                is SearchActorUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(text = actorUiState.message.asString())
+                                }
+                                is SearchActorUiState.Success -> {
+                                    when {
+                                        actorUiState.isLoadingCredits -> MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                                        actorUiState.credits.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            Text(text = stringResource(R.string.no_results))
+                                        }
+                                        else -> ActorCreditsGrid(
+                                            credits = actorUiState.credits,
+                                            state = gridState,
+                                            initialFocusKey = lastClickedCreditKey,
+                                            onCreditClick = onActorCreditClick,
+                                            onFocusRestored = onActorCreditFocusRestored,
+                                            contentPadding = PaddingValues(16.dp),
+                                            modifier = Modifier.focusRequester(resultsFocusRequester)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        isTvMode -> {
+                            when (tvUiState) {
+                                is SearchTvUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(text = stringResource(R.string.start_searching))
+                                }
+                                is SearchTvUiState.Loading -> MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                                is SearchTvUiState.Success -> TvSeriesGrid(
+                                    series = tvUiState.series,
+                                    genres = tvGenres,
+                                    downloadedSeriesIds = downloadedSeriesIds,
+                                    state = gridState,
+                                    isLoadingMore = isLoadingMore,
+                                    onSeriesClick = onTvSeriesClick,
+                                    onLoadMore = onLoadMore,
+                                    initialFocusId = lastClickedSeriesId,
+                                    onFocusRestored = onTvFocusRestored,
+                                    contentPadding = PaddingValues(16.dp),
+                                    modifier = Modifier.focusRequester(resultsFocusRequester)
+                                )
+                                is SearchTvUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(text = stringResource(R.string.no_results))
+                                }
+                                is SearchTvUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(text = tvUiState.message.asString())
+                                }
+                            }
+                        }
+                        else -> {
+                            when (uiState) {
+                                is SearchUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(text = stringResource(R.string.start_searching))
+                                }
+                                is SearchUiState.Loading -> MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                                is SearchUiState.Success -> if (uiState.isFavorites) {
+                                    FavoriteItemsGrid(
+                                        movies = uiState.movies,
+                                        series = uiState.favoriteSeries.ifEmpty { favoriteTvSeries },
+                                        tvGenres = tvGenres,
+                                        state = gridState,
+                                        downloadedMovieIds = downloadedMovieIds,
+                                        downloadedSeriesIds = downloadedSeriesIds,
+                                        watchHistoryMap = watchHistoryMap,
+                                        selectedMovieIds = selectedFavoriteIds,
+                                        lastClickedMovieId = lastClickedMovieId,
+                                        lastClickedSeriesId = lastClickedSeriesId,
+                                        onMovieClick = onMovieClick,
+                                        onTvSeriesClick = onTvSeriesClick,
+                                        onMovieLongClick = onLongClick,
+                                        onMovieFocusRestored = onFocusRestored,
+                                        onTvFocusRestored = onTvFocusRestored,
+                                        contentPadding = PaddingValues(16.dp),
+                                        modifier = Modifier.focusRequester(resultsFocusRequester)
+                                    )
+                                } else MovieList(
+                                    movies = uiState.movies,
+                                    state = gridState,
+                                    downloadedMovieIds = downloadedMovieIds,
+                                    watchHistoryMap = watchHistoryMap,
+                                    selectedIds = selectedFavoriteIds,
+                                    isLoadingMore = isLoadingMore,
+                                    onMovieClick = onMovieClick,
+                                    onLongClick = { id -> uiState.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick) },
+                                    onLoadMore = { if (!uiState.isDownloads && !uiState.isNew) onLoadMore() },
+                                    initialFocusId = lastClickedMovieId,
+                                    onFocusRestored = onFocusRestored,
+                                    contentPadding = PaddingValues(16.dp),
+                                    modifier = Modifier.focusRequester(resultsFocusRequester)
+                                )
+                                is SearchUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(text = stringResource(R.string.no_results))
+                                }
+                                is SearchUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(text = uiState.message.asString())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // Handheld Layout: Edge-to-edge with Haze top blur and translucent bottom bar
+            val topExtraOffset = if (hasTopChips) 64.dp else 16.dp
+            val searchContentPadding = PaddingValues(
+                top = padding.calculateTopPadding() + topExtraOffset,
+                bottom = padding.calculateBottomPadding() + 16.dp,
+                start = 16.dp,
+                end = 16.dp
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
+            ) {
+                when {
+                    isActorMode -> {
+                        when (actorUiState) {
+                            SearchActorUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(text = stringResource(R.string.start_searching))
+                            }
+                            SearchActorUiState.Loading -> MovieListPlaceholder(contentPadding = searchContentPadding)
+                            SearchActorUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(text = stringResource(R.string.no_results))
+                            }
+                            is SearchActorUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(text = actorUiState.message.asString())
+                            }
+                            is SearchActorUiState.Success -> {
+                                when {
+                                    actorUiState.isLoadingCredits -> MovieListPlaceholder(contentPadding = searchContentPadding)
+                                    actorUiState.credits.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text(text = stringResource(R.string.no_results))
+                                    }
+                                    else -> ActorCreditsGrid(
+                                        credits = actorUiState.credits,
+                                        state = gridState,
+                                        initialFocusKey = lastClickedCreditKey,
+                                        onCreditClick = onActorCreditClick,
+                                        onFocusRestored = onActorCreditFocusRestored,
+                                        contentPadding = searchContentPadding
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    isTvMode -> {
                         when (tvUiState) {
                             is SearchTvUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(text = stringResource(R.string.start_searching))
                             }
-                            is SearchTvUiState.Loading -> MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                            is SearchTvUiState.Loading -> MovieListPlaceholder(contentPadding = searchContentPadding)
                             is SearchTvUiState.Success -> TvSeriesGrid(
                                 series = tvUiState.series,
                                 genres = tvGenres,
                                 downloadedSeriesIds = downloadedSeriesIds,
                                 state = gridState,
-                                isLoadingMore = false,
+                                isLoadingMore = isLoadingMore,
                                 onSeriesClick = onTvSeriesClick,
-                                onLoadMore = {},
+                                onLoadMore = onLoadMore,
                                 initialFocusId = lastClickedSeriesId,
                                 onFocusRestored = onTvFocusRestored,
-                                contentPadding = PaddingValues(16.dp),
-                                modifier = Modifier.focusRequester(resultsFocusRequester)
+                                contentPadding = searchContentPadding
                             )
                             is SearchTvUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(text = stringResource(R.string.no_results))
@@ -502,16 +670,17 @@ private fun SearchScreenContent(
                                 Text(text = tvUiState.message.asString())
                             }
                         }
-                    } else {
+                    }
+                    else -> {
                         when (uiState) {
                             is SearchUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(text = stringResource(R.string.start_searching))
                             }
-                            is SearchUiState.Loading -> MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                            is SearchUiState.Loading -> MovieListPlaceholder(contentPadding = searchContentPadding)
                             is SearchUiState.Success -> if (uiState.isFavorites) {
                                 FavoriteItemsGrid(
                                     movies = uiState.movies,
-                                    series = favoriteTvSeries,
+                                    series = uiState.favoriteSeries.ifEmpty { favoriteTvSeries },
                                     tvGenres = tvGenres,
                                     state = gridState,
                                     downloadedMovieIds = downloadedMovieIds,
@@ -525,8 +694,7 @@ private fun SearchScreenContent(
                                     onMovieLongClick = onLongClick,
                                     onMovieFocusRestored = onFocusRestored,
                                     onTvFocusRestored = onTvFocusRestored,
-                                    contentPadding = PaddingValues(16.dp),
-                                    modifier = Modifier.focusRequester(resultsFocusRequester)
+                                    contentPadding = searchContentPadding
                                 )
                             } else MovieList(
                                 movies = uiState.movies,
@@ -540,8 +708,7 @@ private fun SearchScreenContent(
                                 onLoadMore = { if (!uiState.isDownloads && !uiState.isNew) onLoadMore() },
                                 initialFocusId = lastClickedMovieId,
                                 onFocusRestored = onFocusRestored,
-                                contentPadding = PaddingValues(16.dp),
-                                modifier = Modifier.focusRequester(resultsFocusRequester)
+                                contentPadding = searchContentPadding
                             )
                             is SearchUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(text = stringResource(R.string.no_results))
@@ -549,93 +716,6 @@ private fun SearchScreenContent(
                             is SearchUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(text = uiState.message.asString())
                             }
-                        }
-                    }
-                }
-            }
-        } else {
-            // Handheld Layout: Edge-to-edge with Haze top blur and translucent bottom bar
-            val searchContentPadding = PaddingValues(
-                top = padding.calculateTopPadding() + 64.dp,
-                bottom = padding.calculateBottomPadding() + 16.dp,
-                start = 16.dp,
-                end = 16.dp
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
-            ) {
-                if (isTvMode) {
-                    when (tvUiState) {
-                        is SearchTvUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(text = stringResource(R.string.start_searching))
-                        }
-                        is SearchTvUiState.Loading -> MovieListPlaceholder(contentPadding = searchContentPadding)
-                        is SearchTvUiState.Success -> TvSeriesGrid(
-                            series = tvUiState.series,
-                            genres = tvGenres,
-                            downloadedSeriesIds = downloadedSeriesIds,
-                            state = gridState,
-                            isLoadingMore = false,
-                            onSeriesClick = onTvSeriesClick,
-                            onLoadMore = {},
-                            initialFocusId = lastClickedSeriesId,
-                            onFocusRestored = onTvFocusRestored,
-                            contentPadding = searchContentPadding
-                        )
-                        is SearchTvUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(text = stringResource(R.string.no_results))
-                        }
-                        is SearchTvUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(text = tvUiState.message.asString())
-                        }
-                    }
-                } else {
-                    when (uiState) {
-                        is SearchUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(text = stringResource(R.string.start_searching))
-                        }
-                        is SearchUiState.Loading -> MovieListPlaceholder(contentPadding = searchContentPadding)
-                        is SearchUiState.Success -> if (uiState.isFavorites) {
-                            FavoriteItemsGrid(
-                                movies = uiState.movies,
-                                series = favoriteTvSeries,
-                                tvGenres = tvGenres,
-                                state = gridState,
-                                downloadedMovieIds = downloadedMovieIds,
-                                downloadedSeriesIds = downloadedSeriesIds,
-                                watchHistoryMap = watchHistoryMap,
-                                selectedMovieIds = selectedFavoriteIds,
-                                lastClickedMovieId = lastClickedMovieId,
-                                lastClickedSeriesId = lastClickedSeriesId,
-                                onMovieClick = onMovieClick,
-                                onTvSeriesClick = onTvSeriesClick,
-                                onMovieLongClick = onLongClick,
-                                onMovieFocusRestored = onFocusRestored,
-                                onTvFocusRestored = onTvFocusRestored,
-                                contentPadding = searchContentPadding
-                            )
-                        } else MovieList(
-                            movies = uiState.movies,
-                            state = gridState,
-                            downloadedMovieIds = downloadedMovieIds,
-                            watchHistoryMap = watchHistoryMap,
-                            selectedIds = selectedFavoriteIds,
-                            isLoadingMore = isLoadingMore,
-                            onMovieClick = onMovieClick,
-                            onLongClick = { id -> uiState.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick) },
-                            onLoadMore = { if (!uiState.isDownloads && !uiState.isNew) onLoadMore() },
-                            initialFocusId = lastClickedMovieId,
-                            onFocusRestored = onFocusRestored,
-                            contentPadding = searchContentPadding
-                        )
-                        is SearchUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(text = stringResource(R.string.no_results))
-                        }
-                        is SearchUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(text = uiState.message.asString())
                         }
                     }
                 }
@@ -658,6 +738,17 @@ private fun SearchScreenContent(
                             onFilterClick = onFavoritesFilterClick,
                             modifier = Modifier.focusRequester(qualityChipsFocusRequester)
                         )
+                    } else if (isActorMode) {
+                        if (actorUiState is SearchActorUiState.Success) {
+                            ActorChipsRow(
+                                actors = actorUiState.actors,
+                                selectedActor = actorUiState.selectedActor,
+                                hasBiography = !actorUiState.actorDetail?.biography.isNullOrBlank(),
+                                onActorSelect = onActorSelect,
+                                onShowBioClick = { showActorBioSheet = true },
+                                modifier = Modifier.focusRequester(qualityChipsFocusRequester)
+                            )
+                        }
                     } else if (!isTvMode) {
                         QualityChips(
                             options = qualityOptions,
@@ -675,28 +766,332 @@ private fun SearchScreenContent(
             }
         }
     }
+
+    if (showActorBioSheet && actorUiState is SearchActorUiState.Success && actorUiState.actorDetail != null) {
+        ActorDetailBottomSheet(
+            actorDetailState = Result.success(actorUiState.actorDetail),
+            isLoading = false,
+            onDismiss = { showActorBioSheet = false },
+            sheetState = actorBioSheetState,
+            hazeState = hazeState,
+            onCreditClick = { credit ->
+                showActorBioSheet = false
+                onActorCreditClick(credit)
+            }
+        )
+    }
 }
 
+/**
+ * Horizontal row of matching TMDB actor chips and an optional Biography chip.
+ */
+@Composable
+private fun ActorChipsRow(
+    actors: List<TmdbPersonResult>,
+    selectedActor: TmdbPersonResult,
+    hasBiography: Boolean,
+    onActorSelect: (TmdbPersonResult) -> Unit,
+    onShowBioClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyRow(
+        modifier = modifier
+            .fillMaxWidth()
+            .focusRestorer()
+            .padding(vertical = 4.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (hasBiography) {
+            item(key = "actor_bio_chip", contentType = "bio_chip") {
+                AdaptiveChip(
+                    selected = false,
+                    onClick = onShowBioClick,
+                    label = { Text(stringResource(R.string.actor_bio_chip)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                )
+            }
+        }
+        items(
+            items = actors,
+            key = { it.id },
+            contentType = { "actor_chip" }
+        ) { actor ->
+            AdaptiveChip(
+                selected = actor.id == selectedActor.id,
+                onClick = { onActorSelect(actor) },
+                label = { Text(actor.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                leadingIcon = {
+                    val profileUrl = actor.fullProfileUrl
+                    if (profileUrl != null) {
+                        AsyncImage(
+                            model = profileUrl,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            )
+        }
+    }
+}
+
+/**
+ * Displays an actor's combined movie and TV appearances sorted by year descending,
+ * with focus restoration when returning from a selected movie or TV detail screen.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun ActorCreditsGrid(
+    credits: List<TmdbCastCredit>,
+    state: LazyGridState,
+    initialFocusKey: String?,
+    onCreditClick: (TmdbCastCredit) -> Unit,
+    onFocusRestored: () -> Unit,
+    contentPadding: PaddingValues,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val currentCredits by rememberUpdatedState(credits)
+    val columns = when {
+        isTv -> GridCells.Fixed(6)
+        screenWidth < 600.dp -> GridCells.Fixed(2)
+        screenWidth < 900.dp -> GridCells.Adaptive(minSize = 160.dp)
+        else -> GridCells.Adaptive(minSize = 200.dp)
+    }
+
+    LazyVerticalGrid(
+        columns = columns,
+        state = state,
+        modifier = modifier
+            .fillMaxSize()
+            .focusRestorer(),
+        contentPadding = contentPadding,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        items(
+            items = credits,
+            key = { "${it.mediaType ?: "movie"}_${it.id}" },
+            contentType = { "actor_credit" }
+        ) { credit ->
+            val creditKey = "${credit.mediaType ?: "movie"}_${credit.id}"
+            ActorCreditCard(
+                credit = credit,
+                isTv = isTv,
+                shouldRequestFocus = creditKey == initialFocusKey,
+                onFocusRestored = onFocusRestored,
+                onClick = { onCreditClick(credit) }
+            )
+        }
+    }
+
+    LaunchedEffect(initialFocusKey) {
+        if (initialFocusKey != null) {
+            val restoredList = snapshotFlow { currentCredits }.first { list ->
+                list.any { "${it.mediaType ?: "movie"}_${it.id}" == initialFocusKey }
+            }
+            val index = restoredList.indexOfFirst {
+                "${it.mediaType ?: "movie"}_${it.id}" == initialFocusKey
+            }
+            if (index >= 0) {
+                val isVisible = state.layoutInfo.visibleItemsInfo.any { it.index == index }
+                if (!isVisible) {
+                    state.scrollToItem(index)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Renders one movie or TV appearance card inside [ActorCreditsGrid], reusing [FilmographyMetadata].
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun ActorCreditCard(
+    credit: TmdbCastCredit,
+    isTv: Boolean,
+    shouldRequestFocus: Boolean,
+    onFocusRestored: () -> Unit,
+    onClick: () -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    val ratingText = remember(credit.voteAverage) {
+        credit.voteAverage?.takeIf { it > 0.0 }?.let { "⭐ ${"%.1f".format(Locale.US, it)}" }.orEmpty()
+    }
+
+    if (shouldRequestFocus) {
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            try {
+                focusRequester.requestFocus()
+            } catch (_: Exception) {}
+            delay(150)
+            try {
+                focusRequester.requestFocus()
+            } catch (_: Exception) {}
+        }
+    }
+
+    if (isTv) {
+        Surface(
+            onClick = onClick,
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+            shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surface,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                focusedContentColor = MaterialTheme.colorScheme.onSurface
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focusRequester)
+                .onFocusChanged { if (it.isFocused && shouldRequestFocus) onFocusRestored() }
+        ) {
+            Column {
+                AsyncImage(
+                    model = credit.fullPosterUrl,
+                    contentDescription = credit.displayTitle,
+                    placeholder = painterResource(R.drawable.ic_launcher_foreground),
+                    error = painterResource(R.drawable.ic_launcher_foreground),
+                    fallback = painterResource(R.drawable.ic_launcher_foreground),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.67f),
+                    contentScale = ContentScale.Crop
+                )
+                Column(
+                    modifier = Modifier
+                        .background(androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(12.dp)
+                        .fillMaxWidth()
+                ) {
+                    Text(
+                        text = credit.displayTitle,
+                        style = androidx.tv.material3.MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    FilmographyMetadata(credit = credit, isTv = true)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = credit.character.orEmpty(),
+                            style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
+                            color = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (ratingText.isNotEmpty()) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = ratingText,
+                                style = androidx.tv.material3.MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        Card(
+            onClick = onClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focusRequester)
+                .onFocusChanged { if (it.isFocused && shouldRequestFocus) onFocusRestored() }
+                .focusHighlight(shape = MaterialTheme.shapes.medium),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            shape = MaterialTheme.shapes.medium
+        ) {
+            Column {
+                AsyncImage(
+                    model = credit.fullPosterUrl,
+                    contentDescription = credit.displayTitle,
+                    placeholder = painterResource(R.drawable.ic_launcher_foreground),
+                    error = painterResource(R.drawable.ic_launcher_foreground),
+                    fallback = painterResource(R.drawable.ic_launcher_foreground),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.67f),
+                    contentScale = ContentScale.Crop
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                ) {
+                    Text(
+                        text = credit.displayTitle,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    FilmographyMetadata(credit = credit, isTv = false)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = credit.character.orEmpty(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (ratingText.isNotEmpty()) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = ratingText,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 /**
  * Displays movie and TV favorites together in the same responsive poster grid.
- *
- * @param movies Favorite movie metadata.
- * @param series Favorite TV series metadata.
- * @param tvGenres TV genres used to label series cards.
- * @param state Shared scroll state for the mixed collection.
- * @param downloadedMovieIds Favorite movie IDs with download records.
- * @param downloadedSeriesIds Favorite series IDs with downloaded episodes.
- * @param selectedMovieIds Movie IDs selected for bulk removal.
- * @param lastClickedMovieId Movie ID to focus after returning from details.
- * @param lastClickedSeriesId TV series ID to focus after returning from details.
- * @param onMovieClick Opens a movie or updates its selection.
- * @param onTvSeriesClick Opens the TV series detail screen.
- * @param onMovieLongClick Adds a movie to bulk selection.
- * @param onMovieFocusRestored Clears the pending movie focus target.
- * @param onTvFocusRestored Clears the pending TV focus target.
- * @param contentPadding Insets matching the containing screen.
- * @param modifier Modifier applied to the grid.
  */
 @Composable
 private fun FavoriteItemsGrid(
@@ -721,6 +1116,8 @@ private fun FavoriteItemsGrid(
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val currentMovies by rememberUpdatedState(movies)
+    val currentSeries by rememberUpdatedState(series)
     val columns = when {
         isTv -> GridCells.Fixed(6)
         screenWidth < 600.dp -> GridCells.Fixed(2)
@@ -739,7 +1136,11 @@ private fun FavoriteItemsGrid(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(movies, key = { "movie_${it.id}" }) { movie ->
+        items(
+            items = movies,
+            key = { "movie_${it.id}" },
+            contentType = { "movie" }
+        ) { movie ->
             val progress = watchHistoryMap[movie.id.toString()] ?: watchHistoryMap[movie.title]
             val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
             MovieItem(
@@ -750,35 +1151,67 @@ private fun FavoriteItemsGrid(
                 onClick = { onMovieClick(movie) },
                 onLongClick = { onMovieLongClick(movie.id) },
                 shouldRequestFocus = movie.id == lastClickedMovieId,
-                onFocusRestored = onMovieFocusRestored
+                onFocusRestored = onMovieFocusRestored,
+                isTv = isTv
             )
         }
-        items(series, key = { "tv_${it.id}" }) { item ->
+        items(
+            items = series,
+            key = { "tv_${it.id}" },
+            contentType = { "tv_series" }
+        ) { item ->
+            val itemGenres = remember(item.genres, item.genreIds, genreNames) {
+                item.genres.orEmpty().map { it.name }.ifEmpty {
+                    item.genreIds.orEmpty().mapNotNull(genreNames::get)
+                }
+            }
             TvSeriesCard(
                 series = item,
-                genres = item.genres.orEmpty().map { it.name }.ifEmpty {
-                    item.genreIds.orEmpty().mapNotNull(genreNames::get)
-                },
+                genres = itemGenres,
                 hasDownloads = item.id in downloadedSeriesIds,
                 isSelected = item.id in selectedMovieIds,
                 onClick = { onTvSeriesClick(item) },
                 onLongClick = { onMovieLongClick(item.id) },
                 shouldRequestFocus = item.id == lastClickedSeriesId,
-                onFocusRestored = onTvFocusRestored
+                onFocusRestored = onTvFocusRestored,
+                isTv = isTv
             )
+        }
+    }
+
+    LaunchedEffect(lastClickedMovieId, lastClickedSeriesId) {
+        when {
+            lastClickedMovieId != null -> {
+                val restoredMovies = snapshotFlow { currentMovies }.first { list ->
+                    list.any { it.id == lastClickedMovieId }
+                }
+                val index = restoredMovies.indexOfFirst { it.id == lastClickedMovieId }
+                if (index >= 0) {
+                    val isVisible = state.layoutInfo.visibleItemsInfo.any { it.index == index }
+                    if (!isVisible) {
+                        state.scrollToItem(index)
+                    }
+                }
+            }
+            lastClickedSeriesId != null -> {
+                val (_, restoredSeries) = snapshotFlow { currentMovies to currentSeries }.first { (_, sList) ->
+                    sList.any { it.id == lastClickedSeriesId }
+                }
+                val seriesIndex = restoredSeries.indexOfFirst { it.id == lastClickedSeriesId }
+                if (seriesIndex >= 0) {
+                    val targetIndex = currentMovies.size + seriesIndex
+                    val isVisible = state.layoutInfo.visibleItemsInfo.any { it.index == targetIndex }
+                    if (!isVisible) {
+                        state.scrollToItem(targetIndex)
+                    }
+                }
+            }
         }
     }
 }
 
 /**
  * Provides an accessible search field with a catalog-specific hint and optional voice input.
- *
- * @param searchQuery Current search text.
- * @param onSearchQueryChange Updates the search text.
- * @param onVoiceSearchClick Starts voice input.
- * @param modifier Modifier applied to the text field.
- * @param showVoiceSearch Whether to display voice input.
- * @param isTvMode Whether the search targets TV series.
  */
 @Composable
 private fun SearchTextField(
@@ -787,7 +1220,8 @@ private fun SearchTextField(
     onVoiceSearchClick: () -> Unit,
     modifier: Modifier = Modifier,
     showVoiceSearch: Boolean = true,
-    isTvMode: Boolean = false
+    isTvMode: Boolean = false,
+    isActorMode: Boolean = false
 ) {
     TextField(
         value = searchQuery,
@@ -795,7 +1229,11 @@ private fun SearchTextField(
         placeholder = {
             Text(
                 stringResource(
-                    if (isTvMode) R.string.tv_search_placeholder else R.string.search_placeholder
+                    when {
+                        isActorMode -> R.string.actor_search_placeholder
+                        isTvMode -> R.string.tv_search_placeholder
+                        else -> R.string.search_placeholder
+                    }
                 )
             )
         },
