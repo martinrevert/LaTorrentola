@@ -400,7 +400,9 @@ struct Ac3EncoderContext {
   int sampleRate;
   int channelCount;
   int frameSize;
+  int inFrameSamples;
   int frameBytes;
+  int64_t nextPts;
   uint8_t* pcmAccumulator;
   int pcmAccumulatedBytes;
   int pcmCapacity;
@@ -408,7 +410,8 @@ struct Ac3EncoderContext {
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_androidx_media3_decoder_ffmpeg_FfmpegAc3Encoder_ffmpegAc3EncoderInit(
-    JNIEnv* env, jobject thiz, jint sampleRate, jint channelCount, jint bitrate) {
+    JNIEnv* env, jobject thiz, jint sampleRate, jint channelCount, jint bitrate,
+    jboolean inputFloat) {
   const AVCodec* codec = avcodec_find_encoder(AV_CODEC_ID_AC3);
   if (!codec) {
     LOGE("ffmpegAc3EncoderInit: avcodec_find_encoder(AV_CODEC_ID_AC3) failed");
@@ -421,10 +424,17 @@ Java_androidx_media3_decoder_ffmpeg_FfmpegAc3Encoder_ffmpegAc3EncoderInit(
     return 0;
   }
 
+  int inSampleRate = sampleRate > 0 ? sampleRate : 48000;
+  int outSampleRate =
+      (inSampleRate == 48000 || inSampleRate == 44100 || inSampleRate == 32000)
+          ? inSampleRate
+          : 48000;
+  int inChannels = channelCount >= 6 ? channelCount : 6;
+
   c->bit_rate = bitrate > 0 ? bitrate : 640000;
-  c->sample_rate = sampleRate > 0 ? sampleRate : 48000;
+  c->sample_rate = outSampleRate;
   c->sample_fmt = AV_SAMPLE_FMT_FLTP;
-  av_channel_layout_default(&c->ch_layout, channelCount > 0 ? channelCount : 6);
+  av_channel_layout_default(&c->ch_layout, 6);
   c->time_base = (AVRational){1, c->sample_rate};
 
   if (avcodec_open2(c, codec, NULL) < 0) {
@@ -433,15 +443,18 @@ Java_androidx_media3_decoder_ffmpeg_FfmpegAc3Encoder_ffmpegAc3EncoderInit(
     return 0;
   }
 
-  AVChannelLayout chLayout;
-  av_channel_layout_default(&chLayout, c->ch_layout.nb_channels);
+  AVChannelLayout inChLayout;
+  av_channel_layout_default(&inChLayout, inChannels);
+  AVSampleFormat inSampleFmt =
+      inputFloat ? AV_SAMPLE_FMT_FLT : AV_SAMPLE_FMT_S16;
 
   SwrContext* swr = NULL;
   int swrRet = swr_alloc_set_opts2(
       &swr,
-      &chLayout, AV_SAMPLE_FMT_FLTP, c->sample_rate,
-      &chLayout, AV_SAMPLE_FMT_S16, c->sample_rate,
+      &c->ch_layout, AV_SAMPLE_FMT_FLTP, c->sample_rate,
+      &inChLayout, inSampleFmt, inSampleRate,
       0, NULL);
+  av_channel_layout_uninit(&inChLayout);
   if (swrRet < 0 || !swr || swr_init(swr) < 0) {
     LOGE("ffmpegAc3EncoderInit: swr_init failed");
     if (swr) swr_free(&swr);
@@ -470,21 +483,28 @@ Java_androidx_media3_decoder_ffmpeg_FfmpegAc3Encoder_ffmpegAc3EncoderInit(
     return 0;
   }
 
+  int bytesPerSample = inputFloat ? sizeof(float) : sizeof(int16_t);
+  int inFrameSamples = (inSampleRate == outSampleRate)
+      ? c->frame_size
+      : (int)av_rescale_rnd(c->frame_size, inSampleRate, outSampleRate, AV_ROUND_UP);
+
   Ac3EncoderContext* ctx = new Ac3EncoderContext();
   ctx->codecContext = c;
   ctx->swrContext = swr;
   ctx->frame = frame;
   ctx->packet = packet;
   ctx->sampleRate = c->sample_rate;
-  ctx->channelCount = c->ch_layout.nb_channels;
+  ctx->channelCount = inChannels;
   ctx->frameSize = c->frame_size;
-  ctx->frameBytes = c->frame_size * ctx->channelCount * sizeof(int16_t);
+  ctx->inFrameSamples = inFrameSamples;
+  ctx->frameBytes = inFrameSamples * inChannels * bytesPerSample;
+  ctx->nextPts = 0;
   ctx->pcmCapacity = ctx->frameBytes * 8;
   ctx->pcmAccumulator = (uint8_t*)malloc(ctx->pcmCapacity);
   ctx->pcmAccumulatedBytes = 0;
 
-  LOGD("ffmpegAc3EncoderInit: AC3 5.1 encoder initialized (sampleRate=%d, channels=%d, bitrate=%lld, frameBytes=%d)",
-       ctx->sampleRate, ctx->channelCount, (long long)c->bit_rate, ctx->frameBytes);
+  LOGD("ffmpegAc3EncoderInit: AC3 5.1 encoder initialized (inRate=%d, outRate=%d, inCh=%d, float=%d, bitrate=%lld, inFrameSamples=%d, frameBytes=%d)",
+       inSampleRate, ctx->sampleRate, ctx->channelCount, (int)inputFloat, (long long)c->bit_rate, ctx->inFrameSamples, ctx->frameBytes);
   return reinterpret_cast<jlong>(ctx);
 }
 
@@ -526,8 +546,13 @@ Java_androidx_media3_decoder_ffmpeg_FfmpegAc3Encoder_ffmpegAc3EncoderEncode(
   ctx->pcmAccumulatedBytes += inputLength;
 
   int totalOutputBytes = 0;
+  const int maxSyncframeSize = 3840;
 
   while (ctx->pcmAccumulatedBytes >= ctx->frameBytes) {
+    if (totalOutputBytes + maxSyncframeSize > outputCapacity) {
+      break;
+    }
+
     if (av_frame_make_writable(ctx->frame) < 0) {
       LOGE("ffmpegAc3EncoderEncode: av_frame_make_writable failed");
       break;
@@ -535,11 +560,14 @@ Java_androidx_media3_decoder_ffmpeg_FfmpegAc3Encoder_ffmpegAc3EncoderEncode(
 
     const uint8_t* inPointers[1] = { ctx->pcmAccumulator };
     int converted = swr_convert(ctx->swrContext, ctx->frame->data,
-                                ctx->frameSize, inPointers, ctx->frameSize);
+                                ctx->frameSize, inPointers, ctx->inFrameSamples);
     if (converted < 0) {
       LOGE("ffmpegAc3EncoderEncode: swr_convert failed");
       break;
     }
+
+    ctx->frame->pts = ctx->nextPts;
+    ctx->nextPts += ctx->frameSize;
 
     int ret = avcodec_send_frame(ctx->codecContext, ctx->frame);
     if (ret < 0) {
@@ -571,6 +599,19 @@ Java_androidx_media3_decoder_ffmpeg_FfmpegAc3Encoder_ffmpegAc3EncoderEncode(
   }
 
   return totalOutputBytes;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_androidx_media3_decoder_ffmpeg_FfmpegAc3Encoder_ffmpegAc3EncoderReset(
+    JNIEnv* env, jobject thiz, jlong contextHandle) {
+  Ac3EncoderContext* ctx = reinterpret_cast<Ac3EncoderContext*>(contextHandle);
+  if (!ctx) return;
+
+  ctx->pcmAccumulatedBytes = 0;
+  ctx->nextPts = 0;
+  if (ctx->codecContext) {
+    avcodec_flush_buffers(ctx->codecContext);
+  }
 }
 
 extern "C" JNIEXPORT jint JNICALL

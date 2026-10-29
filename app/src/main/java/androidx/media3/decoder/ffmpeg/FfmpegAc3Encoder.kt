@@ -28,7 +28,8 @@ import java.nio.ByteBuffer
 class FfmpegAc3Encoder(
     val sampleRate: Int = 48000,
     val channelCount: Int = 6,
-    val bitrate: Int = 640000
+    val bitrate: Int = 640000,
+    val inputFloat: Boolean = false
 ) {
     private var nativeContext: Long = 0
 
@@ -36,17 +37,17 @@ class FfmpegAc3Encoder(
         if (!FfmpegLibrary.isAvailable()) {
             throw IllegalStateException("FFmpeg native library is not loaded")
         }
-        nativeContext = ffmpegAc3EncoderInit(sampleRate, channelCount, bitrate)
+        nativeContext = ffmpegAc3EncoderInit(sampleRate, channelCount, bitrate, inputFloat)
         if (nativeContext == 0L) {
             throw IllegalStateException("Failed to initialize FFmpeg AC3 encoder")
         }
     }
 
     /**
-     * Feeds 16-bit interleaved PCM samples into the encoder and writes any completed
-     * AC3 frames to [outputBuffer].
+     * Feeds interleaved PCM samples into the encoder and writes any completed
+     * AC3 frames to [outputAc3].
      *
-     * @param inputPcm Direct [ByteBuffer] containing raw 16-bit PCM audio samples.
+     * @param inputPcm Direct [ByteBuffer] containing raw PCM audio samples.
      * @param outputAc3 Direct [ByteBuffer] receiving encoded AC3 bitstream packets.
      * @return Total number of encoded AC3 bytes written into [outputAc3].
      */
@@ -67,6 +68,15 @@ class FfmpegAc3Encoder(
             inputPcm.position(inputPcm.limit())
         }
         return bytesWritten
+    }
+
+    /**
+     * Discards any buffered partial PCM samples and resets internal encoder state (e.g. on seek).
+     */
+    fun reset() {
+        if (nativeContext != 0L) {
+            ffmpegAc3EncoderReset(nativeContext)
+        }
     }
 
     /**
@@ -98,11 +108,17 @@ class FfmpegAc3Encoder(
         release()
     }
 
-    private external fun ffmpegAc3EncoderInit(sampleRate: Int, channelCount: Int, bitrate: Int): Long
+    private external fun ffmpegAc3EncoderInit(
+        sampleRate: Int,
+        channelCount: Int,
+        bitrate: Int,
+        inputFloat: Boolean
+    ): Long
     private external fun ffmpegAc3EncoderEncode(
         context: Long, input: ByteBuffer, inputOffset: Int, inputLength: Int,
         output: ByteBuffer, outputOffset: Int, outputCapacity: Int
     ): Int
+    private external fun ffmpegAc3EncoderReset(context: Long)
     private external fun ffmpegAc3EncoderFlush(
         context: Long, output: ByteBuffer, outputOffset: Int, outputCapacity: Int
     ): Int

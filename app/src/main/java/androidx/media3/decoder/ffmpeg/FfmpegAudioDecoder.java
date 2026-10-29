@@ -47,6 +47,7 @@ public final class FfmpegAudioDecoder
   private static final int FLAC_METADATA_BLOCK_HEADER_SIZE = 4;
   private static final int FLAC_STREAM_INFO_DATA_SIZE = 34;
 
+  private final Format inputFormat;
   private final String codecName;
   @Nullable private final byte[] extraData;
   private final @C.PcmEncoding int encoding;
@@ -69,6 +70,7 @@ public final class FfmpegAudioDecoder
       throw new FfmpegDecoderException("Failed to load decoder native libraries.");
     }
     checkNotNull(format.sampleMimeType);
+    this.inputFormat = format;
     codecName = checkNotNull(FfmpegLibrary.getCodecName(format.sampleMimeType));
     extraData = getExtraData(format.sampleMimeType, format.initializationData);
     encoding = outputFloat ? C.ENCODING_PCM_FLOAT : C.ENCODING_PCM_16BIT;
@@ -80,6 +82,11 @@ public final class FfmpegAudioDecoder
       throw new FfmpegDecoderException("Initialization failed.");
     }
     setInitialInputBufferSize(initialInputBufferSize);
+  }
+
+  /** Returns the source {@link Format} that initialized this decoder. */
+  public Format getInputFormat() {
+    return inputFormat;
   }
 
   @Override

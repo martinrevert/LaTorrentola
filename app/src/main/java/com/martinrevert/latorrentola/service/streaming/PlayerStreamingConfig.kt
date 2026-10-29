@@ -1,10 +1,14 @@
 package com.martinrevert.latorrentola.service.streaming
 
 import androidx.annotation.OptIn
-import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.FormatHolder
 import androidx.media3.exoplayer.LoadControl
+import androidx.media3.exoplayer.audio.MediaCodecAudioRenderer
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import java.io.IOException
@@ -150,6 +154,54 @@ object PlayerStreamingConfig {
                     wrappedEventListener,
                     out
                 )
+
+                // Replace standard MediaCodecAudioRenderer with one that synchronously notifies
+                // Ac3TranscodingAudioSink on the playback thread before audioSink.configure(...) runs.
+                val mediaCodecIndex = out.indexOfFirst {
+                    it.javaClass == MediaCodecAudioRenderer::class.java
+                }
+                if (mediaCodecIndex >= 0) {
+                    out[mediaCodecIndex] = object : MediaCodecAudioRenderer(
+                        context,
+                        codecAdapterFactory,
+                        mediaCodecSelector,
+                        enableDecoderFallback,
+                        eventHandler,
+                        wrappedEventListener,
+                        audioSink
+                    ) {
+                        override fun onInputFormatChanged(
+                            formatHolder: FormatHolder
+                        ): DecoderReuseEvaluation? {
+                            formatHolder.format?.let { format ->
+                                if (audioSink is Ac3TranscodingAudioSink) {
+                                    audioSink.setSourceAudioFormat(format)
+                                }
+                            }
+                            return super.onInputFormatChanged(formatHolder)
+                        }
+                    }
+                }
+
+                // Replace standard FfmpegAudioRenderer with one that synchronously notifies
+                // Ac3TranscodingAudioSink on the playback thread before audioSink.configure(...) runs.
+                val ffmpegIndex = out.indexOfFirst {
+                    it.javaClass == FfmpegAudioRenderer::class.java
+                }
+                if (ffmpegIndex >= 0) {
+                    out[ffmpegIndex] = object : FfmpegAudioRenderer(
+                        eventHandler,
+                        wrappedEventListener,
+                        audioSink
+                    ) {
+                        override fun onInputFormatChanged(format: Format) {
+                            if (audioSink is Ac3TranscodingAudioSink) {
+                                audioSink.setSourceAudioFormat(format)
+                            }
+                            super.onInputFormatChanged(format)
+                        }
+                    }
+                }
             }
         }
     }

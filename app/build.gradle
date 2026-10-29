@@ -231,6 +231,7 @@ android {
 
     testOptions {
         unitTests.returnDefaultValues = true
+        unitTests.includeAndroidResources = true
         unitTests.all { Test test ->
             test.jvmArgs(
                 "-XX:+EnableDynamicAgentLoading",

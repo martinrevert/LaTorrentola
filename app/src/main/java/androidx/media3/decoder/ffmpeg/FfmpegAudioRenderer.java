@@ -31,6 +31,7 @@ import androidx.media3.common.util.TraceUtil;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
 import androidx.media3.decoder.CryptoConfig;
+import androidx.media3.exoplayer.DecoderReuseEvaluation;
 import androidx.media3.exoplayer.audio.AudioRendererEventListener;
 import androidx.media3.exoplayer.audio.AudioSink;
 import androidx.media3.exoplayer.audio.AudioSink.SinkFormatSupport;
@@ -39,7 +40,7 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink;
 
 /** Decodes and renders audio using FFmpeg. */
 @UnstableApi
-public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioDecoder> {
+public class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioDecoder> {
 
   private static final String TAG = "FfmpegAudioRenderer";
 
@@ -129,6 +130,23 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     return TAG;
   }
 
+  /**
+   * Called when the input format is initialized or changes on the playback thread.
+   * Can be overridden by subclasses to observe format changes synchronously.
+   *
+   * @param format The new input format.
+   */
+  protected void onInputFormatChanged(Format format) {
+    // Subclasses may override.
+  }
+
+  @Override
+  protected DecoderReuseEvaluation canReuseDecoder(
+      String decoderName, Format oldFormat, Format newFormat) {
+    onInputFormatChanged(newFormat);
+    return super.canReuseDecoder(decoderName, oldFormat, newFormat);
+  }
+
   @Override
   protected @C.FormatSupport int supportsFormatInternal(Format format) {
     String mimeType = checkNotNull(format.sampleMimeType);
@@ -154,6 +172,7 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
   protected FfmpegAudioDecoder createDecoder(Format format, @Nullable CryptoConfig cryptoConfig)
       throws FfmpegDecoderException {
     TraceUtil.beginSection("createFfmpegAudioDecoder");
+    onInputFormatChanged(format);
     int initialInputBufferSize =
         format.maxInputSize != Format.NO_VALUE ? format.maxInputSize : DEFAULT_INPUT_BUFFER_SIZE;
     FfmpegAudioDecoder decoder =
