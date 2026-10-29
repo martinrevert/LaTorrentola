@@ -401,4 +401,14 @@
     <string name="series_status_remaining_ended_message">Although this series has finished airing on TMDB, you still have %1$d remaining episode(s) in the series, but no torrents were found right now for S%2$02dE%3$02d.</string>
     <string name="series_status_remaining_continuing_message">There are still %1$d episode(s) ahead and the series continues, but no torrents are currently available for S%2$02dE%3$02d.</string>
     <string name="series_status_understood">Got it</string>
+
+    <!-- Player Decoding Error Dialog -->
+    <string name="player_decoding_error_video_title">Unsupported Video Format</string>
+    <string name="player_decoding_error_audio_title">Audio Decoding Error</string>
+    <string name="player_decoding_error_video_message_with_codec">This device could not decode the video track (%1$s) because it exceeds the local decoder capabilities. Try selecting another compatible release (for example, x264 / 8-bit).</string>
+    <string name="player_decoding_error_video_message_generic">This device could not decode the video track because it exceeds the local decoder capabilities. Try selecting another compatible release.</string>
+    <string name="player_decoding_error_audio_message_with_codec">This device could not decode the audio track (%1$s). Try selecting another audio track or release.</string>
+    <string name="player_decoding_error_audio_message_generic">This device could not decode the audio track. Try selecting another audio track or release.</string>
+    <string name="player_decoding_error_close">Close Player</string>
+    <string name="player_decoding_error_change_audio">Change Audio Track</string>
 </resources>

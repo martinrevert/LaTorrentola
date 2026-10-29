@@ -238,4 +238,130 @@ class LocalPlayerActivityTest {
         assertThat(autoplay).isTrue()
         assertThat(startTimeSec).isEqualTo(45.2)
     }
+
+    @Test
+    fun `resolvePlaybackDecodingError extracts HEVC 10-bit video details from MediaCodecVideoRenderer PlaybackException`() {
+        val error = androidx.media3.common.PlaybackException(
+            "MediaCodecVideoRenderer error, index=0, format=Format(1, Encoded By ~ Immortal, video/x-matroska, video/hevc, hvc1.2.4.L93.90, -1, en, [1280, 534, -1.0, ColorInfo(BT709, Limited range, SDR SMPTE 170M, false, 10bit Luma, 10bit Chroma)], [-1, -1, -1]), format_supported=NO_EXCEEDS_CAPABILITIES",
+            null,
+            androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FAILED
+        )
+
+        val resolved = com.martinrevert.latorrentola.ui.components.resolvePlaybackDecodingError(error)
+
+        assertThat(resolved).isNotNull()
+        assertThat(resolved?.isAudioError).isFalse()
+        assertThat(resolved?.codecSummary).isEqualTo("HEVC / H.265 10-bit")
+    }
+
+    @Test
+    fun `resolvePlaybackDecodingError extracts structured rendererFormat from ExoPlaybackException`() {
+        val format = androidx.media3.common.Format.Builder()
+            .setSampleMimeType(androidx.media3.common.MimeTypes.VIDEO_AV1)
+            .setCodecs("av01.0.08M.10")
+            .build()
+        val exoError = androidx.media3.exoplayer.ExoPlaybackException.createForRenderer(
+            RuntimeException("Decoder init failed"),
+            "MediaCodecVideoRenderer",
+            0,
+            format,
+            androidx.media3.common.C.FORMAT_EXCEEDS_CAPABILITIES,
+            null,
+            false,
+            androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES
+        )
+
+        val resolved = com.martinrevert.latorrentola.ui.components.resolvePlaybackDecodingError(exoError)
+
+        assertThat(resolved).isNotNull()
+        assertThat(resolved?.isAudioError).isFalse()
+        assertThat(resolved?.codecSummary).isEqualTo("AV1 10-bit")
+    }
+
+    @Test
+    fun `resolvePlaybackDecodingError identifies audio decoding errors accurately`() {
+        val format = androidx.media3.common.Format.Builder()
+            .setSampleMimeType(androidx.media3.common.MimeTypes.AUDIO_TRUEHD)
+            .build()
+        val exoError = androidx.media3.exoplayer.ExoPlaybackException.createForRenderer(
+            RuntimeException("Audio decoder unsupported"),
+            "MediaCodecAudioRenderer",
+            1,
+            format,
+            androidx.media3.common.C.FORMAT_UNSUPPORTED_SUBTYPE,
+            null,
+            false,
+            androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
+        )
+
+        val resolved = com.martinrevert.latorrentola.ui.components.resolvePlaybackDecodingError(exoError)
+
+        assertThat(resolved).isNotNull()
+        assertThat(resolved?.isAudioError).isTrue()
+        assertThat(resolved?.codecSummary).isEqualTo("Dolby TrueHD")
+    }
+
+    @Test
+    fun `resolvePlaybackDecodingError returns null for transient network and IO errors`() {
+        val networkError = androidx.media3.common.PlaybackException(
+            "Connection reset",
+            null,
+            androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
+        )
+
+        val resolved = com.martinrevert.latorrentola.ui.components.resolvePlaybackDecodingError(networkError)
+
+        assertThat(resolved).isNull()
+    }
+
+    @Test
+    fun `resolvePlaybackDecodingError ignores AVI container and resolves AVC video stream`() {
+        val error = androidx.media3.common.PlaybackException(
+            "MediaCodecVideoRenderer error, index=0, format=Format(1, null, video/x-msvideo, video/avc, avc1.640028, -1, en, [1920, 1080]), format_supported=NO_EXCEEDS_CAPABILITIES",
+            null,
+            androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES
+        )
+
+        val resolved = com.martinrevert.latorrentola.ui.components.resolvePlaybackDecodingError(error)
+
+        assertThat(resolved).isNotNull()
+        assertThat(resolved?.isAudioError).isFalse()
+        assertThat(resolved?.codecSummary).isEqualTo("AVC / H.264")
+    }
+
+    @Test
+    fun `resolvePlaybackDecodingError resolves codec from codecs string when sampleMimeType is absent`() {
+        val error = androidx.media3.common.PlaybackException(
+            "Decoder init failed: OMX.qcom.video.decoder.hevc, format=Format(1, null, null, null, hvc1.2.4.L93.90, -1, [1920, 1080])",
+            null,
+            androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
+        )
+
+        val resolved = com.martinrevert.latorrentola.ui.components.resolvePlaybackDecodingError(error)
+
+        assertThat(resolved).isNotNull()
+        assertThat(resolved?.isAudioError).isFalse()
+        assertThat(resolved?.codecSummary).isEqualTo("HEVC / H.265 10-bit")
+    }
+
+    @Test
+    fun `resolvePlaybackDecodingError maps colloquial audio and video mime aliases`() {
+        val aacError = androidx.media3.common.PlaybackException(
+            "MediaCodecAudioRenderer error, index=1, format=Format(2, audio/aac, -1)",
+            null,
+            androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FAILED
+        )
+        val dtsError = androidx.media3.common.PlaybackException(
+            "MediaCodecAudioRenderer error, index=1, format=Format(2, audio/dts, -1)",
+            null,
+            androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FAILED
+        )
+
+        val resolvedAac = com.martinrevert.latorrentola.ui.components.resolvePlaybackDecodingError(aacError)
+        val resolvedDts = com.martinrevert.latorrentola.ui.components.resolvePlaybackDecodingError(dtsError)
+
+        assertThat(resolvedAac?.codecSummary).isEqualTo("AAC")
+        assertThat(resolvedDts?.codecSummary).isEqualTo("DTS")
+    }
 }
+

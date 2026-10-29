@@ -213,8 +213,11 @@ import com.martinrevert.latorrentola.service.VerifiedTorrentHttpServer
 import com.martinrevert.latorrentola.ui.components.DeleteTorrentDownloadsDialog
 import com.martinrevert.latorrentola.ui.components.InsufficientStorageDialog
 import com.martinrevert.latorrentola.ui.components.NextEpisodeTorrentDialog
+import com.martinrevert.latorrentola.ui.components.PlaybackDecodingError
+import com.martinrevert.latorrentola.ui.components.PlaybackErrorDialog
 import com.martinrevert.latorrentola.ui.components.WatchProgressBar
 import com.martinrevert.latorrentola.ui.components.WatchProgressSlider
+import com.martinrevert.latorrentola.ui.components.resolvePlaybackDecodingError
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.service.storage.remote.RemoteStorageManager
@@ -403,6 +406,7 @@ class LocalPlayerActivity : FragmentActivity() {
     private var isCastConnecting by mutableStateOf(false)
     private var connectingDeviceName by mutableStateOf("")
     private var castErrorMessage by mutableStateOf<String?>(null)
+    private var playbackDecodingError by mutableStateOf<PlaybackDecodingError?>(null)
 
     private var pendingMediaUri: Uri? = null
     private var pendingMediaItem: MediaItem? = null
@@ -516,6 +520,7 @@ class LocalPlayerActivity : FragmentActivity() {
 
                         LaunchedEffect(isCasting) {
                             if (isCasting) {
+                                playbackDecodingError = null
                                 if (showCastBottomSheet) {
                                     showCastBottomSheet = false
                                 }
@@ -877,6 +882,28 @@ class LocalPlayerActivity : FragmentActivity() {
                         )
                     }
 
+                    playbackDecodingError?.let { decodingError ->
+                        PlaybackErrorDialog(
+                            error = decodingError,
+                            onDismiss = {
+                                playbackDecodingError = null
+                                try {
+                                    mediaController?.stop()
+                                    mediaController?.clearMediaItems()
+                                } catch (_: Exception) {
+                                }
+                                finish()
+                            },
+                            onChangeAudioTrack = if (decodingError.isAudioError) {
+                                {
+                                    playbackDecodingError = null
+                                    showAudioOptions()
+                                }
+                            } else null,
+                            themeMode = themeMode
+                        )
+                    }
+
                     val state = playerBottomSheetState
                     if (state != null) {
                         PlayerBottomSheetContent(
@@ -900,6 +927,7 @@ class LocalPlayerActivity : FragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         showNextEpisodeDialog = false
+        playbackDecodingError = null
         handleIntent(intent)
         val controller = mediaController
         if (controller != null) {
@@ -1404,13 +1432,20 @@ class LocalPlayerActivity : FragmentActivity() {
                     }
 
                     override fun onPlaybackStateChanged(state: Int) {
-                        if (state == Player.STATE_ENDED) {
+                        if (state == Player.STATE_READY) {
+                            playbackDecodingError = null
+                        } else if (state == Player.STATE_ENDED) {
                             saveCurrentProgress(controller)
                         }
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
                         Log.e(TAG, "Player error encountered during playback: ${error.message}", error)
+                        if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_LOCAL) {
+                            resolvePlaybackDecodingError(error)?.let { decodingError ->
+                                playbackDecodingError = decodingError
+                            }
+                        }
                     }
                 })
                 return@launch
@@ -1591,6 +1626,7 @@ class LocalPlayerActivity : FragmentActivity() {
                     }
                 }
 
+                playbackDecodingError = null
                 controller.setMediaItem(itemToPlay, startPosition)
                 controller.prepare()
                 controller.playWhenReady = true
@@ -1634,6 +1670,13 @@ class LocalPlayerActivity : FragmentActivity() {
                 startProgressTicker(controller)
                 updateCachedAudioTracks(controller.currentTracks)
                 prepareSubtitleTrackIfNeeded(controller.currentTracks)
+                if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_LOCAL) {
+                    controller.playerError?.let { existingError ->
+                        resolvePlaybackDecodingError(existingError)?.let { decodingError ->
+                            playbackDecodingError = decodingError
+                        }
+                    }
+                }
             } else if (pendingMediaUri == null) {
                 finish()
                 return@launch
@@ -1657,6 +1700,7 @@ class LocalPlayerActivity : FragmentActivity() {
 
                 override fun onPlaybackStateChanged(state: Int) {
                     if (state == Player.STATE_READY) {
+                        playbackDecodingError = null
                         prepareSubtitleTrackIfNeeded(controller.currentTracks)
                     }
                 }
@@ -1695,6 +1739,10 @@ class LocalPlayerActivity : FragmentActivity() {
                                 controller.prepare()
                                 controller.playWhenReady = true
                             }
+                        }
+                    } else if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_LOCAL) {
+                        resolvePlaybackDecodingError(error)?.let { decodingError ->
+                            playbackDecodingError = decodingError
                         }
                     }
                 }
@@ -2354,6 +2402,11 @@ class LocalPlayerActivity : FragmentActivity() {
                 .build()
         } else {
             controller.trackSelectionParameters = parameters.build()
+        }
+
+        if (type == PlaybackTrackType.AUDIO && controller.deviceInfo.playbackType != DeviceInfo.PLAYBACK_TYPE_REMOTE && controller.playbackState == Player.STATE_IDLE) {
+            controller.prepare()
+            controller.playWhenReady = true
         }
 
         if (type == PlaybackTrackType.AUDIO && cachedAudioTrackOptions.isNotEmpty() && option != null) {

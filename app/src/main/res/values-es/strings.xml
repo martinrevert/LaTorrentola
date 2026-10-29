@@ -399,4 +399,14 @@
     <string name="series_status_remaining_ended_message">Aunque la serie ya finalizó su emisión en TMDB, aún quedan %1$d capítulo(s) restantes por ver, pero no se encontraron torrents disponibles para S%2$02dE%3$02d.</string>
     <string name="series_status_remaining_continuing_message">Aún quedan %1$d capítulo(s) restantes y la serie continúa, pero por el momento no hay torrents disponibles para S%2$02dE%3$02d.</string>
     <string name="series_status_understood">Entendido</string>
+
+    <!-- Player Decoding Error Dialog -->
+    <string name="player_decoding_error_video_title">Formato de video no compatible</string>
+    <string name="player_decoding_error_audio_title">Error de decodificación de audio</string>
+    <string name="player_decoding_error_video_message_with_codec">Este dispositivo no pudo decodificar la pista de video (%1$s) porque supera las capacidades del decodificador local. Prueba seleccionando otra versión compatible (por ejemplo, x264 / 8-bit).</string>
+    <string name="player_decoding_error_video_message_generic">Este dispositivo no pudo decodificar la pista de video porque supera las capacidades del decodificador local. Prueba seleccionando otra versión compatible.</string>
+    <string name="player_decoding_error_audio_message_with_codec">Este dispositivo no pudo decodificar la pista de audio (%1$s). Prueba seleccionando otra pista de audio o versión.</string>
+    <string name="player_decoding_error_audio_message_generic">Este dispositivo no pudo decodificar la pista de audio. Prueba seleccionando otra pista de audio o versión.</string>
+    <string name="player_decoding_error_close">Cerrar reproductor</string>
+    <string name="player_decoding_error_change_audio">Cambiar audio</string>
 </resources>
