@@ -284,6 +284,12 @@ class TorrentDownloadService : Service() {
                             }
                         }
                         updateDownloadState(requestedHash, STATE_PAUSED)
+                        if (_activeBufferState.value?.infoHash.equals(requestedHash, ignoreCase = true)) {
+                            _activeBufferState.value = _activeBufferState.value?.copy(
+                                state = STATE_PAUSED,
+                                downloadSpeedBytes = 0L
+                            )
+                        }
                         if (!isActive) {
                             withContext(Dispatchers.Main) {
                                 if (!workerStarted && streamServers.isEmpty()) {
@@ -360,11 +366,21 @@ class TorrentDownloadService : Service() {
                     val active = synchronized(queueLock) {
                         if (activeInfoHash == requestedHash) {
                             deletedActiveHashes.add(requestedHash)
+                            activeInfoHash = null
                             true
                         } else {
                             downloadQueue.removeAll { it.infoHash == requestedHash }
                             false
                         }
+                    }
+                    if (_activeBufferState.value?.infoHash.equals(requestedHash, ignoreCase = true)) {
+                        _activeBufferState.value = null
+                    }
+                    try {
+                        PlaybackService.stopPlayback(this@TorrentDownloadService, onlyInfoHash = requestedHash)
+                        LocalPlayerActivity.finishBackgroundPlayer(onlyInfoHash = requestedHash)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error stopping playback during delete", e)
                     }
                     streamServers.remove(requestedHash)?.stop()
                     readyPlayerIntents.remove(requestedHash)
@@ -457,6 +473,13 @@ class TorrentDownloadService : Service() {
             }
 
             if (infoHash == activeInfoHash) {
+                synchronized(sessionLock) {
+                    sessionManager
+                        ?.find(Sha1Hash.parseHex(infoHash))
+                        ?.takeIf { it.isValid }
+                        ?.resume()
+                }
+                updateDownloadState(infoHash, STATE_DOWNLOADING)
                 openWhenReadyHashes.add(infoHash)
                 activeRequest?.castWhenReady = castWhenReady
                 return@launch
@@ -740,6 +763,13 @@ class TorrentDownloadService : Service() {
 
             openWhenReadyHashes.add(infoHash)
             if (infoHash == activeInfoHash) {
+                synchronized(sessionLock) {
+                    sessionManager
+                        ?.find(Sha1Hash.parseHex(infoHash))
+                        ?.takeIf { it.isValid }
+                        ?.resume()
+                }
+                updateDownloadState(infoHash, STATE_DOWNLOADING)
                 activeRequest?.castWhenReady = effectiveCast
                 return
             }

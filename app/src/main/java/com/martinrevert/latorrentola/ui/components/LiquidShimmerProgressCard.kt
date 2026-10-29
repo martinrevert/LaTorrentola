@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -55,12 +56,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.media3.session.MediaController
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface as TvSurface
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
 import com.martinrevert.latorrentola.model.torrent.PlaybackCompatibility
+import com.martinrevert.latorrentola.model.torrent.TorrentDownload
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.Torrent
@@ -68,7 +71,10 @@ import com.martinrevert.latorrentola.service.TorrentDownloadService
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.utils.MediaControllerHelper
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.utils.TorrentCardAction
+import com.martinrevert.latorrentola.utils.TorrentCardActionHandler
 import com.martinrevert.latorrentola.utils.isTvDevice
 import java.util.Locale
 
@@ -235,6 +241,7 @@ fun LiquidShimmerProgressSurface(
                 interactionSource = interactionSource,
                 modifier = modifier
                     .fillMaxWidth()
+                    .tvDpadLongClickable(onLongClick)
                     .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             ) {
                 internalContent()
@@ -517,28 +524,46 @@ fun TorrentReleaseShimmerCard(
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
     focusRequester: FocusRequester? = null,
-    themeMode: Int? = null
+    themeMode: Int? = null,
+    download: TorrentDownload? = null,
+    mediaController: MediaController? = null
 ) {
     val activeBuffer by TorrentDownloadService.activeBufferState.collectAsState()
+    val playbackTick = MediaControllerHelper.rememberPlaybackTick(mediaController)
     val torrentHash = release.hash
-    val isActive = remember(activeBuffer, torrentHash) {
-        torrentHash.isNotBlank() && activeBuffer?.infoHash.equals(torrentHash, ignoreCase = true)
+    val visualState = remember(
+        torrentHash,
+        download,
+        activeBuffer,
+        playbackTick,
+        mediaController?.isPlaying,
+        mediaController?.playbackState,
+        mediaController?.currentMediaItem,
+        mediaController?.currentMediaItem?.mediaId
+    ) {
+        TorrentCardActionHandler.resolveVisualState(
+            releaseHash = torrentHash,
+            releaseSeeds = release.seeds,
+            releasePeers = release.peers,
+            download = download,
+            activeBuffer = activeBuffer,
+            mediaController = mediaController
+        )
     }
 
-    val readyProgress = when {
-        isActive -> activeBuffer?.readyProgress ?: 0f
-        isDownloaded -> 1.0f
-        else -> 0f
-    }
-    val downloadSpeed = if (isActive) activeBuffer?.downloadSpeedBytes ?: 0L else 0L
-    val seeds = if (isActive && (activeBuffer?.numSeeds ?: 0) > 0) activeBuffer?.numSeeds ?: release.seeds else release.seeds
-    val peers = if (isActive && (activeBuffer?.numPeers ?: 0) > 0) activeBuffer?.numPeers ?: release.peers else release.peers
+    val isActive = visualState.isActive
+    val hasIncompleteLocalTransfer = (download != null && !visualState.isDownloaded) || (isActive && !visualState.isDownloaded)
+    val isFullyDownloaded = visualState.isDownloaded || (isDownloaded && !hasIncompleteLocalTransfer)
+    val readyProgress = if (isFullyDownloaded) 1.0f else visualState.readyProgress
+    val downloadSpeed = visualState.downloadSpeedBytes
+    val seeds = visualState.seeds
+    val peers = visualState.peers
 
     LiquidShimmerProgressSurface(
         progress = readyProgress,
         isActive = isActive,
         onClick = onClick,
-        onLongClick = onLongClick,
+        onLongClick = if (visualState.canDelete || isDownloaded) onLongClick else null,
         focusRequester = focusRequester,
         themeMode = themeMode,
         modifier = modifier
@@ -690,19 +715,30 @@ fun TorrentReleaseShimmerCard(
             }
 
             // Action / download state badge
+            val actionIcon = when (visualState.action) {
+                TorrentCardAction.PAUSE_DOWNLOAD -> Icons.Default.Pause
+                TorrentCardAction.RESUME_DOWNLOAD -> Icons.Default.Download
+                TorrentCardAction.START_DOWNLOAD -> {
+                    if (isFullyDownloaded) Icons.Default.CloudDone else Icons.Default.PlayArrow
+                }
+                TorrentCardAction.PAUSE_MEDIA -> Icons.Default.Pause
+                TorrentCardAction.PLAY_MEDIA -> Icons.Default.PlayArrow
+            }
+
+            val actionDesc = when (visualState.action) {
+                TorrentCardAction.PAUSE_DOWNLOAD,
+                TorrentCardAction.PAUSE_MEDIA -> stringResource(R.string.pause_desc)
+                TorrentCardAction.RESUME_DOWNLOAD,
+                TorrentCardAction.START_DOWNLOAD -> {
+                    if (isFullyDownloaded) stringResource(R.string.downloaded_desc)
+                    else stringResource(R.string.tv_download_torrent_desc)
+                }
+                TorrentCardAction.PLAY_MEDIA -> stringResource(R.string.play_desc)
+            }
+
             Icon(
-                imageVector = when {
-                    isActive -> Icons.Default.Download
-                    isDownloaded -> Icons.Default.CloudDone
-                    else -> Icons.Default.PlayArrow
-                },
-                contentDescription = if (isActive) {
-                    stringResource(R.string.tv_download_torrent_desc)
-                } else if (isDownloaded) {
-                    stringResource(R.string.downloaded_desc)
-                } else {
-                    stringResource(R.string.play_desc)
-                },
+                imageVector = actionIcon,
+                contentDescription = actionDesc,
                 tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.size(28.dp)
             )

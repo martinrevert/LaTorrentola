@@ -2,10 +2,12 @@ package com.martinrevert.latorrentola.ui.detail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails
+import com.martinrevert.latorrentola.model.torrent.TorrentDownload
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
@@ -35,14 +37,20 @@ import javax.inject.Inject
  * @property tvEpisodeReleasesRepository Single source of truth for unified episode torrent releases.
  * @property userLibraryRepository Firestore persistence for downloaded episode records.
  * @property preferenceManager Provides the selected torrent handling mode.
+ * @property torrentDownloadDao Observes local torrent download states.
  */
 @HiltViewModel
 class TvEpisodeDetailViewModel @Inject constructor(
     private val tmdbRepository: TmdbRepository,
     private val tvEpisodeReleasesRepository: TvEpisodeReleasesRepository,
     private val userLibraryRepository: UserLibraryRepository,
-    private val preferenceManager: PreferenceManager
+    private val preferenceManager: PreferenceManager,
+    private val torrentDownloadDao: TorrentDownloadDao
 ) : ViewModel() {
+
+    val allDownloads: StateFlow<List<TorrentDownload>> =
+        torrentDownloadDao.observeAll()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Torrent handling mode selected in Settings. */
     val torrentHandlingMode: StateFlow<TorrentHandlingMode> =
@@ -261,6 +269,13 @@ class TvEpisodeDetailViewModel @Inject constructor(
                     stillPath = episode.stillPath
                 )
             )
+        }
+    }
+
+    /** Removes a downloaded episode record by its torrent hash. */
+    fun removeEpisodeDownload(hash: String) {
+        viewModelScope.launch {
+            userLibraryRepository.removeDownloadedEpisodeByHash(hash)
         }
     }
 

@@ -283,7 +283,7 @@ class PlaybackService : MediaSessionService() {
                             queueItemBuilder.setCustomData(it)
                         }
                         val initialActiveTrackIds = mutableListOf<Long>()
-                        if (castMediaTracks.isNotEmpty()) {
+                        if (castMediaTracks.isNotEmpty() && preferenceManager.areSubtitlesEnabled()) {
                             initialActiveTrackIds.add(1L)
                         }
                         if (activeAudioTrackId != null) {
@@ -489,6 +489,17 @@ class PlaybackService : MediaSessionService() {
         val mediaStatus = client.mediaStatus ?: return
         val currentContentId = mediaStatus.mediaInfo?.contentId ?: return
 
+        if (!preferenceManager.areSubtitlesEnabled()) {
+            val textTracks = mediaStatus.mediaInfo?.mediaTracks.orEmpty().filter { it.type == MediaTrack.TYPE_TEXT }.map { it.id }.toSet()
+            val currentActive = mediaStatus.activeTrackIds?.toMutableList() ?: mutableListOf()
+            if (currentActive.any { textTracks.contains(it) }) {
+                currentActive.removeAll(textTracks)
+                client.setActiveMediaTracks(currentActive.toLongArray())
+                Log.i(TAG, "Subtitles disabled in preferences - cleared Cast active text tracks")
+            }
+            return
+        }
+
         // Wait until playback actually begins to avoid Invalid Request errors on CAF receivers
         if (mediaStatus.playerState == com.google.android.gms.cast.MediaStatus.PLAYER_STATE_PLAYING) {
             val tracks = mediaStatus.mediaInfo?.mediaTracks.orEmpty()
@@ -499,7 +510,10 @@ class PlaybackService : MediaSessionService() {
                 val trackKey = "${currentContentId}_track_${textTrack.id}"
                 if (!activeTrackIds.contains(textTrack.id) && lastActivatedTrackContentId != trackKey) {
                     lastActivatedTrackContentId = trackKey
-                    client.setActiveMediaTracks(longArrayOf(textTrack.id))
+                    val textTrackIds = tracks.filter { it.type == MediaTrack.TYPE_TEXT }.map { it.id }.toSet()
+                    val updatedTracks = activeTrackIds.filterNot { textTrackIds.contains(it) }.toMutableList()
+                    updatedTracks.add(textTrack.id)
+                    client.setActiveMediaTracks(updatedTracks.toLongArray())
                         .setResultCallback { result ->
                             if (!result.status.isSuccess) {
                                 lastActivatedTrackContentId = null
@@ -664,10 +678,23 @@ class PlaybackService : MediaSessionService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP_PLAYBACK) {
             val exceptHash = intent.getStringExtra(EXTRA_EXCEPT_INFO_HASH).orEmpty()
-            val currentId = mediaSession?.player?.currentMediaItem?.mediaId.orEmpty()
-            val isSameMedia = exceptHash.isNotBlank() && currentId.contains(exceptHash, ignoreCase = true)
-            if (!isSameMedia) {
-                Log.i(TAG, "ACTION_STOP_PLAYBACK received: stopping media (currentId=$currentId, exceptHash=$exceptHash)")
+            val onlyHash = intent.getStringExtra(EXTRA_ONLY_INFO_HASH).orEmpty()
+            val currentItem = mediaSession?.player?.currentMediaItem
+            val currentId = currentItem?.mediaId.orEmpty()
+            val currentInfoHash = currentItem?.mediaMetadata?.extras?.getString("torrent_info_hash").orEmpty()
+            val matchesHash = { hash: String ->
+                hash.isNotBlank() && (
+                    (currentInfoHash.isNotBlank() && currentInfoHash.equals(hash, ignoreCase = true)) ||
+                    currentId.contains(hash, ignoreCase = true)
+                )
+            }
+            val shouldStop = when {
+                onlyHash.isNotBlank() -> matchesHash(onlyHash)
+                exceptHash.isNotBlank() -> !matchesHash(exceptHash)
+                else -> true
+            }
+            if (shouldStop) {
+                Log.i(TAG, "ACTION_STOP_PLAYBACK received: stopping media (currentId=$currentId, exceptHash=$exceptHash, onlyHash=$onlyHash)")
                 saveCurrentProgress(mediaSession?.player)
                 mediaSession?.player?.stop()
                 mediaSession?.player?.clearMediaItems()
@@ -683,12 +710,20 @@ class PlaybackService : MediaSessionService() {
         const val EXTRA_CAST_URL = "extra_cast_url"
         const val ACTION_STOP_PLAYBACK = "com.martinrevert.latorrentola.action.STOP_PLAYBACK"
         const val EXTRA_EXCEPT_INFO_HASH = "extra_except_info_hash"
+        const val EXTRA_ONLY_INFO_HASH = "extra_only_info_hash"
 
-        fun stopPlayback(context: android.content.Context, exceptInfoHash: String? = null) {
+        fun stopPlayback(
+            context: android.content.Context,
+            exceptInfoHash: String? = null,
+            onlyInfoHash: String? = null
+        ) {
             val intent = Intent(context, PlaybackService::class.java).apply {
                 action = ACTION_STOP_PLAYBACK
                 if (!exceptInfoHash.isNullOrBlank()) {
                     putExtra(EXTRA_EXCEPT_INFO_HASH, exceptInfoHash)
+                }
+                if (!onlyInfoHash.isNullOrBlank()) {
+                    putExtra(EXTRA_ONLY_INFO_HASH, onlyInfoHash)
                 }
             }
             try {

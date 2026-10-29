@@ -285,6 +285,132 @@ fun TorrentDownloadsScreen(
                         val isPauseResumePending = download.infoHash in pendingPauseResumeHashes
                         val isDeletePending = download.infoHash in pendingDeleteHashes
 
+                        val playItem: (Boolean) -> Unit = { cast ->
+                            LocalPlayerActivity.finishBackgroundPlayer(exceptInfoHash = download.infoHash)
+                            val hash = download.infoHash
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            pendingPlayHashes = pendingPlayHashes + hash
+                            coroutineScope.launch {
+                                val start = System.currentTimeMillis()
+                                while (System.currentTimeMillis() - start < 3500) {
+                                    delay(200)
+                                    if (activeMediaId.contains(hash, ignoreCase = true) || isMediaPlaying) break
+                                }
+                                pendingPlayHashes = pendingPlayHashes - hash
+                            }
+
+                            val readyIntent = TorrentDownloadService.getReadyPlayerIntent(download.infoHash)
+                            val completedFile = download.mediaPath?.let(::File)?.takeIf { it.isFile && it.canRead() }
+
+                            if (isTv || cast) {
+                                if (readyIntent != null) {
+                                    val launchIntent = Intent(readyIntent).apply {
+                                        putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, cast)
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(launchIntent)
+                                } else if (download.state == TorrentDownloadService.STATE_COMPLETED && completedFile != null) {
+                                    val launchIntent = Intent(context, LocalPlayerActivity::class.java).apply {
+                                        putExtra(LocalPlayerActivity.EXTRA_FILE_PATH, completedFile.absolutePath)
+                                        putExtra(LocalPlayerActivity.EXTRA_INFO_HASH, download.infoHash)
+                                        putExtra(LocalPlayerActivity.EXTRA_TITLE, download.title)
+                                        putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, download.posterUrl)
+                                        putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, cast)
+                                        if (download.seriesId != null) putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, download.seriesId)
+                                        if (effSeason != null) putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, effSeason)
+                                        if (effEpisode != null) putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, effEpisode)
+                                        if (download.movieId != null) putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, download.movieId)
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(launchIntent)
+                                } else if (isTv && isActive) {
+                                    mediaController?.play()
+                                    val launchIntent = Intent(context, LocalPlayerActivity::class.java).apply {
+                                        putExtra(LocalPlayerActivity.EXTRA_INFO_HASH, download.infoHash)
+                                        putExtra(LocalPlayerActivity.EXTRA_TITLE, download.title)
+                                        putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, download.posterUrl)
+                                        putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, cast)
+                                        if (download.seriesId != null) putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, download.seriesId)
+                                        if (effSeason != null) putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, effSeason)
+                                        if (effEpisode != null) putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, effEpisode)
+                                        if (download.movieId != null) putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, download.movieId)
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(launchIntent)
+                                } else {
+                                    val serviceIntent = Intent(context, TorrentDownloadService::class.java).apply {
+                                        action = if (download.state == TorrentDownloadService.STATE_READY || download.state == TorrentDownloadService.STATE_COMPLETED) {
+                                            TorrentDownloadService.ACTION_PLAY_STREAM
+                                        } else {
+                                            TorrentDownloadService.ACTION_DOWNLOAD
+                                        }
+                                        putExtra(TorrentDownloadService.EXTRA_INFO_HASH, download.infoHash)
+                                        putExtra(TorrentDownloadService.EXTRA_CAST_WHEN_READY, cast)
+                                        if (download.seriesId != null) putExtra(TorrentDownloadService.EXTRA_SERIES_ID, download.seriesId)
+                                        if (effSeason != null) putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, effSeason)
+                                        if (effEpisode != null) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, effEpisode)
+                                        if (download.movieId != null) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, download.movieId)
+                                        if (!download.posterUrl.isNullOrBlank()) {
+                                            putExtra(TorrentDownloadService.EXTRA_POSTER_URL, download.posterUrl)
+                                        }
+                                        putExtra(TorrentDownloadService.EXTRA_TITLE, download.title)
+                                        if (download.magnetUri.isNotBlank()) {
+                                            putExtra(TorrentDownloadService.EXTRA_MAGNET_URI, download.magnetUri)
+                                        }
+                                    }
+                                    context.startService(serviceIntent)
+                                }
+                            } else {
+                                // Mobile / Tablet local playback -> Play in Floating PIP
+                                val currentMedia = mediaController?.currentMediaItem
+                                val curMediaId = currentMedia?.mediaId.orEmpty()
+                                val curInfoHash = currentMedia?.mediaMetadata?.extras?.getString(LocalPlayerActivity.EXTRA_INFO_HASH).orEmpty()
+                                val isAlreadyLoaded = (curInfoHash.isNotBlank() && curInfoHash.equals(download.infoHash, ignoreCase = true)) ||
+                                    curMediaId == download.infoHash ||
+                                    curMediaId.contains(download.infoHash, ignoreCase = true) ||
+                                    (download.movieId != null && download.movieId > 0 && curMediaId == download.movieId.toString()) ||
+                                    (canonicalEpisodeId != null && curMediaId == canonicalEpisodeId) ||
+                                    hasMatchingEpisodeToken ||
+                                    activeMediaTitle.equals(download.title, ignoreCase = true)
+
+                                if (isAlreadyLoaded) {
+                                    mediaController?.play()
+                                } else if (readyIntent != null) {
+                                    val mediaItem = PlayerIntentUtils.buildMediaItem(readyIntent)
+                                    mediaController?.setMediaItem(mediaItem)
+                                    mediaController?.prepare()
+                                    mediaController?.play()
+                                } else if (download.state == TorrentDownloadService.STATE_COMPLETED && completedFile != null) {
+                                    val mediaItem = PlayerIntentUtils.buildMediaItem(download, completedFile)
+                                    mediaController?.setMediaItem(mediaItem)
+                                    mediaController?.prepare()
+                                    mediaController?.play()
+                                } else {
+                                    val serviceIntent = Intent(context, TorrentDownloadService::class.java).apply {
+                                        action = if (download.state == TorrentDownloadService.STATE_READY || download.state == TorrentDownloadService.STATE_COMPLETED) {
+                                            TorrentDownloadService.ACTION_PLAY_STREAM
+                                        } else {
+                                            TorrentDownloadService.ACTION_DOWNLOAD
+                                        }
+                                        putExtra(TorrentDownloadService.EXTRA_INFO_HASH, download.infoHash)
+                                        putExtra(TorrentDownloadService.EXTRA_CAST_WHEN_READY, false)
+                                        if (download.seriesId != null) putExtra(TorrentDownloadService.EXTRA_SERIES_ID, download.seriesId)
+                                        if (effSeason != null) putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, effSeason)
+                                        if (effEpisode != null) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, effEpisode)
+                                        if (download.movieId != null) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, download.movieId)
+                                        if (!download.posterUrl.isNullOrBlank()) {
+                                            putExtra(TorrentDownloadService.EXTRA_POSTER_URL, download.posterUrl)
+                                        }
+                                        putExtra(TorrentDownloadService.EXTRA_TITLE, download.title)
+                                        if (download.magnetUri.isNotBlank()) {
+                                            putExtra(TorrentDownloadService.EXTRA_MAGNET_URI, download.magnetUri)
+                                        }
+                                    }
+                                    context.startService(serviceIntent)
+                                }
+                            }
+                        }
+
                         TorrentDownloadItem(
                             download = download,
                             isTv = isTv,
@@ -296,19 +422,27 @@ fun TorrentDownloadsScreen(
                             isPauseResumePending = isPauseResumePending,
                             isDeletePending = isDeletePending,
                             onToggleActivePlayback = {
-                                LocalPlayerActivity.finishBackgroundPlayer()
-                                val hash = download.infoHash
-                                val previousPlaying = isMediaPlaying
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                pendingPlayHashes = pendingPlayHashes + hash
-                                if (isMediaPlaying) mediaController?.pause() else mediaController?.play()
-                                coroutineScope.launch {
-                                    val start = System.currentTimeMillis()
-                                    while (System.currentTimeMillis() - start < 3500) {
-                                        delay(150)
-                                        if (isMediaPlaying != previousPlaying) break
+                                if (isTv) {
+                                    if (!isMediaPlaying) {
+                                        playItem(isCasting)
+                                    } else {
+                                        mediaController?.pause()
                                     }
-                                    pendingPlayHashes = pendingPlayHashes - hash
+                                } else {
+                                    LocalPlayerActivity.finishBackgroundPlayer()
+                                    val hash = download.infoHash
+                                    val previousPlaying = isMediaPlaying
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    pendingPlayHashes = pendingPlayHashes + hash
+                                    if (isMediaPlaying) mediaController?.pause() else mediaController?.play()
+                                    coroutineScope.launch {
+                                        val start = System.currentTimeMillis()
+                                        while (System.currentTimeMillis() - start < 3500) {
+                                            delay(150)
+                                            if (isMediaPlaying != previousPlaying) break
+                                        }
+                                        pendingPlayHashes = pendingPlayHashes - hash
+                                    }
                                 }
                             },
                             onPauseResume = {
@@ -331,123 +465,24 @@ fun TorrentDownloadsScreen(
                                 val hash = download.infoHash
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 pendingDeleteHashes = pendingDeleteHashes + hash
-                                viewModel.delete(context, download)
-                                coroutineScope.launch {
-                                    delay(4000)
-                                    pendingDeleteHashes = pendingDeleteHashes - hash
+                                if (isActive) {
+                                    try {
+                                        mediaController?.stop()
+                                        mediaController?.clearMediaItems()
+                                        LocalPlayerActivity.finishBackgroundPlayer(exceptInfoHash = null)
+                                    } catch (_: Exception) {}
                                 }
-                            },
-                            onPlay = { cast ->
-                                LocalPlayerActivity.finishBackgroundPlayer()
-                                val hash = download.infoHash
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                pendingPlayHashes = pendingPlayHashes + hash
+                                viewModel.delete(context, download)
                                 coroutineScope.launch {
                                     val start = System.currentTimeMillis()
                                     while (System.currentTimeMillis() - start < 3500) {
-                                        delay(200)
-                                        if (activeMediaId.contains(hash, ignoreCase = true) || isMediaPlaying) break
+                                        delay(150)
+                                        if (downloads.none { it.infoHash == hash }) break
                                     }
-                                    pendingPlayHashes = pendingPlayHashes - hash
+                                    pendingDeleteHashes = pendingDeleteHashes - hash
                                 }
-
-                                val readyIntent = TorrentDownloadService.getReadyPlayerIntent(download.infoHash)
-                                val completedFile = download.mediaPath?.let(::File)?.takeIf { it.isFile && it.canRead() }
-
-                                if (isTv || cast) {
-                                    if (readyIntent != null) {
-                                        val launchIntent = Intent(readyIntent).apply {
-                                            putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, cast)
-                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        }
-                                        context.startActivity(launchIntent)
-                                    } else if (download.state == TorrentDownloadService.STATE_COMPLETED && completedFile != null) {
-                                        val launchIntent = Intent(context, LocalPlayerActivity::class.java).apply {
-                                            putExtra(LocalPlayerActivity.EXTRA_FILE_PATH, completedFile.absolutePath)
-                                            putExtra(LocalPlayerActivity.EXTRA_INFO_HASH, download.infoHash)
-                                            putExtra(LocalPlayerActivity.EXTRA_TITLE, download.title)
-                                            putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, download.posterUrl)
-                                            putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, cast)
-                                            if (download.seriesId != null) putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, download.seriesId)
-                                            if (effSeason != null) putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, effSeason)
-                                            if (effEpisode != null) putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, effEpisode)
-                                            if (download.movieId != null) putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, download.movieId)
-                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        }
-                                        context.startActivity(launchIntent)
-                                    } else {
-                                        val serviceIntent = Intent(context, TorrentDownloadService::class.java).apply {
-                                            action = if (download.state == TorrentDownloadService.STATE_READY || download.state == TorrentDownloadService.STATE_COMPLETED) {
-                                                TorrentDownloadService.ACTION_PLAY_STREAM
-                                            } else {
-                                                TorrentDownloadService.ACTION_DOWNLOAD
-                                            }
-                                            putExtra(TorrentDownloadService.EXTRA_INFO_HASH, download.infoHash)
-                                            putExtra(TorrentDownloadService.EXTRA_CAST_WHEN_READY, cast)
-                                            if (download.seriesId != null) putExtra(TorrentDownloadService.EXTRA_SERIES_ID, download.seriesId)
-                                            if (effSeason != null) putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, effSeason)
-                                            if (effEpisode != null) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, effEpisode)
-                                            if (download.movieId != null) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, download.movieId)
-                                            if (!download.posterUrl.isNullOrBlank()) {
-                                                putExtra(TorrentDownloadService.EXTRA_POSTER_URL, download.posterUrl)
-                                            }
-                                            putExtra(TorrentDownloadService.EXTRA_TITLE, download.title)
-                                            if (download.magnetUri.isNotBlank()) {
-                                                putExtra(TorrentDownloadService.EXTRA_MAGNET_URI, download.magnetUri)
-                                            }
-                                        }
-                                        context.startService(serviceIntent)
-                                    }
-                                } else {
-                                    // Mobile / Tablet local playback -> Play in Floating PIP
-                                    val currentMedia = mediaController?.currentMediaItem
-                                    val curMediaId = currentMedia?.mediaId.orEmpty()
-                                    val curInfoHash = currentMedia?.mediaMetadata?.extras?.getString(LocalPlayerActivity.EXTRA_INFO_HASH).orEmpty()
-                                    val isAlreadyLoaded = (curInfoHash.isNotBlank() && curInfoHash.equals(download.infoHash, ignoreCase = true)) ||
-                                        curMediaId == download.infoHash ||
-                                        curMediaId.contains(download.infoHash, ignoreCase = true) ||
-                                        (download.movieId != null && download.movieId > 0 && curMediaId == download.movieId.toString()) ||
-                                        (canonicalEpisodeId != null && curMediaId == canonicalEpisodeId) ||
-                                        hasMatchingEpisodeToken ||
-                                        activeMediaTitle.equals(download.title, ignoreCase = true)
-
-                                    if (isAlreadyLoaded) {
-                                        mediaController?.play()
-                                    } else if (readyIntent != null) {
-                                        val mediaItem = PlayerIntentUtils.buildMediaItem(readyIntent)
-                                        mediaController?.setMediaItem(mediaItem)
-                                        mediaController?.prepare()
-                                        mediaController?.play()
-                                    } else if (download.state == TorrentDownloadService.STATE_COMPLETED && completedFile != null) {
-                                        val mediaItem = PlayerIntentUtils.buildMediaItem(download, completedFile)
-                                        mediaController?.setMediaItem(mediaItem)
-                                        mediaController?.prepare()
-                                        mediaController?.play()
-                                    } else {
-                                        val serviceIntent = Intent(context, TorrentDownloadService::class.java).apply {
-                                            action = if (download.state == TorrentDownloadService.STATE_READY || download.state == TorrentDownloadService.STATE_COMPLETED) {
-                                                TorrentDownloadService.ACTION_PLAY_STREAM
-                                            } else {
-                                                TorrentDownloadService.ACTION_DOWNLOAD
-                                            }
-                                            putExtra(TorrentDownloadService.EXTRA_INFO_HASH, download.infoHash)
-                                            putExtra(TorrentDownloadService.EXTRA_CAST_WHEN_READY, false)
-                                            if (download.seriesId != null) putExtra(TorrentDownloadService.EXTRA_SERIES_ID, download.seriesId)
-                                            if (effSeason != null) putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, effSeason)
-                                            if (effEpisode != null) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, effEpisode)
-                                            if (download.movieId != null) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, download.movieId)
-                                            if (!download.posterUrl.isNullOrBlank()) {
-                                                putExtra(TorrentDownloadService.EXTRA_POSTER_URL, download.posterUrl)
-                                            }
-                                            putExtra(TorrentDownloadService.EXTRA_TITLE, download.title)
-                                            if (download.magnetUri.isNotBlank()) {
-                                                putExtra(TorrentDownloadService.EXTRA_MAGNET_URI, download.magnetUri)
-                                            }
-                                        }
-                                        context.startService(serviceIntent)
-                                    }
-                                }
-                            }
+                            },
+                            onPlay = playItem
                         )
                     }
                 }
@@ -649,7 +684,11 @@ private fun TorrentDownloadItem(
                         TvIconButton(
                             onClick = {
                                 if (playActionEnabled) {
-                                    if (isActive) onToggleActivePlayback() else onPlay(isCasting)
+                                    if (shouldOpenFullscreenOnTvPlay(isTv = true, isActive = isActive, isPlaying = isPlaying)) {
+                                        onPlay(isCasting)
+                                    } else {
+                                        onToggleActivePlayback()
+                                    }
                                 }
                             },
                             modifier = Modifier.focusHighlight(shape = CircleShape)
@@ -911,3 +950,7 @@ private fun TorrentDownloadItemTvPreview() {
         }
     }
 }
+
+internal fun shouldOpenFullscreenOnTvPlay(isTv: Boolean, isActive: Boolean, isPlaying: Boolean): Boolean =
+    isTv && (!isActive || !isPlaying)
+

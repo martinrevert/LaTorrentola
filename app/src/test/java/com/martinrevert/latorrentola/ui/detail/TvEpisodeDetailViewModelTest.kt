@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.ui.detail
 
 import com.google.common.truth.Truth.assertThat
+import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
 import com.martinrevert.latorrentola.model.torrent.PlaybackCompatibility
@@ -18,6 +19,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
@@ -33,6 +35,7 @@ class TvEpisodeDetailViewModelTest {
     private val tvEpisodeReleasesRepository: TvEpisodeReleasesRepository = mockk(relaxed = true)
     private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
     private val preferenceManager: PreferenceManager = mockk(relaxed = true)
+    private val torrentDownloadDao: TorrentDownloadDao = mockk(relaxed = true)
     private val downloadsFlow = MutableStateFlow<List<DownloadedEpisode>>(emptyList())
     private val torrentModeFlow = MutableStateFlow(TorrentHandlingMode.EXTERNAL_CLIENT)
 
@@ -42,11 +45,13 @@ class TvEpisodeDetailViewModelTest {
     fun setUp() {
         every { userLibraryRepository.getDownloadedEpisodes() } returns downloadsFlow
         every { preferenceManager.torrentHandlingModeFlow } returns torrentModeFlow
+        every { torrentDownloadDao.observeAll() } returns flowOf(emptyList())
         viewModel = TvEpisodeDetailViewModel(
             tmdbRepository,
             tvEpisodeReleasesRepository,
             userLibraryRepository,
-            preferenceManager
+            preferenceManager,
+            torrentDownloadDao
         )
     }
 
@@ -408,5 +413,13 @@ class TvEpisodeDetailViewModelTest {
         assertThat(success.releasesByQuality[VideoQualityGroup.HD_720P]).hasSize(1)
 
         job.cancel()
+    }
+
+    @Test
+    fun `removeEpisodeDownload delegates hash removal to UserLibraryRepository`() = runTest {
+        viewModel.removeEpisodeDownload("EP_HASH_TO_REMOVE")
+        testScheduler.advanceUntilIdle()
+
+        coVerify { userLibraryRepository.removeDownloadedEpisodeByHash("EP_HASH_TO_REMOVE") }
     }
 }

@@ -149,4 +149,17 @@ class TorrentDownloadsViewModelTest {
         assertThat(actionSlot.captured).isEqualTo(TorrentDownloadService.ACTION_DELETE)
         assertThat(extraSlot.captured).isEqualTo("HASH123")
     }
+
+    @Test
+    fun `shouldOpenFullscreenOnTvPlay returns true when not active or stopped on TV`() {
+        // Android TV - Stopped/Paused player -> opens fullscreen
+        assertThat(shouldOpenFullscreenOnTvPlay(isTv = true, isActive = true, isPlaying = false)).isTrue()
+        // Android TV - Playing -> pauses in-place (false)
+        assertThat(shouldOpenFullscreenOnTvPlay(isTv = true, isActive = true, isPlaying = true)).isFalse()
+        // Android TV - Inactive download -> opens fullscreen / starts playback
+        assertThat(shouldOpenFullscreenOnTvPlay(isTv = true, isActive = false, isPlaying = false)).isTrue()
+        // Mobile - Handhelds use PiP/in-place toggle
+        assertThat(shouldOpenFullscreenOnTvPlay(isTv = false, isActive = true, isPlaying = false)).isFalse()
+        assertThat(shouldOpenFullscreenOnTvPlay(isTv = false, isActive = true, isPlaying = true)).isFalse()
+    }
 }

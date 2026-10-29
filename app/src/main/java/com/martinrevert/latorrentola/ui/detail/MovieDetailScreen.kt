@@ -58,6 +58,13 @@ import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.Abs
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.options.IFramePlayerOptions
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 import com.martinrevert.latorrentola.R
+import androidx.media3.session.MediaController
+import com.martinrevert.latorrentola.model.torrent.TorrentDownload
+import com.martinrevert.latorrentola.service.TorrentBufferState
+import com.martinrevert.latorrentola.service.TorrentDownloadService
+import com.martinrevert.latorrentola.ui.components.DeleteTorrentDownloadsDialog
+import com.martinrevert.latorrentola.utils.MediaControllerHelper
+import com.martinrevert.latorrentola.utils.TorrentCardActionHandler
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
 import com.martinrevert.latorrentola.ui.components.MovieTorrentShimmerCard
@@ -112,6 +119,9 @@ fun MovieDetailScreen(
     val torrentHandlingMode by viewModel.torrentHandlingMode.collectAsState()
     val selectedActorDetail by viewModel.selectedActorDetail.collectAsState()
     val isActorLoading by viewModel.isActorLoading.collectAsState()
+    val allDownloads by viewModel.allDownloads.collectAsState()
+    val mediaController by MediaControllerHelper.rememberMediaController()
+    val activeBuffer by TorrentDownloadService.activeBufferState.collectAsState()
     var showActorSheet by remember { mutableStateOf(false) }
     val actorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -136,6 +146,9 @@ fun MovieDetailScreen(
     MovieDetailScreenContent(
         uiState = uiState,
         downloadedHashes = downloadedHashes,
+        allDownloads = allDownloads,
+        mediaController = mediaController,
+        activeBuffer = activeBuffer,
         torrentHandlingMode = torrentHandlingMode,
         isWideScreen = isWideScreen,
         isTv = isTv,
@@ -165,6 +178,9 @@ fun MovieDetailScreen(
         },
         onReleaseClick = { movie, release ->
             viewModel.markAsDownloaded(movie, release.hash, release.qualityGroup.name)
+        },
+        onDeleteTorrent = { hash ->
+            viewModel.removeMovieDownload(hash)
         },
         onAddLanguageToFilter = { language ->
             viewModel.addLanguageToFilter(language) { error ->
@@ -202,6 +218,9 @@ fun MovieDetailScreen(
 private fun MovieDetailScreenContent(
     uiState: DetailUiState,
     downloadedHashes: Set<String>,
+    allDownloads: List<TorrentDownload> = emptyList(),
+    mediaController: MediaController? = null,
+    activeBuffer: TorrentBufferState? = null,
     torrentHandlingMode: TorrentHandlingMode = TorrentHandlingMode.EXTERNAL_CLIENT,
     isWideScreen: Boolean,
     isTv: Boolean,
@@ -214,6 +233,7 @@ private fun MovieDetailScreenContent(
     onFavoriteToggle: (Movie) -> Unit,
     onTorrentClick: (Movie, Torrent) -> Unit,
     onReleaseClick: (Movie, TorrentRelease) -> Unit = { _, _ -> },
+    onDeleteTorrent: (String) -> Unit = {},
     onAddLanguageToFilter: (String) -> Unit,
     onCastClick: (String) -> Unit,
     onDismissActorSheet: () -> Unit,
@@ -233,6 +253,7 @@ private fun MovieDetailScreenContent(
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
     val insufficientStorageState = remember { mutableStateOf<Pair<Long, Long>?>(null) }
+    var torrentToDelete by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -322,37 +343,38 @@ private fun MovieDetailScreenContent(
                         movie = uiState.movie,
                         releasesByQuality = uiState.releasesByQuality,
                         downloadedHashes = downloadedHashes,
+                        allDownloads = allDownloads,
+                        mediaController = mediaController,
                         torrentHandlingMode = torrentHandlingMode,
                         isWideScreen = isWideScreen,
                         isTv = isTv,
                         onTorrentClick = { onTorrentClick(uiState.movie, it) },
                         onReleaseClick = { release ->
                             val moviePoster = uiState.movie.mediumCoverImage ?: uiState.movie.largeCoverImage
-                            val magnetUri = release.magnetUrl.orEmpty().ifBlank {
-                                TorrentLaunchHelper.buildMagnetUri(release.hash, release.title)
-                            }
-                            val result = TorrentLaunchHelper.launch(
+                            val matchingDownload = allDownloads.firstOrNull { it.infoHash.equals(release.hash, ignoreCase = true) }
+                            TorrentCardActionHandler.performCardClick(
                                 context = context,
-                                mode = torrentHandlingMode,
-                                magnetUri = magnetUri,
-                                title = release.title,
+                                releaseHash = release.hash,
+                                releaseTitle = uiState.movie.title ?: release.title,
+                                releaseMagnetUri = release.magnetUrl.orEmpty(),
+                                releaseSizeBytes = release.sizeBytes,
+                                download = matchingDownload,
+                                activeBuffer = activeBuffer,
+                                mediaController = mediaController,
+                                isTv = isTv,
+                                torrentHandlingMode = torrentHandlingMode,
                                 movieId = uiState.movie.id,
                                 posterUrl = moviePoster,
-                                requiredSizeBytes = release.sizeBytes
-                            )
-                            when (result) {
-                                TorrentLaunchResult.Started -> {
+                                onInsufficientStorage = { available, required ->
+                                    insufficientStorageState.value = Pair(available, required)
+                                },
+                                onDownloadStarted = {
                                     onReleaseClick(uiState.movie, release)
-                                    val matchingYts = uiState.movie.torrents?.firstOrNull { it.hash.equals(release.hash, ignoreCase = true) }
-                                    if (matchingYts != null) {
-                                        onTorrentClick(uiState.movie, matchingYts)
-                                    }
                                 }
-                                is TorrentLaunchResult.InsufficientStorage -> {
-                                    insufficientStorageState.value = Pair(result.availableBytes, result.requiredBytes)
-                                }
-                                else -> {}
-                            }
+                            )
+                        },
+                        onReleaseLongClick = { release ->
+                            torrentToDelete = release.hash to (uiState.movie.title ?: release.title)
                         },
                         onAddLanguageToFilter = onAddLanguageToFilter,
                         onCastClick = onCastClick,
@@ -392,6 +414,20 @@ private fun MovieDetailScreenContent(
             onDismiss = { insufficientStorageState.value = null }
         )
     }
+
+    torrentToDelete?.let { (hash, title) ->
+        DeleteTorrentDownloadsDialog(
+            mediaTitle = title,
+            onConfirmDelete = {
+                torrentToDelete = null
+                onDeleteTorrent(hash)
+                TorrentCardActionHandler.performCardDelete(context, hash, mediaController)
+            },
+            onKeep = {
+                torrentToDelete = null
+            }
+        )
+    }
 }
 
 
@@ -406,11 +442,14 @@ fun MovieDetailContent(
     movie: Movie,
     releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>> = emptyMap(),
     downloadedHashes: Set<String>,
+    allDownloads: List<TorrentDownload> = emptyList(),
+    mediaController: MediaController? = null,
     torrentHandlingMode: TorrentHandlingMode = TorrentHandlingMode.EXTERNAL_CLIENT,
     isWideScreen: Boolean,
     isTv: Boolean,
     onTorrentClick: (Torrent) -> Unit,
     onReleaseClick: ((TorrentRelease) -> Unit)? = null,
+    onReleaseLongClick: ((TorrentRelease) -> Unit)? = null,
     onAddLanguageToFilter: (String) -> Unit,
     onCastClick: (String) -> Unit,
     onInsufficientStorage: (Long, Long) -> Unit = { _, _ -> },
@@ -539,10 +578,15 @@ fun MovieDetailContent(
                                 else -> null
                             }
                             isFirstRelease = false
+                            val releaseHash = release.hash
+                            val matchingDownload = allDownloads.firstOrNull { it.infoHash.equals(releaseHash, ignoreCase = true) }
                             TorrentReleaseShimmerCard(
                                 release = release,
-                                isDownloaded = downloadedHashes.contains(release.hash.lowercase()),
+                                isDownloaded = downloadedHashes.contains(release.hash.lowercase()) || matchingDownload?.state == TorrentDownloadService.STATE_COMPLETED,
                                 onClick = { onReleaseClick?.invoke(release) },
+                                onLongClick = { onReleaseLongClick?.invoke(release) },
+                                download = matchingDownload,
+                                mediaController = mediaController,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp)

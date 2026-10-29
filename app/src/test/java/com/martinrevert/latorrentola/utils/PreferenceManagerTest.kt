@@ -56,4 +56,15 @@ class PreferenceManagerTest {
 
         assertThat(mode).isEqualTo(TorrentHandlingMode.LOCAL_PLAYBACK)
     }
+
+    @Test
+    fun `areSubtitlesEnabled should return true by default and persist state`() {
+        every { sharedPreferences.getBoolean("subtitles_enabled", true) } returns true
+
+        val preferenceManager = PreferenceManager(context)
+        assertThat(preferenceManager.areSubtitlesEnabled()).isTrue()
+
+        preferenceManager.setSubtitlesEnabled(false)
+        verify { editor.putBoolean("subtitles_enabled", false) }
+    }
 }

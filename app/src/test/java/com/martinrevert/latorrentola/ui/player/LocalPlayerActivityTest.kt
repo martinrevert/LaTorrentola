@@ -363,5 +363,219 @@ class LocalPlayerActivityTest {
         assertThat(resolvedAac?.codecSummary).isEqualTo("AAC")
         assertThat(resolvedDts?.codecSummary).isEqualTo("DTS")
     }
+
+    @Test
+    fun `handlePlayerTvKeyEvent pauses and shows controls with single OK press while playing`() {
+        var seekBackCalled = false
+        var seekForwardCalled = false
+        var toggledPlayingState: Boolean? = null
+        var showControlsCalled = false
+        var hideControlsCalled = false
+
+        val handled = LocalPlayerActivity.handlePlayerTvKeyEvent(
+            keyCode = android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+            controlsVisible = false,
+            isPlaying = true,
+            onSeekBack = { seekBackCalled = true },
+            onSeekForward = { seekForwardCalled = true },
+            onTogglePlayPause = { targetState -> toggledPlayingState = targetState },
+            onShowControls = { showControlsCalled = true },
+            onHideControls = { hideControlsCalled = true }
+        )
+
+        assertThat(handled).isTrue()
+        assertThat(toggledPlayingState).isEqualTo(false) // paused!
+        assertThat(showControlsCalled).isTrue()
+        assertThat(seekBackCalled).isFalse()
+        assertThat(seekForwardCalled).isFalse()
+        assertThat(hideControlsCalled).isFalse()
+    }
+
+    @Test
+    fun `handlePlayerTvKeyEvent resumes and shows controls with single OK press while paused`() {
+        var toggledPlayingState: Boolean? = null
+        var showControlsCalled = false
+
+        val handled = LocalPlayerActivity.handlePlayerTvKeyEvent(
+            keyCode = android.view.KeyEvent.KEYCODE_ENTER,
+            controlsVisible = false,
+            isPlaying = false,
+            onSeekBack = {},
+            onSeekForward = {},
+            onTogglePlayPause = { targetState -> toggledPlayingState = targetState },
+            onShowControls = { showControlsCalled = true },
+            onHideControls = {}
+        )
+
+        assertThat(handled).isTrue()
+        assertThat(toggledPlayingState).isEqualTo(true) // resumed/playing!
+        assertThat(showControlsCalled).isTrue()
+    }
+
+    @Test
+    fun `handlePlayerTvKeyEvent handles media play and pause keys directly`() {
+        var toggledPlay: Boolean? = null
+        var toggledPause: Boolean? = null
+
+        val playHandled = LocalPlayerActivity.handlePlayerTvKeyEvent(
+            keyCode = android.view.KeyEvent.KEYCODE_MEDIA_PLAY,
+            controlsVisible = false,
+            isPlaying = false,
+            onSeekBack = {},
+            onSeekForward = {},
+            onTogglePlayPause = { toggledPlay = it },
+            onShowControls = {},
+            onHideControls = {}
+        )
+        val pauseHandled = LocalPlayerActivity.handlePlayerTvKeyEvent(
+            keyCode = android.view.KeyEvent.KEYCODE_MEDIA_PAUSE,
+            controlsVisible = false,
+            isPlaying = true,
+            onSeekBack = {},
+            onSeekForward = {},
+            onTogglePlayPause = { toggledPause = it },
+            onShowControls = {},
+            onHideControls = {}
+        )
+
+        assertThat(playHandled).isTrue()
+        assertThat(toggledPlay).isEqualTo(true)
+        assertThat(pauseHandled).isTrue()
+        assertThat(toggledPause).isEqualTo(false)
+    }
+
+    @Test
+    fun `handlePlayerTvKeyEvent allows inspecting controls with UP and DOWN without toggling play pause`() {
+        var toggledPlayingState: Boolean? = null
+        var showControlsCalled = false
+
+        val upHandled = LocalPlayerActivity.handlePlayerTvKeyEvent(
+            keyCode = android.view.KeyEvent.KEYCODE_DPAD_UP,
+            controlsVisible = false,
+            isPlaying = true,
+            onSeekBack = {},
+            onSeekForward = {},
+            onTogglePlayPause = { toggledPlayingState = it },
+            onShowControls = { showControlsCalled = true },
+            onHideControls = {}
+        )
+
+        assertThat(upHandled).isTrue()
+        assertThat(showControlsCalled).isTrue()
+        assertThat(toggledPlayingState).isNull() // Did not pause or play!
+    }
+
+    @Test
+    fun `handlePlayerTvKeyEvent performs quick seek on LEFT and RIGHT when controls are hidden`() {
+        var seekBackCalled = false
+        var seekForwardCalled = false
+        var showControlsCalled = false
+
+        val leftHandled = LocalPlayerActivity.handlePlayerTvKeyEvent(
+            keyCode = android.view.KeyEvent.KEYCODE_DPAD_LEFT,
+            controlsVisible = false,
+            isPlaying = true,
+            onSeekBack = { seekBackCalled = true },
+            onSeekForward = {},
+            onTogglePlayPause = {},
+            onShowControls = { showControlsCalled = true },
+            onHideControls = {}
+        )
+        val rightHandled = LocalPlayerActivity.handlePlayerTvKeyEvent(
+            keyCode = android.view.KeyEvent.KEYCODE_DPAD_RIGHT,
+            controlsVisible = false,
+            isPlaying = true,
+            onSeekBack = {},
+            onSeekForward = { seekForwardCalled = true },
+            onTogglePlayPause = {},
+            onShowControls = { showControlsCalled = true },
+            onHideControls = {}
+        )
+
+        assertThat(leftHandled).isTrue()
+        assertThat(seekBackCalled).isTrue()
+        assertThat(rightHandled).isTrue()
+        assertThat(seekForwardCalled).isTrue()
+        assertThat(showControlsCalled).isFalse()
+    }
+
+    @Test
+    fun `handlePlayerTvKeyEvent hides controls on BACK when controls are visible`() {
+        var hideControlsCalled = false
+
+        val backHandledVisible = LocalPlayerActivity.handlePlayerTvKeyEvent(
+            keyCode = android.view.KeyEvent.KEYCODE_BACK,
+            controlsVisible = true,
+            isPlaying = true,
+            onSeekBack = {},
+            onSeekForward = {},
+            onTogglePlayPause = {},
+            onShowControls = {},
+            onHideControls = { hideControlsCalled = true }
+        )
+        val backHandledHidden = LocalPlayerActivity.handlePlayerTvKeyEvent(
+            keyCode = android.view.KeyEvent.KEYCODE_BACK,
+            controlsVisible = false,
+            isPlaying = true,
+            onSeekBack = {},
+            onSeekForward = {},
+            onTogglePlayPause = {},
+            onShowControls = {},
+            onHideControls = {}
+        )
+
+        assertThat(backHandledVisible).isTrue()
+        assertThat(hideControlsCalled).isTrue()
+        assertThat(backHandledHidden).isFalse() // Pass-through to exit activity
+    }
+
+    @Test
+    fun `handlePlayerTvKeyEvent delegates DPAD_CENTER to focused item when controls are already visible`() {
+        var toggledState: Boolean? = null
+
+        val handled = LocalPlayerActivity.handlePlayerTvKeyEvent(
+            keyCode = android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+            controlsVisible = true,
+            isPlaying = true,
+            onSeekBack = {},
+            onSeekForward = {},
+            onTogglePlayPause = { toggledState = it },
+            onShowControls = {},
+            onHideControls = {}
+        )
+
+        // Returns false so the focused button in Compose receives the click
+        assertThat(handled).isFalse()
+        assertThat(toggledState).isNull()
+    }
+
+    @Test
+    fun `shouldPauseOnTvExit returns true on Android TV and false on mobile`() {
+        assertThat(LocalPlayerActivity.shouldPauseOnTvExit(isTv = true)).isTrue()
+        assertThat(LocalPlayerActivity.shouldPauseOnTvExit(isTv = false)).isFalse()
+    }
+
+    @Test
+    fun `shouldKeepScreenAwake always keeps screen awake on Android TV whether playing or paused`() {
+        // Android TV - playing local
+        assertThat(LocalPlayerActivity.shouldKeepScreenAwake(isTv = true, isPlaying = true, isLocalPlayback = true)).isTrue()
+        // Android TV - paused local (ambient mode strictly prohibited)
+        assertThat(LocalPlayerActivity.shouldKeepScreenAwake(isTv = true, isPlaying = false, isLocalPlayback = true)).isTrue()
+        // Android TV - paused cast
+        assertThat(LocalPlayerActivity.shouldKeepScreenAwake(isTv = true, isPlaying = false, isLocalPlayback = false)).isTrue()
+        // Android TV - playing cast
+        assertThat(LocalPlayerActivity.shouldKeepScreenAwake(isTv = true, isPlaying = true, isLocalPlayback = false)).isTrue()
+    }
+
+    @Test
+    fun `shouldKeepScreenAwake keeps awake on mobile only when actively playing local media`() {
+        // Mobile - playing local: keep awake
+        assertThat(LocalPlayerActivity.shouldKeepScreenAwake(isTv = false, isPlaying = true, isLocalPlayback = true)).isTrue()
+        // Mobile - paused: allow screen timeout
+        assertThat(LocalPlayerActivity.shouldKeepScreenAwake(isTv = false, isPlaying = false, isLocalPlayback = true)).isFalse()
+        // Mobile - casting: allow screen timeout
+        assertThat(LocalPlayerActivity.shouldKeepScreenAwake(isTv = false, isPlaying = true, isLocalPlayback = false)).isFalse()
+    }
 }
+
 

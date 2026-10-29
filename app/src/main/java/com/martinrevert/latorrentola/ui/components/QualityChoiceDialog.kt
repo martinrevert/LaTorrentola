@@ -28,7 +28,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -47,12 +50,15 @@ import androidx.tv.material3.Surface as TvSurface
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
+import com.martinrevert.latorrentola.model.torrent.TorrentDownload
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
 import com.martinrevert.latorrentola.model.torrent.groupByQuality
 import com.martinrevert.latorrentola.network.NextEpisodeEvaluation
 import com.martinrevert.latorrentola.network.SeriesContinuationState
+import com.martinrevert.latorrentola.service.TorrentDownloadService
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
+import com.martinrevert.latorrentola.utils.TorrentCardActionHandler
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.PreferenceManager
@@ -92,6 +98,9 @@ fun NextEpisodeTorrentDialog(
     evaluation: NextEpisodeEvaluation? = null,
     releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>>? = null,
     downloadedHashes: Set<String> = emptySet(),
+    allDownloads: List<TorrentDownload> = emptyList(),
+    mediaController: androidx.media3.session.MediaController? = null,
+    onDeleteTorrent: ((TorrentRelease) -> Unit)? = null,
     themeMode: Int? = null
 ) {
     val context = LocalContext.current
@@ -101,6 +110,7 @@ fun NextEpisodeTorrentDialog(
     }
     val firstItemFocusRequester = remember { FocusRequester() }
     val closeButtonFocusRequester = remember { FocusRequester() }
+    var releaseToDelete by remember { mutableStateOf<TorrentRelease?>(null) }
 
     val effectiveReleasesByQuality = remember(releases, releasesByQuality) {
         if (!releasesByQuality.isNullOrEmpty()) {
@@ -355,10 +365,14 @@ fun NextEpisodeTorrentDialog(
                                                         )
 
                                                     val isTorrentDownloaded = downloadedHashes.contains(release.hash.lowercase())
+                                                    val matchingDownload = allDownloads.firstOrNull { it.infoHash.equals(release.hash, ignoreCase = true) }
                                                     TorrentReleaseShimmerCard(
                                                         release = release,
-                                                        isDownloaded = isTorrentDownloaded,
+                                                        isDownloaded = isTorrentDownloaded || matchingDownload?.state == TorrentDownloadService.STATE_COMPLETED,
                                                         onClick = { onTorrentSelected(release) },
+                                                        onLongClick = { releaseToDelete = release },
+                                                        download = matchingDownload,
+                                                        mediaController = mediaController,
                                                         modifier = itemModifier,
                                                         themeMode = effectiveThemeMode
                                                     )
@@ -457,6 +471,24 @@ fun NextEpisodeTorrentDialog(
                 themedDialogBody()
             }
         }
+    }
+
+    releaseToDelete?.let { rel ->
+        DeleteTorrentDownloadsDialog(
+            mediaTitle = "%s S%02dE%02d %s".format(effectiveSeriesName, seasonNumber, episodeNumber, rel.title),
+            onConfirmDelete = {
+                releaseToDelete = null
+                if (onDeleteTorrent != null) {
+                    onDeleteTorrent(rel)
+                } else {
+                    TorrentCardActionHandler.performCardDelete(context, rel.hash, mediaController)
+                }
+            },
+            onKeep = {
+                releaseToDelete = null
+            },
+            themeMode = effectiveThemeMode
+        )
     }
 }
 

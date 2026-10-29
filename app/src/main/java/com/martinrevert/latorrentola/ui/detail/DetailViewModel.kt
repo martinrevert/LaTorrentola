@@ -3,7 +3,9 @@ package com.martinrevert.latorrentola.ui.detail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.model.torrent.TorrentDownload
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.model.user.DownloadedMovie
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
@@ -39,6 +41,7 @@ import kotlin.time.Duration.Companion.seconds
  * @property voiceManager speaks movie titles and summaries.
  * @property translationManager translates summaries before speech when requested.
  * @property preferenceManager supplies voice and language-filter settings.
+ * @property torrentDownloadDao observes local torrent download states.
  */
 @HiltViewModel
 class DetailViewModel @Inject constructor(
@@ -48,8 +51,13 @@ class DetailViewModel @Inject constructor(
     private val tmdbRepository: TmdbRepository,
     private val voiceManager: VoiceManager,
     private val translationManager: TranslationManager,
-    private val preferenceManager: PreferenceManager
+    private val preferenceManager: PreferenceManager,
+    private val torrentDownloadDao: TorrentDownloadDao
 ) : ViewModel() {
+
+    val allDownloads: StateFlow<List<TorrentDownload>> =
+        torrentDownloadDao.observeAll()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Mutable backing state for movie detail content. */
     private val _uiState = MutableStateFlow<DetailUiState>(DetailUiState.Loading)
@@ -338,6 +346,13 @@ class DetailViewModel @Inject constructor(
                     movie = movie
                 )
             )
+        }
+    }
+
+    /** Removes a downloaded movie record by its torrent hash. */
+    fun removeMovieDownload(torrentHash: String) {
+        viewModelScope.launch {
+            userLibraryRepository.removeDownloadedMovieByHash(torrentHash)
         }
     }
 

@@ -13,6 +13,7 @@ import android.os.Bundle
 import android.util.Log
 import android.view.WindowManager
 import androidx.fragment.app.FragmentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import kotlin.OptIn
@@ -196,8 +197,10 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
+import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
+import com.martinrevert.latorrentola.utils.TorrentCardActionHandler
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.network.DownloadedSubtitle
@@ -454,6 +457,10 @@ class LocalPlayerActivity : FragmentActivity() {
         } else {
             @Suppress("DEPRECATION")
             overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+        }
+
+        if (isTvDevice()) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
 
         handleIntent(intent)
@@ -778,7 +785,9 @@ class LocalPlayerActivity : FragmentActivity() {
                             updateScreenAwake(controller)
                             onDispose {
                                 controller.removeListener(listener)
-                                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                                if (!isTvDevice()) {
+                                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                                }
                             }
                         }
                     } else {
@@ -826,6 +835,7 @@ class LocalPlayerActivity : FragmentActivity() {
                         val evaluation by tvPlayerViewModel.nextEpisodeEvaluation.collectAsState()
                         val isLoading by tvPlayerViewModel.isLoading.collectAsState()
                         val error by tvPlayerViewModel.error.collectAsState()
+                        val allDownloads by torrentDownloadDao.observeAll().collectAsState(initial = emptyList())
 
                         val targetSeriesId = nextData?.seriesId?.takeIf { it > 0 } ?: nextEpisodeSeriesId.takeIf { it > 0 } ?: currentSeriesId
                         val targetSeriesName = nextData?.seriesName?.takeIf { it.isNotBlank() } ?: nextEpisodeSeriesName.takeIf { it.isNotBlank() } ?: mediaTitle
@@ -841,27 +851,55 @@ class LocalPlayerActivity : FragmentActivity() {
                             releases = releases,
                             releasesByQuality = releasesByQuality,
                             downloadedHashes = downloadedHashes,
+                            allDownloads = allDownloads,
+                            mediaController = mediaController,
                             isLoading = isLoading,
                             error = error,
                             evaluation = evaluation,
                             themeMode = themeMode,
                             onTorrentSelected = { torrent ->
                                 lifecycleScope.launch {
-                                    val result = tvPlayerViewModel.downloadEpisode(
-                                        this@LocalPlayerActivity,
-                                        torrent,
-                                        targetSeriesId,
-                                        targetSeriesName,
-                                        targetSeason,
-                                        targetEpisode,
-                                        targetEpName
+                                    val matchingDownload = allDownloads.firstOrNull { it.infoHash.equals(torrent.hash, ignoreCase = true) }
+                                    val displayTitle = "%s S%02dE%02d %s".format(targetSeriesName, targetSeason, targetEpisode, torrent.title)
+                                    val nextEpInfo = tvPlayerViewModel.getNextEpisodeInfo(targetSeriesId, targetSeriesName, targetSeason, targetEpisode)
+                                    val started = TorrentCardActionHandler.performCardClick(
+                                        context = this@LocalPlayerActivity,
+                                        releaseHash = torrent.hash,
+                                        releaseTitle = displayTitle,
+                                        releaseMagnetUri = torrent.magnetUrl.orEmpty(),
+                                        releaseSizeBytes = torrent.sizeBytes,
+                                        download = matchingDownload,
+                                        activeBuffer = TorrentDownloadService.activeBufferState.value,
+                                        mediaController = mediaController,
+                                        isTv = isTv,
+                                        torrentHandlingMode = preferenceManager.getTorrentHandlingMode(),
+                                        seriesId = targetSeriesId,
+                                        seasonNumber = targetSeason,
+                                        episodeNumber = targetEpisode,
+                                        nextEpisodeInfo = nextEpInfo,
+                                        onInsufficientStorage = { available, required ->
+                                            insufficientStorageData = Pair(available, required)
+                                        },
+                                        onDownloadStarted = {
+                                            lifecycleScope.launch {
+                                                userLibraryRepository.markEpisodeAsDownloaded(
+                                                    DownloadedEpisode(
+                                                        seriesId = targetSeriesId,
+                                                        seriesName = targetSeriesName,
+                                                        seasonNumber = targetSeason,
+                                                        episodeNumber = targetEpisode,
+                                                        episodeName = targetEpName,
+                                                        releaseTitle = torrent.title,
+                                                        quality = torrent.qualityGroup.name,
+                                                        hash = torrent.hash.ifBlank { "tv_${targetSeriesId}_s${targetSeason}_e${targetEpisode}" },
+                                                        magnetUrl = torrent.magnetUrl.orEmpty(),
+                                                        timestamp = System.currentTimeMillis()
+                                                    )
+                                                )
+                                            }
+                                        }
                                     )
-                                    if (result == TorrentLaunchResult.Started) {
-                                        showNextEpisodeDialog = false
-                                    } else if (result is TorrentLaunchResult.InsufficientStorage) {
-                                        insufficientStorageData = Pair(result.availableBytes, result.requiredBytes)
-                                        showNextEpisodeDialog = false
-                                    } else if (result == TorrentLaunchResult.NoExternalClient || result == TorrentLaunchResult.CastUnavailable) {
+                                    if (started) {
                                         showNextEpisodeDialog = false
                                     }
                                 }
@@ -1590,12 +1628,13 @@ class LocalPlayerActivity : FragmentActivity() {
                     Log.i(TAG, "Restoring playback position: ${startPosition}ms for ${itemToConfigure.mediaId}")
                 }
 
+                val subsEnabled = preferenceManager.areSubtitlesEnabled()
                 val deviceLang = Locale.getDefault().language
                 val defaultTrackParams = controller.trackSelectionParameters.buildUpon()
                     .setPreferredAudioLanguages("en", "eng")
                     .setPreferredTextLanguage(deviceLang)
                     .setPreferredTextRoleFlags(C.ROLE_FLAG_CAPTION or C.ROLE_FLAG_SUBTITLE)
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subsEnabled)
                     .build()
                 controller.trackSelectionParameters = defaultTrackParams
 
@@ -1666,6 +1705,9 @@ class LocalPlayerActivity : FragmentActivity() {
                             }
                         }
                     }
+                }
+                if (isTvDevice() && !controller.isPlaying) {
+                    controller.play()
                 }
                 startProgressTicker(controller)
                 updateCachedAudioTracks(controller.currentTracks)
@@ -1756,7 +1798,12 @@ class LocalPlayerActivity : FragmentActivity() {
 
     private fun updateScreenAwake(player: Player) {
         val isLocal = player.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_LOCAL
-        if (player.isPlaying && isLocal) {
+        val keepAwake = shouldKeepScreenAwake(
+            isTv = isTvDevice(),
+            isPlaying = player.isPlaying,
+            isLocalPlayback = isLocal
+        )
+        if (keepAwake) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -1777,6 +1824,7 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     private fun selectDefaultSubtitleIfNeeded(controller: Player) {
+        if (!preferenceManager.areSubtitlesEnabled()) return
         if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE) return
         val textGroups = controller.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
         if (textGroups.isEmpty()) return
@@ -2055,7 +2103,8 @@ class LocalPlayerActivity : FragmentActivity() {
         val controller = mediaController ?: return
         val options = availableTrackOptions(PlaybackTrackType.SUBTITLE)
 
-        val textDisabled = controller.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+        val textDisabled = controller.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) ||
+            !preferenceManager.areSubtitlesEnabled()
         val anySelected = !textDisabled && options.any { it.isSelected }
 
         val offOption = PlaybackTrackOption(
@@ -2320,12 +2369,18 @@ class LocalPlayerActivity : FragmentActivity() {
             .flatMap { group ->
                 (0 until group.length).map { index ->
                     val format = group.getTrackFormat(index)
+                    val isSelected = if (type == PlaybackTrackType.SUBTITLE &&
+                        (!preferenceManager.areSubtitlesEnabled() || controller.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT))) {
+                        false
+                    } else {
+                        group.isTrackSelected(index)
+                    }
                     PlaybackTrackOption(
                         label = trackLabel(format, type),
                         group = group.mediaTrackGroup,
                         trackIndex = index,
                         castTrackId = format.id?.toLongOrNull(),
-                        isSelected = group.isTrackSelected(index)
+                        isSelected = isSelected
                     )
                 }
             }
@@ -2352,12 +2407,17 @@ class LocalPlayerActivity : FragmentActivity() {
                         val locale = Locale.forLanguageTag(it)
                         "${getLanguageFlag(it, it)} ${locale.getDisplayName(Locale.getDefault())}"
                     } ?: "${if (type == PlaybackTrackType.AUDIO) "Audio" else "Subtítulo"} ${track.id}"
+                    val isSelected = if (type == PlaybackTrackType.SUBTITLE && !preferenceManager.areSubtitlesEnabled()) {
+                        false
+                    } else {
+                        activeTrackIds.contains(track.id)
+                    }
                     PlaybackTrackOption(
                         label = label,
                         group = null,
                         trackIndex = null,
                         castTrackId = track.id,
-                        isSelected = activeTrackIds.contains(track.id)
+                        isSelected = isSelected
                     )
                 }
                 if (type == PlaybackTrackType.AUDIO) {
@@ -2380,9 +2440,16 @@ class LocalPlayerActivity : FragmentActivity() {
             PlaybackTrackType.AUDIO -> C.TRACK_TYPE_AUDIO
             PlaybackTrackType.SUBTITLE -> C.TRACK_TYPE_TEXT
         }
+        val isOff = type == PlaybackTrackType.SUBTITLE &&
+            (option == null || (option.group == null && option.trackIndex == null && option.castTrackId == null))
+
+        if (type == PlaybackTrackType.SUBTITLE) {
+            preferenceManager.setSubtitlesEnabled(!isOff)
+        }
+
         val parameters = controller.trackSelectionParameters.buildUpon()
             .clearOverridesOfType(media3Type)
-            .setTrackTypeDisabled(media3Type, type == PlaybackTrackType.SUBTITLE && option == null)
+            .setTrackTypeDisabled(media3Type, isOff)
 
         if (type == PlaybackTrackType.AUDIO && option != null) {
             val selectedLang = option.group?.let { g ->
@@ -2427,20 +2494,20 @@ class LocalPlayerActivity : FragmentActivity() {
 
                     activeIds.removeAll(typeTrackIds)
 
-                    val targetCastId = option?.castTrackId ?: run {
+                    val targetCastId = if (isOff) null else (option?.castTrackId ?: run {
                         if (option?.group != null && option.trackIndex != null) {
                             val format = option.group.getFormat(option.trackIndex)
                             format.id?.toLongOrNull() ?: allTracks.firstOrNull {
                                 it.type == castType && (it.language == format.language || it.name == format.label)
                             }?.id
                         } else null
-                    }
+                    })
 
                     if (targetCastId != null && targetCastId > 0L) {
                         activeIds.add(targetCastId)
                     }
                     rmc.setActiveMediaTracks(activeIds.toLongArray())
-                    Log.i(TAG, "Cast setActiveMediaTracks called for $type: activeIds=$activeIds")
+                    Log.i(TAG, "Cast setActiveMediaTracks called for $type: activeIds=$activeIds (isOff=$isOff)")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to set active Cast media tracks: ${e.message}")
@@ -2787,6 +2854,7 @@ class LocalPlayerActivity : FragmentActivity() {
             .setPreferredTextRoleFlags(C.ROLE_FLAG_CAPTION or C.ROLE_FLAG_SUBTITLE)
             .build()
         controller.trackSelectionParameters = params
+        preferenceManager.setSubtitlesEnabled(true)
         Log.i(TAG, "Attached subtitle: ${subtitle.file.name}, lang: ${subtitle.language}")
     }
 
@@ -2810,6 +2878,11 @@ class LocalPlayerActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         isPlayerForeground = true
+        if (isTvDevice()) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            mediaController?.let { updateScreenAwake(it) }
+        }
     }
 
     override fun onPause() {
@@ -2819,6 +2892,12 @@ class LocalPlayerActivity : FragmentActivity() {
 
     override fun onStop() {
         isPlayerForeground = false
+        if (shouldPauseOnTvExit(isTvDevice())) {
+            try {
+                mediaController?.pause()
+            } catch (_: Exception) {}
+        }
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         mediaController?.clearVideoSurface()
         saveCurrentProgress(mediaController)
         super.onStop()
@@ -3026,6 +3105,7 @@ class LocalPlayerActivity : FragmentActivity() {
 
     override fun onDestroy() {
         isPlayerForeground = false
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         mediaController?.clearVideoSurface()
         progressTickerJob?.cancel()
         progressTickerJob = null
@@ -3046,6 +3126,12 @@ class LocalPlayerActivity : FragmentActivity() {
 
     override fun finish() {
         isPlayerForeground = false
+        if (shouldPauseOnTvExit(isTvDevice())) {
+            try {
+                mediaController?.pause()
+            } catch (_: Exception) {}
+        }
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         mediaController?.clearVideoSurface()
         if (activeActivityRef?.get() == this) {
             activeActivityRef = null
@@ -3060,6 +3146,17 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     companion object {
+        fun shouldPauseOnTvExit(isTv: Boolean): Boolean = isTv
+
+        fun shouldKeepScreenAwake(
+            isTv: Boolean,
+            isPlaying: Boolean,
+            isLocalPlayback: Boolean
+        ): Boolean {
+            if (isTv) return true
+            return isPlaying && isLocalPlayback
+        }
+
         var isPlayerForeground by mutableStateOf(false)
             internal set
 
@@ -3073,14 +3170,19 @@ class LocalPlayerActivity : FragmentActivity() {
 
         fun isPlayerActivityActive(): Boolean = isPlayerActivityForeground()
 
-        fun finishBackgroundPlayer(exceptInfoHash: String? = null) {
+        fun finishBackgroundPlayer(exceptInfoHash: String? = null, onlyInfoHash: String? = null) {
             activeActivityRef?.get()?.let { activity ->
                 if (!activity.isFinishing && !activity.isDestroyed) {
                     val currentHash = activity.torrentInfoHash
-                    if (exceptInfoHash.isNullOrBlank() || !currentHash.equals(exceptInfoHash, ignoreCase = true)) {
+                    val shouldFinish = when {
+                        !onlyInfoHash.isNullOrBlank() -> currentHash.isNotBlank() && currentHash.equals(onlyInfoHash, ignoreCase = true)
+                        !exceptInfoHash.isNullOrBlank() -> !currentHash.equals(exceptInfoHash, ignoreCase = true)
+                        else -> true
+                    }
+                    if (shouldFinish) {
                         val isPip = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N && activity.isInPictureInPictureMode
                         if (isPip || activity.lifecycle.currentState < androidx.lifecycle.Lifecycle.State.RESUMED) {
-                            Log.i(TAG, "Finishing background/PiP LocalPlayerActivity (currentHash=$currentHash, exceptHash=$exceptInfoHash)")
+                            Log.i(TAG, "Finishing background/PiP LocalPlayerActivity (currentHash=$currentHash, exceptHash=$exceptInfoHash, onlyHash=$onlyInfoHash)")
                             activity.finish()
                         }
                     }
@@ -3109,6 +3211,72 @@ class LocalPlayerActivity : FragmentActivity() {
         const val EXTRA_FROM_PIP = "extra_from_pip"
         const val EXTRA_MEDIA_ID = "extra_media_id"
         private const val TAG = "LocalPlayerActivity"
+
+        fun handlePlayerTvKeyEvent(
+            keyCode: Int,
+            controlsVisible: Boolean,
+            isPlaying: Boolean,
+            onSeekBack: () -> Unit,
+            onSeekForward: () -> Unit,
+            onTogglePlayPause: (targetPlayingState: Boolean) -> Unit,
+            onShowControls: () -> Unit,
+            onHideControls: () -> Unit
+        ): Boolean {
+            return when (keyCode) {
+                android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                    onTogglePlayPause(!isPlaying)
+                    onShowControls()
+                    true
+                }
+                android.view.KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                    onTogglePlayPause(true)
+                    onShowControls()
+                    true
+                }
+                android.view.KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                    onTogglePlayPause(false)
+                    onShowControls()
+                    true
+                }
+                android.view.KeyEvent.KEYCODE_BACK -> {
+                    if (controlsVisible) {
+                        onHideControls()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                else -> {
+                    if (!controlsVisible) {
+                        when (keyCode) {
+                            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                onSeekBack()
+                                true
+                            }
+                            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                onSeekForward()
+                                true
+                            }
+                            android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+                            android.view.KeyEvent.KEYCODE_ENTER,
+                            android.view.KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                                onTogglePlayPause(!isPlaying)
+                                onShowControls()
+                                true
+                            }
+                            android.view.KeyEvent.KEYCODE_DPAD_UP,
+                            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                onShowControls()
+                                true
+                            }
+                            else -> false
+                        }
+                    } else {
+                        false
+                    }
+                }
+            }
+        }
 
         fun extractSeasonAndEpisode(vararg candidates: String?): Pair<Int, Int> {
             for (candidate in candidates) {
@@ -3297,6 +3465,8 @@ fun AdaptiveOptionItem(
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null
 ) {
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
     var isFocused by remember { mutableStateOf(false) }
 
     val containerColor = when {
@@ -3311,23 +3481,53 @@ fun AdaptiveOptionItem(
         else -> MaterialTheme.colorScheme.onSurface
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp)
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .onFocusChanged { isFocused = it.isFocused }
-            .focusable()
-            .background(containerColor, RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (selected || isFocused) FontWeight.Bold else FontWeight.Normal,
-            color = contentColor
-        )
+    if (isTv) {
+        TvSurface(
+            onClick = onClick,
+            shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(
+                shape = RoundedCornerShape(8.dp)
+            ),
+            colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
+                containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                focusedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                focusedContentColor = MaterialTheme.colorScheme.onPrimary
+            ),
+            scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(
+                focusedScale = 1.02f
+            ),
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(vertical = 2.dp)
+                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+        ) {
+            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+        }
+    } else {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(vertical = 2.dp)
+                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+                .onFocusChanged { isFocused = it.isFocused }
+                .focusable()
+                .background(containerColor, RoundedCornerShape(8.dp))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (selected || isFocused) FontWeight.Bold else FontWeight.Normal,
+                color = contentColor
+            )
+        }
     }
 }
 
@@ -3339,6 +3539,8 @@ fun AdaptiveChoiceChip(
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null
 ) {
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
     var isFocused by remember { mutableStateOf(false) }
 
     val containerColor = when {
@@ -3353,21 +3555,52 @@ fun AdaptiveChoiceChip(
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-    Box(
-        modifier = modifier
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .onFocusChanged { isFocused = it.isFocused }
-            .background(containerColor, RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (selected || isFocused) FontWeight.Bold else FontWeight.Normal,
-            color = contentColor
-        )
+    if (isTv) {
+        TvSurface(
+            onClick = onClick,
+            shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(
+                shape = RoundedCornerShape(8.dp)
+            ),
+            colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
+                containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                focusedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                focusedContentColor = MaterialTheme.colorScheme.onPrimary
+            ),
+            scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(
+                focusedScale = 1.05f
+            ),
+            modifier = modifier
+                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+        ) {
+            Box(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+        }
+    } else {
+        Box(
+            modifier = modifier
+                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+                .onFocusChanged { isFocused = it.isFocused }
+                .background(containerColor, RoundedCornerShape(8.dp))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (selected || isFocused) FontWeight.Bold else FontWeight.Normal,
+                color = contentColor
+            )
+        }
     }
 }
 
@@ -3467,9 +3700,13 @@ fun PlayerControlsOverlay(
         }
     }
 
-    LaunchedEffect(Unit) {
-        if (isTv) {
-            delay(150.milliseconds)
+    BackHandler(enabled = controlsVisible) {
+        controlsVisible = false
+    }
+
+    LaunchedEffect(controlsVisible) {
+        if (isTv && controlsVisible) {
+            delay(100.milliseconds)
             try { playPauseFocusRequester.requestFocus() } catch (_: Exception) {}
         }
     }
@@ -3514,36 +3751,39 @@ fun PlayerControlsOverlay(
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown) {
                     lastInteractionTime = System.currentTimeMillis()
-                    if (isTv && !controlsVisible) {
-                        when (event.nativeKeyEvent.keyCode) {
-                            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    if (isTv) {
+                        LocalPlayerActivity.handlePlayerTvKeyEvent(
+                            keyCode = event.nativeKeyEvent.keyCode,
+                            controlsVisible = controlsVisible,
+                            isPlaying = isPlaying,
+                            onSeekBack = {
                                 controller.seekBack()
                                 quickSeekDelta = -10
                                 showQuickSeek = true
                                 quickSeekTriggerTime = System.currentTimeMillis()
-                                true
-                            }
-                            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                            },
+                            onSeekForward = {
                                 controller.seekForward()
                                 quickSeekDelta = 10
                                 showQuickSeek = true
                                 quickSeekTriggerTime = System.currentTimeMillis()
-                                true
-                            }
-                            android.view.KeyEvent.KEYCODE_DPAD_CENTER,
-                            android.view.KeyEvent.KEYCODE_DPAD_UP,
-                            android.view.KeyEvent.KEYCODE_DPAD_DOWN,
-                            android.view.KeyEvent.KEYCODE_ENTER,
-                            android.view.KeyEvent.KEYCODE_NUMPAD_ENTER,
-                            android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
-                            android.view.KeyEvent.KEYCODE_MEDIA_PLAY,
-                            android.view.KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                            },
+                            onTogglePlayPause = { targetPlayingState: Boolean ->
+                                isPlaying = targetPlayingState
+                                if (targetPlayingState) {
+                                    controller.play()
+                                } else {
+                                    controller.pause()
+                                }
+                            },
+                            onShowControls = {
                                 controlsVisible = true
                                 try { playPauseFocusRequester.requestFocus() } catch (_: Exception) {}
-                                true
+                            },
+                            onHideControls = {
+                                controlsVisible = false
                             }
-                            else -> false
-                        }
+                        )
                     } else {
                         false
                     }
@@ -4791,24 +5031,14 @@ fun PlayerBottomSheetContent(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onDismiss
-                        ),
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f)),
                     contentAlignment = Alignment.BottomCenter
                 ) {
                     Surface(
                         modifier = Modifier
                             .widthIn(max = 600.dp)
                             .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = {}
-                            ),
+                            .navigationBarsPadding(),
                         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         contentColor = MaterialTheme.colorScheme.onSurface

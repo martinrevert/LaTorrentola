@@ -231,6 +231,11 @@ class PreferenceManager @Inject constructor(
     fun getSubtitleBottomOffset(): Float = sharedPreferences.getFloat(KEY_SUBTITLE_BOTTOM_OFFSET, 0.08f)
     fun setSubtitleBottomOffset(offset: Float) { sharedPreferences.edit { putFloat(KEY_SUBTITLE_BOTTOM_OFFSET, offset) } }
 
+    /** Returns whether subtitles are enabled globally by user preference, defaulting to true. */
+    fun areSubtitlesEnabled(): Boolean = sharedPreferences.getBoolean(KEY_SUBTITLES_ENABLED, true)
+    /** Persists whether subtitles should be displayed. */
+    fun setSubtitlesEnabled(enabled: Boolean) { sharedPreferences.edit { putBoolean(KEY_SUBTITLES_ENABLED, enabled) } }
+
     /** Persists and publishes the configured download storage location. */
     fun setStorageLocation(location: String) {
         sharedPreferences.edit { putString(KEY_STORAGE_LOCATION, location) }
@@ -291,6 +296,7 @@ class PreferenceManager @Inject constructor(
         private const val KEY_SUBTITLE_BG_COLOR = "subtitle_bg_color"
         private const val KEY_SUBTITLE_EDGE_TYPE = "subtitle_edge_type"
         private const val KEY_SUBTITLE_BOTTOM_OFFSET = "subtitle_bottom_offset"
+        private const val KEY_SUBTITLES_ENABLED = "subtitles_enabled"
 
         /** Follow the system theme. */
         const val THEME_SYSTEM = 0

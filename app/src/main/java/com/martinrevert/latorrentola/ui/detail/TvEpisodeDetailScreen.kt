@@ -37,6 +37,13 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.media3.session.MediaController
+import com.martinrevert.latorrentola.model.torrent.TorrentDownload
+import com.martinrevert.latorrentola.service.TorrentBufferState
+import com.martinrevert.latorrentola.service.TorrentDownloadService
+import com.martinrevert.latorrentola.ui.components.DeleteTorrentDownloadsDialog
+import com.martinrevert.latorrentola.utils.MediaControllerHelper
+import com.martinrevert.latorrentola.utils.TorrentCardActionHandler
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
 import com.martinrevert.latorrentola.ui.components.EpisodeTorrentShimmerCard
@@ -106,6 +113,10 @@ fun TvEpisodeDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val torrentHandlingMode by viewModel.torrentHandlingMode.collectAsState()
     val watchHistoryMap by viewModel.watchHistoryMap.collectAsState()
+    val allDownloads by viewModel.allDownloads.collectAsState()
+    val mediaController by MediaControllerHelper.rememberMediaController()
+    val activeBuffer by TorrentDownloadService.activeBufferState.collectAsState()
+    var torrentToDelete by remember { mutableStateOf<Pair<String, String>?>(null) }
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
     val episodeSummaryFocusRequester = remember { FocusRequester() }
@@ -181,6 +192,8 @@ fun TvEpisodeDetailScreen(
                     isDownloaded = state.isDownloaded,
                     progressPercent = progressPercent,
                     downloadedHashes = state.downloadedHashes,
+                    allDownloads = allDownloads,
+                    mediaController = mediaController,
                     topPadding = padding.calculateTopPadding(),
                     episodeSummaryFocusRequester = if (isTv) episodeSummaryFocusRequester else null,
                     firstTorrentFocusRequester = if (isTv) firstTorrentFocusRequester else null,
@@ -193,31 +206,39 @@ fun TvEpisodeDetailScreen(
                             release.title
                         )
                         val nextEpisodeInfo = viewModel.getNextEpisodeInfo()?.let { ArrayList(it.map { item -> item.toString() }) }
-                        val magnetUri = release.magnetUrl.orEmpty().ifBlank {
-                            TorrentLaunchHelper.buildMagnetUri(release.hash, release.title)
-                        }
-                        when (
-                            val result = TorrentLaunchHelper.launch(
-                                context,
-                                torrentHandlingMode,
-                                magnetUri,
-                                title,
-                                nextEpisodeInfo,
-                                seriesId = seriesId,
-                                seasonNumber = state.episode.seasonNumber,
-                                episodeNumber = state.episode.episodeNumber,
-                                posterUrl = state.posterUrl,
-                                requiredSizeBytes = release.sizeBytes
-                            )
-                        ) {
-                            TorrentLaunchResult.Started -> {
+                        val matchingDownload = allDownloads.firstOrNull { it.infoHash.equals(release.hash, ignoreCase = true) }
+                        TorrentCardActionHandler.performCardClick(
+                            context = context,
+                            releaseHash = release.hash,
+                            releaseTitle = title,
+                            releaseMagnetUri = release.magnetUrl.orEmpty(),
+                            releaseSizeBytes = release.sizeBytes,
+                            download = matchingDownload,
+                            activeBuffer = activeBuffer,
+                            mediaController = mediaController,
+                            isTv = isTv,
+                            torrentHandlingMode = torrentHandlingMode,
+                            seriesId = seriesId,
+                            seasonNumber = state.episode.seasonNumber,
+                            episodeNumber = state.episode.episodeNumber,
+                            posterUrl = state.posterUrl,
+                            nextEpisodeInfo = nextEpisodeInfo,
+                            onInsufficientStorage = { available, required ->
+                                insufficientStorageState.value = Pair(available, required)
+                            },
+                            onDownloadStarted = {
                                 viewModel.markEpisodeAsDownloaded(release)
                             }
-                            is TorrentLaunchResult.InsufficientStorage -> {
-                                insufficientStorageState.value = Pair(result.availableBytes, result.requiredBytes)
-                            }
-                            else -> {}
-                        }
+                        )
+                    },
+                    onReleaseLongClick = { release ->
+                        val title = "%s S%02dE%02d %s".format(
+                            state.seriesName,
+                            state.episode.seasonNumber,
+                            state.episode.episodeNumber,
+                            release.title
+                        )
+                        torrentToDelete = release.hash to title
                     },
                     onTorrentClick = { torrent ->
                         val title = "%s S%02dE%02d %s".format(
@@ -286,6 +307,20 @@ fun TvEpisodeDetailScreen(
             onDismiss = { insufficientStorageState.value = null }
         )
     }
+
+    torrentToDelete?.let { (hash, title) ->
+        DeleteTorrentDownloadsDialog(
+            mediaTitle = title,
+            onConfirmDelete = {
+                torrentToDelete = null
+                viewModel.removeEpisodeDownload(hash)
+                TorrentCardActionHandler.performCardDelete(context, hash, mediaController)
+            },
+            onKeep = {
+                torrentToDelete = null
+            }
+        )
+    }
 }
 
 /**
@@ -310,11 +345,14 @@ private fun EpisodeDetailContent(
     isDownloaded: Boolean = false,
     progressPercent: Int? = null,
     downloadedHashes: Set<String> = emptySet(),
+    allDownloads: List<TorrentDownload> = emptyList(),
+    mediaController: MediaController? = null,
     topPadding: Dp,
     episodeSummaryFocusRequester: FocusRequester?,
     firstTorrentFocusRequester: FocusRequester?,
     onHeaderLongClick: (() -> Unit)? = null,
     onReleaseClick: ((TorrentRelease) -> Unit)? = null,
+    onReleaseLongClick: ((TorrentRelease) -> Unit)? = null,
     onTorrentClick: (EztvTorrent) -> Unit
 ) {
     val context = LocalContext.current
@@ -373,10 +411,15 @@ private fun EpisodeDetailContent(
                         val isFirst = isFirstRelease
                         isFirstRelease = false
                         val isTorrentDownloaded = downloadedHashes.contains(release.hash.lowercase())
+                        val releaseHash = release.hash
+                        val matchingDownload = allDownloads.firstOrNull { it.infoHash.equals(releaseHash, ignoreCase = true) }
                         TorrentReleaseShimmerCard(
                             release = release,
-                            isDownloaded = isTorrentDownloaded,
+                            isDownloaded = isTorrentDownloaded || matchingDownload?.state == TorrentDownloadService.STATE_COMPLETED,
                             onClick = { onReleaseClick?.invoke(release) },
+                            onLongClick = { onReleaseLongClick?.invoke(release) },
+                            download = matchingDownload,
+                            mediaController = mediaController,
                             modifier = if (
                                 isFirst &&
                                 firstTorrentFocusRequester != null &&

@@ -2,6 +2,8 @@ package com.martinrevert.latorrentola.ui.detail
 
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
+import com.martinrevert.latorrentola.database.TorrentDownloadDao
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.YTS.Data
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.MovieDetails
@@ -19,6 +21,7 @@ import com.martinrevert.latorrentola.utils.TranslationManager
 import com.martinrevert.latorrentola.utils.VoiceManager
 import io.mockk.clearMocks
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.flowOf
@@ -39,13 +42,15 @@ class DetailViewModelTest {
     private val voiceManager: VoiceManager = mockk(relaxed = true)
     private val translationManager: TranslationManager = mockk(relaxed = true)
     private val preferenceManager: PreferenceManager = mockk(relaxed = true)
+    private val torrentDownloadDao: TorrentDownloadDao = mockk(relaxed = true)
     private lateinit var viewModel: DetailViewModel
 
     @Before
     fun setUp() {
-        clearMocks(repository, torrentioRepository, userLibraryRepository, tmdbRepository, voiceManager, translationManager, preferenceManager)
+        clearMocks(repository, torrentioRepository, userLibraryRepository, tmdbRepository, voiceManager, translationManager, preferenceManager, torrentDownloadDao)
         every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
         every { userLibraryRepository.getWatchHistory() } returns flowOf(emptyList())
+        every { torrentDownloadDao.observeAll() } returns flowOf(emptyList())
         every { preferenceManager.getVoiceSystem() } returns true
         every { preferenceManager.getVoiceTranslation() } returns false
         every { preferenceManager.getVoiceSummary() } returns true
@@ -56,7 +61,8 @@ class DetailViewModelTest {
             tmdbRepository,
             voiceManager,
             translationManager,
-            preferenceManager
+            preferenceManager,
+            torrentDownloadDao
         )
     }
 
@@ -104,7 +110,8 @@ class DetailViewModelTest {
             tmdbRepository,
             voiceManager,
             translationManager,
-            preferenceManager
+            preferenceManager,
+            torrentDownloadDao
         )
 
         viewModel.watchHistoryMap.test {
@@ -199,7 +206,7 @@ class DetailViewModelTest {
 
     @Test
     fun `setMovieByQuery should fallback to TMDB TV and set OpenTvDetail when YTS returns no movie`() = runTest {
-        val tvSeries = com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary(id = 1399, name = "Game of Thrones")
+        val tvSeries = TmdbTvSummary(id = 1399, name = "Game of Thrones")
         coEvery { repository.searchMovies("tt0944947", 1) } returns MovieDetails(data = Data(movies = emptyList()))
         coEvery { tmdbRepository.findTvSeriesByImdbId("tt0944947") } returns tvSeries
 
@@ -220,5 +227,13 @@ class DetailViewModelTest {
 
         val state = viewModel.uiState.value
         assertThat(state).isInstanceOf(DetailUiState.Error::class.java)
+    }
+
+    @Test
+    fun `removeMovieDownload delegates hash removal to UserLibraryRepository`() = runTest {
+        viewModel.removeMovieDownload("HASH_TO_REMOVE")
+        testScheduler.advanceUntilIdle()
+
+        coVerify { userLibraryRepository.removeDownloadedMovieByHash("HASH_TO_REMOVE") }
     }
 }

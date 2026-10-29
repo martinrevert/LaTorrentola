@@ -137,6 +137,54 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
+    /** Removes a movie download record by its torrent hash. */
+    suspend fun removeDownloadedMovieByHash(hash: String) {
+        if (hash.isBlank()) return
+        try {
+            torrentDownloadDao?.delete(hash)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("UserLibraryRepository", "Error deleting local movie download by hash: ${e.message}")
+        }
+
+        val uid = userId ?: return
+        try {
+            firestore.collection("users")
+                .document(uid)
+                .collection("downloads")
+                .document(hash)
+                .delete()
+                .await()
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("Firestore", "Error removing remote movie download by hash: ${e.message}")
+        }
+    }
+
+    /** Removes a TV episode download record by its torrent hash. */
+    suspend fun removeDownloadedEpisodeByHash(hash: String) {
+        if (hash.isBlank()) return
+        try {
+            torrentDownloadDao?.delete(hash)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("UserLibraryRepository", "Error deleting local episode download by hash: ${e.message}")
+        }
+
+        val uid = userId ?: return
+        try {
+            firestore.collection("users")
+                .document(uid)
+                .collection("tv_downloads")
+                .document(hash)
+                .delete()
+                .await()
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("Firestore", "Error removing remote episode download by hash: ${e.message}")
+        }
+    }
+
     /** Observes the signed-in user's favorite movie records. */
     fun getFavoriteMovies(): Flow<List<Movie>> {
         val uid = userId ?: return flowOf(emptyList())
