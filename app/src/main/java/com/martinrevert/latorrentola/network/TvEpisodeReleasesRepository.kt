@@ -286,7 +286,7 @@ class TvEpisodeReleasesRepository @Inject constructor(
                     state = SeriesContinuationState.NEXT_EPISODE_READY,
                     seriesId = seriesId,
                     seriesName = resolvedName,
-                    seriesStatus = series?.status,
+                    seriesStatus = series.status,
                     isSeriesContinuing = isContinuingInTmdb || !isEndedInTmdb,
                     nextSeasonNumber = candidateSeasonNumber,
                     nextEpisodeNumber = candidateEpNum,
@@ -300,7 +300,7 @@ class TvEpisodeReleasesRepository @Inject constructor(
             }
 
             val epAirDate = candidateEpisode.airDate?.trim()?.takeIf { it.isNotBlank() }
-                ?: series?.nextEpisodeToAir?.takeIf {
+                ?: series.nextEpisodeToAir?.takeIf {
                     it.seasonNumber == candidateSeasonNumber && it.episodeNumber == candidateEpNum
                 }?.airDate?.trim()?.takeIf { it.isNotBlank() }
 
@@ -310,13 +310,13 @@ class TvEpisodeReleasesRepository @Inject constructor(
             // If we rolled over to a next season that hasn't aired yet, report season complete + series continues
             if (candidateSeasonNumber > currentSeasonNumber && (isFutureAirDate || isUnscheduledFutureStub)) {
                 val nextPremiereDate = epAirDate
-                    ?: series?.nextEpisodeToAir?.airDate?.takeIf { it.isNotBlank() }
+                    ?: series.nextEpisodeToAir?.airDate?.takeIf { it.isNotBlank() }
                     ?: laterSeasonsSummary.firstOrNull()?.airDate?.takeIf { it.isNotBlank() }
                 return@withContext NextEpisodeEvaluation(
                     state = SeriesContinuationState.SEASON_COMPLETE_SERIES_CONTINUES,
                     seriesId = seriesId,
                     seriesName = resolvedName,
-                    seriesStatus = series?.status,
+                    seriesStatus = series.status,
                     isSeriesContinuing = true,
                     nextSeasonNumber = candidateSeasonNumber,
                     nextEpisodeNumber = candidateEpNum,
@@ -335,7 +335,7 @@ class TvEpisodeReleasesRepository @Inject constructor(
                 state = SeriesContinuationState.REMAINING_EPISODES_NO_TORRENTS,
                 seriesId = seriesId,
                 seriesName = resolvedName,
-                seriesStatus = series?.status,
+                seriesStatus = series.status,
                 isSeriesContinuing = isContinuingInTmdb || (!isEndedInTmdb && isFutureAirDate),
                 nextSeasonNumber = candidateSeasonNumber,
                 nextEpisodeNumber = candidateEpNum,
@@ -351,22 +351,22 @@ class TvEpisodeReleasesRepository @Inject constructor(
         // No candidate episode exists after (currentSeasonNumber, currentEpisodeNumber)
         val hasFutureSeasonOrNextAir = isContinuingInTmdb ||
             laterSeasonsSummary.isNotEmpty() ||
-            series?.nextEpisodeToAir != null
+            series.nextEpisodeToAir != null
 
         return@withContext if (hasFutureSeasonOrNextAir && !isEndedInTmdb) {
-            val nextDate = series?.nextEpisodeToAir?.airDate?.takeIf { it.isNotBlank() }
+            val nextDate = series.nextEpisodeToAir?.airDate?.takeIf { it.isNotBlank() }
                 ?: laterSeasonsSummary.firstOrNull()?.airDate?.takeIf { it.isNotBlank() }
             NextEpisodeEvaluation(
                 state = SeriesContinuationState.SEASON_COMPLETE_SERIES_CONTINUES,
                 seriesId = seriesId,
                 seriesName = resolvedName,
-                seriesStatus = series?.status,
+                seriesStatus = series.status,
                 isSeriesContinuing = true,
-                nextSeasonNumber = series?.nextEpisodeToAir?.seasonNumber
+                nextSeasonNumber = series.nextEpisodeToAir?.seasonNumber
                     ?: laterSeasonsSummary.firstOrNull()?.seasonNumber
                     ?: (currentSeasonNumber + 1),
-                nextEpisodeNumber = series?.nextEpisodeToAir?.episodeNumber ?: 1,
-                nextEpisodeName = series?.nextEpisodeToAir?.name.orEmpty(),
+                nextEpisodeNumber = series.nextEpisodeToAir?.episodeNumber ?: 1,
+                nextEpisodeName = series.nextEpisodeToAir?.name.orEmpty(),
                 nextEpisodeAirDate = nextDate,
                 isNextEpisodeUnaired = true,
                 remainingEpisodesCount = remainingInLaterSeasonsCount,
@@ -378,7 +378,7 @@ class TvEpisodeReleasesRepository @Inject constructor(
                 state = SeriesContinuationState.SERIES_ENDED,
                 seriesId = seriesId,
                 seriesName = resolvedName,
-                seriesStatus = series?.status,
+                seriesStatus = series.status,
                 isSeriesContinuing = false,
                 remainingEpisodesCount = 0,
                 releases = emptyList(),

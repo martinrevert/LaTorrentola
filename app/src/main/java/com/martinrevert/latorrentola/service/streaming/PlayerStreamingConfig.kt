@@ -117,7 +117,7 @@ object PlayerStreamingConfig {
             ): androidx.media3.exoplayer.audio.AudioSink {
                 val defaultSink = androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
                     .setEnableFloatOutput(enableFloatOutput)
-                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setEnableAudioOutputPlaybackParameters(enableAudioTrackPlaybackParams)
                     .build()
                 return Ac3TranscodingAudioSink(defaultSink, context, prefs)
             }

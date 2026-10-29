@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioFormat
 import android.util.Log
 import androidx.annotation.OptIn
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
@@ -96,22 +97,6 @@ class Ac3TranscodingAudioSink(
             return AudioSink.SINK_FORMAT_SUPPORTED_WITH_TRANSCODING
         }
         return delegate.getFormatSupport(format)
-    }
-
-    @Deprecated("Deprecated in Java", ReplaceWith("configure(AudioSink.AudioSinkConfig)"))
-    override fun configure(
-        inputFormat: Format,
-        specifiedBufferSize: Int,
-        outputChannels: IntArray?
-    ) {
-        val configBuilder = AudioSink.AudioSinkConfig.Builder(inputFormat)
-            .setPreferredBufferSizeOverride(specifiedBufferSize)
-        if (outputChannels != null) {
-            configBuilder.setOutputChannelMapping(
-                com.google.common.primitives.ImmutableIntArray.copyOf(outputChannels)
-            )
-        }
-        configure(configBuilder.build())
     }
 
     override fun configure(audioSinkConfig: AudioSink.AudioSinkConfig) {
@@ -396,7 +381,12 @@ class Ac3TranscodingAudioSink(
         if (effectiveChannels < 6) {
             return false
         }
-        val capabilities = AudioCapabilities.getCapabilities(context)
+        val capabilities = AudioCapabilities.getCapabilities(
+            context,
+            AudioAttributes.DEFAULT,
+            null,
+            emptyList()
+        )
         return capabilities.supportsEncoding(AudioFormat.ENCODING_AC3)
     }
 

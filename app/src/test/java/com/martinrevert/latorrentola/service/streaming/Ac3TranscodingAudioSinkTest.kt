@@ -37,7 +37,7 @@ class Ac3TranscodingAudioSinkTest {
     @Before
     fun setUp() {
         mockkStatic(AudioCapabilities::class)
-        every { AudioCapabilities.getCapabilities(context) } returns audioCapabilities
+        every { AudioCapabilities.getCapabilities(any(), any(), any(), any()) } returns audioCapabilities
         every { audioCapabilities.supportsEncoding(AudioFormat.ENCODING_AC3) } returns true
 
         transcodingSink = Ac3TranscodingAudioSink(
@@ -130,7 +130,7 @@ class Ac3TranscodingAudioSinkTest {
             .build()
 
         transcodingSink.setSourceAudioFormat(aac51Format)
-        transcodingSink.configure(rawPcm51, 0, null)
+        transcodingSink.configure(AudioSink.AudioSinkConfig.Builder(rawPcm51).build())
 
         verify {
             delegateSink.configure(

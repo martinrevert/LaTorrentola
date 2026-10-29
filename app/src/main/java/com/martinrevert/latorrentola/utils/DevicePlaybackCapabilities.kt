@@ -5,6 +5,7 @@ import android.content.Context
 import android.media.AudioFormat
 import android.media.MediaCodecList
 import android.media.MediaFormat
+import androidx.media3.common.AudioAttributes
 import androidx.media3.exoplayer.audio.AudioCapabilities
 import com.martinrevert.latorrentola.model.torrent.PlaybackCompatibility
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -88,13 +89,23 @@ class DevicePlaybackCapabilities @Inject constructor(
         if (nativeAudioMimes.contains("audio/vnd.dts") || nativeAudioMimes.contains("audio/vnd.dts.hd")) {
             return true
         }
-        val audioCaps = AudioCapabilities.getCapabilities(context)
+        val audioCaps = AudioCapabilities.getCapabilities(
+            context,
+            AudioAttributes.DEFAULT,
+            null,
+            emptyList()
+        )
         return audioCaps.supportsEncoding(AudioFormat.ENCODING_DTS) ||
                 audioCaps.supportsEncoding(AudioFormat.ENCODING_DTS_HD)
     }
 
     private fun hasTrueHdSupport(): Boolean {
-        val audioCaps = AudioCapabilities.getCapabilities(context)
+        val audioCaps = AudioCapabilities.getCapabilities(
+            context,
+            AudioAttributes.DEFAULT,
+            null,
+            emptyList()
+        )
         return audioCaps.supportsEncoding(AudioFormat.ENCODING_DOLBY_TRUEHD)
     }
 
@@ -102,7 +113,12 @@ class DevicePlaybackCapabilities @Inject constructor(
         if (nativeAudioMimes.contains("audio/ac3") || nativeAudioMimes.contains("audio/eac3")) {
             return true
         }
-        val audioCaps = AudioCapabilities.getCapabilities(context)
+        val audioCaps = AudioCapabilities.getCapabilities(
+            context,
+            AudioAttributes.DEFAULT,
+            null,
+            emptyList()
+        )
         return audioCaps.supportsEncoding(AudioFormat.ENCODING_AC3) ||
                 audioCaps.supportsEncoding(AudioFormat.ENCODING_E_AC3)
     }
