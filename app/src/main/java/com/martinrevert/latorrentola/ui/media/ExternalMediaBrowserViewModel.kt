@@ -162,6 +162,8 @@ class ExternalMediaBrowserViewModel @Inject constructor(
         }
     }
 
+    private var isUserExplicitSelection = false
+
     fun refreshUsbLocations() {
         loadUsbLocations()
     }
@@ -177,12 +179,13 @@ class ExternalMediaBrowserViewModel @Inject constructor(
             val hasRemovable = locations.any { it.isRemovable }
             val currentSelected = _uiState.value.selectedUsbLocation
             val stillAvailable = locations.firstOrNull { it.id == currentSelected?.id }
+            if (currentSelected?.isRemovable == true && stillAvailable == null) {
+                isUserExplicitSelection = false
+            }
             val target = when {
-                stillAvailable != null && stillAvailable.isRemovable -> stillAvailable
-                hasRemovable && (currentSelected == null || !currentSelected.isRemovable) ->
-                    locations.firstOrNull { it.isRemovable }
+                isUserExplicitSelection && stillAvailable != null -> stillAvailable
+                hasRemovable -> locations.firstOrNull { it.isRemovable } ?: locations.firstOrNull()
                 stillAvailable != null -> stillAvailable
-                hasRemovable -> locations.firstOrNull { it.isRemovable }
                 else -> locations.firstOrNull()
             }
 
@@ -260,7 +263,7 @@ class ExternalMediaBrowserViewModel @Inject constructor(
         } else {
             val usb = usbLocations.firstOrNull { it.id == locationId }
             if (usb != null) {
-                val exactPath = File(usb.rootDirectory, TorrentStorageResolver.TORRENT_DIRECTORY).absolutePath
+                val exactPath = File(usb.downloadDirectory, TorrentStorageResolver.TORRENT_DIRECTORY).absolutePath
                 _uiState.update {
                     it.copy(
                         activeStorageId = locationId,
@@ -297,6 +300,7 @@ class ExternalMediaBrowserViewModel @Inject constructor(
     }
 
     fun selectUsbLocation(location: StorageLocation) {
+        isUserExplicitSelection = true
         _uiState.update {
             it.copy(
                 selectedUsbLocation = location,

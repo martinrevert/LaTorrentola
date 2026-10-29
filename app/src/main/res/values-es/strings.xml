@@ -286,6 +286,9 @@
     <string name="settings_storage_support">Selecciona dónde guardar los archivos descargados de torrent.</string>
     <string name="settings_storage_internal">Almacenamiento interno</string>
     <string name="storage_space_available">%1$s disponible</string>
+    <string name="usb_drive_formatted">Unidad USB (%1$s)</string>
+    <string name="usb_drive_named">Unidad USB (%1$s)</string>
+    <string name="external_storage_named">Almacenamiento externo (%1$s)</string>
 
     <!-- External & Network Media Browser -->
     <string name="external_media_title">Almacenamiento externo y de red</string>

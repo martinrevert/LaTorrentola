@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -41,7 +42,9 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text as TvText
 import androidx.tv.material3.Card as TvCard
+import androidx.tv.material3.CardDefaults as TvCardDefaults
 import androidx.tv.material3.Button as TvButton
+import androidx.tv.material3.ButtonDefaults as TvButtonDefaults
 import androidx.tv.material3.OutlinedButton as TvOutlinedButton
 import androidx.tv.material3.IconButton as TvIconButton
 import androidx.tv.material3.Icon as TvIcon
@@ -1179,30 +1182,34 @@ private fun TvExternalMediaContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            ActiveStorageBanner(
-                uiState = uiState,
-                isTv = true,
-                themeMode = themeMode,
-                onResetToInternal = { onSetActiveStorage(TorrentStorageResolver.LOCATION_INTERNAL) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp)
-            )
+            Spacer(modifier = Modifier.height(12.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                val isUsbTab = uiState.selectedTab == ExternalMediaTab.USB
                 TvButton(
                     onClick = { onSelectTab(ExternalMediaTab.USB) },
-                    modifier = Modifier.focusHighlight(shape = RoundedCornerShape(12.dp))
+                    modifier = Modifier.focusHighlight(shape = RoundedCornerShape(12.dp)),
+                    colors = TvButtonDefaults.colors(
+                        containerColor = if (isUsbTab) TvMaterialTheme.colorScheme.primaryContainer
+                            else TvMaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (isUsbTab) TvMaterialTheme.colorScheme.onPrimaryContainer
+                            else TvMaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 ) {
                     TvIcon(Icons.Default.Usb, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     TvText(stringResource(R.string.external_media_tab_usb))
                 }
+                val isNetworkTab = uiState.selectedTab == ExternalMediaTab.NETWORK
                 TvButton(
                     onClick = { onSelectTab(ExternalMediaTab.NETWORK) },
-                    modifier = Modifier.focusHighlight(shape = RoundedCornerShape(12.dp))
+                    modifier = Modifier.focusHighlight(shape = RoundedCornerShape(12.dp)),
+                    colors = TvButtonDefaults.colors(
+                        containerColor = if (isNetworkTab) TvMaterialTheme.colorScheme.primaryContainer
+                            else TvMaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (isNetworkTab) TvMaterialTheme.colorScheme.onPrimaryContainer
+                            else TvMaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 ) {
                     TvIcon(Icons.Default.Dns, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
@@ -1210,7 +1217,7 @@ private fun TvExternalMediaContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             when (uiState.selectedTab) {
                 ExternalMediaTab.USB -> {
@@ -1300,105 +1307,158 @@ private fun TvUsbMediaView(
         }
 
         if (uiState.usbLocations.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRestorer(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(vertical = 4.dp)
             ) {
-                uiState.usbLocations.forEach { loc ->
+                items(uiState.usbLocations, key = { it.id }) { loc ->
                     val isSelected = uiState.selectedUsbLocation?.id == loc.id
-                    if (isSelected) {
-                        TvButton(
-                            onClick = { onSelectLocation(loc) },
-                            modifier = Modifier.focusHighlight(shape = RoundedCornerShape(8.dp))
-                        ) {
-                            TvIcon(
-                                if (loc.isRemovable) Icons.Default.Usb else Icons.Default.Folder,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            TvText(loc.displayName)
-                        }
-                    } else {
-                        TvOutlinedButton(
-                            onClick = { onSelectLocation(loc) },
-                            modifier = Modifier.focusHighlight(shape = RoundedCornerShape(8.dp))
-                        ) {
-                            TvIcon(
-                                if (loc.isRemovable) Icons.Default.Usb else Icons.Default.Folder,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            TvText(loc.displayName)
+                    val isActiveDownload = uiState.activeStorageId == loc.id
+                    TvCard(
+                        onClick = { onSelectLocation(loc) },
+                        modifier = Modifier
+                            .focusHighlight(shape = RoundedCornerShape(10.dp))
+                            .widthIn(min = 200.dp, max = 300.dp),
+                        shape = TvCardDefaults.shape(shape = RoundedCornerShape(10.dp)),
+                        scale = TvCardDefaults.scale(focusedScale = 1.05f),
+                        colors = TvCardDefaults.colors(
+                            containerColor = if (isSelected) TvMaterialTheme.colorScheme.primaryContainer
+                                else TvMaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (isSelected) TvMaterialTheme.colorScheme.onPrimaryContainer
+                                else TvMaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TvIcon(
+                                    imageVector = if (loc.isRemovable) Icons.Default.Usb else Icons.Default.Folder,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = if (isSelected) TvMaterialTheme.colorScheme.primary
+                                        else TvMaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                TvText(
+                                    text = loc.displayName,
+                                    style = TvMaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            if (loc.availableBytes > 0) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                TvText(
+                                    text = stringResource(R.string.storage_space_available, formatMediaSize(loc.availableBytes)),
+                                    style = TvMaterialTheme.typography.bodySmall,
+                                    color = if (isSelected) TvMaterialTheme.colorScheme.onPrimaryContainer
+                                        else TvMaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (isActiveDownload) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    TvIcon(
+                                        Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = TvMaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    TvText(
+                                        text = stringResource(R.string.active_download_storage_badge),
+                                        style = TvMaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TvMaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
 
             uiState.selectedUsbLocation?.let { loc ->
-                Spacer(modifier = Modifier.height(8.dp))
+                val isCurrentActive = uiState.activeStorageId == loc.id
+                Spacer(modifier = Modifier.height(6.dp))
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         TvText(
-                            text = if (loc.isRemovable) stringResource(R.string.active_download_storage_usb_desc)
-                            else stringResource(R.string.active_download_storage_internal_desc),
+                            text = if (isCurrentActive) {
+                                stringResource(R.string.active_download_storage_subtitle)
+                            } else {
+                                if (loc.isRemovable) stringResource(R.string.active_download_storage_usb_desc)
+                                else stringResource(R.string.active_download_storage_internal_desc)
+                            },
                             style = TvMaterialTheme.typography.bodySmall,
-                            color = TvMaterialTheme.colorScheme.onSurfaceVariant
+                            color = TvMaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
-                        if (loc.availableBytes > 0) {
-                            TvText(
-                                text = stringResource(R.string.storage_space_available, formatMediaSize(loc.availableBytes)),
-                                style = TvMaterialTheme.typography.labelSmall,
-                                color = TvMaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
                     }
-                    if (uiState.activeStorageId == loc.id) {
-                        TvSurface(
-                            shape = RoundedCornerShape(8.dp),
-                            colors = TvSurfaceDefaults.colors(
-                                containerColor = TvMaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                                contentColor = TvMaterialTheme.colorScheme.primary
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                    Spacer(modifier = Modifier.width(16.dp))
+                    if (isCurrentActive) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TvSurface(
+                                shape = RoundedCornerShape(8.dp),
+                                colors = TvSurfaceDefaults.colors(
+                                    containerColor = TvMaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                    contentColor = TvMaterialTheme.colorScheme.primary
+                                )
                             ) {
-                                TvIcon(
-                                    Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = TvMaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                TvText(
-                                    stringResource(R.string.active_download_storage_badge),
-                                    style = TvMaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TvMaterialTheme.colorScheme.primary
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    TvIcon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = TvMaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    TvText(
+                                        stringResource(R.string.active_download_storage_badge),
+                                        style = TvMaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TvMaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            if (loc.id != TorrentStorageResolver.LOCATION_INTERNAL) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                TvOutlinedButton(
+                                    onClick = { onSetActiveStorage(TorrentStorageResolver.LOCATION_INTERNAL) },
+                                    modifier = Modifier.focusHighlight(shape = RoundedCornerShape(8.dp))
+                                ) {
+                                    TvIcon(Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    TvText(stringResource(R.string.active_download_storage_reset_internal))
+                                }
                             }
                         }
                     } else {
-                        TvOutlinedButton(
+                        TvButton(
                             onClick = { onSetActiveStorage(loc.id) },
                             modifier = Modifier.focusHighlight(shape = RoundedCornerShape(8.dp))
                         ) {
                             TvIcon(Icons.Default.SaveAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             TvText(stringResource(R.string.active_download_storage_set_button))
                         }
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         val canNavigateUp = uiState.currentUsbFolder != null &&
@@ -1406,40 +1466,68 @@ private fun TvUsbMediaView(
                 (try { uiState.currentUsbFolder.canonicalPath } catch (_: Throwable) { uiState.currentUsbFolder.absolutePath }) !=
                 (try { uiState.selectedUsbLocation.rootDirectory.canonicalPath } catch (_: Throwable) { uiState.selectedUsbLocation.rootDirectory.absolutePath })
 
-        if (canNavigateUp) {
-            TvButton(
-                onClick = onNavigateUp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusHighlight(shape = RoundedCornerShape(8.dp))
-            ) {
-                TvIcon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                TvText(stringResource(R.string.external_media_parent_folder))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (canNavigateUp) {
+                TvButton(
+                    onClick = onNavigateUp,
+                    modifier = Modifier.focusHighlight(shape = RoundedCornerShape(8.dp))
+                ) {
+                    TvIcon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    TvText(stringResource(R.string.external_media_parent_folder))
+                }
+                Spacer(modifier = Modifier.width(12.dp))
             }
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        if (uiState.usbFiles.isEmpty() && !uiState.isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center
-            ) {
+            uiState.currentUsbFolder?.let { folder ->
                 TvText(
-                    text = stringResource(R.string.external_media_empty_usb),
-                    style = TvMaterialTheme.typography.bodyLarge,
-                    color = TvMaterialTheme.colorScheme.onSurfaceVariant
+                    text = folder.absolutePath,
+                    style = TvMaterialTheme.typography.labelSmall,
+                    color = TvMaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(uiState.usbFiles) { item ->
-                    TvMediaFileRow(item = item, onClick = { onItemClick(item) })
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+            if (uiState.isLoading) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(
+                        color = TvMaterialTheme.colorScheme.primary
+                    )
+                }
+            } else if (uiState.usbFiles.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    TvText(
+                        text = stringResource(R.string.external_media_empty_usb),
+                        style = TvMaterialTheme.typography.bodyLarge,
+                        color = TvMaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(uiState.usbFiles, key = { it.path }) { item ->
+                        TvMediaFileRow(item = item, onClick = { onItemClick(item) })
+                    }
                 }
             }
         }
@@ -1512,17 +1600,19 @@ private fun TvNetworkMediaView(
                     }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(uiState.remoteServers) { server ->
-                        TvServerCard(
-                            server = server,
-                            onClick = { onSelectServer(server) },
-                            onEdit = { onEditServerClick(server) },
-                            onDelete = { onDeleteServerClick(server) }
-                        )
+                Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(uiState.remoteServers, key = { it.id }) { server ->
+                            TvServerCard(
+                                server = server,
+                                onClick = { onSelectServer(server) },
+                                onEdit = { onEditServerClick(server) },
+                                onDelete = { onDeleteServerClick(server) }
+                            )
+                        }
                     }
                 }
             }
@@ -1549,12 +1639,14 @@ private fun TvNetworkMediaView(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(uiState.remoteFiles) { item ->
-                    TvMediaFileRow(item = item, onClick = { onItemClick(item) })
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(uiState.remoteFiles, key = { it.path }) { item ->
+                        TvMediaFileRow(item = item, onClick = { onItemClick(item) })
+                    }
                 }
             }
         }
@@ -1673,7 +1765,15 @@ private fun TvMediaFileRow(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .focusHighlight(shape = RoundedCornerShape(8.dp))
+            .focusHighlight(shape = RoundedCornerShape(8.dp)),
+        shape = TvCardDefaults.shape(shape = RoundedCornerShape(8.dp)),
+        scale = TvCardDefaults.scale(focusedScale = 1.02f),
+        colors = TvCardDefaults.colors(
+            containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+            contentColor = TvMaterialTheme.colorScheme.onSurfaceVariant,
+            focusedContainerColor = TvMaterialTheme.colorScheme.surface,
+            focusedContentColor = TvMaterialTheme.colorScheme.onSurface
+        )
     ) {
         Row(
             modifier = Modifier
@@ -2202,6 +2302,7 @@ private fun ExternalMediaBrowserScreenTvLightPreview() {
     TvLaTorrentolaTheme(themeMode = PreferenceManager.THEME_LIGHT) {
         TvExternalMediaContent(
             uiState = previewMockUiState,
+            themeMode = PreferenceManager.THEME_LIGHT,
             onBackClick = {},
             onSelectTab = {},
             onSetActiveStorage = {},

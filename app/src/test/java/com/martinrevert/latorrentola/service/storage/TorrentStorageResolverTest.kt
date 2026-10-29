@@ -103,4 +103,40 @@ class TorrentStorageResolverTest {
         val impossibleDir = File(regularFile, "invalid_child_dir")
         assertThat(TorrentStorageResolver.isWritableDirectory(impossibleDir)).isFalse()
     }
+
+    @Test
+    fun `getAvailableStorageLocations filters unmounted volumes and includes mounted removable volume`() {
+        val storageManager: android.os.storage.StorageManager = mockk(relaxed = true)
+        every { context.getSystemService(Context.STORAGE_SERVICE) } returns storageManager
+
+        val mountedUsbDir = tempFolder.newFolder("mounted_usb")
+        val mountedVolume: android.os.storage.StorageVolume = mockk(relaxed = true)
+        every { mountedVolume.isPrimary } returns false
+        every { mountedVolume.state } returns android.os.Environment.MEDIA_MOUNTED
+        every { mountedVolume.isRemovable } returns true
+        every { mountedVolume.directory } returns mountedUsbDir
+        every { mountedVolume.getDescription(any()) } returns "SanDisk USB"
+
+        val unmountedUsbDir = tempFolder.newFolder("unmounted_usb")
+        val unmountedVolume: android.os.storage.StorageVolume = mockk(relaxed = true)
+        every { unmountedVolume.isPrimary } returns false
+        every { unmountedVolume.state } returns android.os.Environment.MEDIA_UNMOUNTED
+        every { unmountedVolume.isRemovable } returns true
+        every { unmountedVolume.directory } returns unmountedUsbDir
+
+        val primaryVolume: android.os.storage.StorageVolume = mockk(relaxed = true)
+        every { primaryVolume.isPrimary } returns true
+        every { primaryVolume.state } returns android.os.Environment.MEDIA_MOUNTED
+
+        every { storageManager.storageVolumes } returns listOf(primaryVolume, unmountedVolume, mountedVolume)
+
+        val locations = TorrentStorageResolver.getAvailableStorageLocations(context)
+        val usb = locations.firstOrNull { it.id == mountedUsbDir.absolutePath }
+        assertThat(usb).isNotNull()
+        assertThat(usb?.displayName).isEqualTo("SanDisk USB")
+        assertThat(usb?.isRemovable).isTrue()
+
+        // Unmounted volume should not be in locations
+        assertThat(locations.any { it.id == unmountedUsbDir.absolutePath }).isFalse()
+    }
 }

@@ -286,6 +286,9 @@
     <string name="settings_storage_support">Select where to store downloaded torrent files.</string>
     <string name="settings_storage_internal">Internal Storage</string>
     <string name="storage_space_available">%1$s available</string>
+    <string name="usb_drive_formatted">USB Drive (%1$s)</string>
+    <string name="usb_drive_named">USB Drive (%1$s)</string>
+    <string name="external_storage_named">External Storage (%1$s)</string>
 
     <!-- External & Network Media Browser -->
     <string name="external_media_title">External &amp; Network Media</string>

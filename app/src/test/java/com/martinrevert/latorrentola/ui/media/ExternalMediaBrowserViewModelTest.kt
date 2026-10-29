@@ -652,6 +652,127 @@ class ExternalMediaBrowserViewModelTest {
             unmockkObject(TorrentStorageResolver)
         }
     }
+
+    @Test
+    fun `user explicit selection of internal storage is retained across loadUsbLocations`() = runTest {
+        mockkObject(TorrentStorageResolver)
+        try {
+            val internalLoc = StorageLocation(
+                id = TorrentStorageResolver.LOCATION_INTERNAL,
+                displayName = "Internal",
+                rootDirectory = tempFolder.newFolder("internal_test_explicit"),
+                isRemovable = false,
+                availableBytes = 5000L,
+                totalBytes = 10000L
+            )
+            val usbLoc = StorageLocation(
+                id = "/storage/usb_explicit",
+                displayName = "USB Drive",
+                rootDirectory = tempFolder.newFolder("usb_test_explicit"),
+                isRemovable = true,
+                availableBytes = 8000L,
+                totalBytes = 16000L
+            )
+
+            every { TorrentStorageResolver.getAvailableStorageLocations(any()) } returns listOf(internalLoc, usbLoc)
+
+            // Explicitly select internal
+            viewModel.selectUsbLocation(internalLoc)
+            advanceUntilIdle()
+            assertThat(viewModel.uiState.value.selectedUsbLocation?.id).isEqualTo(internalLoc.id)
+
+            // Re-load USB locations (e.g. on resume)
+            viewModel.loadUsbLocations()
+            advanceUntilIdle()
+
+            // Must still be internal, not overwritten by usbLoc
+            assertThat(viewModel.uiState.value.selectedUsbLocation?.id).isEqualTo(internalLoc.id)
+        } finally {
+            unmockkObject(TorrentStorageResolver)
+        }
+    }
+
+    @Test
+    fun `setActiveDownloadStorage updates preferenceManager and activeStorageInfo`() = runTest {
+        val usbLoc = StorageLocation(
+            id = "/storage/my_usb",
+            displayName = "Cruzer USB",
+            rootDirectory = tempFolder.newFolder("cruzer_root"),
+            isRemovable = true,
+            availableBytes = 12000L,
+            totalBytes = 32000L,
+            downloadDirectory = tempFolder.newFolder("cruzer_dl")
+        )
+
+        mockkObject(TorrentStorageResolver)
+        try {
+            every { TorrentStorageResolver.getAvailableStorageLocations(any()) } returns listOf(usbLoc)
+            every { preferenceManager.getStorageLocation() } returns usbLoc.id
+
+            viewModel.setActiveDownloadStorage(usbLoc.id)
+            verify { preferenceManager.setStorageLocation(usbLoc.id) }
+
+            viewModel.loadUsbLocations()
+            advanceUntilIdle()
+
+            assertThat(viewModel.uiState.value.activeStorageId).isEqualTo(usbLoc.id)
+            assertThat(viewModel.uiState.value.activeStorageDisplayName).isEqualTo("Cruzer USB")
+            assertThat(viewModel.uiState.value.activeStorageType).isEqualTo("USB")
+        } finally {
+            unmockkObject(TorrentStorageResolver)
+        }
+    }
+
+    @Test
+    fun `disconnecting explicitly selected USB resets explicit flag allowing auto-selection of new USB`() = runTest {
+        mockkObject(TorrentStorageResolver)
+        try {
+            val internalLoc = StorageLocation(
+                id = TorrentStorageResolver.LOCATION_INTERNAL,
+                displayName = "Internal",
+                rootDirectory = tempFolder.newFolder("internal_test_reset"),
+                isRemovable = false,
+                availableBytes = 5000L,
+                totalBytes = 10000L
+            )
+            val usbLoc1 = StorageLocation(
+                id = "/storage/usb_1",
+                displayName = "USB 1",
+                rootDirectory = tempFolder.newFolder("usb_1_dir"),
+                isRemovable = true,
+                availableBytes = 8000L,
+                totalBytes = 16000L
+            )
+            val usbLoc2 = StorageLocation(
+                id = "/storage/usb_2",
+                displayName = "USB 2",
+                rootDirectory = tempFolder.newFolder("usb_2_dir"),
+                isRemovable = true,
+                availableBytes = 9000L,
+                totalBytes = 32000L
+            )
+
+            // 1. Initial state with usbLoc1
+            every { TorrentStorageResolver.getAvailableStorageLocations(any()) } returns listOf(internalLoc, usbLoc1)
+            viewModel.selectUsbLocation(usbLoc1)
+            advanceUntilIdle()
+            assertThat(viewModel.uiState.value.selectedUsbLocation?.id).isEqualTo(usbLoc1.id)
+
+            // 2. Disconnect usbLoc1 (only internal remaining)
+            every { TorrentStorageResolver.getAvailableStorageLocations(any()) } returns listOf(internalLoc)
+            viewModel.loadUsbLocations()
+            advanceUntilIdle()
+            assertThat(viewModel.uiState.value.selectedUsbLocation?.id).isEqualTo(internalLoc.id)
+
+            // 3. Connect usbLoc2 -> should auto-select usbLoc2 because explicit selection of usbLoc1 was reset
+            every { TorrentStorageResolver.getAvailableStorageLocations(any()) } returns listOf(internalLoc, usbLoc2)
+            viewModel.loadUsbLocations()
+            advanceUntilIdle()
+            assertThat(viewModel.uiState.value.selectedUsbLocation?.id).isEqualTo(usbLoc2.id)
+        } finally {
+            unmockkObject(TorrentStorageResolver)
+        }
+    }
 }
 
 
