@@ -90,3 +90,103 @@ data class TmdbMovieCastMember(
     val fullProfileUrl: String?
         get() = profilePath?.let { "https://image.tmdb.org/t/p/w185$it" }
 }
+
+/**
+ * Summary of a TMDB movie returned by discovery or search endpoints.
+ *
+ * @property id TMDB movie identifier.
+ * @property title Localized movie title.
+ * @property originalTitle Original movie title.
+ * @property overview Movie synopsis.
+ * @property posterPath Relative poster image path.
+ * @property backdropPath Relative backdrop image path.
+ * @property releaseDate Release date in ISO format.
+ * @property voteAverage TMDB average user rating.
+ * @property voteCount Number of TMDB user ratings.
+ * @property popularity TMDB popularity score.
+ * @property genreIds Genre identifiers included in list results.
+ * @property originalLanguage Original language code.
+ */
+@Serializable
+data class TmdbMovieSummary(
+    @SerializedName("id")
+    @SerialName("id")
+    val id: Int,
+
+    @SerializedName("title")
+    @SerialName("title")
+    val title: String? = null,
+
+    @SerializedName("original_title")
+    @SerialName("original_title")
+    val originalTitle: String? = null,
+
+    @SerializedName("overview")
+    @SerialName("overview")
+    val overview: String? = null,
+
+    @SerializedName("poster_path")
+    @SerialName("poster_path")
+    val posterPath: String? = null,
+
+    @SerializedName("backdrop_path")
+    @SerialName("backdrop_path")
+    val backdropPath: String? = null,
+
+    @SerializedName("release_date")
+    @SerialName("release_date")
+    val releaseDate: String? = null,
+
+    @SerializedName("vote_average")
+    @SerialName("vote_average")
+    val voteAverage: Double? = null,
+
+    @SerializedName("vote_count")
+    @SerialName("vote_count")
+    val voteCount: Int? = null,
+
+    @SerializedName("popularity")
+    @SerialName("popularity")
+    val popularity: Double? = null,
+
+    @SerializedName("genre_ids")
+    @SerialName("genre_ids")
+    val genreIds: List<Int>? = emptyList(),
+
+    @SerializedName("original_language")
+    @SerialName("original_language")
+    val originalLanguage: String? = null
+) {
+    /** Full-size poster image URL, or `null` when no poster is available. */
+    val fullPosterUrl: String?
+        get() = posterPath?.takeIf(String::isNotBlank)?.let { "https://image.tmdb.org/t/p/w500$it" }
+
+    /** Full-size backdrop image URL, or `null` when no backdrop is available. */
+    val fullBackdropUrl: String?
+        get() = backdropPath?.takeIf(String::isNotBlank)?.let { "https://image.tmdb.org/t/p/w1280$it" }
+
+    /** Four-digit year of the movie release date. */
+    val releaseYear: String
+        get() = releaseDate.orEmpty().take(4)
+}
+
+/** Paginated list of TMDB movies returned by discovery. */
+@Serializable
+data class TmdbMoviePage(
+    @SerializedName("page")
+    @SerialName("page")
+    val page: Int = 1,
+
+    @SerializedName("total_pages")
+    @SerialName("total_pages")
+    val totalPages: Int = 1,
+
+    @SerializedName("total_results")
+    @SerialName("total_results")
+    val totalResults: Int = 0,
+
+    @SerializedName("results")
+    @SerialName("results")
+    val results: List<TmdbMovieSummary>? = emptyList()
+)
+

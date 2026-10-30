@@ -409,4 +409,12 @@
     <string name="player_decoding_error_audio_message_generic">Este dispositivo no pudo decodificar la pista de audio. Prueba seleccionando otra pista de audio o versión.</string>
     <string name="player_decoding_error_close">Cerrar reproductor</string>
     <string name="player_decoding_error_change_audio">Cambiar audio</string>
+
+    <!-- OTT Streaming Providers -->
+    <string name="ott_chip_label">OTT</string>
+    <string name="ott_providers_title_movies">Películas por Plataforma</string>
+    <string name="ott_providers_title_tv">Series por Plataforma</string>
+    <string name="ott_empty_catalog">No se encontraron títulos para esta plataforma.</string>
+    <string name="retry">Reintentar</string>
+    <string name="network_error">Error de red</string>
 </resources>

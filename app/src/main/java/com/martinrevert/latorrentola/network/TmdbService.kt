@@ -4,12 +4,14 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
 import com.martinrevert.latorrentola.model.TMDB.TmdbFindResponse
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieCreditsResponse
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieExternalIds
+import com.martinrevert.latorrentola.model.TMDB.TmdbMoviePage
 import com.martinrevert.latorrentola.model.TMDB.TmdbSearchPersonResponse
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvExternalIds
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenrePage
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvPage
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.model.TMDB.TmdbWatchProvidersResponse
 import retrofit2.http.GET
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -115,6 +117,44 @@ interface TmdbService {
         @Query("page") page: Int,
         @Query("language") language: String = TmdbLanguage.current()
     ): TmdbTvPage
+
+    /** Retrieves a sorted page of movies available on the specified OTT [providerId]. */
+    @GET("discover/movie")
+    suspend fun discoverMoviesByProvider(
+        @Query("api_key") apiKey: String,
+        @Query("with_watch_providers") providerId: Int,
+        @Query("watch_region") watchRegion: String,
+        @Query("sort_by") sortBy: String,
+        @Query("page") page: Int,
+        @Query("language") language: String = TmdbLanguage.current()
+    ): TmdbMoviePage
+
+    /** Retrieves a sorted page of TV series available on the specified OTT [providerId]. */
+    @GET("discover/tv")
+    suspend fun discoverTvByProvider(
+        @Query("api_key") apiKey: String,
+        @Query("with_watch_providers") providerId: Int,
+        @Query("watch_region") watchRegion: String,
+        @Query("sort_by") sortBy: String,
+        @Query("page") page: Int,
+        @Query("language") language: String = TmdbLanguage.current()
+    ): TmdbTvPage
+
+    /** Retrieves movie streaming providers available on TMDB. */
+    @GET("watch/providers/movie")
+    suspend fun getMovieWatchProviders(
+        @Query("api_key") apiKey: String,
+        @Query("watch_region") watchRegion: String? = null,
+        @Query("language") language: String = TmdbLanguage.current()
+    ): TmdbWatchProvidersResponse
+
+    /** Retrieves TV series streaming providers available on TMDB. */
+    @GET("watch/providers/tv")
+    suspend fun getTvWatchProviders(
+        @Query("api_key") apiKey: String,
+        @Query("watch_region") watchRegion: String? = null,
+        @Query("language") language: String = TmdbLanguage.current()
+    ): TmdbWatchProvidersResponse
 
     /** Retrieves TV series details, seasons, and aggregate cast. */
     @GET("tv/{series_id}")

@@ -95,7 +95,8 @@ fun HomeScreen(
     onSearchClick: (isTvMode: Boolean) -> Unit,
     onActorSearchClick: () -> Unit = {},
     onFavoritesClick: () -> Unit,
-    onGenreClick: (String) -> Unit
+    onGenreClick: (String) -> Unit,
+    onOttClick: (isTvMode: Boolean) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val topGenres by viewModel.topGenres.collectAsState()
@@ -142,7 +143,8 @@ fun HomeScreen(
         onFocusRestored = { viewModel.clearLastClickedMovieId() },
         tvHomeViewModel = tvHomeViewModel,
         onTvSeriesClick = onTvSeriesClick,
-        onTvGenreClick = onTvGenreClick
+        onTvGenreClick = onTvGenreClick,
+        onOttClick = onOttClick
     )
 
     selectedMovieForDialog?.let { movie ->
@@ -191,7 +193,8 @@ private fun HomeScreenContent(
     onFocusRestored: () -> Unit,
     tvHomeViewModel: TvHomeViewModel? = null,
     onTvSeriesClick: (TmdbTvSummary) -> Unit = {},
-    onTvGenreClick: (TmdbTvGenre) -> Unit = {}
+    onTvGenreClick: (TmdbTvGenre) -> Unit = {},
+    onOttClick: (isTvMode: Boolean) -> Unit = {}
 ) {
     var showGenreSheet by remember { mutableStateOf(false) }
     var showTvGenreSheet by remember { mutableStateOf(false) }
@@ -331,13 +334,15 @@ private fun HomeScreenContent(
                                 tvHomeViewModel?.recordGenreVisit(it.id)
                                 onTvGenreClick(it)
                             },
-                            onAllGenresClick = { showTvGenreSheet = true }
+                            onAllGenresClick = { showTvGenreSheet = true },
+                            onOttClick = { onOttClick(true) }
                         )
                     } else {
                         GenreChips(
                             genres = topGenres,
                             onGenreClick = onGenreClick,
                             onAllGenresClick = { showGenreSheet = true },
+                            onOttClick = { onOttClick(false) },
                             firstFocusRequester = homeControlsFocusRequester
                         )
                         QualityChips(
@@ -491,13 +496,15 @@ private fun HomeScreenContent(
                                     tvHomeViewModel?.recordGenreVisit(it.id)
                                     onTvGenreClick(it)
                                 },
-                                onAllGenresClick = { showTvGenreSheet = true }
+                                onAllGenresClick = { showTvGenreSheet = true },
+                                onOttClick = { onOttClick(true) }
                             )
                         } else {
                             GenreChips(
                                 genres = topGenres,
                                 onGenreClick = onGenreClick,
                                 onAllGenresClick = { showGenreSheet = true },
+                                onOttClick = { onOttClick(false) },
                                 firstFocusRequester = homeControlsFocusRequester
                             )
                             QualityChips(

@@ -30,6 +30,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tv
@@ -243,6 +244,7 @@ fun TvGenreChips(
     genres: List<TmdbTvGenre>,
     onGenreClick: (TmdbTvGenre) -> Unit,
     onAllGenresClick: () -> Unit,
+    onOttClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     LazyRow(
@@ -258,6 +260,20 @@ fun TvGenreChips(
                 selected = false,
                 onClick = onAllGenresClick,
                 label = { Text(stringResource(R.string.all_genres)) }
+            )
+        }
+        item(key = "ott-tv-genres") {
+            AdaptiveChip(
+                selected = false,
+                onClick = onOttClick,
+                label = { Text(stringResource(R.string.ott_chip_label)) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.LiveTv,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             )
         }
         items(genres, key = { it.id }) { genre ->

@@ -35,6 +35,10 @@ import com.martinrevert.latorrentola.ui.home.TvGenreResultsScreen
 import com.martinrevert.latorrentola.ui.home.TvGenreResultsViewModel
 import com.martinrevert.latorrentola.ui.home.TvHomeViewModel
 import com.martinrevert.latorrentola.ui.media.ExternalMediaBrowserScreen
+import com.martinrevert.latorrentola.ui.ott.OttCatalogScreen
+import com.martinrevert.latorrentola.ui.ott.OttCatalogViewModel
+import com.martinrevert.latorrentola.ui.ott.OttProvidersScreen
+import com.martinrevert.latorrentola.ui.ott.OttProvidersViewModel
 import com.martinrevert.latorrentola.ui.search.SearchScreen
 import com.martinrevert.latorrentola.ui.search.SearchViewModel
 import com.martinrevert.latorrentola.ui.settings.SettingsScreen
@@ -114,6 +118,24 @@ sealed interface Route : NavKey {
         val episodeNumber: Int,
         val seriesName: String = "",
         val episodeJson: String? = null
+    ) : Route
+    /**
+     * OTT streaming providers grid destination.
+     *
+     * @property isTvMode Whether browsing in TV series mode or Movie mode.
+     */
+    @Serializable data class OttProviders(val isTvMode: Boolean) : Route
+    /**
+     * OTT provider catalog destination with sorting and pagination.
+     *
+     * @property providerId TMDB watch provider identifier.
+     * @property providerName Display name of the streaming platform.
+     * @property isTvMode Whether browsing TV series or Movies.
+     */
+    @Serializable data class OttCatalog(
+        val providerId: Int,
+        val providerName: String,
+        val isTvMode: Boolean
     ) : Route
 }
 
@@ -276,6 +298,9 @@ fun AppNavigation(
                     },
                     onTvGenreClick = { genre ->
                         backStack.add(Route.TvGenre(genre.id, genre.name))
+                    },
+                    onOttClick = { isTv ->
+                        backStack.add(Route.OttProviders(isTvMode = isTv))
                     }
                 )
             }
@@ -422,6 +447,50 @@ fun AppNavigation(
                     episodeNumber = episodeKey.episodeNumber,
                     seriesName = episodeKey.seriesName,
                     episodeJson = episodeKey.episodeJson,
+                    onBackClick = popBackStack
+                )
+            }
+            entry<Route.OttProviders> { ottKey ->
+                val viewModel: OttProvidersViewModel = hiltViewModel(
+                    key = "ott-providers-${ottKey.isTvMode}"
+                )
+                OttProvidersScreen(
+                    viewModel = viewModel,
+                    isTvMode = ottKey.isTvMode,
+                    themeMode = themeMode,
+                    onProviderClick = { provider ->
+                        backStack.add(
+                            Route.OttCatalog(
+                                providerId = provider.providerId,
+                                providerName = provider.providerName,
+                                isTvMode = ottKey.isTvMode
+                            )
+                        )
+                    },
+                    onBackClick = popBackStack
+                )
+            }
+            entry<Route.OttCatalog> { catalogKey ->
+                val viewModel: OttCatalogViewModel = hiltViewModel(
+                    key = "ott-catalog-${catalogKey.providerId}-${catalogKey.isTvMode}"
+                )
+                OttCatalogScreen(
+                    viewModel = viewModel,
+                    providerId = catalogKey.providerId,
+                    providerName = catalogKey.providerName,
+                    isTvMode = catalogKey.isTvMode,
+                    themeMode = themeMode,
+                    onMovieClick = { movie ->
+                        backStack.add(
+                            Route.Detail(
+                                tmdbMovieId = movie.id,
+                                tmdbMovieTitle = movie.title
+                            )
+                        )
+                    },
+                    onTvSeriesClick = { series ->
+                        backStack.add(Route.TvDetail(series.id))
+                    },
                     onBackClick = popBackStack
                 )
             }

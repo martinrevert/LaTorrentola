@@ -3,13 +3,16 @@ package com.martinrevert.latorrentola.network
 import com.martinrevert.latorrentola.BuildConfig
 import com.martinrevert.latorrentola.database.TvGenreDao
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
+import com.martinrevert.latorrentola.model.TMDB.TmdbMoviePage
 import com.martinrevert.latorrentola.model.TMDB.TmdbPersonResult
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvPage
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.model.TMDB.TmdbWatchProvider
 import com.martinrevert.latorrentola.model.TMDB.sortedByYearDescending
 import com.martinrevert.latorrentola.model.YTS.Cast
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -234,6 +237,88 @@ class TmdbRepository @Inject constructor(
             sortBy = sortBy,
             page = page
         )
+    }
+
+    /**
+     * Loads one sorted page of movies matching a watch provider (OTT).
+     *
+     * @param providerId TMDB watch provider identifier.
+     * @param region ISO 3166-1 country code (defaults to device country or "US").
+     * @param sortBy TMDB discovery sort key.
+     * @param page Requested result page.
+     * @return The requested page of matching movies.
+     */
+    suspend fun discoverMoviesByProvider(
+        providerId: Int,
+        region: String = Locale.getDefault().country.takeIf(String::isNotBlank) ?: "US",
+        sortBy: String = "popularity.desc",
+        page: Int = 1
+    ): TmdbMoviePage {
+        requireConfiguredApiKey()
+        return tmdbService.discoverMoviesByProvider(
+            apiKey = apiKey,
+            providerId = providerId,
+            watchRegion = region,
+            sortBy = sortBy,
+            page = page
+        )
+    }
+
+    /**
+     * Loads one sorted page of TV series matching a watch provider (OTT).
+     *
+     * @param providerId TMDB watch provider identifier.
+     * @param region ISO 3166-1 country code (defaults to device country or "US").
+     * @param sortBy TMDB discovery sort key.
+     * @param page Requested result page.
+     * @return The requested page of matching TV series.
+     */
+    suspend fun discoverTvByProvider(
+        providerId: Int,
+        region: String = Locale.getDefault().country.takeIf(String::isNotBlank) ?: "US",
+        sortBy: String = "popularity.desc",
+        page: Int = 1
+    ): TmdbTvPage {
+        requireConfiguredApiKey()
+        return tmdbService.discoverTvByProvider(
+            apiKey = apiKey,
+            providerId = providerId,
+            watchRegion = region,
+            sortBy = sortBy,
+            page = page
+        )
+    }
+
+    /**
+     * Retrieves all movie streaming providers available on TMDB for [region].
+     *
+     * @param region Optional country code (e.g. "AR", "ES", "US").
+     * @return List of watch providers sorted by display priority.
+     */
+    suspend fun getMovieWatchProviders(region: String? = null): List<TmdbWatchProvider> {
+        requireConfiguredApiKey()
+        val effectiveRegion = region ?: Locale.getDefault().country.takeIf(String::isNotBlank)
+        val response = tmdbService.getMovieWatchProviders(
+            apiKey = apiKey,
+            watchRegion = effectiveRegion
+        )
+        return response.results.orEmpty().sortedBy { it.displayPriority }
+    }
+
+    /**
+     * Retrieves all TV series streaming providers available on TMDB for [region].
+     *
+     * @param region Optional country code (e.g. "AR", "ES", "US").
+     * @return List of watch providers sorted by display priority.
+     */
+    suspend fun getTvWatchProviders(region: String? = null): List<TmdbWatchProvider> {
+        requireConfiguredApiKey()
+        val effectiveRegion = region ?: Locale.getDefault().country.takeIf(String::isNotBlank)
+        val response = tmdbService.getTvWatchProviders(
+            apiKey = apiKey,
+            watchRegion = effectiveRegion
+        )
+        return response.results.orEmpty().sortedBy { it.displayPriority }
     }
 
     /**

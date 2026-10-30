@@ -411,4 +411,12 @@
     <string name="player_decoding_error_audio_message_generic">This device could not decode the audio track. Try selecting another audio track or release.</string>
     <string name="player_decoding_error_close">Close Player</string>
     <string name="player_decoding_error_change_audio">Change Audio Track</string>
+
+    <!-- OTT Streaming Providers -->
+    <string name="ott_chip_label">OTT</string>
+    <string name="ott_providers_title_movies">Streaming Movies</string>
+    <string name="ott_providers_title_tv">Streaming TV Series</string>
+    <string name="ott_empty_catalog">No titles found for this platform.</string>
+    <string name="retry">Retry</string>
+    <string name="network_error">Network error</string>
 </resources>
