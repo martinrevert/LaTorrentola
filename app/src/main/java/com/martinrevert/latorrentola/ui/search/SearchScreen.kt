@@ -15,6 +15,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -459,7 +460,7 @@ private fun SearchScreenContent(
                         ActorChipsRow(
                             actors = actorUiState.actors,
                             selectedActor = actorUiState.selectedActor,
-                            hasBiography = !actorUiState.actorDetail?.biography.isNullOrBlank(),
+                            hasBiography = actorUiState.actorDetail?.biography?.isNotBlank() ?: false,
                             onActorSelect = onActorSelect,
                             onShowBioClick = { showActorBioSheet = true },
                             modifier = Modifier
@@ -743,7 +744,7 @@ private fun SearchScreenContent(
                             ActorChipsRow(
                                 actors = actorUiState.actors,
                                 selectedActor = actorUiState.selectedActor,
-                                hasBiography = !actorUiState.actorDetail?.biography.isNullOrBlank(),
+                                hasBiography = actorUiState.actorDetail?.biography?.isNotBlank() ?: false,
                                 onActorSelect = onActorSelect,
                                 onShowBioClick = { showActorBioSheet = true },
                                 modifier = Modifier.focusRequester(qualityChipsFocusRequester)
@@ -767,10 +768,17 @@ private fun SearchScreenContent(
         }
     }
 
-    if (showActorBioSheet && actorUiState is SearchActorUiState.Success && actorUiState.actorDetail != null) {
+    LaunchedEffect(actorUiState) {
+        if (actorUiState !is SearchActorUiState.Success) {
+            showActorBioSheet = false
+        }
+    }
+
+    if (showActorBioSheet && actorUiState is SearchActorUiState.Success) {
+        val detail = actorUiState.actorDetail
         ActorDetailBottomSheet(
-            actorDetailState = Result.success(actorUiState.actorDetail),
-            isLoading = false,
+            actorDetailState = detail?.let { Result.success(it) },
+            isLoading = actorUiState.isLoadingCredits && detail == null,
             onDismiss = { showActorBioSheet = false },
             sheetState = actorBioSheetState,
             hazeState = hazeState,
@@ -782,19 +790,76 @@ private fun SearchScreenContent(
     }
 }
 
+internal sealed interface ActorChipItem {
+    data object Bio : ActorChipItem
+    data class Actor(val person: TmdbPersonResult) : ActorChipItem
+}
+
+internal fun buildActorChipItems(
+    actors: List<TmdbPersonResult>,
+    selectedActor: TmdbPersonResult,
+    hasBiography: Boolean = true
+): List<ActorChipItem> {
+    if (actors.isEmpty()) {
+        return emptyList()
+    }
+    val items = mutableListOf<ActorChipItem>()
+    val selectedIndex = actors.indexOfFirst { it.id == selectedActor.id }
+    if (hasBiography && selectedIndex == -1) {
+        items.add(ActorChipItem.Bio)
+    }
+    actors.forEachIndexed { index, actor ->
+        if (hasBiography && index == selectedIndex) {
+            items.add(ActorChipItem.Bio)
+        }
+        items.add(ActorChipItem.Actor(actor))
+    }
+    return items
+}
+
 /**
  * Horizontal row of matching TMDB actor chips and an optional Biography chip.
+ *
+ * The Biography chip is always positioned immediately to the left of [selectedActor].
+ * Changing [selectedActor] animates the Biography chip and surrounding actor chips
+ * horizontally using `Modifier.animateItem`.
  */
 @Composable
 private fun ActorChipsRow(
     actors: List<TmdbPersonResult>,
     selectedActor: TmdbPersonResult,
-    hasBiography: Boolean,
     onActorSelect: (TmdbPersonResult) -> Unit,
     onShowBioClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    hasBiography: Boolean = true
 ) {
+    val chipItems = remember(actors, selectedActor.id, hasBiography) {
+        buildActorChipItems(actors, selectedActor, hasBiography)
+    }
+
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(selectedActor.id) {
+        val bioIndex = chipItems.indexOfFirst { it is ActorChipItem.Bio }
+        val actorIndex = chipItems.indexOfFirst { it is ActorChipItem.Actor && it.person.id == selectedActor.id }
+        val targetIndex = bioIndex.takeIf { it >= 0 } ?: actorIndex.takeIf { it >= 0 } ?: return@LaunchedEffect
+
+        val layoutInfo = listState.layoutInfo
+        val visibleItems = layoutInfo.visibleItemsInfo
+        val bioItem = bioIndex.takeIf { it >= 0 }?.let { idx -> visibleItems.find { it.index == idx } }
+        val actorItem = actorIndex.takeIf { it >= 0 }?.let { idx -> visibleItems.find { it.index == idx } }
+        val isBioVisible = bioItem != null && bioItem.offset >= layoutInfo.viewportStartOffset &&
+            bioItem.offset + bioItem.size <= layoutInfo.viewportEndOffset
+        val isActorVisible = actorItem != null && actorItem.offset >= layoutInfo.viewportStartOffset &&
+            actorItem.offset + actorItem.size <= layoutInfo.viewportEndOffset
+
+        if ((bioIndex >= 0 && !isBioVisible) || (actorIndex >= 0 && !isActorVisible)) {
+            listState.animateScrollToItem(targetIndex)
+        }
+    }
+
     LazyRow(
+        state = listState,
         modifier = modifier
             .fillMaxWidth()
             .focusRestorer()
@@ -802,51 +867,66 @@ private fun ActorChipsRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        if (hasBiography) {
-            item(key = "actor_bio_chip", contentType = "bio_chip") {
-                AdaptiveChip(
-                    selected = false,
-                    onClick = onShowBioClick,
-                    label = { Text(stringResource(R.string.actor_bio_chip)) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                )
-            }
-        }
         items(
-            items = actors,
-            key = { it.id },
-            contentType = { "actor_chip" }
-        ) { actor ->
-            AdaptiveChip(
-                selected = actor.id == selectedActor.id,
-                onClick = { onActorSelect(actor) },
-                label = { Text(actor.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                leadingIcon = {
-                    val profileUrl = actor.fullProfileUrl
-                    if (profileUrl != null) {
-                        AsyncImage(
-                            model = profileUrl,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+            items = chipItems,
+            key = { item ->
+                when (item) {
+                    is ActorChipItem.Bio -> "actor_bio_chip"
+                    is ActorChipItem.Actor -> item.person.id
                 }
-            )
+            },
+            contentType = { item ->
+                when (item) {
+                    is ActorChipItem.Bio -> "bio_chip"
+                    is ActorChipItem.Actor -> "actor_chip"
+                }
+            }
+        ) { item ->
+            when (item) {
+                is ActorChipItem.Bio -> {
+                    AdaptiveChip(
+                        selected = false,
+                        onClick = onShowBioClick,
+                        label = { Text(stringResource(R.string.actor_bio_chip)) },
+                        modifier = Modifier.animateItem(),
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    )
+                }
+                is ActorChipItem.Actor -> {
+                    val actor = item.person
+                    AdaptiveChip(
+                        selected = actor.id == selectedActor.id,
+                        onClick = { onActorSelect(actor) },
+                        label = { Text(actor.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        modifier = Modifier.animateItem(),
+                        leadingIcon = {
+                            val profileUrl = actor.fullProfileUrl
+                            if (profileUrl != null) {
+                                AsyncImage(
+                                    model = profileUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(CircleShape),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    )
+                }
+            }
         }
     }
 }
