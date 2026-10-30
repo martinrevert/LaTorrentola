@@ -12,9 +12,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.metadata
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
@@ -304,7 +313,44 @@ fun AppNavigation(
                     }
                 )
             }
-            entry<Route.Detail> { detailKey ->
+            entry<Route.Detail>(
+                metadata = metadata {
+                    put(NavDisplay.TransitionKey) {
+                        val zoomEasing = CubicBezierEasing(0.16f, 1.0f, 0.3f, 1.0f)
+                        (fadeIn(animationSpec = tween(300)) +
+                            scaleIn(
+                                initialScale = 0.45f,
+                                transformOrigin = TransformOrigin(0.5f, 0.72f),
+                                animationSpec = tween(550, easing = zoomEasing)
+                            )
+                        ) togetherWith (
+                            fadeOut(animationSpec = tween(280)) +
+                            scaleOut(
+                                targetScale = 1.30f,
+                                transformOrigin = TransformOrigin(0.5f, 0.72f),
+                                animationSpec = tween(500, easing = zoomEasing)
+                            )
+                        )
+                    }
+                    put(NavDisplay.PopTransitionKey) {
+                        val zoomEasing = CubicBezierEasing(0.16f, 1.0f, 0.3f, 1.0f)
+                        (fadeIn(animationSpec = tween(280)) +
+                            scaleIn(
+                                initialScale = 1.25f,
+                                transformOrigin = TransformOrigin(0.5f, 0.72f),
+                                animationSpec = tween(450, easing = zoomEasing)
+                            )
+                        ) togetherWith (
+                            fadeOut(animationSpec = tween(280)) +
+                            scaleOut(
+                                targetScale = 0.45f,
+                                transformOrigin = TransformOrigin(0.5f, 0.72f),
+                                animationSpec = tween(450, easing = zoomEasing)
+                            )
+                        )
+                    }
+                }
+            ) { detailKey ->
                 val viewModel: DetailViewModel = hiltViewModel(key = detailKey.hashCode().toString())
                 LaunchedEffect(detailKey) {
                     detailKey.movieJson?.let {
@@ -326,7 +372,8 @@ fun AppNavigation(
                     onBackClick = popBackStack,
                     onTvSeriesClick = { seriesId ->
                         NavBackStackHandler.replaceTopDetail(backStack, Route.TvDetail(seriesId))
-                    }
+                    },
+                    themeMode = themeMode
                 )
             }
             entry<Route.Settings> {

@@ -13,6 +13,8 @@
     <string name="remove_favorite_desc">Remove from favorites</string>
     <string name="pause_desc">Pause</string>
     <string name="play_desc">Play</string>
+    <string name="watch_trailer">Watch Trailer</string>
+    <string name="close_trailer">Close Trailer</string>
     <string name="cast_desc">Cast</string>
     <string name="downloaded_desc">Downloaded</string>
     <string name="search_desc">Search</string>
@@ -419,4 +421,5 @@
     <string name="ott_empty_catalog">No titles found for this platform.</string>
     <string name="retry">Retry</string>
     <string name="network_error">Network error</string>
+    <string name="directed_by">Directed by %1$s</string>
 </resources>

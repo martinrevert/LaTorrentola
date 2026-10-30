@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola.network
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
 import com.martinrevert.latorrentola.model.TMDB.TmdbFindResponse
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieCreditsResponse
+import com.martinrevert.latorrentola.model.TMDB.TmdbMovieDetails
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieExternalIds
 import com.martinrevert.latorrentola.model.TMDB.TmdbMoviePage
 import com.martinrevert.latorrentola.model.TMDB.TmdbSearchPersonResponse
@@ -68,6 +69,15 @@ interface TmdbService {
         @Query("api_key") apiKey: String,
         @Query("language") language: String = TmdbLanguage.current()
     ): TmdbMovieCreditsResponse
+
+    /** Retrieves full details for a TMDB movie including production companies and appended credits. */
+    @GET("movie/{movie_id}")
+    suspend fun getMovieDetails(
+        @Path("movie_id") movieId: Int,
+        @Query("api_key") apiKey: String,
+        @Query("append_to_response") appendToResponse: String = "credits",
+        @Query("language") language: String = TmdbLanguage.current()
+    ): TmdbMovieDetails
 
     /** Retrieves a page of TV series airing during the next seven days. */
     @GET("tv/on_the_air")

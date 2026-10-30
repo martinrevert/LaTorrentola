@@ -67,4 +67,16 @@ class MovieFilterTest {
 
         assertThat(result).isEqualTo(movies)
     }
+
+    @Test
+    fun `filterMovies should exclude known miscataloged movies by id`() {
+        val movies = listOf(
+            Movie(id = 59301, title = "From the Ashes", language = "en", rating = "7.4"),
+            Movie(id = 100, title = "Valid Movie", language = "en", rating = "8.0")
+        )
+
+        val result = MovieFilter.filterMovies(movies, "")
+
+        assertThat(result.map { it.id }).containsExactly(100)
+    }
 }

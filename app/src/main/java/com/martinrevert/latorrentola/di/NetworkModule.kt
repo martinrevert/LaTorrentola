@@ -204,7 +204,31 @@ object NetworkModule {
 
     /** OpenSubtitles API v1 HTTPS base URL. */
     private const val OPEN_SUBTITLES_BASE_URL = "https://$OPEN_SUBTITLES_API_HOST/api/v1/"
+
+    /** Creates a Retrofit instance for OMDb. */
+    @Provides
+    @Singleton
+    @OmdbRetrofit
+    fun provideOmdbRetrofit(okHttpClient: OkHttpClient): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(Constants.OMDB_BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            .client(okHttpClient)
+            .build()
+    }
+
+    /** Creates the OMDb Retrofit service. */
+    @Provides
+    @Singleton
+    fun provideOmdbService(@OmdbRetrofit retrofit: Retrofit): com.martinrevert.latorrentola.network.OmdbService {
+        return retrofit.create(com.martinrevert.latorrentola.network.OmdbService::class.java)
+    }
 }
+
+/** Hilt qualifier for the OMDb Retrofit client. */
+@javax.inject.Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class OmdbRetrofit
 
 /** Hilt qualifier for the YTS Retrofit client. */
 @javax.inject.Qualifier

@@ -67,6 +67,7 @@ import androidx.tv.material3.Surface
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
+import com.martinrevert.latorrentola.model.TMDB.TmdbMovieResult
 import com.martinrevert.latorrentola.model.TMDB.TmdbPersonResult
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
@@ -79,12 +80,14 @@ import com.martinrevert.latorrentola.ui.components.MovieItem
 import com.martinrevert.latorrentola.ui.components.MovieList
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.QualityChips
+import com.martinrevert.latorrentola.ui.components.TvMovieImmersiveContainer
 import com.martinrevert.latorrentola.ui.components.TvSeriesCard
 import com.martinrevert.latorrentola.ui.components.TvSeriesGrid
 import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.GenreTranslation
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.glass.hazeGlass
@@ -117,7 +120,8 @@ fun SearchScreen(
     onMovieClick: (Movie) -> Unit,
     onTvSeriesClick: (TmdbTvSummary) -> Unit = {},
     onActorCreditClick: (TmdbCastCredit) -> Unit = {},
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    themeMode: Int? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isTvMode by viewModel.isTvMode.collectAsState()
@@ -145,6 +149,9 @@ fun SearchScreen(
     val isShowingGenre = initialGenre != null && !isShowingFavorites && !isShowingDownloads && !isShowingNew
 
     val context = LocalContext.current
+    val effectiveThemeMode = remember(context, themeMode) {
+        themeMode ?: PreferenceManager(context).getTheme()
+    }
     val resources = LocalResources.current
     val isTv = remember(context) { context.isTvDevice() }
     val focusRequester = remember { FocusRequester() }
@@ -185,6 +192,10 @@ fun SearchScreen(
         }
     }
 
+    val focusedMovie by viewModel.focusedMovie.collectAsState()
+    val focusedMovieBackdrop by viewModel.focusedMovieBackdrop.collectAsState()
+    val focusedMovieTmdb by viewModel.focusedMovieTmdb.collectAsState()
+
     SearchScreenContent(
         uiState = uiState,
         isTvMode = isTvMode,
@@ -209,8 +220,12 @@ fun SearchScreen(
         isShowingGenre = isShowingGenre,
         initialGenre = initialGenre,
         isTv = isTv,
+        focusedMovie = focusedMovie,
+        focusedMovieBackdrop = focusedMovieBackdrop,
+        focusedMovieTmdb = focusedMovieTmdb,
         isLoadingMore = isLoadingMore,
         focusRequester = focusRequester,
+        onMovieFocus = { viewModel.onMovieFocused(it) },
         onSearchQueryChange = { newQuery ->
             viewModel.onSearchQueryChange(newQuery)
         },
@@ -260,7 +275,8 @@ fun SearchScreen(
         onDeleteSelectedFavorites = { viewModel.deleteSelectedFavorites() },
         onFocusRestored = { viewModel.clearLastClickedMovieId() },
         onTvFocusRestored = { viewModel.clearLastClickedSeriesId() },
-        onActorCreditFocusRestored = { viewModel.clearLastClickedCreditKey() }
+        onActorCreditFocusRestored = { viewModel.clearLastClickedCreditKey() },
+        themeMode = effectiveThemeMode
     )
 
     selectedMovieForDialog?.let { movie ->
@@ -304,8 +320,12 @@ private fun SearchScreenContent(
     isShowingGenre: Boolean,
     initialGenre: String?,
     isTv: Boolean,
+    focusedMovie: Movie? = null,
+    focusedMovieBackdrop: String? = null,
+    focusedMovieTmdb: TmdbMovieResult? = null,
     isLoadingMore: Boolean = false,
     focusRequester: FocusRequester,
+    onMovieFocus: ((Movie) -> Unit)? = null,
     onSearchQueryChange: (String) -> Unit,
     onVoiceSearchClick: () -> Unit,
     onQualityClick: (String) -> Unit,
@@ -323,7 +343,8 @@ private fun SearchScreenContent(
     onDeleteSelectedFavorites: () -> Unit,
     onFocusRestored: () -> Unit,
     onTvFocusRestored: () -> Unit = {},
-    onActorCreditFocusRestored: () -> Unit = {}
+    onActorCreditFocusRestored: () -> Unit = {},
+    themeMode: Int? = null
 ) {
     val focusManager = LocalFocusManager.current
     val gridState = rememberLazyGridState()
@@ -357,96 +378,193 @@ private fun SearchScreenContent(
 
     val hasTopChips = isShowingFavorites || (!isTvMode && !isActorMode) ||
         (isActorMode && actorUiState is SearchActorUiState.Success)
+    val isTvMoviesSearch = isTv && !isTvMode && !isActorMode && !isShowingFavorites
 
     Scaffold(
-        contentWindowInsets = WindowInsets.safeDrawing,
+        contentWindowInsets = if (isTvMoviesSearch) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
         topBar = {
-            TopAppBar(
-                modifier = Modifier
-                    .focusProperties {
-                        down = if (hasTopChips) qualityChipsFocusRequester else resultsFocusRequester
-                    }
-                    .then(
-                        if (hazeState != null) {
-                            Modifier
-                                .graphicsLayer { alpha = hazeAlpha }
-                                .hazeGlass(input = HazeInput.Sources(hazeState))
-                        } else Modifier
-                    ),
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
-                title = {
-                    if (isShowingFavorites) {
-                        if (selectedFavoriteIds.isNotEmpty()) {
-                            Text(stringResource(R.string.selected_count, selectedFavoriteIds.size))
+            if (!isTvMoviesSearch) {
+                TopAppBar(
+                    modifier = Modifier
+                        .focusProperties {
+                            down = if (hasTopChips) qualityChipsFocusRequester else resultsFocusRequester
+                        }
+                        .then(
+                            if (hazeState != null) {
+                                Modifier
+                                    .graphicsLayer { alpha = hazeAlpha }
+                                    .hazeGlass(input = HazeInput.Sources(hazeState))
+                            } else Modifier
+                        ),
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
+                    title = {
+                        if (isShowingFavorites) {
+                            if (selectedFavoriteIds.isNotEmpty()) {
+                                Text(stringResource(R.string.selected_count, selectedFavoriteIds.size))
+                            } else {
+                                Text(stringResource(R.string.my_favorites))
+                            }
+                        } else if (isShowingDownloads) {
+                            Text(stringResource(R.string.already_seen))
+                        } else if (isShowingNew) {
+                            Text(stringResource(R.string.new_movies))
+                        } else if (isShowingGenre && initialGenre != null) {
+                            Text(GenreTranslation.getGenreText(initialGenre).asString())
                         } else {
-                            Text(stringResource(R.string.my_favorites))
+                            SearchTextField(
+                                searchQuery = searchQuery,
+                                onSearchQueryChange = onSearchQueryChange,
+                                onVoiceSearchClick = onVoiceSearchClick,
+                                showVoiceSearch = !isTv,
+                                isTvMode = isTvMode,
+                                isActorMode = isActorMode,
+                                modifier = Modifier
+                                    .focusRequester(focusRequester)
+                                    .then(if (isTv) Modifier.focusHighlight() else Modifier)
+                                    .onPreviewKeyEvent { event ->
+                                        if (isTv && (event.key == Key.Back || event.key == Key.Escape)) {
+                                            if (event.type == KeyEventType.KeyUp) {
+                                                focusManager.moveFocus(FocusDirection.Exit)
+                                            }
+                                            true
+                                        } else false
+                                    }
+                            )
                         }
-                    } else if (isShowingDownloads) {
-                        Text(stringResource(R.string.already_seen))
-                    } else if (isShowingNew) {
-                        Text(stringResource(R.string.new_movies))
-                    } else if (isShowingGenre && initialGenre != null) {
-                        Text(GenreTranslation.getGenreText(initialGenre).asString())
-                    } else {
-                        SearchTextField(
-                            searchQuery = searchQuery,
-                            onSearchQueryChange = onSearchQueryChange,
-                            onVoiceSearchClick = onVoiceSearchClick,
-                            showVoiceSearch = !isTv,
-                            isTvMode = isTvMode,
-                            isActorMode = isActorMode,
-                            modifier = Modifier
-                                .focusRequester(focusRequester)
-                                .then(if (isTv) Modifier.focusHighlight() else Modifier)
-                                .onPreviewKeyEvent { event ->
-                                    if (isTv && (event.key == Key.Back || event.key == Key.Escape)) {
-                                        if (event.type == KeyEventType.KeyUp) {
-                                            focusManager.moveFocus(FocusDirection.Exit)
-                                        }
-                                        true
-                                    } else false
-                                }
-                        )
-                    }
-                },
-                navigationIcon = {
-                    if (isShowingFavorites && selectedFavoriteIds.isNotEmpty()) {
-                        IconButton(
-                            onClick = onClearSelection,
-                            modifier = Modifier.focusHighlight(shape = CircleShape)
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.clear_selection_desc))
+                    },
+                    navigationIcon = {
+                        if (isShowingFavorites && selectedFavoriteIds.isNotEmpty()) {
+                            IconButton(
+                                onClick = onClearSelection,
+                                modifier = Modifier.focusHighlight(shape = CircleShape)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.clear_selection_desc))
+                            }
+                        } else {
+                            IconButton(
+                                onClick = onBackClick,
+                                modifier = Modifier.focusHighlight(shape = CircleShape)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back_desc))
+                            }
                         }
-                    } else {
-                        IconButton(
-                            onClick = onBackClick,
-                            modifier = Modifier.focusHighlight(shape = CircleShape)
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back_desc))
-                        }
-                    }
-                },
-                actions = {
-                    if (isShowingFavorites && selectedFavoriteIds.isNotEmpty()) {
-                        IconButton(
-                            onClick = onDeleteSelectedFavorites,
-                            modifier = Modifier.focusHighlight(shape = CircleShape)
-                        ) {
-                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_selected_desc))
+                    },
+                    actions = {
+                        if (isShowingFavorites && selectedFavoriteIds.isNotEmpty()) {
+                            IconButton(
+                                onClick = onDeleteSelectedFavorites,
+                                modifier = Modifier.focusHighlight(shape = CircleShape)
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_selected_desc))
+                            }
                         }
                     }
-                }
-            )
+                )
+            }
         }
     ) { padding ->
         if (isTv) {
-            // TV Layout: Single vertical column for unbroken D-pad focus traversal
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .consumeWindowInsets(padding)
-            ) {
+            if (isTvMoviesSearch) {
+                // TV Movies Search: Full edge-to-edge immersive backdrop behind search bar and chips
+                TvMovieImmersiveContainer(
+                    focusedMovie = focusedMovie,
+                    focusedMovieTmdb = focusedMovieTmdb,
+                    backdropUrl = focusedMovieBackdrop,
+                    themeMode = themeMode,
+                    modifier = Modifier.fillMaxSize(),
+                    topBar = {
+                        TopAppBar(
+                            modifier = Modifier.focusProperties { down = qualityChipsFocusRequester },
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                            title = {
+                                if (isShowingDownloads) {
+                                    Text(stringResource(R.string.already_seen))
+                                } else if (isShowingNew) {
+                                    Text(stringResource(R.string.new_movies))
+                                } else if (isShowingGenre && initialGenre != null) {
+                                    Text(GenreTranslation.getGenreText(initialGenre).asString())
+                                } else {
+                                    SearchTextField(
+                                        searchQuery = searchQuery,
+                                        onSearchQueryChange = onSearchQueryChange,
+                                        onVoiceSearchClick = onVoiceSearchClick,
+                                        showVoiceSearch = false,
+                                        isTvMode = false,
+                                        isActorMode = false,
+                                        modifier = Modifier
+                                            .focusRequester(focusRequester)
+                                            .focusHighlight()
+                                            .onPreviewKeyEvent { event ->
+                                                if (event.key == Key.Back || event.key == Key.Escape) {
+                                                    if (event.type == KeyEventType.KeyUp) {
+                                                        focusManager.moveFocus(FocusDirection.Exit)
+                                                    }
+                                                    true
+                                                } else false
+                                            }
+                                    )
+                                }
+                            },
+                            navigationIcon = {
+                                IconButton(
+                                    onClick = onBackClick,
+                                    modifier = Modifier.focusHighlight(shape = CircleShape)
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back_desc))
+                                }
+                            }
+                        )
+                    },
+                    chips = {
+                        QualityChips(
+                            options = qualityOptions,
+                            selectedQuality = selectedQuality ?: "All",
+                            onQualityClick = onQualityClick,
+                            modifier = Modifier
+                                .focusRequester(qualityChipsFocusRequester)
+                                .focusProperties { down = resultsFocusRequester }
+                        )
+                    }
+                ) {
+                    when (uiState) {
+                        is SearchUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(text = stringResource(R.string.start_searching))
+                        }
+                        is SearchUiState.Loading -> MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                        is SearchUiState.Success -> {
+                            MovieList(
+                                movies = uiState.movies,
+                                state = gridState,
+                                downloadedMovieIds = downloadedMovieIds,
+                                watchHistoryMap = watchHistoryMap,
+                                selectedIds = selectedFavoriteIds,
+                                isLoadingMore = isLoadingMore,
+                                onMovieClick = onMovieClick,
+                                onLongClick = { id -> uiState.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick) },
+                                onLoadMore = { if (!uiState.isDownloads && !uiState.isNew) onLoadMore() },
+                                initialFocusId = lastClickedMovieId,
+                                onFocusRestored = onFocusRestored,
+                                onMovieFocus = onMovieFocus,
+                                contentPadding = PaddingValues(16.dp),
+                                modifier = Modifier.focusRequester(resultsFocusRequester)
+                            )
+                        }
+                        is SearchUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(text = stringResource(R.string.no_results))
+                        }
+                        is SearchUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(text = uiState.message.asString())
+                        }
+                    }
+                }
+            } else {
+                // TV Layout: Single vertical column for unbroken D-pad focus traversal
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .consumeWindowInsets(padding)
+                ) {
                 if (isShowingFavorites) {
                     FavoritesChips(
                         selectedFilter = selectedFavoritesFilter,
@@ -574,21 +692,24 @@ private fun SearchScreenContent(
                                         contentPadding = PaddingValues(16.dp),
                                         modifier = Modifier.focusRequester(resultsFocusRequester)
                                     )
-                                } else MovieList(
-                                    movies = uiState.movies,
-                                    state = gridState,
-                                    downloadedMovieIds = downloadedMovieIds,
-                                    watchHistoryMap = watchHistoryMap,
-                                    selectedIds = selectedFavoriteIds,
-                                    isLoadingMore = isLoadingMore,
-                                    onMovieClick = onMovieClick,
-                                    onLongClick = { id -> uiState.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick) },
-                                    onLoadMore = { if (!uiState.isDownloads && !uiState.isNew) onLoadMore() },
-                                    initialFocusId = lastClickedMovieId,
-                                    onFocusRestored = onFocusRestored,
-                                    contentPadding = PaddingValues(16.dp),
-                                    modifier = Modifier.focusRequester(resultsFocusRequester)
-                                )
+                                } else {
+                                    MovieList(
+                                        movies = uiState.movies,
+                                        state = gridState,
+                                        downloadedMovieIds = downloadedMovieIds,
+                                        watchHistoryMap = watchHistoryMap,
+                                        selectedIds = selectedFavoriteIds,
+                                        isLoadingMore = isLoadingMore,
+                                        onMovieClick = onMovieClick,
+                                        onLongClick = { id -> uiState.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick) },
+                                        onLoadMore = { if (!uiState.isDownloads && !uiState.isNew) onLoadMore() },
+                                        initialFocusId = lastClickedMovieId,
+                                        onFocusRestored = onFocusRestored,
+                                        onMovieFocus = onMovieFocus,
+                                        contentPadding = PaddingValues(16.dp),
+                                        modifier = Modifier.focusRequester(resultsFocusRequester)
+                                    )
+                                }
                                 is SearchUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     Text(text = stringResource(R.string.no_results))
                                 }
@@ -600,7 +721,8 @@ private fun SearchScreenContent(
                     }
                 }
             }
-        } else {
+        }
+    } else {
             // Handheld Layout: Edge-to-edge with Haze top blur and translucent bottom bar
             val topExtraOffset = if (hasTopChips) 64.dp else 16.dp
             val searchContentPadding = PaddingValues(

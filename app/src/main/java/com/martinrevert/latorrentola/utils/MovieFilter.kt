@@ -4,6 +4,11 @@ import com.martinrevert.latorrentola.model.YTS.Movie
 
 /** Applies the user's language, torrent quality, and rating constraints to movie results. */
 object MovieFilter {
+    /** Set of movie IDs known to be miscataloged, corrupted, or invalid from upstream YTS. */
+    val EXCLUDED_MOVIE_IDS = setOf(
+        59301 // "From the Ashes" (2027) - miscataloged in YTS
+    )
+
     /**
      * Filters optional [movies] using comma-separated excluded languages and optional criteria.
      *
@@ -26,6 +31,11 @@ object MovieFilter {
             .filter { it.isNotEmpty() }
             
         return movies.filter { movie ->
+            // Exclude known miscataloged movies from upstream
+            if (movie.id in EXCLUDED_MOVIE_IDS) {
+                return@filter false
+            }
+
             // Filter by language
             val movieLang = movie.language?.lowercase() ?: ""
             val langMatch = excludedList.isEmpty() || !excludedList.contains(movieLang)

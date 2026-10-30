@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.model.TMDB.TmdbMovieResult
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.YTS.Movie
@@ -56,11 +57,13 @@ import com.martinrevert.latorrentola.ui.components.QualityChips
 import com.martinrevert.latorrentola.ui.components.TvFeedChips
 import com.martinrevert.latorrentola.ui.components.TvGenreBottomSheet
 import com.martinrevert.latorrentola.ui.components.TvGenreChips
+import com.martinrevert.latorrentola.ui.components.TvMovieImmersiveContainer
 import com.martinrevert.latorrentola.ui.components.TvSeriesGrid
 import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.glass.hazeGlass
@@ -96,7 +99,8 @@ fun HomeScreen(
     onActorSearchClick: () -> Unit = {},
     onFavoritesClick: () -> Unit,
     onGenreClick: (String) -> Unit,
-    onOttClick: (isTvMode: Boolean) -> Unit = {}
+    onOttClick: (isTvMode: Boolean) -> Unit = {},
+    themeMode: Int? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val topGenres by viewModel.topGenres.collectAsState()
@@ -111,7 +115,13 @@ fun HomeScreen(
     val qualityOptions = viewModel.qualityOptions
     val allGenres = viewModel.allGenres
     val context = LocalContext.current
+    val effectiveThemeMode = remember(context, themeMode) {
+        themeMode ?: PreferenceManager(context).getTheme()
+    }
     val isTv = remember(context) { context.isTvDevice() }
+    val focusedMovie by viewModel.focusedMovie.collectAsState()
+    val focusedMovieBackdrop by viewModel.focusedMovieBackdrop.collectAsState()
+    val focusedMovieTmdb by viewModel.focusedMovieTmdb.collectAsState()
     var selectedMovieForDialog by remember { mutableStateOf<Movie?>(null) }
 
     HomeScreenContent(
@@ -129,6 +139,9 @@ fun HomeScreen(
         qualityOptions = qualityOptions,
         userPhotoUrl = userPhotoUrl,
         isTv = isTv,
+        focusedMovie = focusedMovie,
+        focusedMovieBackdrop = focusedMovieBackdrop,
+        focusedMovieTmdb = focusedMovieTmdb,
         onMovieClick = onMovieClick,
         onMovieLongClick = { movie -> selectedMovieForDialog = movie },
         onSettingsClick = onSettingsClick,
@@ -141,10 +154,12 @@ fun HomeScreen(
         onRefresh = { showIndicator -> viewModel.refresh(showIndicator = showIndicator) },
         onSetLastClickedMovieId = { viewModel.setLastClickedMovieId(it) },
         onFocusRestored = { viewModel.clearLastClickedMovieId() },
+        onMovieFocus = { viewModel.onMovieFocused(it) },
         tvHomeViewModel = tvHomeViewModel,
         onTvSeriesClick = onTvSeriesClick,
         onTvGenreClick = onTvGenreClick,
-        onOttClick = onOttClick
+        onOttClick = onOttClick,
+        themeMode = effectiveThemeMode
     )
 
     selectedMovieForDialog?.let { movie ->
@@ -179,6 +194,9 @@ private fun HomeScreenContent(
     qualityOptions: List<String>,
     userPhotoUrl: String?,
     isTv: Boolean,
+    focusedMovie: Movie? = null,
+    focusedMovieBackdrop: String? = null,
+    focusedMovieTmdb: TmdbMovieResult? = null,
     onMovieClick: (Movie) -> Unit,
     onMovieLongClick: (Movie) -> Unit = {},
     onSettingsClick: () -> Unit,
@@ -191,10 +209,12 @@ private fun HomeScreenContent(
     onRefresh: (Boolean) -> Unit,
     onSetLastClickedMovieId: (Int?) -> Unit,
     onFocusRestored: () -> Unit,
+    onMovieFocus: ((Movie) -> Unit)? = null,
     tvHomeViewModel: TvHomeViewModel? = null,
     onTvSeriesClick: (TmdbTvSummary) -> Unit = {},
     onTvGenreClick: (TmdbTvGenre) -> Unit = {},
-    onOttClick: (isTvMode: Boolean) -> Unit = {}
+    onOttClick: (isTvMode: Boolean) -> Unit = {},
+    themeMode: Int? = null
 ) {
     var showGenreSheet by remember { mutableStateOf(false) }
     var showTvGenreSheet by remember { mutableStateOf(false) }
@@ -257,7 +277,7 @@ private fun HomeScreenContent(
     )
 
     Scaffold(
-        contentWindowInsets = WindowInsets.safeDrawing,
+        contentWindowInsets = if (isTv && !isTvMode) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
         topBar = {
             if (!isTv) {
                 HomeTopAppBar(
@@ -290,28 +310,28 @@ private fun HomeScreenContent(
                 .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
         ) {
             if (isTv) {
-                // TV Layout: Single vertical column for unbroken D-pad focus traversal
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .consumeWindowInsets(padding)
-                ) {
-                    HomeTopAppBar(
-                        userPhotoUrl = userPhotoUrl,
-                        favoritesCount = favoritesCount,
-                        onSearchClick = onSearchClick,
-                        onActorSearchClick = onActorSearchClick,
-                        onFavoritesClick = onFavoritesClick,
-                        onSettingsClick = onSettingsClick,
-                        isTvMode = isTvMode,
-                        onMoviesClick = { selectMediaMode(false) },
-                        onTvClick = { selectMediaMode(true) },
-                        focusDownRequester = homeControlsFocusRequester,
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        isTv = true
-                    )
-                    if (isTvMode) {
+                if (isTvMode) {
+                    // TV Series Layout: Single vertical column for unbroken D-pad focus traversal
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .consumeWindowInsets(padding)
+                    ) {
+                        HomeTopAppBar(
+                            userPhotoUrl = userPhotoUrl,
+                            favoritesCount = favoritesCount,
+                            onSearchClick = onSearchClick,
+                            onActorSearchClick = onActorSearchClick,
+                            onFavoritesClick = onFavoritesClick,
+                            onSettingsClick = onSettingsClick,
+                            isTvMode = true,
+                            onMoviesClick = { selectMediaMode(false) },
+                            onTvClick = { selectMediaMode(true) },
+                            focusDownRequester = homeControlsFocusRequester,
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            isTv = true
+                        )
                         TvFeedChips(
                             selectedFeed = selectedTvFeed,
                             onFeedClick = {
@@ -337,22 +357,6 @@ private fun HomeScreenContent(
                             onAllGenresClick = { showTvGenreSheet = true },
                             onOttClick = { onOttClick(true) }
                         )
-                    } else {
-                        GenreChips(
-                            genres = topGenres,
-                            onGenreClick = onGenreClick,
-                            onAllGenresClick = { showGenreSheet = true },
-                            onOttClick = { onOttClick(false) },
-                            firstFocusRequester = homeControlsFocusRequester
-                        )
-                        QualityChips(
-                            options = qualityOptions,
-                            selectedQuality = selectedQuality ?: "All",
-                            onQualityClick = onQualityClick
-                        )
-                    }
-
-                    if (isTvMode) {
                         TvHomeContent(
                             uiState = tvUiState,
                             genres = tvGenres,
@@ -369,7 +373,46 @@ private fun HomeScreenContent(
                             onFocusRestored = { tvHomeViewModel?.clearLastClickedSeriesId() },
                             modifier = Modifier.weight(1f)
                         )
-                    } else {
+                    }
+                } else {
+                    // TV Movies Layout: Edge-to-edge immersive list behind status bar and chips
+                    TvMovieImmersiveContainer(
+                        focusedMovie = focusedMovie,
+                        focusedMovieTmdb = focusedMovieTmdb,
+                        backdropUrl = focusedMovieBackdrop,
+                        themeMode = themeMode,
+                        modifier = Modifier.fillMaxSize(),
+                        topBar = {
+                            HomeTopAppBar(
+                                userPhotoUrl = userPhotoUrl,
+                                favoritesCount = favoritesCount,
+                                onSearchClick = onSearchClick,
+                                onActorSearchClick = onActorSearchClick,
+                                onFavoritesClick = onFavoritesClick,
+                                onSettingsClick = onSettingsClick,
+                                isTvMode = false,
+                                onMoviesClick = { selectMediaMode(false) },
+                                onTvClick = { selectMediaMode(true) },
+                                focusDownRequester = homeControlsFocusRequester,
+                                containerColor = Color.Transparent,
+                                isTv = true
+                            )
+                        },
+                        chips = {
+                            GenreChips(
+                                genres = topGenres,
+                                onGenreClick = onGenreClick,
+                                onAllGenresClick = { showGenreSheet = true },
+                                onOttClick = { onOttClick(false) },
+                                firstFocusRequester = homeControlsFocusRequester
+                            )
+                            QualityChips(
+                                options = qualityOptions,
+                                selectedQuality = selectedQuality ?: "All",
+                                onQualityClick = onQualityClick
+                            )
+                        }
+                    ) {
                         HomeContent(
                             uiState = uiState,
                             gridState = gridState,
@@ -385,7 +428,8 @@ private fun HomeScreenContent(
                             onLoadMore = onLoadMore,
                             lastClickedMovieId = lastClickedMovieId,
                             onFocusRestored = onFocusRestored,
-                            modifier = Modifier.weight(1f)
+                            onMovieFocus = onMovieFocus,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
@@ -767,6 +811,7 @@ private fun HomeContent(
     lastClickedMovieId: Int? = null,
     onFocusRestored: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(16.dp),
+    onMovieFocus: ((Movie) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     when (uiState) {
@@ -787,6 +832,7 @@ private fun HomeContent(
                 initialFocusId = lastClickedMovieId,
                 onFocusRestored = onFocusRestored,
                 contentPadding = contentPadding,
+                onMovieFocus = onMovieFocus,
                 modifier = modifier
             )
         }

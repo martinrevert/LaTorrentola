@@ -167,6 +167,7 @@ android {
         buildConfigField "String", "WEB_CLIENT_ID", "\"${localProperties.getProperty('FIREBASE_WEB_CLIENT_ID', '')}\""
         buildConfigField "String", "TMDB_API_KEY", "\"${localProperties.getProperty('TMDB_API_KEY', '')}\""
         buildConfigField "String", "OPEN_SUBTITLES_API_KEY", "\"${localProperties.getProperty('OPEN_SUBTITLES_API_KEY', '')}\""
+        buildConfigField "String", "OMDB_API_KEY", "\"${localProperties.getProperty('OMDB_API_KEY', '')}\""
         buildConfigField "String", "CAST_APP_ID", "\"${localProperties.getProperty('CAST_APP_ID', '')}\""
         externalNativeBuild {
             cmake {

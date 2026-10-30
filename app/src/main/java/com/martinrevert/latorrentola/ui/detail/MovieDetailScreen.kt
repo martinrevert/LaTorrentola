@@ -12,8 +12,20 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
+import com.martinrevert.latorrentola.model.omdb.MovieRatings
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -29,6 +41,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import java.util.Locale
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +84,7 @@ import com.martinrevert.latorrentola.ui.components.MovieTorrentShimmerCard
 import com.martinrevert.latorrentola.ui.components.TorrentReleaseShimmerCard
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
 import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
+import com.martinrevert.latorrentola.model.TMDB.TmdbMovieResult
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.Torrent
 import com.martinrevert.latorrentola.model.YTS.Cast
@@ -91,10 +105,12 @@ import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.lifecycle.LifecycleOwner
 import kotlinx.coroutines.launch
 import androidx.tv.material3.Button as TvButton
+import androidx.tv.material3.ButtonDefaults as TvButtonDefaults
 import androidx.tv.material3.IconButtonDefaults
 import androidx.tv.material3.Surface
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
+import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.UiText
 import com.martinrevert.latorrentola.utils.IntentAppsFinder
 import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
@@ -112,7 +128,8 @@ import com.martinrevert.latorrentola.utils.TorrentLaunchResult
 fun MovieDetailScreen(
     viewModel: DetailViewModel,
     onBackClick: () -> Unit,
-    onTvSeriesClick: (Int) -> Unit = {}
+    onTvSeriesClick: (Int) -> Unit = {},
+    themeMode: Int = PreferenceManager.THEME_SYSTEM
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val downloadedHashes by viewModel.downloadedHashes.collectAsState()
@@ -152,6 +169,7 @@ fun MovieDetailScreen(
         torrentHandlingMode = torrentHandlingMode,
         isWideScreen = isWideScreen,
         isTv = isTv,
+        themeMode = themeMode,
         selectedActorDetail = selectedActorDetail,
         isActorLoading = isActorLoading,
         showActorSheet = showActorSheet,
@@ -224,6 +242,7 @@ private fun MovieDetailScreenContent(
     torrentHandlingMode: TorrentHandlingMode = TorrentHandlingMode.EXTERNAL_CLIENT,
     isWideScreen: Boolean,
     isTv: Boolean,
+    themeMode: Int = PreferenceManager.THEME_SYSTEM,
     selectedActorDetail: Result<TmdbActorDetail>?,
     isActorLoading: Boolean,
     showActorSheet: Boolean,
@@ -255,140 +274,212 @@ private fun MovieDetailScreenContent(
     val insufficientStorageState = remember { mutableStateOf<Pair<Long, Long>?>(null) }
     var torrentToDelete by remember { mutableStateOf<Pair<String, String>?>(null) }
 
-    Scaffold(
-        contentWindowInsets = WindowInsets.safeDrawing,
-        topBar = {
-            TopAppBar(
-                modifier = Modifier
-                    .focusProperties { down = contentFocusRequester }
-                    .hazeGlass(input = HazeInput.Sources(hazeState)),
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
-                title = { Text((uiState as? DetailUiState.Success)?.movie?.title ?: stringResource(R.string.details_title)) },
-                navigationIcon = {
-                    IconButton(
-                        onClick = onBackClick,
-                        modifier = Modifier
-                            .focusHighlight(shape = CircleShape)
-                            .focusProperties { down = contentFocusRequester }
-                            .onFocusChanged { focusState ->
-                                if (focusState.isFocused) {
-                                    coroutineScope.launch { scrollState.animateScrollTo(0) }
-                                }
+    if (isTv) {
+        when (uiState) {
+            is DetailUiState.Loading, is DetailUiState.OpenTvDetail -> {
+                MovieDetailPlaceholder(contentPadding = PaddingValues(top = 48.dp, start = 48.dp, end = 48.dp))
+            }
+            is DetailUiState.Error -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surface),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = uiState.message.asString(), color = MaterialTheme.colorScheme.error)
+                }
+            }
+            is DetailUiState.Success -> {
+                TvMovieDetailContent(
+                    movie = uiState.movie,
+                    tmdbMovie = uiState.tmdbMovie,
+                    director = uiState.director,
+                    studioLogoUrl = uiState.studioLogoUrl,
+                    studioName = uiState.studioName,
+                    ratings = uiState.ratings,
+                    backdropUrl = uiState.backdropUrl,
+                    isFavorite = uiState.isFavorite,
+                    releasesByQuality = uiState.releasesByQuality,
+                    downloadedHashes = downloadedHashes,
+                    allDownloads = allDownloads,
+                    mediaController = mediaController,
+                    torrentHandlingMode = torrentHandlingMode,
+                    onBackClick = onBackClick,
+                    onShareClick = { onShareClick(uiState.movie) },
+                    onFavoriteToggle = { onFavoriteToggle(uiState.movie) },
+                    onTorrentClick = { onTorrentClick(uiState.movie, it) },
+                    onReleaseClick = { release ->
+                        val moviePoster = uiState.movie.mediumCoverImage ?: uiState.movie.largeCoverImage
+                        val matchingDownload = allDownloads.firstOrNull { it.infoHash.equals(release.hash, ignoreCase = true) }
+                        TorrentCardActionHandler.performCardClick(
+                            context = context,
+                            releaseHash = release.hash,
+                            releaseTitle = uiState.movie.title ?: release.title,
+                            releaseMagnetUri = release.magnetUrl.orEmpty(),
+                            releaseSizeBytes = release.sizeBytes,
+                            download = matchingDownload,
+                            activeBuffer = activeBuffer,
+                            mediaController = mediaController,
+                            isTv = true,
+                            torrentHandlingMode = torrentHandlingMode,
+                            movieId = uiState.movie.id,
+                            posterUrl = moviePoster,
+                            onInsufficientStorage = { available, required ->
+                                insufficientStorageState.value = Pair(available, required)
+                            },
+                            onDownloadStarted = {
+                                onReleaseClick(uiState.movie, release)
                             }
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back_desc))
-                    }
-                },
-                actions = {
-                    if (uiState is DetailUiState.Success) {
-                        IconButton(
-                            onClick = { onShareClick(uiState.movie) },
-                            modifier = Modifier
-                                .focusHighlight(shape = CircleShape)
-                                .focusProperties { down = contentFocusRequester }
-                                .onFocusChanged { focusState ->
-                                    if (focusState.isFocused) {
-                                        coroutineScope.launch { scrollState.animateScrollTo(0) }
-                                    }
-                                }
-                        ) {
-                            Icon(
-                                Icons.Default.Share,
-                                contentDescription = stringResource(R.string.share_desc)
-                            )
-                        }
-                        IconButton(
-                            onClick = { onFavoriteToggle(uiState.movie) },
-                            modifier = Modifier
-                                .focusHighlight(shape = CircleShape)
-                                .focusProperties { down = contentFocusRequester }
-                                .onFocusChanged { focusState ->
-                                    if (focusState.isFocused) {
-                                        coroutineScope.launch { scrollState.animateScrollTo(0) }
-                                    }
-                                }
-                        ) {
-                            Icon(
-                                if (uiState.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = stringResource(R.string.favorite_desc)
-                            )
-                        }
-                    }
-                }
-            )
+                        )
+                    },
+                    onReleaseLongClick = { release ->
+                        torrentToDelete = release.hash to (uiState.movie.title ?: release.title)
+                    },
+                    onAddLanguageToFilter = onAddLanguageToFilter,
+                    onCastClick = onCastClick,
+                    onInsufficientStorage = { available, required ->
+                        insufficientStorageState.value = Pair(available, required)
+                    },
+                    themeMode = themeMode
+                )
+            }
         }
-    ) { padding ->
-        val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-        val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        val detailContentPadding = PaddingValues(
-            top = 64.dp + statusBarHeight + 16.dp,
-            bottom = 16.dp + navBarHeight,
-            start = 16.dp,
-            end = 16.dp
-        )
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .hazeSource(state = hazeState)
-                .consumeWindowInsets(padding),
-            contentAlignment = Alignment.TopCenter
-        ) {
-            when (uiState) {
-                is DetailUiState.Loading, is DetailUiState.OpenTvDetail -> {
-                    MovieDetailPlaceholder(contentPadding = detailContentPadding)
-                }
-                is DetailUiState.Success -> {
-                    MovieDetailContent(
-                        movie = uiState.movie,
-                        releasesByQuality = uiState.releasesByQuality,
-                        downloadedHashes = downloadedHashes,
-                        allDownloads = allDownloads,
-                        mediaController = mediaController,
-                        torrentHandlingMode = torrentHandlingMode,
-                        isWideScreen = isWideScreen,
-                        isTv = isTv,
-                        onTorrentClick = { onTorrentClick(uiState.movie, it) },
-                        onReleaseClick = { release ->
-                            val moviePoster = uiState.movie.mediumCoverImage ?: uiState.movie.largeCoverImage
-                            val matchingDownload = allDownloads.firstOrNull { it.infoHash.equals(release.hash, ignoreCase = true) }
-                            TorrentCardActionHandler.performCardClick(
-                                context = context,
-                                releaseHash = release.hash,
-                                releaseTitle = uiState.movie.title ?: release.title,
-                                releaseMagnetUri = release.magnetUrl.orEmpty(),
-                                releaseSizeBytes = release.sizeBytes,
-                                download = matchingDownload,
-                                activeBuffer = activeBuffer,
-                                mediaController = mediaController,
-                                isTv = isTv,
-                                torrentHandlingMode = torrentHandlingMode,
-                                movieId = uiState.movie.id,
-                                posterUrl = moviePoster,
-                                onInsufficientStorage = { available, required ->
-                                    insufficientStorageState.value = Pair(available, required)
-                                },
-                                onDownloadStarted = {
-                                    onReleaseClick(uiState.movie, release)
+    } else {
+        Scaffold(
+            contentWindowInsets = WindowInsets.safeDrawing,
+            topBar = {
+                TopAppBar(
+                    modifier = Modifier
+                        .focusProperties { down = contentFocusRequester }
+                        .hazeGlass(input = HazeInput.Sources(hazeState)),
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
+                    title = { Text((uiState as? DetailUiState.Success)?.movie?.title ?: stringResource(R.string.details_title)) },
+                    navigationIcon = {
+                        IconButton(
+                            onClick = onBackClick,
+                            modifier = Modifier
+                                .focusHighlight(shape = CircleShape)
+                                .focusProperties { down = contentFocusRequester }
+                                .onFocusChanged { focusState ->
+                                    if (focusState.isFocused) {
+                                        coroutineScope.launch { scrollState.animateScrollTo(0) }
+                                    }
                                 }
-                            )
-                        },
-                        onReleaseLongClick = { release ->
-                            torrentToDelete = release.hash to (uiState.movie.title ?: release.title)
-                        },
-                        onAddLanguageToFilter = onAddLanguageToFilter,
-                        onCastClick = onCastClick,
-                        onInsufficientStorage = { available, required ->
-                            insufficientStorageState.value = Pair(available, required)
-                        },
-                        contentFocusRequester = contentFocusRequester,
-                        contentPadding = detailContentPadding,
-                        scrollState = scrollState
-                    )
-                }
-                is DetailUiState.Error -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(text = uiState.message.asString())
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back_desc))
+                        }
+                    },
+                    actions = {
+                        if (uiState is DetailUiState.Success) {
+                            IconButton(
+                                onClick = { onShareClick(uiState.movie) },
+                                modifier = Modifier
+                                    .focusHighlight(shape = CircleShape)
+                                    .focusProperties { down = contentFocusRequester }
+                                    .onFocusChanged { focusState ->
+                                        if (focusState.isFocused) {
+                                            coroutineScope.launch { scrollState.animateScrollTo(0) }
+                                        }
+                                    }
+                            ) {
+                                Icon(
+                                    Icons.Default.Share,
+                                    contentDescription = stringResource(R.string.share_desc)
+                                )
+                            }
+                            IconButton(
+                                onClick = { onFavoriteToggle(uiState.movie) },
+                                modifier = Modifier
+                                    .focusHighlight(shape = CircleShape)
+                                    .focusProperties { down = contentFocusRequester }
+                                    .onFocusChanged { focusState ->
+                                        if (focusState.isFocused) {
+                                            coroutineScope.launch { scrollState.animateScrollTo(0) }
+                                        }
+                                    }
+                            ) {
+                                Icon(
+                                    if (uiState.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                    contentDescription = stringResource(R.string.favorite_desc)
+                                )
+                            }
+                        }
+                    }
+                )
+            }
+        ) { padding ->
+            val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            val detailContentPadding = PaddingValues(
+                top = 64.dp + statusBarHeight + 16.dp,
+                bottom = 16.dp + navBarHeight,
+                start = 16.dp,
+                end = 16.dp
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .hazeSource(state = hazeState)
+                .consumeWindowInsets(padding),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                when (uiState) {
+                    is DetailUiState.Loading, is DetailUiState.OpenTvDetail -> {
+                        MovieDetailPlaceholder(contentPadding = detailContentPadding)
+                    }
+                    is DetailUiState.Success -> {
+                        MovieDetailContent(
+                            movie = uiState.movie,
+                            releasesByQuality = uiState.releasesByQuality,
+                            downloadedHashes = downloadedHashes,
+                            allDownloads = allDownloads,
+                            mediaController = mediaController,
+                            torrentHandlingMode = torrentHandlingMode,
+                            isWideScreen = isWideScreen,
+                            isTv = isTv,
+                            onTorrentClick = { onTorrentClick(uiState.movie, it) },
+                            onReleaseClick = { release ->
+                                val moviePoster = uiState.movie.mediumCoverImage ?: uiState.movie.largeCoverImage
+                                val matchingDownload = allDownloads.firstOrNull { it.infoHash.equals(release.hash, ignoreCase = true) }
+                                TorrentCardActionHandler.performCardClick(
+                                    context = context,
+                                    releaseHash = release.hash,
+                                    releaseTitle = uiState.movie.title ?: release.title,
+                                    releaseMagnetUri = release.magnetUrl.orEmpty(),
+                                    releaseSizeBytes = release.sizeBytes,
+                                    download = matchingDownload,
+                                    activeBuffer = activeBuffer,
+                                    mediaController = mediaController,
+                                    isTv = isTv,
+                                    torrentHandlingMode = torrentHandlingMode,
+                                    movieId = uiState.movie.id,
+                                    posterUrl = moviePoster,
+                                    onInsufficientStorage = { available, required ->
+                                        insufficientStorageState.value = Pair(available, required)
+                                    },
+                                    onDownloadStarted = {
+                                        onReleaseClick(uiState.movie, release)
+                                    }
+                                )
+                            },
+                            onReleaseLongClick = { release ->
+                                torrentToDelete = release.hash to (uiState.movie.title ?: release.title)
+                            },
+                            onAddLanguageToFilter = onAddLanguageToFilter,
+                            onCastClick = onCastClick,
+                            onInsufficientStorage = { available, required ->
+                                insufficientStorageState.value = Pair(available, required)
+                            },
+                            contentFocusRequester = contentFocusRequester,
+                            contentPadding = detailContentPadding,
+                            scrollState = scrollState
+                        )
+                    }
+                    is DetailUiState.Error -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(text = uiState.message.asString())
+                        }
                     }
                 }
             }
@@ -402,7 +493,8 @@ private fun MovieDetailScreenContent(
             onDismiss = onDismissActorSheet,
             sheetState = actorSheetState,
             hazeState = hazeState,
-            onCreditClick = onActorCreditClick
+            onCreditClick = onActorCreditClick,
+            themeMode = themeMode
         )
     }
 
@@ -427,6 +519,705 @@ private fun MovieDetailScreenContent(
                 torrentToDelete = null
             }
         )
+    }
+}
+
+
+/**
+ * 10-foot TV movie detail layout with edge-to-edge backdrop, cinematic hero, action buttons,
+ * smooth D-pad navigation, cast row, and torrent options.
+ */
+@Composable
+private fun TvMovieDetailContent(
+    movie: Movie,
+    tmdbMovie: TmdbMovieResult?,
+    director: String? = null,
+    studioLogoUrl: String? = null,
+    studioName: String? = null,
+    ratings: MovieRatings? = null,
+    backdropUrl: String?,
+    isFavorite: Boolean,
+    releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>>,
+    downloadedHashes: Set<String>,
+    allDownloads: List<TorrentDownload>,
+    mediaController: MediaController?,
+    torrentHandlingMode: TorrentHandlingMode,
+    onBackClick: () -> Unit,
+    onShareClick: () -> Unit,
+    onFavoriteToggle: () -> Unit,
+    onTorrentClick: (Torrent) -> Unit,
+    onReleaseClick: (TorrentRelease) -> Unit,
+    onReleaseLongClick: (TorrentRelease) -> Unit,
+    onAddLanguageToFilter: (String) -> Unit,
+    onCastClick: (String) -> Unit,
+    onInsufficientStorage: (Long, Long) -> Unit,
+    themeMode: Int? = null,
+    modifier: Modifier = Modifier
+) {
+    var showTrailerDialog by remember { mutableStateOf(false) }
+    val firstActionFocusRequester = remember { FocusRequester() }
+    val hasTrailer = !movie.ytTrailerCode.isNullOrEmpty()
+
+    var isRevealed by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        isRevealed = true
+        firstActionFocusRequester.requestFocus()
+    }
+
+    val posterScale by animateFloatAsState(
+        targetValue = if (isRevealed) 1f else 0.70f,
+        animationSpec = tween(durationMillis = 650, easing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)),
+        label = "posterScale"
+    )
+    val posterAlpha by animateFloatAsState(
+        targetValue = if (isRevealed) 1f else 0f,
+        animationSpec = tween(durationMillis = 350),
+        label = "posterAlpha"
+    )
+    val contentAlpha by animateFloatAsState(
+        targetValue = if (isRevealed) 1f else 0f,
+        animationSpec = tween(durationMillis = 500, delayMillis = 100),
+        label = "contentAlpha"
+    )
+    val contentTranslationY by animateFloatAsState(
+        targetValue = if (isRevealed) 0f else 32f,
+        animationSpec = tween(durationMillis = 500, delayMillis = 100, easing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)),
+        label = "contentTranslationY"
+    )
+    val backdropAlpha by animateFloatAsState(
+        targetValue = if (isRevealed) 1f else 0f,
+        animationSpec = tween(durationMillis = 700, easing = LinearOutSlowInEasing),
+        label = "backdropAlpha"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
+    ) {
+        // 1. Edge-to-Edge Dynamic TMDB Backdrop
+        if (!backdropUrl.isNullOrEmpty()) {
+            AsyncImage(
+                model = backdropUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.85f)
+                    .graphicsLayer { alpha = backdropAlpha }
+            )
+            // Top gradient scrim for transparent navigation and status bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
+                                Color.Transparent
+                            )
+                        )
+                    )
+            )
+            // Left horizontal gradient scrim for high-contrast reading
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.72f)
+                    .fillMaxHeight(0.85f)
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
+                                Color.Transparent
+                            )
+                        )
+                    )
+            )
+            // Bottom vertical gradient scrim fading seamlessly to solid surface
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(260.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.70f),
+                                MaterialTheme.colorScheme.surface
+                            )
+                        )
+                    )
+            )
+        }
+
+        // 2. 10-foot Cinematic Scrollable Content
+        val scrollState = rememberScrollState()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(horizontal = 48.dp, vertical = 24.dp)
+        ) {
+            // Top Navigation Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusGroup(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onBackClick,
+                    modifier = Modifier.focusHighlight(shape = CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.back_desc),
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Hero Section: Morphing Poster Card on the Left, Title & Details on the Right
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(32.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                // Movie Poster Card (The animated morph/zoom anchor from catalog)
+                val posterUrl = movie.largeCoverImage
+                    ?: movie.mediumCoverImage
+                    ?: tmdbMovie?.fullPosterUrl
+
+                if (!posterUrl.isNullOrEmpty()) {
+                    Card(
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                        modifier = Modifier
+                            .width(190.dp)
+                            .aspectRatio(2 / 3f)
+                            .graphicsLayer {
+                                scaleX = posterScale
+                                scaleY = posterScale
+                                alpha = posterAlpha
+                            }
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                shape = MaterialTheme.shapes.medium
+                            )
+                    ) {
+                        AsyncImage(
+                            model = posterUrl,
+                            contentDescription = movie.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+
+                // Movie Info Column (Title, Badges, Action Buttons, Synopsis)
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .graphicsLayer {
+                            alpha = contentAlpha
+                            translationY = contentTranslationY
+                        }
+                ) {
+                    // Movie Title
+                    Text(
+                        text = movie.title ?: tmdbMovie?.title.orEmpty(),
+                        style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Metadata Badges Row (Year, Duration, MPA, Language, Genres)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val releaseYear = movie.year?.takeIf { it != 0 }?.toString()
+                            ?: tmdbMovie?.releaseDate?.take(4)
+                        if (!releaseYear.isNullOrBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(MaterialTheme.shapes.extraSmall)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = releaseYear,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        if (!movie.runtime.isNullOrBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(MaterialTheme.shapes.extraSmall)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = movie.runtime,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        if (!movie.mpaRating.isNullOrBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(MaterialTheme.shapes.extraSmall)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = movie.mpaRating,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        movie.language?.let { lang ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(MaterialTheme.shapes.extraSmall)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = lang.uppercase(Locale.US),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        movie.genres?.take(3)?.forEach { genre ->
+                            val translatedGenre = GenreTranslation.getGenreText(genre).asString()
+                            Box(
+                                modifier = Modifier
+                                    .clip(MaterialTheme.shapes.extraSmall)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = translatedGenre,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+
+                    // Director & Studio Information
+                    if (!director.isNullOrBlank() || !studioLogoUrl.isNullOrBlank() || !studioName.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            if (!director.isNullOrBlank()) {
+                                Text(
+                                    text = stringResource(R.string.directed_by, director),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            if (!studioLogoUrl.isNullOrBlank()) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(MaterialTheme.shapes.extraSmall)
+                                        .background(Color.White.copy(alpha = 0.14f))
+                                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    AsyncImage(
+                                        model = studioLogoUrl,
+                                        contentDescription = studioName,
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier
+                                            .height(24.dp)
+                                            .widthIn(max = 110.dp)
+                                    )
+                                }
+                            } else if (!studioName.isNullOrBlank()) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(MaterialTheme.shapes.extraSmall)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = studioName,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // External Ratings Row (IMDb, Rotten Tomatoes, Metacritic)
+                    val effectiveImdbRating = ratings?.imdbRating
+                        ?: movie.rating?.takeIf { it.isNotBlank() && it != "0" && it != "0.0" }?.let { "$it/10" }
+                        ?: tmdbMovie?.voteAverage?.takeIf { it > 0.0 }?.let { "%.1f/10".format(Locale.US, it) }
+                    val rottenTomatoesRating = ratings?.rottenTomatoesRating
+                    val metacriticRating = ratings?.metacriticRating
+
+                    if (effectiveImdbRating != null || rottenTomatoesRating != null || metacriticRating != null) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(20.dp)
+                        ) {
+                            effectiveImdbRating?.let { imdb ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Image(
+                                        painter = painterResource(R.drawable.ic_imdb_logo),
+                                        contentDescription = "IMDb",
+                                        modifier = Modifier.height(18.dp)
+                                    )
+                                    Text(
+                                        text = imdb,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+
+                            rottenTomatoesRating?.let { rt ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Image(
+                                        painter = painterResource(R.drawable.ic_rotten_tomatoes),
+                                        contentDescription = "Rotten Tomatoes",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = rt,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+
+                            metacriticRating?.let { meta ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Image(
+                                        painter = painterResource(R.drawable.ic_metacritic),
+                                        contentDescription = "Metacritic",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = meta,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Action Buttons Row (Ver Trailer, Favoritos, Compartir)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusGroup()
+                    ) {
+                        // Trailer Button
+                        if (hasTrailer) {
+                            TvButton(
+                                onClick = { showTrailerDialog = true },
+                                modifier = Modifier
+                                    .focusRequester(firstActionFocusRequester)
+                                    .focusHighlight(shape = MaterialTheme.shapes.small),
+                                colors = TvButtonDefaults.colors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    focusedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    focusedContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                ),
+                                shape = TvButtonDefaults.shape(shape = MaterialTheme.shapes.small)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = stringResource(R.string.watch_trailer),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        // Favorite Button
+                        TvButton(
+                            onClick = onFavoriteToggle,
+                            modifier = Modifier
+                                .then(if (!hasTrailer) Modifier.focusRequester(firstActionFocusRequester) else Modifier)
+                                .focusHighlight(shape = MaterialTheme.shapes.small),
+                            colors = TvButtonDefaults.colors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                focusedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                focusedContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            ),
+                            shape = TvButtonDefaults.shape(shape = MaterialTheme.shapes.small)
+                        ) {
+                            Icon(
+                                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = null,
+                                tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (isFavorite) stringResource(R.string.remove_favorite_desc) else stringResource(R.string.add_favorite_desc),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // Share Button
+                        TvButton(
+                            onClick = onShareClick,
+                            modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small),
+                            colors = TvButtonDefaults.colors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                focusedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                focusedContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            ),
+                            shape = TvButtonDefaults.shape(shape = MaterialTheme.shapes.small)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = stringResource(R.string.share_desc),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Synopsis / Summary
+                    val summaryText = movie.summary?.ifEmpty { movie.descriptionFull }
+                        ?: movie.descriptionFull
+                        ?: tmdbMovie?.overview
+                    if (!summaryText.isNullOrBlank()) {
+                        Text(
+                            text = summaryText,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 5,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 750.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Cast Section
+            if (!movie.cast.isNullOrEmpty()) {
+                Text(
+                    text = stringResource(R.string.cast_header),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                LazyRow(
+                    modifier = Modifier
+                        .focusRestorer()
+                        .focusGroup(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(vertical = 4.dp)
+                ) {
+                    items(movie.cast) { cast ->
+                        CastItem(cast = cast, onCastClick = onCastClick)
+                    }
+                }
+                Spacer(modifier = Modifier.height(32.dp))
+            }
+
+            // Torrents & Releases Section
+            Text(
+                text = stringResource(R.string.torrents_header),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusGroup()
+            ) {
+                if (releasesByQuality.isNotEmpty()) {
+                    releasesByQuality.forEach { (qualityGroup, releases) ->
+                        if (releases.isNotEmpty()) {
+                            val groupHeader = when (qualityGroup) {
+                                VideoQualityGroup.UHD_4K -> stringResource(R.string.quality_group_4k)
+                                VideoQualityGroup.FHD_1080P -> stringResource(R.string.quality_group_1080p)
+                                VideoQualityGroup.HD_720P -> stringResource(R.string.quality_group_720p)
+                                VideoQualityGroup.OTHER -> stringResource(R.string.quality_group_other)
+                            }
+                            Text(
+                                text = groupHeader,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+                            )
+                            releases.forEach { release ->
+                                val releaseHash = release.hash
+                                val matchingDownload = allDownloads.firstOrNull { it.infoHash.equals(releaseHash, ignoreCase = true) }
+                                TorrentReleaseShimmerCard(
+                                    release = release,
+                                    isDownloaded = downloadedHashes.contains(release.hash.lowercase()) || matchingDownload?.state == TorrentDownloadService.STATE_COMPLETED,
+                                    onClick = { onReleaseClick(release) },
+                                    onLongClick = { onReleaseLongClick(release) },
+                                    download = matchingDownload,
+                                    mediaController = mediaController,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    movie.torrents?.forEach { torrent ->
+                        TorrentItem(
+                            movie = movie,
+                            torrent = torrent,
+                            isDownloaded = downloadedHashes.contains(torrent.hash),
+                            onTorrentClick = onTorrentClick,
+                            handlingMode = torrentHandlingMode,
+                            onInsufficientStorage = onInsufficientStorage
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(48.dp))
+        }
+
+        // 3. YouTube Trailer Dialog for TV (Focus-isolated)
+        if (showTrailerDialog && !movie.ytTrailerCode.isNullOrEmpty()) {
+            TvTrailerDialog(
+                youtubeVideoId = movie.ytTrailerCode,
+                onDismiss = { showTrailerDialog = false },
+                themeMode = themeMode
+            )
+        }
+    }
+}
+
+/**
+ * Focus-isolated modal dialog for playing YouTube trailers on Android TV without corrupting D-pad navigation.
+ */
+@Composable
+private fun TvTrailerDialog(
+    youtubeVideoId: String,
+    onDismiss: () -> Unit,
+    themeMode: Int? = null
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        val context = LocalContext.current
+        val effectiveThemeMode = remember(context, themeMode) {
+            themeMode ?: PreferenceManager(context).getTheme()
+        }
+        TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
+            val playFocusRequester = remember { FocusRequester() }
+            LaunchedEffect(Unit) {
+                playFocusRequester.requestFocus()
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.scrim),
+                contentAlignment = Alignment.Center
+            ) {
+                YoutubePlayer(
+                    youtubeVideoId = youtubeVideoId,
+                    lifecycleOwner = LocalLifecycleOwner.current,
+                    focusRequester = playFocusRequester
+                )
+
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(32.dp)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f), CircleShape)
+                        .focusHighlight(shape = CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.close_trailer),
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -802,21 +1593,12 @@ fun CastSection(
     onCastClick: (String) -> Unit,
     nextFocusRequester: FocusRequester? = null
 ) {
-    val context = LocalContext.current
-    val isTv = remember(context) { context.isTvDevice() }
-
     Text(text = stringResource(R.string.cast_header), style = MaterialTheme.typography.titleLarge)
     Spacer(modifier = Modifier.height(8.dp))
     LazyRow(
         modifier = Modifier
             .focusRestorer()
-            .then(
-                if (isTv && nextFocusRequester != null) {
-                    Modifier.focusProperties { down = nextFocusRequester }
-                } else {
-                    Modifier
-                }
-            ),
+            .focusGroup(),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(vertical = 8.dp)
     ) {
@@ -842,24 +1624,19 @@ fun CastItem(
 
         Surface(
             onClick = { cast.name?.let { onCastClick(it) } },
-            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
             shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small),
             colors = ClickableSurfaceDefaults.colors(
                 containerColor = Color.Transparent,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                focusedContainerColor = Color.Transparent
             ),
             interactionSource = interactionSource,
             modifier = modifier
-                .width(90.dp)
+                .width(105.dp)
                 .padding(4.dp)
-                .border(
-                    width = if (isFocused) 2.dp else 0.dp,
-                    color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
-                    shape = MaterialTheme.shapes.small
-                )
         ) {
             Column(
-                modifier = Modifier.padding(6.dp),
+                modifier = Modifier.padding(4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 AsyncImage(
@@ -869,25 +1646,39 @@ fun CastItem(
                     error = painterResource(R.drawable.ic_launcher_foreground),
                     fallback = painterResource(R.drawable.ic_launcher_foreground),
                     modifier = Modifier
-                        .size(60.dp)
+                        .size(64.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .border(
-                            width = if (isFocused) 2.dp else 0.dp,
-                            color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            width = if (isFocused) 3.dp else 1.dp,
+                            color = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                             shape = CircleShape
                         ),
                     contentScale = ContentScale.Crop
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = cast.name ?: "",
                     style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
+                    fontWeight = if (isFocused) FontWeight.ExtraBold else FontWeight.SemiBold,
+                    color = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center
                 )
+                if (!cast.characterName.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = cast.characterName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .basicMarquee()
+                    )
+                }
             }
         }
     } else {
@@ -915,18 +1706,23 @@ fun CastItem(
                 text = cast.name ?: "",
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center
             )
-            Text(
-                text = cast.characterName ?: "",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
+            if (!cast.characterName.isNullOrBlank()) {
+                Text(
+                    text = cast.characterName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .basicMarquee()
+                )
+            }
         }
     }
 }

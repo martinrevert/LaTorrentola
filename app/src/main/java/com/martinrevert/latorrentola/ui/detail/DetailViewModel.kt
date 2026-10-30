@@ -4,12 +4,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
+import com.martinrevert.latorrentola.model.YTS.Cast
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.torrent.TorrentDownload
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.model.user.DownloadedMovie
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
+import com.martinrevert.latorrentola.model.TMDB.TmdbMovieResult
 import com.martinrevert.latorrentola.network.TorrentioRepository
+import com.martinrevert.latorrentola.model.omdb.MovieRatings
+import com.martinrevert.latorrentola.network.OmdbRepository
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
 import com.martinrevert.latorrentola.model.torrent.groupByQuality
@@ -38,6 +42,7 @@ import kotlin.time.Duration.Companion.seconds
  * @property torrentioRepository retrieves high-fidelity torrent streams from Torrentio.
  * @property userLibraryRepository observes downloads and stores new download records.
  * @property tmdbRepository retrieves actor information and movie IMDb IDs.
+ * @property omdbRepository retrieves external ratings from IMDb, Rotten Tomatoes, and Metacritic.
  * @property voiceManager speaks movie titles and summaries.
  * @property translationManager translates summaries before speech when requested.
  * @property preferenceManager supplies voice and language-filter settings.
@@ -49,6 +54,7 @@ class DetailViewModel @Inject constructor(
     private val torrentioRepository: TorrentioRepository,
     private val userLibraryRepository: UserLibraryRepository,
     private val tmdbRepository: TmdbRepository,
+    private val omdbRepository: OmdbRepository,
     private val voiceManager: VoiceManager,
     private val translationManager: TranslationManager,
     private val preferenceManager: PreferenceManager,
@@ -124,21 +130,53 @@ class DetailViewModel @Inject constructor(
             // Optimization: Show passed movie immediately to avoid blank loading screen
             val isFavorite = ytsRepository.isFavorite(movie.id)
             val initialYts = buildInitialYtsReleases(movie)
-            _uiState.value = DetailUiState.Success(movie, isFavorite, groupAndSortReleases(initialYts))
+            val initialBackdrop = movie.backgroundImageOriginal ?: movie.backgroundImage
+            _uiState.value = DetailUiState.Success(
+                movie = movie,
+                isFavorite = isFavorite,
+                releasesByQuality = groupAndSortReleases(initialYts),
+                backdropUrl = initialBackdrop
+            )
 
             try {
                 // Fetch full details (cast, images, etc.) in the background
                 val fullDetailsResponse = ytsRepository.getMovieFullDetails(movie.id)
                 var fullMovie = fullDetailsResponse.data?.movie ?: movie
 
-                // Fetch richer TMDB cast if IMDb code is available
+                // Fetch richer TMDB details, director, studio, and cast if IMDb code is available
                 val imdbId = fullMovie.imdbCode ?: movie.imdbCode
+                var tmdbMovie: TmdbMovieResult? = null
+                var director: String? = null
+                var studioLogoUrl: String? = null
+                var studioName: String? = null
                 if (!imdbId.isNullOrBlank()) {
-                    val tmdbCast = tmdbRepository.getMovieCastByImdbId(imdbId)
-                    if (tmdbCast.isNotEmpty()) {
-                        fullMovie = fullMovie.copy(cast = tmdbCast)
+                    val tmdbDetails = tmdbRepository.getMovieDetailsByImdbId(imdbId)
+                    if (tmdbDetails != null) {
+                        director = tmdbDetails.director
+                        studioLogoUrl = tmdbDetails.studioLogoUrl
+                        studioName = tmdbDetails.studioName
+                        val tmdbCast = tmdbDetails.credits?.cast.orEmpty().map { tmdbCastMember ->
+                            Cast(
+                                name = tmdbCastMember.name,
+                                characterName = tmdbCastMember.character,
+                                urlSmallImage = tmdbCastMember.fullProfileUrl
+                            )
+                        }
+                        if (tmdbCast.isNotEmpty()) {
+                            fullMovie = fullMovie.copy(cast = tmdbCast)
+                        }
+                    } else {
+                        val tmdbCast = tmdbRepository.getMovieCastByImdbId(imdbId)
+                        if (tmdbCast.isNotEmpty()) {
+                            fullMovie = fullMovie.copy(cast = tmdbCast)
+                        }
                     }
+                    tmdbMovie = tmdbRepository.findMovieByImdbId(imdbId)
                 }
+
+                val backdropUrl = tmdbMovie?.fullBackdropUrl
+                    ?: fullMovie.backgroundImageOriginal
+                    ?: fullMovie.backgroundImage
 
                 // Fetch Torrentio options in background
                 val fullYtsReleases = buildInitialYtsReleases(fullMovie)
@@ -146,8 +184,22 @@ class DetailViewModel @Inject constructor(
                     torrentioRepository.getMovieTorrents(imdbId)
                 } else emptyList()
 
+                val ratings = if (!imdbId.isNullOrBlank()) {
+                    omdbRepository.getRatingsByImdbId(imdbId)
+                } else null
+
                 val mergedReleases = groupAndSortReleases(fullYtsReleases + torrentioReleases)
-                _uiState.value = DetailUiState.Success(fullMovie, isFavorite, mergedReleases)
+                _uiState.value = DetailUiState.Success(
+                    movie = fullMovie,
+                    isFavorite = isFavorite,
+                    releasesByQuality = mergedReleases,
+                    tmdbMovie = tmdbMovie,
+                    director = director,
+                    studioLogoUrl = studioLogoUrl,
+                    studioName = studioName,
+                    ratings = ratings,
+                    backdropUrl = backdropUrl
+                )
                 
                 // Clear any existing voice job before starting a new one
                 voiceJob?.cancel()
@@ -162,14 +214,30 @@ class DetailViewModel @Inject constructor(
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 val imdbId = movie.imdbCode
+                var tmdbMovie: TmdbMovieResult? = null
                 val movieWithCast = if (!imdbId.isNullOrBlank()) {
+                    tmdbMovie = tmdbRepository.findMovieByImdbId(imdbId)
                     val tmdbCast = tmdbRepository.getMovieCastByImdbId(imdbId)
                     if (tmdbCast.isNotEmpty()) movie.copy(cast = tmdbCast) else movie
                 } else movie
 
                 val isFavorite = ytsRepository.isFavorite(movie.id)
                 val ytsReleases = buildInitialYtsReleases(movieWithCast)
-                _uiState.value = DetailUiState.Success(movieWithCast, isFavorite, groupAndSortReleases(ytsReleases))
+                val fallbackBackdrop = tmdbMovie?.fullBackdropUrl
+                    ?: movieWithCast.backgroundImageOriginal
+                    ?: movieWithCast.backgroundImage
+                val ratings = if (!imdbId.isNullOrBlank()) {
+                    omdbRepository.getRatingsByImdbId(imdbId)
+                } else null
+
+                _uiState.value = DetailUiState.Success(
+                    movie = movieWithCast,
+                    isFavorite = isFavorite,
+                    releasesByQuality = groupAndSortReleases(ytsReleases),
+                    tmdbMovie = tmdbMovie,
+                    ratings = ratings,
+                    backdropUrl = fallbackBackdrop
+                )
                 
                 voiceJob?.cancel()
                 voiceJob = viewModelScope.launch {
@@ -189,20 +257,60 @@ class DetailViewModel @Inject constructor(
                 fullDetailsResponse.data?.movie?.let { movie ->
                     var fullMovie = movie
                     val imdbId = fullMovie.imdbCode
+                    var tmdbMovie: TmdbMovieResult? = null
+                    var director: String? = null
+                    var studioLogoUrl: String? = null
+                    var studioName: String? = null
                     if (!imdbId.isNullOrBlank()) {
-                        val tmdbCast = tmdbRepository.getMovieCastByImdbId(imdbId)
-                        if (tmdbCast.isNotEmpty()) {
-                            fullMovie = fullMovie.copy(cast = tmdbCast)
+                        val tmdbDetails = tmdbRepository.getMovieDetailsByImdbId(imdbId)
+                        if (tmdbDetails != null) {
+                            director = tmdbDetails.director
+                            studioLogoUrl = tmdbDetails.studioLogoUrl
+                            studioName = tmdbDetails.studioName
+                            val tmdbCast = tmdbDetails.credits?.cast.orEmpty().map { tmdbCastMember ->
+                                Cast(
+                                    name = tmdbCastMember.name,
+                                    characterName = tmdbCastMember.character,
+                                    urlSmallImage = tmdbCastMember.fullProfileUrl
+                                )
+                            }
+                            if (tmdbCast.isNotEmpty()) {
+                                fullMovie = fullMovie.copy(cast = tmdbCast)
+                            }
+                        } else {
+                            val tmdbCast = tmdbRepository.getMovieCastByImdbId(imdbId)
+                            if (tmdbCast.isNotEmpty()) {
+                                fullMovie = fullMovie.copy(cast = tmdbCast)
+                            }
                         }
+                        tmdbMovie = tmdbRepository.findMovieByImdbId(imdbId)
                     }
+
+                    val backdropUrl = tmdbMovie?.fullBackdropUrl
+                        ?: fullMovie.backgroundImageOriginal
+                        ?: fullMovie.backgroundImage
 
                     val ytsReleases = buildInitialYtsReleases(fullMovie)
                     val torrentioReleases = if (!imdbId.isNullOrBlank()) {
                         torrentioRepository.getMovieTorrents(imdbId)
                     } else emptyList()
 
+                    val ratings = if (!imdbId.isNullOrBlank()) {
+                        omdbRepository.getRatingsByImdbId(imdbId)
+                    } else null
+
                     val mergedReleases = groupAndSortReleases(ytsReleases + torrentioReleases)
-                    _uiState.value = DetailUiState.Success(fullMovie, isFavorite, mergedReleases)
+                    _uiState.value = DetailUiState.Success(
+                        movie = fullMovie,
+                        isFavorite = isFavorite,
+                        releasesByQuality = mergedReleases,
+                        tmdbMovie = tmdbMovie,
+                        director = director,
+                        studioLogoUrl = studioLogoUrl,
+                        studioName = studioName,
+                        ratings = ratings,
+                        backdropUrl = backdropUrl
+                    )
                     
                     voiceJob?.cancel()
                     voiceJob = viewModelScope.launch {
@@ -437,11 +545,19 @@ sealed interface DetailUiState {
      * @property movie Loaded movie metadata.
      * @property isFavorite Whether the movie is in the user's favorites.
      * @property releasesByQuality Torrents grouped by quality and sorted by seeds descending.
+     * @property tmdbMovie Matched TMDB movie details, when available.
+     * @property backdropUrl High-resolution backdrop image URL.
      */
     data class Success(
         val movie: Movie,
         val isFavorite: Boolean,
-        val releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>> = emptyMap()
+        val releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>> = emptyMap(),
+        val tmdbMovie: TmdbMovieResult? = null,
+        val director: String? = null,
+        val studioLogoUrl: String? = null,
+        val studioName: String? = null,
+        val ratings: MovieRatings? = null,
+        val backdropUrl: String? = null
     ) : DetailUiState
     /**
      * Query resolved to a TV series on TMDB.

@@ -1,17 +1,16 @@
 package com.martinrevert.latorrentola.ui.components
 
-import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -20,11 +19,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -34,13 +30,12 @@ import coil3.compose.AsyncImagePainter
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
-
-import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.isTvDevice
 import kotlinx.coroutines.delay
 
 /**
- * Displays a movie card with adaptive TV/handheld interaction, poster loading, and download/selection indicators.
+ * Displays a clean movie poster card with adaptive TV/handheld interaction,
+ * watch history progress indicator, and download/selection badges.
  *
  * @param movie Movie metadata rendered by the card.
  * @param onClick Invoked to open the movie when no selection handler overrides the click.
@@ -60,10 +55,10 @@ fun MovieItem(
     onToggleSelection: (() -> Unit)? = null,
     shouldRequestFocus: Boolean = false,
     onFocusRestored: () -> Unit = {},
-    isTv: Boolean? = null
+    isTv: Boolean? = null,
+    onFocus: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
-    val resources = LocalResources.current
     val effectiveIsTv = remember(context, isTv) { isTv ?: context.isTvDevice() }
     val focusRequester = remember { FocusRequester() }
 
@@ -74,13 +69,6 @@ fun MovieItem(
         val movieUploadTime = (movie.dateUploadedUnix ?: 0L) * 1000
         val fifteenDaysInMs = 15L * 24 * 60 * 60 * 1000
         movieUploadTime > (System.currentTimeMillis() - fifteenDaysInMs)
-    }
-
-    val genreText = remember(movie.genres, resources) {
-        movie.genres
-            ?.takeIf { it.isNotEmpty() }
-            ?.joinToString(", ") { GenreTranslation.getGenreText(it).asString(resources) }
-            .orEmpty()
     }
 
     if (shouldRequestFocus) {
@@ -116,107 +104,65 @@ fun MovieItem(
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
                     .onFocusChanged { state ->
-                        if (state.isFocused && shouldRequestFocus) {
-                            onFocusRestored()
+                        if (state.isFocused) {
+                            onFocus?.invoke()
+                            if (shouldRequestFocus) {
+                                onFocusRestored()
+                            }
                         }
                     }
                     .tvDpadLongClickable(onLongClick)
             ) {
-                Column {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(0.67f)
-                            .then(if (isImageLoading) Modifier.shimmer() else Modifier)
-                    ) {
-                        AsyncImage(
-                            model = movie.mediumCoverImage,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                            onState = { state ->
-                                isImageLoading = state is AsyncImagePainter.State.Loading
-                            }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.67f)
+                        .then(if (isImageLoading) Modifier.shimmer() else Modifier)
+                ) {
+                    AsyncImage(
+                        model = movie.mediumCoverImage,
+                        contentDescription = movie.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        onState = { state ->
+                            isImageLoading = state is AsyncImagePainter.State.Loading
+                        }
+                    )
+
+                    if (isRecent) {
+                        Icon(
+                            painter = painterResource(R.drawable.new_badge),
+                            contentDescription = stringResource(R.string.new_desc),
+                            tint = Color.Yellow,
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(8.dp)
+                                .size(32.dp)
+                                .rotate(-45f)
                         )
-
-                        if (isRecent) {
-                            Icon(
-                                painter = painterResource(R.drawable.new_badge),
-                                contentDescription = stringResource(R.string.new_desc),
-                                tint = Color.Yellow,
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .padding(8.dp)
-                                    .size(32.dp)
-                                    .rotate(-45f)
-                            )
-                        }
-
-                        if (isDownloaded) {
-                            Icon(
-                                imageVector = Icons.Default.CloudDone,
-                                contentDescription = stringResource(R.string.downloaded_desc),
-                                tint = Color.Yellow,
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .padding(8.dp)
-                                    .size(24.dp)
-                                    .background(
-                                        MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                                        CircleShape
-                                    )
-                                    .padding(2.dp)
-                            )
-                        }
                     }
-                    WatchProgressBar(progressPercent = progressPercent)
-                    Column(
-                        modifier = Modifier
-                            .background(androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(12.dp)
-                            .fillMaxWidth()
-                    ) {
-                        Text(
-                            text = movie.title ?: "",
-                            style = androidx.tv.material3.MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+
+                    if (isDownloaded) {
+                        Icon(
+                            imageVector = Icons.Default.CloudDone,
+                            contentDescription = stringResource(R.string.downloaded_desc),
+                            tint = Color.Yellow,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp)
+                                .size(24.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                    CircleShape
+                                )
+                                .padding(2.dp)
                         )
-
-                        if (genreText.isNotEmpty()) {
-                            Text(
-                                text = genreText,
-                                style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
-                                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(vertical = 2.dp)
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "${movie.year}",
-                                style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
-                                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = "⭐ ${movie.rating}",
-                                style = androidx.tv.material3.MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
                     }
+
+                    WatchProgressBar(
+                        progressPercent = progressPercent,
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    )
                 }
             }
         } else {
@@ -237,132 +183,56 @@ fun MovieItem(
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                 shape = MaterialTheme.shapes.medium
             ) {
-                Box {
-                    Column {
-                        Box(
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.67f)
+                        .then(if (isImageLoading) Modifier.shimmer() else Modifier)
+                ) {
+                    AsyncImage(
+                        model = movie.mediumCoverImage,
+                        contentDescription = movie.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        onState = { state ->
+                            isImageLoading = state is AsyncImagePainter.State.Loading
+                        }
+                    )
+
+                    if (isRecent) {
+                        Icon(
+                            painter = painterResource(R.drawable.new_badge),
+                            contentDescription = stringResource(R.string.new_desc),
+                            tint = Color.Yellow,
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(0.67f)
-                                .then(if (isImageLoading) Modifier.shimmer() else Modifier)
-                        ) {
-                            AsyncImage(
-                                model = movie.mediumCoverImage,
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop,
-                                onState = { state ->
-                                    isImageLoading = state is AsyncImagePainter.State.Loading
-                                }
-                            )
-
-                            if (isRecent) {
-                                Icon(
-                                    painter = painterResource(R.drawable.new_badge),
-                                    contentDescription = stringResource(R.string.new_desc),
-                                    tint = Color.Yellow,
-                                    modifier = Modifier
-                                        .align(Alignment.TopStart)
-                                        .padding(8.dp)
-                                        .size(32.dp)
-                                        .rotate(-45f)
-                                )
-                            }
-
-                            if (isDownloaded) {
-                                Icon(
-                                    imageVector = Icons.Default.CloudDone,
-                                    contentDescription = stringResource(R.string.downloaded_desc),
-                                    tint = Color.Yellow,
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(8.dp)
-                                        .size(24.dp)
-                                        .background(
-                                            MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                                            CircleShape
-                                        )
-                                        .padding(2.dp)
-                                )
-                            }
-                        }
-                        WatchProgressBar(progressPercent = progressPercent)
-                        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-                            Text(
-                                text = movie.title ?: "",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            if (genreText.isNotEmpty()) {
-                                Text(
-                                    text = genreText,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
-                                )
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "${movie.year}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false)
-                                )
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.End
-                                ) {
-                                    IconButton(
-                                        onClick = {
-                                            val imdbUrl = "https://www.imdb.com/title/${movie.imdbCode}"
-                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                                type = "text/plain"
-                                                putExtra(Intent.EXTRA_SUBJECT, movie.title)
-                                                val shareText = resources.getString(
-                                                    R.string.share_movie_text,
-                                                    movie.title,
-                                                    imdbUrl
-                                                )
-                                                putExtra(Intent.EXTRA_TEXT, shareText)
-                                            }
-                                            context.startActivity(Intent.createChooser(shareIntent, resources.getString(
-                                                R.string.share_movie_chooser)))
-                                        },
-                                        modifier = Modifier.size(48.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Share,
-                                            contentDescription = "${stringResource(R.string.share_desc)} ${movie.title ?: ""}",
-                                            modifier = Modifier.size(24.dp),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "⭐ ${movie.rating}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
+                                .align(Alignment.TopStart)
+                                .padding(8.dp)
+                                .size(32.dp)
+                                .rotate(-45f)
+                        )
                     }
+
+                    if (isDownloaded) {
+                        Icon(
+                            imageVector = Icons.Default.CloudDone,
+                            contentDescription = stringResource(R.string.downloaded_desc),
+                            tint = Color.Yellow,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp)
+                                .size(24.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                    CircleShape
+                                )
+                                .padding(2.dp)
+                        )
+                    }
+
+                    WatchProgressBar(
+                        progressPercent = progressPercent,
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    )
                 }
             }
         }
@@ -371,6 +241,7 @@ fun MovieItem(
             Box(
                 modifier = Modifier
                     .matchParentSize()
+                    .clip(MaterialTheme.shapes.medium)
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
             )
             Icon(

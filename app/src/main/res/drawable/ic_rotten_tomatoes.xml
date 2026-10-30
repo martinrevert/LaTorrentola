@@ -1,0 +1,18 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Leaves / Calyx on top -->
+    <path
+        android:fillColor="#46B125"
+        android:pathData="M12,2 C12,2 11.5,4 9.5,4.5 C9.5,4.5 11,5.5 11,6.5 C9.5,6 7.5,7 6.5,8 C7.8,8.2 9.5,7.8 10.5,8.2 C9,9.5 8.5,11 8.5,11 C10,10.2 11.5,9.5 12,9 C12.5,9.5 14,10.2 15.5,11 C15.5,11 15,9.5 13.5,8.2 C14.5,7.8 16.2,8.2 17.5,8 C16.5,7 14.5,6 13,6.5 C13,5.5 14.5,4.5 14.5,4.5 C12.5,4 12,2 12,2 Z" />
+    <!-- Red Tomato Body -->
+    <path
+        android:fillColor="#FA320A"
+        android:pathData="M12,7.5 C6.5,7.5 3,11 3,15 C3,19 7,22 12,22 C17,22 21,19 21,15 C21,11 17.5,7.5 12,7.5 Z" />
+    <!-- Gentle highlight curve -->
+    <path
+        android:fillColor="#FF684A"
+        android:pathData="M7.5,11 C6.2,12.3 5.5,14 5.5,15.5 C5.5,14.2 6.1,12.8 7.2,11.8 C8.2,10.8 9.5,10.2 10.8,10 C9.5,10.1 8.4,10.4 7.5,11 Z" />
+</vector>

@@ -5,14 +5,19 @@ package com.martinrevert.latorrentola.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.LocalContentColor as MobileLocalContentColor
+import androidx.tv.material3.LocalContentColor as TvLocalContentColor
 import androidx.tv.material3.darkColorScheme as tvDarkColorScheme
 import androidx.tv.material3.lightColorScheme as tvLightColorScheme
 import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 import androidx.compose.material3.MaterialTheme as MobileMaterialTheme
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.utils.isTvDevice
 
 private val tvLightScheme = tvLightColorScheme(
     primary = primaryLight,
@@ -77,10 +82,11 @@ fun TvLaTorrentolaTheme(
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
     val actualDarkTheme = when (themeMode) {
         PreferenceManager.THEME_LIGHT -> false
         PreferenceManager.THEME_DARK -> true
-        else -> darkTheme
+        else -> if (isTv) true else darkTheme
     }
 
     val mobileColorScheme = when {
@@ -98,8 +104,13 @@ fun TvLaTorrentolaTheme(
     ) {
         MobileMaterialTheme(
             colorScheme = mobileColorScheme,
-            typography = AppTypography,
-            content = content
-        )
+            typography = AppTypography
+        ) {
+            CompositionLocalProvider(
+                MobileLocalContentColor provides mobileColorScheme.onSurface,
+                TvLocalContentColor provides tvColorScheme.onSurface,
+                content = content
+            )
+        }
     }
 }

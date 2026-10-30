@@ -6,7 +6,9 @@ import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.date.DateLastVisit
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
+import com.martinrevert.latorrentola.model.TMDB.TmdbMovieResult
 import com.martinrevert.latorrentola.network.AuthRepository
+import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.utils.MovieFilter
@@ -17,6 +19,8 @@ import java.util.Date
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -27,6 +31,7 @@ import kotlinx.coroutines.launch
  * @property userLibraryRepository observes the user's download records.
  * @property preferenceManager supplies language and rating filters.
  * @property authRepository exposes account changes for remote-setting observation.
+ * @property tmdbRepository resolves high-resolution backdrops and movie metadata from TMDB.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -34,7 +39,8 @@ class HomeViewModel @Inject constructor(
     private val ytsRepository: YtsRepository,
     private val userLibraryRepository: UserLibraryRepository,
     private val preferenceManager: PreferenceManager,
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val tmdbRepository: TmdbRepository
 ) : ViewModel() {
 
     companion object {
@@ -123,6 +129,45 @@ class HomeViewModel @Inject constructor(
         "History", "Horror", "Music", "Musical", "Mystery", "News", "Reality-TV",
         "Romance", "Sci-Fi", "Short", "Sport", "Talk-Show", "Thriller", "War", "Western"
     )
+
+    private var movieFocusJob: Job? = null
+
+    /** Currently focused movie in TV immersive browsing mode. */
+    private val _focusedMovie = MutableStateFlow<Movie?>(null)
+    val focusedMovie: StateFlow<Movie?> = _focusedMovie.asStateFlow()
+
+    /** High-resolution TMDB or fallback backdrop URL for the currently focused movie. */
+    private val _focusedMovieBackdrop = MutableStateFlow<String?>(null)
+    val focusedMovieBackdrop: StateFlow<String?> = _focusedMovieBackdrop.asStateFlow()
+
+    /** Enriched TMDB metadata for the currently focused movie. */
+    private val _focusedMovieTmdb = MutableStateFlow<TmdbMovieResult?>(null)
+    val focusedMovieTmdb: StateFlow<TmdbMovieResult?> = _focusedMovieTmdb.asStateFlow()
+
+    /**
+     * Updates the focused movie for the TV immersive layout and fetches its TMDB backdrop.
+     */
+    fun onMovieFocused(movie: Movie) {
+        if (_focusedMovie.value?.id == movie.id) return
+        _focusedMovie.value = movie
+        _focusedMovieBackdrop.value = movie.backgroundImageOriginal ?: movie.backgroundImage ?: movie.largeCoverImage
+        _focusedMovieTmdb.value = null
+
+        movieFocusJob?.cancel()
+        movieFocusJob = viewModelScope.launch {
+            delay(120)
+            val imdb = movie.imdbCode
+            if (!imdb.isNullOrBlank()) {
+                val tmdb = tmdbRepository.findMovieByImdbId(imdb)
+                if (tmdb != null && _focusedMovie.value?.id == movie.id) {
+                    _focusedMovieTmdb.value = tmdb
+                    tmdb.fullBackdropUrl?.let { backdrop ->
+                        _focusedMovieBackdrop.value = backdrop
+                    }
+                }
+            }
+        }
+    }
 
     /** Accumulated movie results backing the paginated feed. */
     private val allMovies = mutableListOf<Movie>()
@@ -275,6 +320,9 @@ class HomeViewModel @Inject constructor(
 
                 if (addedInBatch > 0) {
                     _uiState.value = HomeUiState.Success(allMovies.toList())
+                    if (_focusedMovie.value == null && allMovies.isNotEmpty()) {
+                        onMovieFocused(allMovies.first())
+                    }
                 } else if (allMovies.isEmpty() && !canLoadMore) {
                     _uiState.value = HomeUiState.Error(UiText.StringResource(R.string.error_no_movies_filtered))
                 }
@@ -313,6 +361,9 @@ class HomeViewModel @Inject constructor(
                 canLoadMore = true
                 allMovies.clear()
                 seenMovieIds.clear()
+                _focusedMovie.value = null
+                _focusedMovieBackdrop.value = null
+                _focusedMovieTmdb.value = null
                 _uiState.value = HomeUiState.Loading
 
                 var addedInBatch = 0
@@ -358,6 +409,9 @@ class HomeViewModel @Inject constructor(
 
                 if (addedInBatch > 0) {
                     _uiState.value = HomeUiState.Success(allMovies.toList())
+                    if (_focusedMovie.value == null && allMovies.isNotEmpty()) {
+                        onMovieFocused(allMovies.first())
+                    }
                 } else if (allMovies.isEmpty() && !canLoadMore) {
                     _uiState.value = HomeUiState.Error(UiText.StringResource(R.string.error_no_movies_filtered))
                 }

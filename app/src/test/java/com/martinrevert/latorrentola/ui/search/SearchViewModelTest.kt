@@ -452,4 +452,59 @@ class SearchViewModelTest {
         assertThat((viewModel.tvUiState.value as SearchTvUiState.Success).series.map { it.id })
             .containsExactly(1, 2).inOrder()
     }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun `onMovieFocused should update focusedMovie and resolve TMDB backdrop`() = runTest {
+        val movie = Movie(
+            id = 20,
+            title = "Search Focus Movie",
+            imdbCode = "tt7654321",
+            backgroundImageOriginal = "http://fallback.com/search_bg.jpg"
+        )
+        val tmdbResult = com.martinrevert.latorrentola.model.TMDB.TmdbMovieResult(
+            id = 888,
+            title = "Search Focus Movie TMDB",
+            backdropPath = "/search_backdrop.jpg"
+        )
+        coEvery { tmdbRepository.findMovieByImdbId("tt7654321") } returns tmdbResult
+
+        viewModel.onMovieFocused(movie)
+
+        assertThat(viewModel.focusedMovie.value?.id).isEqualTo(20)
+        assertThat(viewModel.focusedMovieBackdrop.value).isEqualTo("http://fallback.com/search_bg.jpg")
+
+        testScheduler.advanceTimeBy(200)
+
+        assertThat(viewModel.focusedMovieTmdb.value?.id).isEqualTo(888)
+        assertThat(viewModel.focusedMovieBackdrop.value).isEqualTo("https://image.tmdb.org/t/p/w1280/search_backdrop.jpg")
+    }
+
+    @Test
+    fun `resetSearch and clearFocusedMovie should clear focused movie and backdrop state`() = runTest {
+        val movie = Movie(id = 50, title = "Focus Movie", backgroundImageOriginal = "http://bg.jpg")
+        viewModel.onMovieFocused(movie)
+        assertThat(viewModel.focusedMovie.value).isNotNull()
+        assertThat(viewModel.focusedMovieBackdrop.value).isEqualTo("http://bg.jpg")
+
+        viewModel.resetSearch()
+
+        assertThat(viewModel.focusedMovie.value).isNull()
+        assertThat(viewModel.focusedMovieBackdrop.value).isNull()
+        assertThat(viewModel.focusedMovieTmdb.value).isNull()
+    }
+
+    @Test
+    fun `new search clears previous focused movie and backdrop state`() = runTest {
+        val movie = Movie(id = 50, title = "Old Focus Movie", backgroundImageOriginal = "http://bg.jpg")
+        viewModel.onMovieFocused(movie)
+        assertThat(viewModel.focusedMovie.value).isNotNull()
+
+        coEvery { repository.searchMovies("new_query", 1, null) } returns MovieDetails(data = Data(movies = emptyList()))
+        viewModel.search("new_query")
+
+        assertThat(viewModel.focusedMovie.value).isNull()
+        assertThat(viewModel.focusedMovieBackdrop.value).isNull()
+        assertThat(viewModel.focusedMovieTmdb.value).isNull()
+    }
 }

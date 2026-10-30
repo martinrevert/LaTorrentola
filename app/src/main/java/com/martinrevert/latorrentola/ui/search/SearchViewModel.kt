@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
 import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
+import com.martinrevert.latorrentola.model.TMDB.TmdbMovieResult
 import com.martinrevert.latorrentola.model.TMDB.TmdbPersonResult
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
@@ -202,6 +203,55 @@ class SearchViewModel @Inject constructor(
 
     /** Quality labels available to search results. */
     val qualityOptions = listOf("All", "2160p", "1080p.x265", "1080p", "720p", "3D")
+
+    private var movieFocusJob: Job? = null
+
+    /** Currently focused movie in TV immersive search mode. */
+    private val _focusedMovie = MutableStateFlow<Movie?>(null)
+    val focusedMovie: StateFlow<Movie?> = _focusedMovie.asStateFlow()
+
+    /** High-resolution TMDB or fallback backdrop URL for the currently focused movie. */
+    private val _focusedMovieBackdrop = MutableStateFlow<String?>(null)
+    val focusedMovieBackdrop: StateFlow<String?> = _focusedMovieBackdrop.asStateFlow()
+
+    /** Enriched TMDB metadata for the currently focused movie. */
+    private val _focusedMovieTmdb = MutableStateFlow<TmdbMovieResult?>(null)
+    val focusedMovieTmdb: StateFlow<TmdbMovieResult?> = _focusedMovieTmdb.asStateFlow()
+
+    /**
+     * Updates the focused movie for the TV immersive layout and fetches its TMDB backdrop.
+     */
+    fun onMovieFocused(movie: Movie) {
+        if (_focusedMovie.value?.id == movie.id) return
+        _focusedMovie.value = movie
+        _focusedMovieBackdrop.value = movie.backgroundImageOriginal ?: movie.backgroundImage ?: movie.largeCoverImage
+        _focusedMovieTmdb.value = null
+
+        movieFocusJob?.cancel()
+        movieFocusJob = viewModelScope.launch {
+            delay(120)
+            val imdb = movie.imdbCode
+            if (!imdb.isNullOrBlank()) {
+                val tmdb = tmdbRepository.findMovieByImdbId(imdb)
+                if (tmdb != null && _focusedMovie.value?.id == movie.id) {
+                    _focusedMovieTmdb.value = tmdb
+                    tmdb.fullBackdropUrl?.let { backdrop ->
+                        _focusedMovieBackdrop.value = backdrop
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Clears the currently focused movie, TMDB details, and backdrop.
+     */
+    fun clearFocusedMovie() {
+        movieFocusJob?.cancel()
+        _focusedMovie.value = null
+        _focusedMovieBackdrop.value = null
+        _focusedMovieTmdb.value = null
+    }
 
     /** Accumulated results backing pagination and bulk selection. */
     private val allResults = mutableListOf<Movie>()
@@ -820,6 +870,7 @@ class SearchViewModel @Inject constructor(
         clearLastClickedMovieId()
         clearLastClickedSeriesId()
         clearLastClickedCreditKey()
+        clearFocusedMovie()
         _uiState.value = SearchUiState.Idle
         _tvUiState.value = SearchTvUiState.Idle
         _actorUiState.value = SearchActorUiState.Idle
@@ -1122,6 +1173,9 @@ class SearchViewModel @Inject constructor(
                         }
                     } else {
                         _uiState.value = SearchUiState.Success(allResults.toList(), isDownloads = true)
+                        if (_focusedMovie.value == null && allResults.isNotEmpty()) {
+                            onMovieFocused(allResults.first())
+                        }
                     }
                 }
 
@@ -1199,6 +1253,9 @@ class SearchViewModel @Inject constructor(
                         }
                     } else {
                         _uiState.value = SearchUiState.Success(allResults.toList(), isNew = true)
+                        if (_focusedMovie.value == null && allResults.isNotEmpty()) {
+                            onMovieFocused(allResults.first())
+                        }
                     }
                 }
 
@@ -1288,6 +1345,7 @@ class SearchViewModel @Inject constructor(
         seenMovieIds.clear()
         currentPage = 1
         canLoadMore = true
+        clearFocusedMovie()
         loadMore(force = true)
     }
 
@@ -1371,6 +1429,9 @@ class SearchViewModel @Inject constructor(
 
                 if (addedInBatch > 0) {
                     _uiState.value = SearchUiState.Success(allResults.toList(), genre = lastGenre)
+                    if (_focusedMovie.value == null && allResults.isNotEmpty()) {
+                        onMovieFocused(allResults.first())
+                    }
                 } else if (allResults.isEmpty() && !canLoadMore) {
                     _uiState.value = SearchUiState.Empty
                 }

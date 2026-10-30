@@ -38,7 +38,8 @@ fun MovieList(
     onToggleSelection: ((Int) -> Unit)? = null,
     initialFocusId: Int? = null,
     onFocusRestored: () -> Unit = {},
-    contentPadding: PaddingValues = PaddingValues(16.dp)
+    contentPadding: PaddingValues = PaddingValues(16.dp),
+    onMovieFocus: ((Movie) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
@@ -73,6 +74,15 @@ fun MovieList(
             }
     }
 
+    var hasRequestedInitialTvFocus by remember { mutableStateOf(false) }
+    val effectiveFocusId = remember(initialFocusId, movies, isTv, hasRequestedInitialTvFocus) {
+        when {
+            initialFocusId != null -> initialFocusId
+            isTv && !hasRequestedInitialTvFocus && movies.isNotEmpty() -> movies.first().id
+            else -> null
+        }
+    }
+
     LazyVerticalGrid(
         columns = columns,
         state = state,
@@ -88,6 +98,7 @@ fun MovieList(
             key = { it.id },
             contentType = { "movie" }
         ) { movie ->
+            val isTarget = movie.id == effectiveFocusId
             val progress = watchHistoryMap[movie.id.toString()] ?: watchHistoryMap[movie.title]
             val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
             MovieItem(
@@ -99,9 +110,13 @@ fun MovieList(
                 onClick = { onMovieClick(movie) },
                 onLongClick = onLongClick?.let { { it(movie.id) } },
                 onToggleSelection = onToggleSelection?.let { { it(movie.id) } },
-                shouldRequestFocus = movie.id == initialFocusId,
-                onFocusRestored = onFocusRestored,
-                isTv = isTv
+                shouldRequestFocus = isTarget,
+                onFocusRestored = {
+                    hasRequestedInitialTvFocus = true
+                    onFocusRestored()
+                },
+                isTv = isTv,
+                onFocus = onMovieFocus?.let { { it(movie) } }
             )
         }
         if (isLoadingMore) {

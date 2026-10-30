@@ -12,7 +12,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -22,7 +21,6 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -57,7 +55,8 @@ fun Modifier.shimmer(): Modifier = composed {
 }
 
 /**
- * Displays a card-shaped loading placeholder for the current device class.
+ * Displays a clean poster-shaped loading placeholder for the current device class.
+ * Matches the aspect ratio and shape of MovieItem without metadata area.
  *
  * @param isTv Whether to use the TV card layout.
  * @param modifier Modifier applied to the placeholder card.
@@ -68,11 +67,18 @@ fun MovieItemPlaceholder(
     modifier: Modifier = Modifier
 ) {
     if (isTv) {
-        Column(
+        Box(
             modifier = modifier
                 .fillMaxWidth()
+                .aspectRatio(0.67f)
                 .clip(MaterialTheme.shapes.medium)
-                .background(androidx.tv.material3.MaterialTheme.colorScheme.surface)
+                .shimmer()
+        )
+    } else {
+        Card(
+            modifier = modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            shape = MaterialTheme.shapes.medium
         ) {
             Box(
                 modifier = Modifier
@@ -80,59 +86,12 @@ fun MovieItemPlaceholder(
                     .aspectRatio(0.67f)
                     .shimmer()
             )
-            Column(
-                modifier = Modifier
-                    .background(androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(12.dp)
-                    .fillMaxWidth()
-            ) {
-                Box(modifier = Modifier.fillMaxWidth(0.7f).height(16.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                Spacer(modifier = Modifier.height(4.dp))
-                Box(modifier = Modifier.fillMaxWidth(0.4f).height(12.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Box(modifier = Modifier.width(40.dp).height(12.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                    Box(modifier = Modifier.width(30.dp).height(12.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                }
-            }
-        }
-    } else {
-        Card(
-            modifier = modifier.fillMaxWidth(),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            shape = MaterialTheme.shapes.medium
-        ) {
-            Column {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(0.67f)
-                        .shimmer()
-                )
-                Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-                    Box(modifier = Modifier.fillMaxWidth(0.8f).height(16.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Box(modifier = Modifier.fillMaxWidth(0.5f).height(14.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(modifier = Modifier.width(48.dp).height(14.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                        Box(modifier = Modifier.width(36.dp).height(14.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                    }
-                }
-            }
         }
     }
 }
 
 /**
- * Displays a grid of movie-card placeholders while list content is loading.
+ * Displays a grid of movie poster placeholders while list content is loading.
  *
  * @param contentPadding Padding matching the corresponding loaded grid.
  * @param modifier Modifier applied to the placeholder grid.
@@ -168,7 +127,9 @@ fun MovieListPlaceholder(
     }
 }
 
-/** Displays a loading skeleton matching the adaptive movie-detail layout. */
+/**
+ * Displays a loading skeleton matching the adaptive movie-detail layout for TV and mobile.
+ */
 @Composable
 fun MovieDetailPlaceholder(
     contentPadding: PaddingValues = PaddingValues(16.dp)
@@ -184,7 +145,111 @@ fun MovieDetailPlaceholder(
             .verticalScroll(rememberScrollState())
             .padding(contentPadding)
     ) {
-        if (isWideScreen) {
+        if (isTv) {
+            // TV Hero Section: Poster on the left, Title/Chips/Director/Actions/Overview on the right
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(32.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                // Movie Poster Card
+                Box(
+                    modifier = Modifier
+                        .width(190.dp)
+                        .aspectRatio(2 / 3f)
+                        .clip(MaterialTheme.shapes.medium)
+                        .shimmer()
+                )
+
+                // Details Column
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Top
+                ) {
+                    // Title
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.55f)
+                            .height(36.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .shimmer()
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Metadata chips row (Year, Rating, Runtime, Genres)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(modifier = Modifier.width(55.dp).height(24.dp).clip(CircleShape).shimmer())
+                        Box(modifier = Modifier.width(65.dp).height(24.dp).clip(CircleShape).shimmer())
+                        Box(modifier = Modifier.width(70.dp).height(24.dp).clip(CircleShape).shimmer())
+                        Box(modifier = Modifier.width(90.dp).height(24.dp).clip(CircleShape).shimmer())
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Director and Studio row
+                    Box(
+                        modifier = Modifier
+                            .width(220.dp)
+                            .height(18.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .shimmer()
+                    )
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    // Action buttons row (Trailer, Favorite, Share)
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Box(modifier = Modifier.width(140.dp).height(44.dp).clip(CircleShape).shimmer())
+                        Box(modifier = Modifier.width(180.dp).height(44.dp).clip(CircleShape).shimmer())
+                        Box(modifier = Modifier.width(140.dp).height(44.dp).clip(CircleShape).shimmer())
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Overview lines
+                    Box(modifier = Modifier.fillMaxWidth(0.95f).height(14.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(modifier = Modifier.fillMaxWidth(0.90f).height(14.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(modifier = Modifier.fillMaxWidth(0.70f).height(14.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Cast Section
+            Box(modifier = Modifier.width(100.dp).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                repeat(7) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.width(105.dp)
+                    ) {
+                        Box(modifier = Modifier.size(72.dp).clip(CircleShape).shimmer())
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Box(modifier = Modifier.width(68.dp).height(12.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(modifier = Modifier.width(52.dp).height(10.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Torrents Section
+            Box(modifier = Modifier.width(120.dp).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+            Spacer(modifier = Modifier.height(16.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                repeat(3) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .clip(MaterialTheme.shapes.medium)
+                            .shimmer()
+                    )
+                }
+            }
+        } else if (isWideScreen) {
+            // Handheld / Tablet wide layout
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(24.dp)
@@ -199,18 +264,45 @@ fun MovieDetailPlaceholder(
                 Column(modifier = Modifier.weight(0.4f)) {
                     Box(modifier = Modifier.fillMaxWidth(0.5f).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmer())
                     Spacer(modifier = Modifier.height(16.dp))
-                    repeat(6) {
+                    repeat(4) {
                         Box(modifier = Modifier.fillMaxWidth().height(14.dp).clip(RoundedCornerShape(4.dp)).shimmer())
                         Spacer(modifier = Modifier.height(8.dp))
                     }
                     Spacer(modifier = Modifier.height(16.dp))
-                    repeat(4) {
+                    repeat(3) {
                         Box(modifier = Modifier.width(100.dp).height(16.dp).clip(RoundedCornerShape(4.dp)).shimmer())
                         Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
             }
+            Spacer(modifier = Modifier.height(24.dp))
+            Box(modifier = Modifier.width(100.dp).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                repeat(6) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(modifier = Modifier.size(70.dp).clip(CircleShape).shimmer())
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Box(modifier = Modifier.width(60.dp).height(10.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+            Box(modifier = Modifier.width(120.dp).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+            Spacer(modifier = Modifier.height(12.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                repeat(3) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .clip(MaterialTheme.shapes.medium)
+                            .shimmer()
+                    )
+                }
+            }
         } else {
+            // Handheld phone portrait layout
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -221,28 +313,41 @@ fun MovieDetailPlaceholder(
             Spacer(modifier = Modifier.height(16.dp))
             Box(modifier = Modifier.fillMaxWidth(0.4f).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmer())
             Spacer(modifier = Modifier.height(12.dp))
-            repeat(4) {
+            repeat(3) {
                 Box(modifier = Modifier.fillMaxWidth().height(14.dp).clip(RoundedCornerShape(4.dp)).shimmer())
                 Spacer(modifier = Modifier.height(8.dp))
             }
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
             Box(modifier = Modifier.fillMaxWidth(0.4f).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmer())
             Spacer(modifier = Modifier.height(12.dp))
             repeat(3) {
                 Box(modifier = Modifier.width(120.dp).height(16.dp).clip(RoundedCornerShape(4.dp)).shimmer())
                 Spacer(modifier = Modifier.height(8.dp))
             }
-        }
-        
-        Spacer(modifier = Modifier.height(24.dp))
-        Box(modifier = Modifier.width(100.dp).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-        Spacer(modifier = Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            repeat(5) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(modifier = Modifier.size(70.dp).clip(CircleShape).shimmer())
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Box(modifier = Modifier.width(60.dp).height(10.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+            Spacer(modifier = Modifier.height(24.dp))
+            Box(modifier = Modifier.width(100.dp).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                repeat(4) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(modifier = Modifier.size(70.dp).clip(CircleShape).shimmer())
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Box(modifier = Modifier.width(60.dp).height(10.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+            Box(modifier = Modifier.width(120.dp).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmer())
+            Spacer(modifier = Modifier.height(12.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                repeat(3) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .clip(MaterialTheme.shapes.medium)
+                            .shimmer()
+                    )
                 }
             }
         }

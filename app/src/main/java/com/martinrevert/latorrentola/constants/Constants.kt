@@ -19,6 +19,9 @@ object Constants {
     /** Base URL for the Torrentio Stremio addon public API. */
     const val TORRENTIO_BASE_URL = "https://torrentio.strem.fun/"
 
+    /** Base URL for the OMDb API. */
+    const val OMDB_BASE_URL = "https://www.omdbapi.com/"
+
     /** Default page size requested from paginated movie endpoints. */
     const val PAGE_SIZE = 50
 

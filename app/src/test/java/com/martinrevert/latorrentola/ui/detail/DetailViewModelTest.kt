@@ -39,6 +39,7 @@ class DetailViewModelTest {
     private val torrentioRepository: TorrentioRepository = mockk(relaxed = true)
     private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
     private val tmdbRepository: TmdbRepository = mockk(relaxed = true)
+    private val omdbRepository: com.martinrevert.latorrentola.network.OmdbRepository = mockk(relaxed = true)
     private val voiceManager: VoiceManager = mockk(relaxed = true)
     private val translationManager: TranslationManager = mockk(relaxed = true)
     private val preferenceManager: PreferenceManager = mockk(relaxed = true)
@@ -47,7 +48,7 @@ class DetailViewModelTest {
 
     @Before
     fun setUp() {
-        clearMocks(repository, torrentioRepository, userLibraryRepository, tmdbRepository, voiceManager, translationManager, preferenceManager, torrentDownloadDao)
+        clearMocks(repository, torrentioRepository, userLibraryRepository, tmdbRepository, omdbRepository, voiceManager, translationManager, preferenceManager, torrentDownloadDao)
         every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
         every { userLibraryRepository.getWatchHistory() } returns flowOf(emptyList())
         every { torrentDownloadDao.observeAll() } returns flowOf(emptyList())
@@ -59,6 +60,7 @@ class DetailViewModelTest {
             torrentioRepository,
             userLibraryRepository,
             tmdbRepository,
+            omdbRepository,
             voiceManager,
             translationManager,
             preferenceManager,
@@ -108,6 +110,7 @@ class DetailViewModelTest {
             torrentioRepository,
             userLibraryRepository,
             tmdbRepository,
+            omdbRepository,
             voiceManager,
             translationManager,
             preferenceManager,
@@ -235,5 +238,27 @@ class DetailViewModelTest {
         testScheduler.advanceUntilIdle()
 
         coVerify { userLibraryRepository.removeDownloadedMovieByHash("HASH_TO_REMOVE") }
+    }
+
+    @Test
+    fun `setMovie should resolve TMDB backdrop when imdbCode is available`() = runTest {
+        val movie = Movie(id = 1, title = "Original Title", imdbCode = "tt1375666", backgroundImageOriginal = "yts_bg.jpg")
+        val fullMovie = Movie(id = 1, title = "Inception", imdbCode = "tt1375666", backgroundImageOriginal = "yts_bg.jpg")
+        val tmdbResult = com.martinrevert.latorrentola.model.TMDB.TmdbMovieResult(
+            id = 27205,
+            title = "Inception",
+            backdropPath = "/s3TBrRGB1jav7ZzbgUpLE9TeFEC.jpg"
+        )
+
+        coEvery { repository.isFavorite(1) } returns true
+        coEvery { repository.getMovieFullDetails(1) } returns MovieDetails(data = Data(movie = fullMovie))
+        coEvery { tmdbRepository.findMovieByImdbId("tt1375666") } returns tmdbResult
+
+        viewModel.setMovie(movie)
+
+        val state = viewModel.uiState.value
+        assertThat(state).isInstanceOf(DetailUiState.Success::class.java)
+        val success = state as DetailUiState.Success
+        assertThat(success.backdropUrl).isEqualTo(tmdbResult.fullBackdropUrl)
     }
 }

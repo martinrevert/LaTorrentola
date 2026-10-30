@@ -234,4 +234,30 @@ class OttCatalogViewModelTest {
         viewModel.clearLastClickedId()
         assertThat(viewModel.lastClickedId.value).isNull()
     }
+
+    @Test
+    fun `movie focus updates focusedMovie and backdrop`() = runTest {
+        val movie = TmdbMovieSummary(
+            id = 42,
+            title = "Dune",
+            backdropPath = "/dune_backdrop.jpg"
+        )
+        coEvery {
+            tmdbRepository.discoverMoviesByProvider(providerId = 8, region = any(), sortBy = any(), page = 1)
+        } returns TmdbMoviePage(page = 1, totalPages = 1, totalResults = 1, results = listOf(movie))
+
+        viewModel.setProvider(providerId = 8, isTv = false)
+
+        assertThat(viewModel.focusedMovie.value).isEqualTo(movie)
+        assertThat(viewModel.focusedMovieBackdrop.value).isEqualTo("https://image.tmdb.org/t/p/w1280/dune_backdrop.jpg")
+
+        val secondMovie = TmdbMovieSummary(
+            id = 43,
+            title = "Dune 2",
+            backdropPath = "/dune2_backdrop.jpg"
+        )
+        viewModel.onMovieFocused(secondMovie)
+        assertThat(viewModel.focusedMovie.value).isEqualTo(secondMovie)
+        assertThat(viewModel.focusedMovieBackdrop.value).isEqualTo("https://image.tmdb.org/t/p/w1280/dune2_backdrop.jpg")
+    }
 }

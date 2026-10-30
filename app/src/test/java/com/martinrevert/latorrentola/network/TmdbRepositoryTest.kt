@@ -145,4 +145,38 @@ class TmdbRepositoryTest {
             )
         }
     }
+
+    @Test
+    fun `findMovieByImdbId returns cached movie result on second call`() = runTest {
+        val movieResult = com.martinrevert.latorrentola.model.TMDB.TmdbMovieResult(
+            id = 550,
+            title = "Fight Club",
+            backdropPath = "/backdrop.jpg"
+        )
+        val mockResponse = com.martinrevert.latorrentola.model.TMDB.TmdbFindResponse(
+            movieResults = listOf(movieResult)
+        )
+        coEvery {
+            tmdbService.findByExternalId(
+                externalId = "tt0137523",
+                apiKey = any(),
+                externalSource = any(),
+                language = any()
+            )
+        } returns mockResponse
+
+        val firstCall = repository.findMovieByImdbId("0137523")
+        val secondCall = repository.findMovieByImdbId("tt0137523")
+
+        assertThat(firstCall).isEqualTo(movieResult)
+        assertThat(secondCall).isEqualTo(movieResult)
+        coVerify(exactly = 1) {
+            tmdbService.findByExternalId(
+                externalId = "tt0137523",
+                apiKey = any(),
+                externalSource = any(),
+                language = any()
+            )
+        }
+    }
 }

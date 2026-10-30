@@ -673,20 +673,20 @@ private fun TvCastMember(
     val content: @Composable () -> Unit = {
         Column(
             modifier = Modifier
-                .width(90.dp)
-                .padding(6.dp),
+                .width(88.dp)
+                .padding(4.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             AsyncImage(
                 model = profileUrl,
                 contentDescription = name,
                 modifier = Modifier
-                    .size(60.dp)
+                    .size(64.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .border(
-                        width = if (isFocused) 2.dp else 0.dp,
-                        color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                        width = if (isFocused) 3.dp else 1.dp,
+                        color = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                         shape = CircleShape
                     ),
                 placeholder = painterResource(R.drawable.ic_launcher_foreground),
@@ -694,12 +694,12 @@ private fun TvCastMember(
                 fallback = painterResource(R.drawable.ic_launcher_foreground),
                 contentScale = ContentScale.Crop
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
                 name,
                 style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = if (isFocused) FontWeight.ExtraBold else FontWeight.Medium,
+                color = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center
@@ -720,21 +720,16 @@ private fun TvCastMember(
     if (isTv) {
         TvSurface(
             onClick = onClick,
-            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
             shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small),
             colors = ClickableSurfaceDefaults.colors(
                 containerColor = Color.Transparent,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                focusedContainerColor = Color.Transparent
             ),
             interactionSource = interactionSource,
             modifier = modifier
-                .width(90.dp)
+                .width(105.dp)
                 .padding(4.dp)
-                .border(
-                    width = if (isFocused) 2.dp else 0.dp,
-                    color = if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
-                    shape = MaterialTheme.shapes.small
-                )
         ) {
             content()
         }

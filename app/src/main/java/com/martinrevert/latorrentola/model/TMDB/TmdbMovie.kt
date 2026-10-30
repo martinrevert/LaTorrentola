@@ -26,6 +26,15 @@ data class TmdbFindResponse(
  *
  * @property id TMDB movie identifier.
  * @property title Movie title.
+ * @property originalTitle Original movie title.
+ * @property overview Movie synopsis.
+ * @property posterPath Relative poster image path.
+ * @property backdropPath Relative backdrop image path.
+ * @property releaseDate Release date in ISO format.
+ * @property voteAverage TMDB average user rating.
+ * @property voteCount Number of TMDB user ratings.
+ * @property genreIds Genre identifiers included in list results.
+ * @property originalLanguage Original language code.
  */
 @Serializable
 data class TmdbMovieResult(
@@ -35,14 +44,63 @@ data class TmdbMovieResult(
 
     @SerializedName("title")
     @SerialName("title")
-    val title: String? = null
-)
+    val title: String? = null,
+
+    @SerializedName("original_title")
+    @SerialName("original_title")
+    val originalTitle: String? = null,
+
+    @SerializedName("overview")
+    @SerialName("overview")
+    val overview: String? = null,
+
+    @SerializedName("poster_path")
+    @SerialName("poster_path")
+    val posterPath: String? = null,
+
+    @SerializedName("backdrop_path")
+    @SerialName("backdrop_path")
+    val backdropPath: String? = null,
+
+    @SerializedName("release_date")
+    @SerialName("release_date")
+    val releaseDate: String? = null,
+
+    @SerializedName("vote_average")
+    @SerialName("vote_average")
+    val voteAverage: Double? = null,
+
+    @SerializedName("vote_count")
+    @SerialName("vote_count")
+    val voteCount: Int? = null,
+
+    @SerializedName("genre_ids")
+    @SerialName("genre_ids")
+    val genreIds: List<Int>? = emptyList(),
+
+    @SerializedName("original_language")
+    @SerialName("original_language")
+    val originalLanguage: String? = null
+) {
+    /** Full-size poster image URL, or `null` when no poster is available. */
+    val fullPosterUrl: String?
+        get() = posterPath?.takeIf(String::isNotBlank)?.let { "https://image.tmdb.org/t/p/w500$it" }
+
+    /** Full-size backdrop image URL, or `null` when no backdrop is available. */
+    val fullBackdropUrl: String?
+        get() = backdropPath?.takeIf(String::isNotBlank)?.let { "https://image.tmdb.org/t/p/w1280$it" }
+
+    /** Four-digit year of the movie release date. */
+    val releaseYear: String
+        get() = releaseDate.orEmpty().take(4)
+}
 
 /**
  * Credits response for a TMDB movie.
  *
  * @property id TMDB movie identifier.
  * @property cast Cast members in the movie.
+ * @property crew Crew members in the movie (directors, writers, etc.).
  */
 @Serializable
 data class TmdbMovieCreditsResponse(
@@ -52,8 +110,140 @@ data class TmdbMovieCreditsResponse(
 
     @SerializedName("cast")
     @SerialName("cast")
-    val cast: List<TmdbMovieCastMember>? = null
+    val cast: List<TmdbMovieCastMember>? = null,
+
+    @SerializedName("crew")
+    @SerialName("crew")
+    val crew: List<TmdbMovieCrewMember>? = null
 )
+
+/**
+ * A crew member in a TMDB movie.
+ *
+ * @property id TMDB person identifier.
+ * @property name Person display name.
+ * @property job Role name (e.g., "Director", "Producer").
+ * @property department Department name (e.g., "Directing").
+ * @property profilePath Relative path to profile image.
+ */
+@Serializable
+data class TmdbMovieCrewMember(
+    @SerializedName("id")
+    @SerialName("id")
+    val id: Int = 0,
+
+    @SerializedName("name")
+    @SerialName("name")
+    val name: String? = null,
+
+    @SerializedName("job")
+    @SerialName("job")
+    val job: String? = null,
+
+    @SerializedName("department")
+    @SerialName("department")
+    val department: String? = null,
+
+    @SerializedName("profile_path")
+    @SerialName("profile_path")
+    val profilePath: String? = null
+)
+
+/**
+ * A production company associated with a TMDB movie.
+ *
+ * @property id TMDB company identifier.
+ * @property name Company display name.
+ * @property logoPath Relative path to company logo image.
+ * @property originCountry Country of origin code.
+ */
+@Serializable
+data class TmdbProductionCompany(
+    @SerializedName("id")
+    @SerialName("id")
+    val id: Int = 0,
+
+    @SerializedName("name")
+    @SerialName("name")
+    val name: String? = null,
+
+    @SerializedName("logo_path")
+    @SerialName("logo_path")
+    val logoPath: String? = null,
+
+    @SerializedName("origin_country")
+    @SerialName("origin_country")
+    val originCountry: String? = null
+) {
+    /** Full logo image URL, or `null` if unavailable. */
+    val fullLogoUrl: String?
+        get() = logoPath?.takeIf(String::isNotBlank)?.let { "https://image.tmdb.org/t/p/w300$it" }
+}
+
+/**
+ * Detailed movie record returned by TMDB `/movie/{id}` with appended credits.
+ */
+@Serializable
+data class TmdbMovieDetails(
+    @SerializedName("id")
+    @SerialName("id")
+    val id: Int,
+
+    @SerializedName("title")
+    @SerialName("title")
+    val title: String? = null,
+
+    @SerializedName("overview")
+    @SerialName("overview")
+    val overview: String? = null,
+
+    @SerializedName("poster_path")
+    @SerialName("poster_path")
+    val posterPath: String? = null,
+
+    @SerializedName("backdrop_path")
+    @SerialName("backdrop_path")
+    val backdropPath: String? = null,
+
+    @SerializedName("release_date")
+    @SerialName("release_date")
+    val releaseDate: String? = null,
+
+    @SerializedName("vote_average")
+    @SerialName("vote_average")
+    val voteAverage: Double? = null,
+
+    @SerializedName("vote_count")
+    @SerialName("vote_count")
+    val voteCount: Int? = null,
+
+    @SerializedName("production_companies")
+    @SerialName("production_companies")
+    val productionCompanies: List<TmdbProductionCompany>? = null,
+
+    @SerializedName("credits")
+    @SerialName("credits")
+    val credits: TmdbMovieCreditsResponse? = null
+) {
+    val fullPosterUrl: String?
+        get() = posterPath?.takeIf(String::isNotBlank)?.let { "https://image.tmdb.org/t/p/w500$it" }
+
+    val fullBackdropUrl: String?
+        get() = backdropPath?.takeIf(String::isNotBlank)?.let { "https://image.tmdb.org/t/p/w1280$it" }
+
+    val releaseYear: String
+        get() = releaseDate.orEmpty().take(4)
+
+    val director: String?
+        get() = credits?.crew?.firstOrNull { it.job.equals("Director", ignoreCase = true) }?.name
+
+    val studioLogoUrl: String?
+        get() = productionCompanies?.firstOrNull { !it.logoPath.isNullOrBlank() }?.fullLogoUrl
+
+    val studioName: String?
+        get() = productionCompanies?.firstOrNull { !it.logoPath.isNullOrBlank() }?.name
+            ?: productionCompanies?.firstOrNull()?.name
+}
 
 /**
  * A cast member in a TMDB movie.

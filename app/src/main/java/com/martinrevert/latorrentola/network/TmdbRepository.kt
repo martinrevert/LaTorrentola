@@ -3,7 +3,9 @@ package com.martinrevert.latorrentola.network
 import com.martinrevert.latorrentola.BuildConfig
 import com.martinrevert.latorrentola.database.TvGenreDao
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
+import com.martinrevert.latorrentola.model.TMDB.TmdbMovieDetails
 import com.martinrevert.latorrentola.model.TMDB.TmdbMoviePage
+import com.martinrevert.latorrentola.model.TMDB.TmdbMovieResult
 import com.martinrevert.latorrentola.model.TMDB.TmdbPersonResult
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvPage
@@ -43,6 +45,12 @@ class TmdbRepository @Inject constructor(
 
     /** In-memory cache of TMDB TV series details by series ID. */
     private val tvDetailsCache = ConcurrentHashMap<Int, TmdbTvSummary>()
+
+    /** In-memory cache of TMDB movie lookups keyed by IMDb ID. */
+    private val movieResultCache = ConcurrentHashMap<String, TmdbMovieResult>()
+
+    /** In-memory cache of TMDB movie details keyed by TMDB movie ID. */
+    private val movieDetailsCache = ConcurrentHashMap<Int, TmdbMovieDetails>()
 
     /**
      * Searches TMDB for people (actors/actresses) matching [query].
@@ -133,6 +141,32 @@ class TmdbRepository @Inject constructor(
     }
 
     /**
+     * Finds a TMDB movie by its external IMDb identifier with in-memory caching.
+     *
+     * @param imdbId IMDb title identifier (e.g. "tt0137523" or "0137523").
+     * @return The matching [TmdbMovieResult] or `null` if not found.
+     */
+    suspend fun findMovieByImdbId(imdbId: String): TmdbMovieResult? {
+        if (apiKey.isEmpty() || imdbId.isBlank()) return null
+        val formattedImdbId = if (imdbId.startsWith("tt")) imdbId else "tt$imdbId"
+        movieResultCache[formattedImdbId]?.let { return it }
+
+        return try {
+            val findResponse = tmdbService.findByExternalId(
+                externalId = formattedImdbId,
+                apiKey = apiKey
+            )
+            val result = findResponse.movieResults?.firstOrNull()
+            if (result != null) {
+                movieResultCache[formattedImdbId] = result
+            }
+            result
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
      * Fetches full movie cast from TMDB using the movie's IMDb identifier.
      *
      * @param imdbId IMDb title identifier (e.g. "tt0137523").
@@ -146,9 +180,10 @@ class TmdbRepository @Inject constructor(
                 externalId = formattedImdbId,
                 apiKey = apiKey
             )
-            val tmdbMovieId = findResponse.movieResults?.firstOrNull()?.id ?: return emptyList()
+            val movieResult = findResponse.movieResults?.firstOrNull() ?: return emptyList()
+            movieResultCache[formattedImdbId] = movieResult
             val creditsResponse = tmdbService.getMovieCredits(
-                movieId = tmdbMovieId,
+                movieId = movieResult.id,
                 apiKey = apiKey
             )
             creditsResponse.cast.orEmpty().map { tmdbCast ->
@@ -160,6 +195,45 @@ class TmdbRepository @Inject constructor(
             }
         } catch (e: Exception) {
             emptyList()
+        }
+    }
+
+    /**
+     * Retrieves full TMDB movie details including credits and production companies.
+     *
+     * @param movieId TMDB movie identifier.
+     * @return [TmdbMovieDetails] or `null` if the request fails.
+     */
+    suspend fun getMovieDetails(movieId: Int): TmdbMovieDetails? {
+        if (apiKey.isEmpty() || movieId <= 0) return null
+        movieDetailsCache[movieId]?.let { return it }
+        return try {
+            val details = tmdbService.getMovieDetails(
+                movieId = movieId,
+                apiKey = apiKey,
+                appendToResponse = "credits"
+            )
+            movieDetailsCache[movieId] = details
+            details
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Resolves an IMDb identifier to full TMDB movie details (director, studio, cast with characters).
+     *
+     * @param imdbId IMDb title identifier (e.g. "tt0137523").
+     * @return [TmdbMovieDetails] or `null` if not found.
+     */
+    suspend fun getMovieDetailsByImdbId(imdbId: String): TmdbMovieDetails? {
+        if (apiKey.isEmpty() || imdbId.isBlank()) return null
+        val formattedImdbId = if (imdbId.startsWith("tt")) imdbId else "tt$imdbId"
+        return try {
+            val movieResult = findMovieByImdbId(formattedImdbId) ?: return null
+            getMovieDetails(movieResult.id)
+        } catch (e: Exception) {
+            null
         }
     }
 

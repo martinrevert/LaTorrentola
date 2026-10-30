@@ -6,6 +6,7 @@ import com.martinrevert.latorrentola.model.YTS.Data
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.MovieDetails
 import com.martinrevert.latorrentola.network.AuthRepository
+import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
@@ -16,11 +17,13 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
 
     @get:Rule
@@ -30,6 +33,7 @@ class HomeViewModelTest {
     private val userLibraryRepository: UserLibraryRepository = mockk(relaxed = true)
     private val preferenceManager: com.martinrevert.latorrentola.utils.PreferenceManager = mockk(relaxed = true)
     private val authRepository: AuthRepository = mockk(relaxed = true)
+    private val tmdbRepository: TmdbRepository = mockk(relaxed = true)
     private lateinit var viewModel: HomeViewModel
 
     @Before
@@ -56,7 +60,7 @@ class HomeViewModelTest {
         )
         coEvery { repository.getMovies(1, null, 6f) } returns MovieDetails(data = Data(movies = movies))
 
-        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository, tmdbRepository)
 
         viewModel.uiState.test {
             // First item might be Loading or Success depending on how fast init runs with UnconfinedTestDispatcher
@@ -84,13 +88,31 @@ class HomeViewModelTest {
         coEvery { repository.getMovies(1, any(), any()) } returns MovieDetails(data = Data(movies = movies))
         coEvery { repository.getMovies(more(1), any(), any()) } returns MovieDetails(data = Data(movies = emptyList()))
 
-        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository, tmdbRepository)
 
         val state = viewModel.uiState.value
         assertThat(state).isInstanceOf(HomeUiState.Success::class.java)
         val successState = state as HomeUiState.Success
         assertThat(successState.movies).hasSize(1)
         assertThat(successState.movies[0].language).isEqualTo("en")
+    }
+
+    @Test
+    fun `loadMovies should exclude miscataloged movie 59301 From the Ashes`() = runTest {
+        val movies = listOf(
+            Movie(id = 59301, title = "From the Ashes", language = "en", rating = "7.4"),
+            Movie(id = 1, title = "Valid Movie", language = "en", rating = "7.0")
+        )
+        coEvery { repository.getMovies(1, any(), any()) } returns MovieDetails(data = Data(movies = movies))
+        coEvery { repository.getMovies(more(1), any(), any()) } returns MovieDetails(data = Data(movies = emptyList()))
+
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository, tmdbRepository)
+
+        val state = viewModel.uiState.value
+        assertThat(state).isInstanceOf(HomeUiState.Success::class.java)
+        val successState = state as HomeUiState.Success
+        assertThat(successState.movies).hasSize(1)
+        assertThat(successState.movies[0].id).isEqualTo(1)
     }
 
     @Test
@@ -107,7 +129,7 @@ class HomeViewModelTest {
         coEvery { repository.getMovies(1, null, 6f) } returns MovieDetails(data = Data(movies = page1))
         coEvery { repository.getMovies(2, null, 6f) } returns MovieDetails(data = Data(movies = page2))
 
-        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository, tmdbRepository)
 
         val state = viewModel.uiState.value as HomeUiState.Success
         assertThat(state.movies).hasSize(20)
@@ -120,7 +142,7 @@ class HomeViewModelTest {
         val initialMovies = listOf(Movie(id = 1, title = "EN 1", language = "en", rating = "7"))
         coEvery { repository.getMovies(1, null, 6f) } returns MovieDetails(data = Data(movies = initialMovies))
 
-        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository, tmdbRepository)
         assertThat(viewModel.uiState.value).isInstanceOf(HomeUiState.Success::class.java)
 
         val newMovies = listOf(Movie(id = 2, title = "EN 2", language = "en", rating = "7"))
@@ -138,7 +160,7 @@ class HomeViewModelTest {
     fun `error from repository should update uiState to Error`() = runTest {
         coEvery { repository.getMovies(any(), any(), any()) } throws Exception("Network Error")
 
-        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository, tmdbRepository)
 
         assertThat(viewModel.uiState.value).isInstanceOf(HomeUiState.Error::class.java)
         assertThat((viewModel.uiState.value as HomeUiState.Error).message)
@@ -148,7 +170,7 @@ class HomeViewModelTest {
     @Test
     fun `setQuality should update state and refresh`() = runTest {
         coEvery { repository.getMovies(1, null, any()) } returns MovieDetails(data = Data(movies = listOf(Movie(id = 1, rating = "7"))))
-        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository, tmdbRepository)
 
         coEvery { repository.getMovies(1, "720p", any()) } returns MovieDetails(data = Data(movies = listOf(Movie(id = 2, rating = "7"))))
         viewModel.setQuality("720p")
@@ -160,7 +182,7 @@ class HomeViewModelTest {
 
     @Test
     fun `toggleFavorite should call repository`() = runTest {
-        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository, tmdbRepository)
         val movie = Movie(id = 1)
 
         coEvery { repository.isFavorite(1) } returns false
@@ -174,8 +196,35 @@ class HomeViewModelTest {
 
     @Test
     fun `setLastClickedMovieId should update state`() = runTest {
-        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository)
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository, tmdbRepository)
         viewModel.setLastClickedMovieId(456)
         assertThat(viewModel.lastClickedMovieId.value).isEqualTo(456)
+    }
+
+    @Test
+    fun `onMovieFocused should update focusedMovie and resolve TMDB backdrop`() = runTest {
+        val movie = Movie(
+            id = 10,
+            title = "Test Movie",
+            imdbCode = "tt1234567",
+            backgroundImageOriginal = "http://fallback.com/bg.jpg"
+        )
+        val tmdbResult = com.martinrevert.latorrentola.model.TMDB.TmdbMovieResult(
+            id = 999,
+            title = "Test Movie TMDB",
+            backdropPath = "/tmdb_backdrop.jpg"
+        )
+        coEvery { tmdbRepository.findMovieByImdbId("tt1234567") } returns tmdbResult
+
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository, tmdbRepository)
+        viewModel.onMovieFocused(movie)
+
+        assertThat(viewModel.focusedMovie.value?.id).isEqualTo(10)
+        assertThat(viewModel.focusedMovieBackdrop.value).isEqualTo("http://fallback.com/bg.jpg")
+
+        testScheduler.advanceTimeBy(200)
+
+        assertThat(viewModel.focusedMovieTmdb.value?.id).isEqualTo(999)
+        assertThat(viewModel.focusedMovieBackdrop.value).isEqualTo("https://image.tmdb.org/t/p/w1280/tmdb_backdrop.jpg")
     }
 }

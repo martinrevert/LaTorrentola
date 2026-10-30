@@ -55,6 +55,12 @@ class OttCatalogViewModel @Inject constructor(
     private val _tvGenres = MutableStateFlow<List<TmdbTvGenre>>(emptyList())
     val tvGenres: StateFlow<List<TmdbTvGenre>> = _tvGenres.asStateFlow()
 
+    private val _focusedMovie = MutableStateFlow<TmdbMovieSummary?>(null)
+    val focusedMovie: StateFlow<TmdbMovieSummary?> = _focusedMovie.asStateFlow()
+
+    private val _focusedMovieBackdrop = MutableStateFlow<String?>(null)
+    val focusedMovieBackdrop: StateFlow<String?> = _focusedMovieBackdrop.asStateFlow()
+
     private var currentProviderId: Int? = null
     private var isTvMode: Boolean = false
     private var currentPage = 1
@@ -108,6 +114,12 @@ class OttCatalogViewModel @Inject constructor(
         _lastClickedId.value = null
     }
 
+    fun onMovieFocused(movie: TmdbMovieSummary) {
+        if (_focusedMovie.value?.id == movie.id) return
+        _focusedMovie.value = movie
+        _focusedMovieBackdrop.value = movie.fullBackdropUrl
+    }
+
     fun loadMore() {
         if (isFetching || currentPage > totalPages || currentProviderId == null) return
         isFetching = true
@@ -129,6 +141,8 @@ class OttCatalogViewModel @Inject constructor(
         seenMovieIds.clear()
         accumulatedSeries.clear()
         seenSeriesIds.clear()
+        _focusedMovie.value = null
+        _focusedMovieBackdrop.value = null
         _uiState.value = OttCatalogUiState.Loading
 
         requestJob = viewModelScope.launch {
@@ -178,6 +192,9 @@ class OttCatalogViewModel @Inject constructor(
                 accumulatedMovies.addAll(newMovies)
                 currentPage++
                 _uiState.value = OttCatalogUiState.SuccessMovies(accumulatedMovies.toList())
+                if (_focusedMovie.value == null && accumulatedMovies.isNotEmpty()) {
+                    onMovieFocused(accumulatedMovies.first())
+                }
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
