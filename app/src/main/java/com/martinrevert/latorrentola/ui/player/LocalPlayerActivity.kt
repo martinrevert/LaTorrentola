@@ -278,6 +278,14 @@ private object SubtitleServerRegistry {
     }
 }
 
+internal fun safeGetCastContext(context: Context): CastContext? {
+    return try {
+        CastContext.getSharedInstance(context)
+    } catch (_: Throwable) {
+        null
+    }
+}
+
 sealed class PlayerBottomSheetState {
     data class Tracks(
         val type: PlaybackTrackType,
@@ -569,7 +577,7 @@ class LocalPlayerActivity : FragmentActivity() {
                                 seasonNumber = currentSeasonNumber,
                                 episodeNumber = currentEpisodeNumber,
                                 onDisconnect = {
-                                    CastContext.getSharedInstance()?.sessionManager?.currentCastSession?.let { castSession ->
+                                    safeGetCastContext(this@LocalPlayerActivity)?.sessionManager?.currentCastSession?.let { castSession ->
                                         saveCastSessionProgress(castSession)
                                     }
                                     val mediaRouter = MediaRouter.getInstance(this@LocalPlayerActivity)
@@ -2268,7 +2276,7 @@ class LocalPlayerActivity : FragmentActivity() {
                         }
                     }
                 }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.w(TAG, "Failed to apply Cast subtitle style: ${e.message}")
         }
     }
@@ -2395,7 +2403,7 @@ class LocalPlayerActivity : FragmentActivity() {
 
         // When casting, check remote media client tracks or cached audio tracks
         if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE) {
-            val rmc = CastContext.getSharedInstance()?.sessionManager?.currentCastSession?.remoteMediaClient
+            val rmc = safeGetCastContext(this)?.sessionManager?.currentCastSession?.remoteMediaClient
             val mediaTracks = rmc?.mediaInfo?.mediaTracks.orEmpty()
             val activeTrackIds = rmc?.mediaStatus?.activeTrackIds ?: longArrayOf()
             val castTargetType = if (type == PlaybackTrackType.AUDIO) MediaTrack.TYPE_AUDIO else MediaTrack.TYPE_TEXT
@@ -2456,7 +2464,7 @@ class LocalPlayerActivity : FragmentActivity() {
             val selectedLang = option.group?.let { g ->
                 option.trackIndex?.let { idx -> g.getFormat(idx).language }
             } ?: run {
-                val rmc = CastContext.getSharedInstance()?.sessionManager?.currentCastSession?.remoteMediaClient
+                val rmc = safeGetCastContext(this)?.sessionManager?.currentCastSession?.remoteMediaClient
                 rmc?.mediaInfo?.mediaTracks?.firstOrNull { it.id == option.castTrackId }?.language
             }
             if (!selectedLang.isNullOrBlank() && selectedLang != "und") {
@@ -2486,7 +2494,7 @@ class LocalPlayerActivity : FragmentActivity() {
         // Active Cast track switching
         if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE) {
             try {
-                val rmc = CastContext.getSharedInstance()?.sessionManager?.currentCastSession?.remoteMediaClient
+                val rmc = safeGetCastContext(this)?.sessionManager?.currentCastSession?.remoteMediaClient
                 if (rmc != null) {
                     val activeIds = rmc.mediaStatus?.activeTrackIds?.toMutableList() ?: mutableListOf()
                     val allTracks = rmc.mediaInfo?.mediaTracks.orEmpty()
@@ -2911,7 +2919,7 @@ class LocalPlayerActivity : FragmentActivity() {
                 delay(10.seconds)
                 if (player.isPlaying) {
                     saveCurrentProgress(player)
-                    CastContext.getSharedInstance()?.sessionManager?.currentCastSession?.let { castSession ->
+                    safeGetCastContext(this@LocalPlayerActivity)?.sessionManager?.currentCastSession?.let { castSession ->
                         saveCastSessionProgress(castSession)
                     }
                 }
@@ -2968,7 +2976,7 @@ class LocalPlayerActivity : FragmentActivity() {
                 castContext.sessionManager.addSessionManagerListener(listener, CastSession::class.java)
                 castContext.sessionManager.currentCastSession?.let { attachRemoteMediaClientCallback(it) }
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.w(TAG, "CastContext unavailable for session listener: ${e.message}")
         }
     }
@@ -3112,9 +3120,9 @@ class LocalPlayerActivity : FragmentActivity() {
         progressTickerJob = null
         castSessionManagerListener?.let { listener ->
             try {
-                val castContext = CastContext.getSharedInstance()
+                val castContext = safeGetCastContext(this)
                 castContext?.sessionManager?.removeSessionManagerListener(listener, CastSession::class.java)
-            } catch (_: Exception) {}
+            } catch (_: Throwable) {}
         }
         MediaControllerHelper.releaseFuture(controllerFuture)
         controllerFuture = null
@@ -4103,9 +4111,7 @@ fun RemoteCastCanvas(
     val modelName = castDevice?.modelName ?: stringResource(R.string.cast_desc)
 
     val initialCastSession = remember {
-        try {
-            CastContext.getSharedInstance(context).sessionManager.currentCastSession
-        } catch (_: Exception) { null }
+        safeGetCastContext(context)?.sessionManager?.currentCastSession
     }
     val initialRmc = remember(initialCastSession) { initialCastSession?.remoteMediaClient }
 
@@ -4135,18 +4141,14 @@ fun RemoteCastCanvas(
     DisposableEffect(controller, context) {
         val playerListener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
-                val rmc = try {
-                    CastContext.getSharedInstance(context).sessionManager.currentCastSession?.remoteMediaClient
-                } catch (_: Exception) { null }
+                val rmc = safeGetCastContext(context)?.sessionManager?.currentCastSession?.remoteMediaClient
 
                 if (rmc == null || !rmc.hasMediaSession()) {
                     isPlaying = playing
                 }
             }
             override fun onPlaybackStateChanged(state: Int) {
-                val rmc = try {
-                    CastContext.getSharedInstance(context).sessionManager.currentCastSession?.remoteMediaClient
-                } catch (_: Exception) { null }
+                val rmc = safeGetCastContext(context)?.sessionManager?.currentCastSession?.remoteMediaClient
 
                 if (rmc == null || !rmc.hasMediaSession()) {
                     duration = controller.duration
@@ -4155,9 +4157,7 @@ fun RemoteCastCanvas(
         }
         controller.addListener(playerListener)
 
-        val castContext = try {
-            CastContext.getSharedInstance(context)
-        } catch (_: Exception) { null }
+        val castContext = safeGetCastContext(context)
 
         var currentRmc = castContext?.sessionManager?.currentCastSession?.remoteMediaClient
 
@@ -4223,9 +4223,7 @@ fun RemoteCastCanvas(
 
     LaunchedEffect(controller, isScrubbing) {
         while (!isScrubbing) {
-            val rmc = try {
-                CastContext.getSharedInstance(context).sessionManager.currentCastSession?.remoteMediaClient
-            } catch (_: Exception) { null }
+            val rmc = safeGetCastContext(context)?.sessionManager?.currentCastSession?.remoteMediaClient
 
             if (rmc != null && rmc.hasMediaSession()) {
                 val status = rmc.mediaStatus
@@ -4256,9 +4254,7 @@ fun RemoteCastCanvas(
     }
 
     val togglePlayPause = {
-        val rmc = try {
-            CastContext.getSharedInstance(context).sessionManager.currentCastSession?.remoteMediaClient
-        } catch (_: Exception) { null }
+        val rmc = safeGetCastContext(context)?.sessionManager?.currentCastSession?.remoteMediaClient
 
         if (isPlaying) {
             isPlaying = false
@@ -4281,10 +4277,10 @@ fun RemoteCastCanvas(
         currentPosition = newPos
         controller.seekTo(newPos)
         try {
-            CastContext.getSharedInstance(context).sessionManager.currentCastSession?.remoteMediaClient?.seek(
+            safeGetCastContext(context)?.sessionManager?.currentCastSession?.remoteMediaClient?.seek(
                 MediaSeekOptions.Builder().setPosition(newPos).build()
             )
-        } catch (_: Exception) {}
+        } catch (_: Throwable) {}
     }
 
     BoxWithConstraints(
@@ -4596,10 +4592,10 @@ fun RemoteCastCanvas(
                                     currentPosition = targetMs
                                     controller.seekTo(targetMs)
                                     try {
-                                        CastContext.getSharedInstance(context).sessionManager.currentCastSession?.remoteMediaClient?.seek(
+                                        safeGetCastContext(context)?.sessionManager?.currentCastSession?.remoteMediaClient?.seek(
                                             MediaSeekOptions.Builder().setPosition(targetMs).build()
                                         )
-                                    } catch (_: Exception) {}
+                                    } catch (_: Throwable) {}
                                     isScrubbing = false
                                 },
                                 modifier = Modifier.fillMaxWidth()
@@ -4804,10 +4800,10 @@ fun RemoteCastCanvas(
                             currentPosition = targetMs
                             controller.seekTo(targetMs)
                             try {
-                                CastContext.getSharedInstance(context).sessionManager.currentCastSession?.remoteMediaClient?.seek(
+                                safeGetCastContext(context)?.sessionManager?.currentCastSession?.remoteMediaClient?.seek(
                                     MediaSeekOptions.Builder().setPosition(targetMs).build()
                                 )
-                            } catch (_: Exception) {}
+                            } catch (_: Throwable) {}
                             isScrubbing = false
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -4923,6 +4919,7 @@ fun StatsForNerdsOverlay(
     torrentDownloadDao: TorrentDownloadDao? = null,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val isCasting = controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE
     var line1 by remember { mutableStateOf("") }
     var line2 by remember { mutableStateOf("") }
@@ -4933,7 +4930,7 @@ fun StatsForNerdsOverlay(
     LaunchedEffect(controller, isCasting, torrentInfoHash) {
         while (true) {
             if (isCasting) {
-                val castSession = CastContext.getSharedInstance()?.sessionManager?.currentCastSession
+                val castSession = safeGetCastContext(context)?.sessionManager?.currentCastSession
                 val dev = castSession?.castDevice
                 val rmc = castSession?.remoteMediaClient
 

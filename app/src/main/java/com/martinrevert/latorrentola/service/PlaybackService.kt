@@ -6,6 +6,8 @@ import com.martinrevert.latorrentola.utils.AppLogger
 import androidx.annotation.OptIn
 import androidx.media3.cast.CastPlayer
 import androidx.media3.cast.CastTrackSelector
+import androidx.media3.cast.DefaultMediaItemConverter
+import androidx.media3.cast.MediaItemConverter
 import androidx.media3.cast.RemoteCastPlayer
 import androidx.media3.cast.SessionAvailabilityListener
 import androidx.media3.common.C
@@ -87,10 +89,11 @@ class PlaybackService : MediaSessionService() {
 
             val trackSelector = AppCastTrackSelector()
 
-            val remotePlayerInstance = RemoteCastPlayer.Builder(this)
-                .setTrackSelector(trackSelector)
-                .setMediaItemConverter(object : androidx.media3.cast.MediaItemConverter {
-                    val defaultConverter = androidx.media3.cast.DefaultMediaItemConverter()
+            val proxyPlayer: Player = try {
+                val remotePlayerInstance = RemoteCastPlayer.Builder(this)
+                    .setTrackSelector(trackSelector)
+                    .setMediaItemConverter(object : MediaItemConverter {
+                        val defaultConverter = DefaultMediaItemConverter()
                     override fun toMediaItem(mediaQueueItem: MediaQueueItem): MediaItem {
                         return defaultConverter.toMediaItem(mediaQueueItem)
                     }
@@ -363,6 +366,15 @@ class PlaybackService : MediaSessionService() {
             val castPlayerBuilder = CastPlayer.Builder(this)
                 .setLocalPlayer(exoPlayer)
                 .setRemotePlayer(remotePlayerInstance)
+
+            val castPlayer = castPlayerBuilder.build()
+            remotePlayer = castPlayer
+            castPlayer
+        } catch (e: Throwable) {
+            AppLogger.w(TAG, "CastPlayer build failed (Google Cast framework unavailable on this device), falling back to ExoPlayer: ${e.message}")
+            remotePlayer = null
+            exoPlayer
+        }
             
             val mainExecutor = androidx.core.content.ContextCompat.getMainExecutor(this)
             
@@ -426,14 +438,13 @@ class PlaybackService : MediaSessionService() {
                         applyCastSubtitleStyle(castContext.sessionManager.currentCastSession)
                     }
                     .addOnFailureListener {
-                        AppLogger.e(TAG, "CastContext failed to initialize", it)
+                        AppLogger.w(TAG, "CastContext failed to initialize (Google Cast framework unavailable): ${it.message}")
                     }
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Error initializing CastContext", e)
+            } catch (e: Throwable) {
+                AppLogger.w(TAG, "Error initializing CastContext: ${e.message}", e)
             }
 
-            val proxyPlayer = castPlayerBuilder.build()
-            remotePlayer = proxyPlayer
+
 
             proxyPlayer.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {

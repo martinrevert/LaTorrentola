@@ -72,7 +72,7 @@ fun CastCodecWarningObserver(
             val (extractedVideo, extractedAudio) = CastCodecChecker.retrieveMediaFormats(streamUrl)
             val castContext = try {
                 CastContext.getSharedInstance(context)
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 null
             }
             val currentSession = castContext?.sessionManager?.currentCastSession
@@ -124,7 +124,7 @@ fun CastCodecWarningObserver(
                         checkAndShowWarning(currentSession.castDevice, vFormat, aFormat)
                     }
                 }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
 
         onDispose {
