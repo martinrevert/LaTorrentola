@@ -20,4 +20,17 @@ internal object TmdbLanguage {
             else -> locale.toLanguageTag()
         }
     }
+
+    /**
+     * Returns comma-separated language tags for TMDB image queries (logos, backdrops).
+     * Prioritizes the active device language, then English as universal fallback, then null (neutral).
+     */
+    fun imageLanguages(): String {
+        val lang = Locale.getDefault().language.lowercase(Locale.ROOT)
+        return if (lang == "en" || lang.isBlank()) {
+            "en,null"
+        } else {
+            "$lang,en,null"
+        }
+    }
 }

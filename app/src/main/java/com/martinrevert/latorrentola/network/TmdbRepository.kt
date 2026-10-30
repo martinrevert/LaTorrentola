@@ -52,6 +52,9 @@ class TmdbRepository @Inject constructor(
     /** In-memory cache of TMDB movie details keyed by TMDB movie ID. */
     private val movieDetailsCache = ConcurrentHashMap<Int, TmdbMovieDetails>()
 
+    /** In-memory cache of TMDB movie logo URLs keyed by TMDB movie ID and language tag. */
+    private val movieLogoCache = ConcurrentHashMap<String, String>()
+
     /**
      * Searches TMDB for people (actors/actresses) matching [query].
      *
@@ -211,13 +214,59 @@ class TmdbRepository @Inject constructor(
             val details = tmdbService.getMovieDetails(
                 movieId = movieId,
                 apiKey = apiKey,
-                appendToResponse = "credits"
+                appendToResponse = "credits,images",
+                includeImageLanguage = TmdbLanguage.imageLanguages(),
+                language = TmdbLanguage.current()
             )
             movieDetailsCache[movieId] = details
+            val cacheKey = "${movieId}_${TmdbLanguage.imageLanguages()}"
+            val resolvedLogo = details.logoUrl ?: ""
+            movieLogoCache[cacheKey] = resolvedLogo
             details
         } catch (e: Exception) {
             null
         }
+    }
+
+    /**
+     * Resolves the primary logo image URL for a TMDB movie, with in-memory caching.
+     *
+     * @param movieId TMDB movie identifier.
+     * @return Full logo URL (PNG/SVG) or null if unavailable.
+     */
+    suspend fun getMovieLogo(movieId: Int): String? {
+        if (apiKey.isEmpty() || movieId <= 0) return null
+        val cacheKey = "${movieId}_${TmdbLanguage.imageLanguages()}"
+        movieLogoCache[cacheKey]?.let { return it.ifEmpty { null } }
+        movieDetailsCache[movieId]?.let { details ->
+            val resolvedLogo = details.logoUrl ?: ""
+            movieLogoCache[cacheKey] = resolvedLogo
+            return resolvedLogo.ifEmpty { null }
+        }
+
+        return try {
+            val images = tmdbService.getMovieImages(
+                movieId = movieId,
+                apiKey = apiKey,
+                includeImageLanguage = TmdbLanguage.imageLanguages()
+            )
+            val logoUrl = images.bestLogoUrl ?: ""
+            movieLogoCache[cacheKey] = logoUrl
+            logoUrl.ifEmpty { null }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Resolves the primary logo image URL for a movie by its external IMDb identifier.
+     *
+     * @param imdbId IMDb title identifier (e.g. "tt0137523").
+     * @return Full logo URL (PNG/SVG) or null if unavailable.
+     */
+    suspend fun getMovieLogoByImdbId(imdbId: String): String? {
+        val movieResult = findMovieByImdbId(imdbId) ?: return null
+        return getMovieLogo(movieResult.id)
     }
 
     /**

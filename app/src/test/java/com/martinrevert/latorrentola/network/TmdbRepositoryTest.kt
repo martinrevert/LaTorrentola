@@ -2,6 +2,8 @@ package com.martinrevert.latorrentola.network
 
 import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.database.TvGenreDao
+import com.martinrevert.latorrentola.model.TMDB.TmdbImageItem
+import com.martinrevert.latorrentola.model.TMDB.TmdbImagesResponse
 import com.martinrevert.latorrentola.model.TMDB.TmdbMoviePage
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieSummary
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvPage
@@ -178,5 +180,82 @@ class TmdbRepositoryTest {
                 language = any()
             )
         }
+    }
+
+    @Test
+    fun `getMovieLogo fetches from tmdbService and caches result`() = runTest {
+        val logos = listOf(
+            TmdbImageItem(filePath = "/logo_es.png", iso6391 = "es"),
+            TmdbImageItem(filePath = "/logo_en.png", iso6391 = "en")
+        )
+        val imagesResponse = TmdbImagesResponse(id = 550, logos = logos)
+        coEvery {
+            tmdbService.getMovieImages(
+                movieId = 550,
+                apiKey = any(),
+                includeImageLanguage = any()
+            )
+        } returns imagesResponse
+
+        val logoFirst = repository.getMovieLogo(550)
+        val logoSecond = repository.getMovieLogo(550)
+
+        assertThat(logoFirst).isNotNull()
+        assertThat(logoSecond).isEqualTo(logoFirst)
+        coVerify(exactly = 1) {
+            tmdbService.getMovieImages(movieId = 550, apiKey = any(), includeImageLanguage = any())
+        }
+    }
+
+    @Test
+    fun `getMovieLogo caches negative result when no logo exists`() = runTest {
+        val emptyImagesResponse = TmdbImagesResponse(id = 700, logos = emptyList())
+        coEvery {
+            tmdbService.getMovieImages(
+                movieId = 700,
+                apiKey = any(),
+                includeImageLanguage = any()
+            )
+        } returns emptyImagesResponse
+
+        val logoFirst = repository.getMovieLogo(700)
+        val logoSecond = repository.getMovieLogo(700)
+
+        assertThat(logoFirst).isNull()
+        assertThat(logoSecond).isNull()
+        coVerify(exactly = 1) {
+            tmdbService.getMovieImages(movieId = 700, apiKey = any(), includeImageLanguage = any())
+        }
+    }
+
+    @Test
+    fun `bestLogoUrl prioritizes preferred language over fallback`() {
+        val logos = listOf(
+            TmdbImageItem(filePath = "/logo_es.png", iso6391 = "es"),
+            TmdbImageItem(filePath = "/logo_en.png", iso6391 = "en"),
+            TmdbImageItem(filePath = "/logo_neutral.png", iso6391 = null)
+        )
+        val imagesResponse = TmdbImagesResponse(id = 123, logos = logos)
+
+        val esLogo = imagesResponse.getBestLogoUrl("es")
+        val enLogo = imagesResponse.getBestLogoUrl("en")
+        val frLogo = imagesResponse.getBestLogoUrl("fr")
+
+        assertThat(esLogo).isEqualTo("https://image.tmdb.org/t/p/w500/logo_es.png")
+        assertThat(enLogo).isEqualTo("https://image.tmdb.org/t/p/w500/logo_en.png")
+        assertThat(frLogo).isEqualTo("https://image.tmdb.org/t/p/w500/logo_en.png")
+    }
+
+    @Test
+    fun `bestLogoUrl selects highest voted logo within same language tier`() {
+        val logos = listOf(
+            TmdbImageItem(filePath = "/logo_en_low.png", iso6391 = "en", voteAverage = 3.2),
+            TmdbImageItem(filePath = "/logo_en_high.png", iso6391 = "en", voteAverage = 8.9),
+            TmdbImageItem(filePath = "/logo_en_mid.png", iso6391 = "en", voteAverage = 5.0)
+        )
+        val imagesResponse = TmdbImagesResponse(id = 456, logos = logos)
+
+        val selectedLogo = imagesResponse.getBestLogoUrl("en")
+        assertThat(selectedLogo).isEqualTo("https://image.tmdb.org/t/p/w500/logo_en_high.png")
     }
 }

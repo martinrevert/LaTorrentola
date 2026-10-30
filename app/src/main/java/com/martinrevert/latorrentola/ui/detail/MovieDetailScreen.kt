@@ -76,6 +76,7 @@ import com.martinrevert.latorrentola.model.torrent.TorrentDownload
 import com.martinrevert.latorrentola.service.TorrentBufferState
 import com.martinrevert.latorrentola.service.TorrentDownloadService
 import com.martinrevert.latorrentola.ui.components.DeleteTorrentDownloadsDialog
+import com.martinrevert.latorrentola.ui.components.MovieLogoHeader
 import com.martinrevert.latorrentola.utils.MediaControllerHelper
 import com.martinrevert.latorrentola.utils.TorrentCardActionHandler
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
@@ -298,6 +299,8 @@ private fun MovieDetailScreenContent(
                     studioName = uiState.studioName,
                     ratings = uiState.ratings,
                     backdropUrl = uiState.backdropUrl,
+                    logoUrl = uiState.logoUrl,
+                    isLogoLoading = uiState.isLogoLoading,
                     isFavorite = uiState.isFavorite,
                     releasesByQuality = uiState.releasesByQuality,
                     downloadedHashes = downloadedHashes,
@@ -353,7 +356,25 @@ private fun MovieDetailScreenContent(
                         .focusProperties { down = contentFocusRequester }
                         .hazeGlass(input = HazeInput.Sources(hazeState)),
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
-                    title = { Text((uiState as? DetailUiState.Success)?.movie?.title ?: stringResource(R.string.details_title)) },
+                    title = {
+                        val success = uiState as? DetailUiState.Success
+                        val titleText = success?.movie?.title ?: stringResource(R.string.details_title)
+                        if (success != null) {
+                            MovieLogoHeader(
+                                title = titleText,
+                                logoUrl = success.logoUrl,
+                                isLogoLoading = success.isLogoLoading,
+                                textStyle = MaterialTheme.typography.titleLarge,
+                                textColor = MaterialTheme.colorScheme.onSurface,
+                                minHeight = 24.dp,
+                                maxHeight = 36.dp,
+                                maxWidth = 220.dp,
+                                maxLines = 1
+                            )
+                        } else {
+                            Text(titleText)
+                        }
+                    },
                     navigationIcon = {
                         IconButton(
                             onClick = onBackClick,
@@ -536,6 +557,8 @@ private fun TvMovieDetailContent(
     studioName: String? = null,
     ratings: MovieRatings? = null,
     backdropUrl: String?,
+    logoUrl: String? = null,
+    isLogoLoading: Boolean = false,
     isFavorite: Boolean,
     releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>>,
     downloadedHashes: Set<String>,
@@ -732,14 +755,17 @@ private fun TvMovieDetailContent(
                             translationY = contentTranslationY
                         }
                 ) {
-                    // Movie Title
-                    Text(
-                        text = movie.title ?: tmdbMovie?.title.orEmpty(),
-                        style = MaterialTheme.typography.displaySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                    // Movie Title / Logo
+                    MovieLogoHeader(
+                        title = movie.title ?: tmdbMovie?.title.orEmpty(),
+                        logoUrl = logoUrl,
+                        isLogoLoading = isLogoLoading,
+                        textStyle = MaterialTheme.typography.displaySmall,
+                        textColor = MaterialTheme.colorScheme.onSurface,
+                        minHeight = 48.dp,
+                        maxHeight = 88.dp,
+                        maxWidth = 440.dp,
+                        maxLines = 2
                     )
 
                     Spacer(modifier = Modifier.height(14.dp))

@@ -4,19 +4,22 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.runtime.*
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.utils.isTvDevice
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 private const val PREFETCH_ITEM_THRESHOLD = 12
 
@@ -83,6 +86,9 @@ fun MovieList(
         }
     }
 
+    val focusManager = LocalFocusManager.current
+    val coroutineScope = rememberCoroutineScope()
+
     LazyVerticalGrid(
         columns = columns,
         state = state,
@@ -93,16 +99,30 @@ fun MovieList(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(
+        itemsIndexed(
             items = movies,
-            key = { it.id },
-            contentType = { "movie" }
-        ) { movie ->
+            key = { _, movie -> movie.id },
+            contentType = { _, _ -> "movie" }
+        ) { index, movie ->
             val isTarget = movie.id == effectiveFocusId
             val progress = watchHistoryMap[movie.id.toString()] ?: watchHistoryMap[movie.title]
             val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
             MovieItem(
                 movie = movie,
+                modifier = Modifier.tvGridRowDpadNavigation(
+                    isTv = isTv,
+                    index = index,
+                    totalItems = movies.size,
+                    columns = 6,
+                    focusManager = focusManager,
+                    onFallbackNext = {
+                        coroutineScope.launch {
+                            state.scrollToItem(index + 1)
+                            withFrameNanos { }
+                            focusManager.moveFocus(FocusDirection.Next)
+                        }
+                    }
+                ),
                 lastVisitDate = lastVisitDate,
                 isDownloaded = downloadedMovieIds.contains(movie.id),
                 isSelected = selectedIds.contains(movie.id),

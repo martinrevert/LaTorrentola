@@ -61,6 +61,14 @@ class OttCatalogViewModel @Inject constructor(
     private val _focusedMovieBackdrop = MutableStateFlow<String?>(null)
     val focusedMovieBackdrop: StateFlow<String?> = _focusedMovieBackdrop.asStateFlow()
 
+    private val _focusedMovieLogo = MutableStateFlow<String?>(null)
+    val focusedMovieLogo: StateFlow<String?> = _focusedMovieLogo.asStateFlow()
+
+    private val _isFocusedMovieLogoLoading = MutableStateFlow(false)
+    val isFocusedMovieLogoLoading: StateFlow<Boolean> = _isFocusedMovieLogoLoading.asStateFlow()
+
+    private var movieFocusJob: Job? = null
+
     private var currentProviderId: Int? = null
     private var isTvMode: Boolean = false
     private var currentPage = 1
@@ -118,6 +126,23 @@ class OttCatalogViewModel @Inject constructor(
         if (_focusedMovie.value?.id == movie.id) return
         _focusedMovie.value = movie
         _focusedMovieBackdrop.value = movie.fullBackdropUrl
+        _focusedMovieLogo.value = null
+        _isFocusedMovieLogoLoading.value = true
+        movieFocusJob?.cancel()
+        movieFocusJob = viewModelScope.launch {
+            try {
+                val logo = tmdbRepository.getMovieLogo(movie.id)
+                if (_focusedMovie.value?.id == movie.id) {
+                    _focusedMovieLogo.value = logo
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            } finally {
+                if (_focusedMovie.value?.id == movie.id) {
+                    _isFocusedMovieLogoLoading.value = false
+                }
+            }
+        }
     }
 
     fun loadMore() {
@@ -131,6 +156,7 @@ class OttCatalogViewModel @Inject constructor(
     fun refresh() {
         val providerId = currentProviderId ?: return
         requestJob?.cancel()
+        movieFocusJob?.cancel()
         requestGeneration++
         val generation = requestGeneration
         isFetching = true
@@ -143,6 +169,8 @@ class OttCatalogViewModel @Inject constructor(
         seenSeriesIds.clear()
         _focusedMovie.value = null
         _focusedMovieBackdrop.value = null
+        _focusedMovieLogo.value = null
+        _isFocusedMovieLogoLoading.value = false
         _uiState.value = OttCatalogUiState.Loading
 
         requestJob = viewModelScope.launch {

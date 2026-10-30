@@ -135,7 +135,8 @@ class DetailViewModel @Inject constructor(
                 movie = movie,
                 isFavorite = isFavorite,
                 releasesByQuality = groupAndSortReleases(initialYts),
-                backdropUrl = initialBackdrop
+                backdropUrl = initialBackdrop,
+                isLogoLoading = !movie.imdbCode.isNullOrBlank()
             )
 
             try {
@@ -149,12 +150,14 @@ class DetailViewModel @Inject constructor(
                 var director: String? = null
                 var studioLogoUrl: String? = null
                 var studioName: String? = null
+                var logoUrl: String? = null
                 if (!imdbId.isNullOrBlank()) {
                     val tmdbDetails = tmdbRepository.getMovieDetailsByImdbId(imdbId)
                     if (tmdbDetails != null) {
                         director = tmdbDetails.director
                         studioLogoUrl = tmdbDetails.studioLogoUrl
                         studioName = tmdbDetails.studioName
+                        logoUrl = tmdbDetails.logoUrl?.takeIf(String::isNotBlank)
                         val tmdbCast = tmdbDetails.credits?.cast.orEmpty().map { tmdbCastMember ->
                             Cast(
                                 name = tmdbCastMember.name,
@@ -172,6 +175,9 @@ class DetailViewModel @Inject constructor(
                         }
                     }
                     tmdbMovie = tmdbRepository.findMovieByImdbId(imdbId)
+                    if (logoUrl == null) {
+                        logoUrl = tmdbMovie?.id?.let { tmdbRepository.getMovieLogo(it) }
+                    }
                 }
 
                 val backdropUrl = tmdbMovie?.fullBackdropUrl
@@ -198,7 +204,8 @@ class DetailViewModel @Inject constructor(
                     studioLogoUrl = studioLogoUrl,
                     studioName = studioName,
                     ratings = ratings,
-                    backdropUrl = backdropUrl
+                    backdropUrl = backdropUrl,
+                    logoUrl = logoUrl
                 )
                 
                 // Clear any existing voice job before starting a new one
@@ -261,12 +268,14 @@ class DetailViewModel @Inject constructor(
                     var director: String? = null
                     var studioLogoUrl: String? = null
                     var studioName: String? = null
+                    var logoUrl: String? = null
                     if (!imdbId.isNullOrBlank()) {
                         val tmdbDetails = tmdbRepository.getMovieDetailsByImdbId(imdbId)
                         if (tmdbDetails != null) {
                             director = tmdbDetails.director
                             studioLogoUrl = tmdbDetails.studioLogoUrl
                             studioName = tmdbDetails.studioName
+                            logoUrl = tmdbDetails.logoUrl?.takeIf(String::isNotBlank)
                             val tmdbCast = tmdbDetails.credits?.cast.orEmpty().map { tmdbCastMember ->
                                 Cast(
                                     name = tmdbCastMember.name,
@@ -284,6 +293,9 @@ class DetailViewModel @Inject constructor(
                             }
                         }
                         tmdbMovie = tmdbRepository.findMovieByImdbId(imdbId)
+                        if (logoUrl == null) {
+                            logoUrl = tmdbMovie?.id?.let { tmdbRepository.getMovieLogo(it) }
+                        }
                     }
 
                     val backdropUrl = tmdbMovie?.fullBackdropUrl
@@ -309,7 +321,9 @@ class DetailViewModel @Inject constructor(
                         studioLogoUrl = studioLogoUrl,
                         studioName = studioName,
                         ratings = ratings,
-                        backdropUrl = backdropUrl
+                        backdropUrl = backdropUrl,
+                        logoUrl = logoUrl,
+                        isLogoLoading = false
                     )
                     
                     voiceJob?.cancel()
@@ -557,7 +571,9 @@ sealed interface DetailUiState {
         val studioLogoUrl: String? = null,
         val studioName: String? = null,
         val ratings: MovieRatings? = null,
-        val backdropUrl: String? = null
+        val backdropUrl: String? = null,
+        val logoUrl: String? = null,
+        val isLogoLoading: Boolean = false
     ) : DetailUiState
     /**
      * Query resolved to a TV series on TMDB.

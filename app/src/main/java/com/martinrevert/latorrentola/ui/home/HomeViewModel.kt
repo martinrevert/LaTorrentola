@@ -144,26 +144,53 @@ class HomeViewModel @Inject constructor(
     private val _focusedMovieTmdb = MutableStateFlow<TmdbMovieResult?>(null)
     val focusedMovieTmdb: StateFlow<TmdbMovieResult?> = _focusedMovieTmdb.asStateFlow()
 
+    /** TMDB transparent logo URL for the currently focused movie. */
+    private val _focusedMovieLogo = MutableStateFlow<String?>(null)
+    val focusedMovieLogo: StateFlow<String?> = _focusedMovieLogo.asStateFlow()
+
+    /** Whether logo resolution for the focused movie is actively in flight. */
+    private val _isFocusedMovieLogoLoading = MutableStateFlow(false)
+    val isFocusedMovieLogoLoading: StateFlow<Boolean> = _isFocusedMovieLogoLoading.asStateFlow()
+
     /**
-     * Updates the focused movie for the TV immersive layout and fetches its TMDB backdrop.
+     * Updates the focused movie for the TV immersive layout and fetches its TMDB backdrop and logo.
      */
     fun onMovieFocused(movie: Movie) {
         if (_focusedMovie.value?.id == movie.id) return
         _focusedMovie.value = movie
         _focusedMovieBackdrop.value = movie.backgroundImageOriginal ?: movie.backgroundImage ?: movie.largeCoverImage
         _focusedMovieTmdb.value = null
+        _focusedMovieLogo.value = null
+        _isFocusedMovieLogoLoading.value = !movie.imdbCode.isNullOrBlank()
 
         movieFocusJob?.cancel()
         movieFocusJob = viewModelScope.launch {
-            delay(120)
-            val imdb = movie.imdbCode
-            if (!imdb.isNullOrBlank()) {
-                val tmdb = tmdbRepository.findMovieByImdbId(imdb)
-                if (tmdb != null && _focusedMovie.value?.id == movie.id) {
-                    _focusedMovieTmdb.value = tmdb
-                    tmdb.fullBackdropUrl?.let { backdrop ->
-                        _focusedMovieBackdrop.value = backdrop
+            try {
+                delay(120)
+                val imdb = movie.imdbCode
+                if (!imdb.isNullOrBlank()) {
+                    val tmdb = tmdbRepository.findMovieByImdbId(imdb)
+                    if (tmdb != null && _focusedMovie.value?.id == movie.id) {
+                        _focusedMovieTmdb.value = tmdb
+                        tmdb.fullBackdropUrl?.let { backdrop ->
+                            _focusedMovieBackdrop.value = backdrop
+                        }
+                        val logo = tmdbRepository.getMovieLogo(tmdb.id)
+                        if (_focusedMovie.value?.id == movie.id) {
+                            _focusedMovieLogo.value = logo
+                        }
+                    } else if (_focusedMovie.value?.id == movie.id) {
+                        val logo = tmdbRepository.getMovieLogoByImdbId(imdb)
+                        if (_focusedMovie.value?.id == movie.id) {
+                            _focusedMovieLogo.value = logo
+                        }
                     }
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+            } finally {
+                if (_focusedMovie.value?.id == movie.id) {
+                    _isFocusedMovieLogoLoading.value = false
                 }
             }
         }
@@ -364,6 +391,8 @@ class HomeViewModel @Inject constructor(
                 _focusedMovie.value = null
                 _focusedMovieBackdrop.value = null
                 _focusedMovieTmdb.value = null
+                _focusedMovieLogo.value = null
+                _isFocusedMovieLogoLoading.value = false
                 _uiState.value = HomeUiState.Loading
 
                 var addedInBatch = 0

@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -53,6 +54,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -62,12 +64,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface
@@ -386,6 +390,9 @@ fun TvSeriesGrid(
             }
     }
 
+    val focusManager = LocalFocusManager.current
+    val coroutineScope = rememberCoroutineScope()
+
     LazyVerticalGrid(
         columns = columns,
         state = state,
@@ -396,17 +403,31 @@ fun TvSeriesGrid(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(
+        itemsIndexed(
             items = series,
-            key = { it.id },
-            contentType = { "tv_series" }
-        ) { item ->
+            key = { _, item -> item.id },
+            contentType = { _, _ -> "tv_series" }
+        ) { index, item ->
             val itemGenres = remember(item.genreIds, genreNames) {
                 item.genreIds.orEmpty().mapNotNull(genreNames::get)
             }
             TvSeriesCard(
                 series = item,
                 genres = itemGenres,
+                modifier = Modifier.tvGridRowDpadNavigation(
+                    isTv = isTv,
+                    index = index,
+                    totalItems = series.size,
+                    columns = 6,
+                    focusManager = focusManager,
+                    onFallbackNext = {
+                        coroutineScope.launch {
+                            state.scrollToItem(index + 1)
+                            withFrameNanos { }
+                            focusManager.moveFocus(FocusDirection.Next)
+                        }
+                    }
+                ),
                 hasDownloads = item.id in downloadedSeriesIds,
                 onClick = { onSeriesClick(item) },
                 shouldRequestFocus = item.id == initialFocusId,
@@ -456,6 +477,7 @@ fun TvSeriesGrid(
 fun TvSeriesCard(
     series: TmdbTvSummary,
     genres: List<String>,
+    modifier: Modifier = Modifier,
     hasDownloads: Boolean = false,
     isSelected: Boolean = false,
     onClick: () -> Unit,
@@ -498,7 +520,7 @@ fun TvSeriesCard(
         }
     }
 
-    Box {
+    Box(modifier = if (!effectiveIsTv) modifier else Modifier) {
         if (effectiveIsTv) {
             Surface(
                 onClick = onClick,
@@ -508,6 +530,7 @@ fun TvSeriesCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
+                    .then(modifier)
                     .onFocusChanged { if (it.isFocused && shouldRequestFocus) onFocusRestored() }
                     .tvDpadLongClickable(onLongClick)
             ) {

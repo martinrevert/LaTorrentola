@@ -53,6 +53,8 @@ fun TvMovieImmersiveContainer(
     focusedMovieTmdb: TmdbMovieResult? = null,
     focusedTmdbSummary: TmdbMovieSummary? = null,
     backdropUrl: String?,
+    logoUrl: String? = null,
+    isLogoLoading: Boolean = false,
     modifier: Modifier = Modifier,
     themeMode: Int? = null,
     topBar: @Composable (() -> Unit)? = null,
@@ -189,13 +191,16 @@ fun TvMovieImmersiveContainer(
                             .padding(horizontal = 24.dp, vertical = 4.dp),
                         verticalArrangement = Arrangement.Center
                     ) {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.headlineLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = onSurfaceColor,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                        MovieLogoHeader(
+                            title = title,
+                            logoUrl = logoUrl,
+                            isLogoLoading = isLogoLoading,
+                            textStyle = MaterialTheme.typography.headlineLarge,
+                            textColor = onSurfaceColor,
+                            minHeight = 36.dp,
+                            maxHeight = 56.dp,
+                            maxWidth = 320.dp,
+                            maxLines = 1
                         )
                         Spacer(modifier = Modifier.height(4.dp))
 

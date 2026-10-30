@@ -46,6 +46,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun MovieItem(
     movie: Movie,
+    modifier: Modifier = Modifier,
     lastVisitDate: Long? = null,
     isDownloaded: Boolean = false,
     isSelected: Boolean = false,
@@ -87,7 +88,7 @@ fun MovieItem(
         }
     }
 
-    Box {
+    Box(modifier = if (!effectiveIsTv) modifier else Modifier) {
         if (effectiveIsTv) {
             Surface(
                 onClick = onToggleSelection ?: onClick,
@@ -103,6 +104,7 @@ fun MovieItem(
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
+                    .then(modifier)
                     .onFocusChanged { state ->
                         if (state.isFocused) {
                             onFocus?.invoke()

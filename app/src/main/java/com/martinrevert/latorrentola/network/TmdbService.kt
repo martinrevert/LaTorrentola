@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.network
 
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
 import com.martinrevert.latorrentola.model.TMDB.TmdbFindResponse
+import com.martinrevert.latorrentola.model.TMDB.TmdbImagesResponse
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieCreditsResponse
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieDetails
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieExternalIds
@@ -70,14 +71,23 @@ interface TmdbService {
         @Query("language") language: String = TmdbLanguage.current()
     ): TmdbMovieCreditsResponse
 
-    /** Retrieves full details for a TMDB movie including production companies and appended credits. */
+    /** Retrieves full details for a TMDB movie including production companies, logos, and credits. */
     @GET("movie/{movie_id}")
     suspend fun getMovieDetails(
         @Path("movie_id") movieId: Int,
         @Query("api_key") apiKey: String,
-        @Query("append_to_response") appendToResponse: String = "credits",
+        @Query("append_to_response") appendToResponse: String = "credits,images",
+        @Query("include_image_language") includeImageLanguage: String = TmdbLanguage.imageLanguages(),
         @Query("language") language: String = TmdbLanguage.current()
     ): TmdbMovieDetails
+
+    /** Retrieves image collections (including movie logos) for a TMDB movie. */
+    @GET("movie/{movie_id}/images")
+    suspend fun getMovieImages(
+        @Path("movie_id") movieId: Int,
+        @Query("api_key") apiKey: String,
+        @Query("include_image_language") includeImageLanguage: String = TmdbLanguage.imageLanguages()
+    ): TmdbImagesResponse
 
     /** Retrieves a page of TV series airing during the next seven days. */
     @GET("tv/on_the_air")

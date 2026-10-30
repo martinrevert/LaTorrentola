@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -84,6 +85,7 @@ import com.martinrevert.latorrentola.ui.components.TvMovieImmersiveContainer
 import com.martinrevert.latorrentola.ui.components.TvSeriesCard
 import com.martinrevert.latorrentola.ui.components.TvSeriesGrid
 import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
+import com.martinrevert.latorrentola.ui.components.tvGridRowDpadNavigation
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.GenreTranslation
@@ -96,6 +98,7 @@ import dev.chrisbanes.haze.rememberHazeState
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
  * Connects search fields, collection modes, and result actions to the search view model.
@@ -194,6 +197,8 @@ fun SearchScreen(
 
     val focusedMovie by viewModel.focusedMovie.collectAsState()
     val focusedMovieBackdrop by viewModel.focusedMovieBackdrop.collectAsState()
+    val focusedMovieLogo by viewModel.focusedMovieLogo.collectAsState()
+    val isFocusedMovieLogoLoading by viewModel.isFocusedMovieLogoLoading.collectAsState()
     val focusedMovieTmdb by viewModel.focusedMovieTmdb.collectAsState()
 
     SearchScreenContent(
@@ -222,6 +227,8 @@ fun SearchScreen(
         isTv = isTv,
         focusedMovie = focusedMovie,
         focusedMovieBackdrop = focusedMovieBackdrop,
+        focusedMovieLogo = focusedMovieLogo,
+        isFocusedMovieLogoLoading = isFocusedMovieLogoLoading,
         focusedMovieTmdb = focusedMovieTmdb,
         isLoadingMore = isLoadingMore,
         focusRequester = focusRequester,
@@ -322,6 +329,8 @@ private fun SearchScreenContent(
     isTv: Boolean,
     focusedMovie: Movie? = null,
     focusedMovieBackdrop: String? = null,
+    focusedMovieLogo: String? = null,
+    isFocusedMovieLogoLoading: Boolean = false,
     focusedMovieTmdb: TmdbMovieResult? = null,
     isLoadingMore: Boolean = false,
     focusRequester: FocusRequester,
@@ -470,6 +479,8 @@ private fun SearchScreenContent(
                     focusedMovie = focusedMovie,
                     focusedMovieTmdb = focusedMovieTmdb,
                     backdropUrl = focusedMovieBackdrop,
+                    logoUrl = focusedMovieLogo,
+                    isLogoLoading = isFocusedMovieLogoLoading,
                     themeMode = themeMode,
                     modifier = Modifier.fillMaxSize(),
                     topBar = {
@@ -1328,6 +1339,10 @@ private fun FavoriteItemsGrid(
     }
     val genreNames = remember(tvGenres) { tvGenres.associate { it.id to it.name } }
 
+    val focusManager = LocalFocusManager.current
+    val coroutineScope = rememberCoroutineScope()
+    val totalGridItems = movies.size + series.size
+
     LazyVerticalGrid(
         columns = columns,
         state = state,
@@ -1338,15 +1353,29 @@ private fun FavoriteItemsGrid(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(
+        itemsIndexed(
             items = movies,
-            key = { "movie_${it.id}" },
-            contentType = { "movie" }
-        ) { movie ->
+            key = { _, it -> "movie_${it.id}" },
+            contentType = { _, _ -> "movie" }
+        ) { index, movie ->
             val progress = watchHistoryMap[movie.id.toString()] ?: watchHistoryMap[movie.title]
             val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
             MovieItem(
                 movie = movie,
+                modifier = Modifier.tvGridRowDpadNavigation(
+                    isTv = isTv,
+                    index = index,
+                    totalItems = totalGridItems,
+                    columns = 6,
+                    focusManager = focusManager,
+                    onFallbackNext = {
+                        coroutineScope.launch {
+                            state.scrollToItem(index + 1)
+                            withFrameNanos { }
+                            focusManager.moveFocus(FocusDirection.Next)
+                        }
+                    }
+                ),
                 isDownloaded = movie.id in downloadedMovieIds,
                 isSelected = movie.id in selectedMovieIds,
                 progressPercent = progressPercent,
@@ -1357,19 +1386,34 @@ private fun FavoriteItemsGrid(
                 isTv = isTv
             )
         }
-        items(
+        itemsIndexed(
             items = series,
-            key = { "tv_${it.id}" },
-            contentType = { "tv_series" }
-        ) { item ->
+            key = { _, it -> "tv_${it.id}" },
+            contentType = { _, _ -> "tv_series" }
+        ) { seriesIndex, item ->
             val itemGenres = remember(item.genres, item.genreIds, genreNames) {
                 item.genres.orEmpty().map { it.name }.ifEmpty {
                     item.genreIds.orEmpty().mapNotNull(genreNames::get)
                 }
             }
+            val absoluteIndex = movies.size + seriesIndex
             TvSeriesCard(
                 series = item,
                 genres = itemGenres,
+                modifier = Modifier.tvGridRowDpadNavigation(
+                    isTv = isTv,
+                    index = absoluteIndex,
+                    totalItems = totalGridItems,
+                    columns = 6,
+                    focusManager = focusManager,
+                    onFallbackNext = {
+                        coroutineScope.launch {
+                            state.scrollToItem(absoluteIndex + 1)
+                            withFrameNanos { }
+                            focusManager.moveFocus(FocusDirection.Next)
+                        }
+                    }
+                ),
                 hasDownloads = item.id in downloadedSeriesIds,
                 isSelected = item.id in selectedMovieIds,
                 onClick = { onTvSeriesClick(item) },

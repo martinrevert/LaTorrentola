@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.model.TMDB
 
 import com.google.gson.annotations.SerializedName
+import java.util.Locale
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -223,7 +224,11 @@ data class TmdbMovieDetails(
 
     @SerializedName("credits")
     @SerialName("credits")
-    val credits: TmdbMovieCreditsResponse? = null
+    val credits: TmdbMovieCreditsResponse? = null,
+
+    @SerializedName("images")
+    @SerialName("images")
+    val images: TmdbImagesResponse? = null
 ) {
     val fullPosterUrl: String?
         get() = posterPath?.takeIf(String::isNotBlank)?.let { "https://image.tmdb.org/t/p/w500$it" }
@@ -243,6 +248,91 @@ data class TmdbMovieDetails(
     val studioName: String?
         get() = productionCompanies?.firstOrNull { !it.logoPath.isNullOrBlank() }?.name
             ?: productionCompanies?.firstOrNull()?.name
+
+    val logoUrl: String?
+        get() = images?.bestLogoUrl
+}
+
+/**
+ * An image entry (such as a transparent title logo) from TMDB image collections.
+ */
+@Serializable
+data class TmdbImageItem(
+    @SerializedName("file_path")
+    @SerialName("file_path")
+    val filePath: String? = null,
+
+    @SerializedName("aspect_ratio")
+    @SerialName("aspect_ratio")
+    val aspectRatio: Double? = null,
+
+    @SerializedName("height")
+    @SerialName("height")
+    val height: Int? = null,
+
+    @SerializedName("width")
+    @SerialName("width")
+    val width: Int? = null,
+
+    @SerializedName("iso_639_1")
+    @SerialName("iso_639_1")
+    val iso6391: String? = null,
+
+    @SerializedName("vote_average")
+    @SerialName("vote_average")
+    val voteAverage: Double? = null,
+
+    @SerializedName("vote_count")
+    @SerialName("vote_count")
+    val voteCount: Int? = null
+) {
+    /** Full URL to the logo image (original if svg, w500 otherwise). */
+    val fullUrl: String?
+        get() = filePath?.takeIf(String::isNotBlank)?.let {
+            if (it.endsWith(".svg", ignoreCase = true)) {
+                "https://image.tmdb.org/t/p/original$it"
+            } else {
+                "https://image.tmdb.org/t/p/w500$it"
+            }
+        }
+}
+
+/**
+ * Image collections (logos, backdrops, posters) associated with a TMDB movie.
+ */
+@Serializable
+data class TmdbImagesResponse(
+    @SerializedName("id")
+    @SerialName("id")
+    val id: Int? = null,
+
+    @SerializedName("logos")
+    @SerialName("logos")
+    val logos: List<TmdbImageItem>? = null,
+
+    @SerializedName("backdrops")
+    @SerialName("backdrops")
+    val backdrops: List<TmdbImageItem>? = null,
+
+    @SerializedName("posters")
+    @SerialName("posters")
+    val posters: List<TmdbImageItem>? = null
+) {
+    /** Resolves the best logo: prioritizing the device language, then English, then language-neutral, then highest votes. */
+    val bestLogoUrl: String?
+        get() = getBestLogoUrl()
+
+    fun getBestLogoUrl(preferredLanguage: String? = null): String? {
+        val list = logos?.filter { !it.filePath.isNullOrBlank() } ?: return null
+        if (list.isEmpty()) return null
+        val targetLang = preferredLanguage?.takeIf(String::isNotBlank)?.lowercase(Locale.ROOT)
+            ?: Locale.getDefault().language.lowercase(Locale.ROOT)
+        return (list.filter { it.iso6391?.lowercase(Locale.ROOT) == targetLang }.maxByOrNull { it.voteAverage ?: 0.0 }
+            ?: (if (targetLang != "en") list.filter { it.iso6391?.lowercase(Locale.ROOT) == "en" }.maxByOrNull { it.voteAverage ?: 0.0 } else null)
+            ?: list.filter { it.iso6391.isNullOrBlank() }.maxByOrNull { it.voteAverage ?: 0.0 }
+            ?: list.maxByOrNull { it.voteAverage ?: 0.0 }
+            ?: list.firstOrNull())?.fullUrl
+    }
 }
 
 /**

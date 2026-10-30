@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -47,8 +48,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -59,6 +62,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -75,6 +79,7 @@ import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.TvGenreSortChips
 import com.martinrevert.latorrentola.ui.components.TvMovieImmersiveContainer
 import com.martinrevert.latorrentola.ui.components.TvSeriesGrid
+import com.martinrevert.latorrentola.ui.components.tvGridRowDpadNavigation
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
@@ -125,6 +130,8 @@ fun OttCatalogScreen(
         val tvGenres by viewModel.tvGenres.collectAsState()
         val focusedMovie by viewModel.focusedMovie.collectAsState()
         val focusedMovieBackdrop by viewModel.focusedMovieBackdrop.collectAsState()
+        val focusedMovieLogo by viewModel.focusedMovieLogo.collectAsState()
+        val isFocusedMovieLogoLoading by viewModel.isFocusedMovieLogoLoading.collectAsState()
 
         val gridState = rememberLazyGridState()
         val sortFocusRequester = remember { FocusRequester() }
@@ -168,6 +175,8 @@ fun OttCatalogScreen(
                 TvMovieImmersiveContainer(
                     focusedTmdbSummary = focusedMovie,
                     backdropUrl = focusedMovieBackdrop,
+                    logoUrl = focusedMovieLogo,
+                    isLogoLoading = isFocusedMovieLogoLoading,
                     themeMode = effectiveThemeMode,
                     modifier = Modifier.fillMaxSize(),
                     topBar = {
@@ -519,6 +528,9 @@ private fun OttMovieGrid(
         }
     }
 
+    val focusManager = LocalFocusManager.current
+    val coroutineScope = rememberCoroutineScope()
+
     LazyVerticalGrid(
         columns = columns,
         state = state,
@@ -529,14 +541,28 @@ private fun OttMovieGrid(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(
+        itemsIndexed(
             items = movies,
-            key = { it.id },
-            contentType = { "movie" }
-        ) { movie ->
+            key = { _, movie -> movie.id },
+            contentType = { _, _ -> "movie" }
+        ) { index, movie ->
             OttMovieCard(
                 movie = movie,
                 isTv = isTv,
+                modifier = Modifier.tvGridRowDpadNavigation(
+                    isTv = isTv,
+                    index = index,
+                    totalItems = movies.size,
+                    columns = 6,
+                    focusManager = focusManager,
+                    onFallbackNext = {
+                        coroutineScope.launch {
+                            state.scrollToItem(index + 1)
+                            withFrameNanos { }
+                            focusManager.moveFocus(FocusDirection.Next)
+                        }
+                    }
+                ),
                 shouldRequestFocus = movie.id == initialFocusId,
                 onFocusRestored = onFocusRestored,
                 onMovieFocus = onMovieFocus,

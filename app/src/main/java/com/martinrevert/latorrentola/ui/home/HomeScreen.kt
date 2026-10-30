@@ -121,6 +121,8 @@ fun HomeScreen(
     val isTv = remember(context) { context.isTvDevice() }
     val focusedMovie by viewModel.focusedMovie.collectAsState()
     val focusedMovieBackdrop by viewModel.focusedMovieBackdrop.collectAsState()
+    val focusedMovieLogo by viewModel.focusedMovieLogo.collectAsState()
+    val isFocusedMovieLogoLoading by viewModel.isFocusedMovieLogoLoading.collectAsState()
     val focusedMovieTmdb by viewModel.focusedMovieTmdb.collectAsState()
     var selectedMovieForDialog by remember { mutableStateOf<Movie?>(null) }
 
@@ -141,6 +143,8 @@ fun HomeScreen(
         isTv = isTv,
         focusedMovie = focusedMovie,
         focusedMovieBackdrop = focusedMovieBackdrop,
+        focusedMovieLogo = focusedMovieLogo,
+        isFocusedMovieLogoLoading = isFocusedMovieLogoLoading,
         focusedMovieTmdb = focusedMovieTmdb,
         onMovieClick = onMovieClick,
         onMovieLongClick = { movie -> selectedMovieForDialog = movie },
@@ -196,6 +200,8 @@ private fun HomeScreenContent(
     isTv: Boolean,
     focusedMovie: Movie? = null,
     focusedMovieBackdrop: String? = null,
+    focusedMovieLogo: String? = null,
+    isFocusedMovieLogoLoading: Boolean = false,
     focusedMovieTmdb: TmdbMovieResult? = null,
     onMovieClick: (Movie) -> Unit,
     onMovieLongClick: (Movie) -> Unit = {},
@@ -380,6 +386,8 @@ private fun HomeScreenContent(
                         focusedMovie = focusedMovie,
                         focusedMovieTmdb = focusedMovieTmdb,
                         backdropUrl = focusedMovieBackdrop,
+                        logoUrl = focusedMovieLogo,
+                        isLogoLoading = isFocusedMovieLogoLoading,
                         themeMode = themeMode,
                         modifier = Modifier.fillMaxSize(),
                         topBar = {

@@ -1,6 +1,10 @@
 package com.martinrevert.latorrentola
 
 import android.app.Application
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
+import coil3.svg.SvgDecoder
 import com.martinrevert.latorrentola.network.CrashlyticsManager
 import com.martinrevert.latorrentola.network.FirebaseMessagingInitializer
 import com.martinrevert.latorrentola.network.PublicTrackersRepository
@@ -11,9 +15,9 @@ import kotlinx.coroutines.launch
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
-/** Application entry point that initializes Firebase services once per process. */
+/** Application entry point that initializes Firebase services and Coil ImageLoader with SVG support. */
 @HiltAndroidApp
-class LaTorrentolaApp : Application() {
+class LaTorrentolaApp : Application(), SingletonImageLoader.Factory {
 
 	/** Coordinates initial Firebase Messaging setup. */
 	@Inject
@@ -26,6 +30,14 @@ class LaTorrentolaApp : Application() {
 	/** Coordinates live public BitTorrent trackers cache and background refreshes. */
 	@Inject
 	lateinit var publicTrackersRepository: PublicTrackersRepository
+
+	override fun newImageLoader(context: PlatformContext): ImageLoader {
+		return ImageLoader.Builder(context)
+			.components {
+				add(SvgDecoder.Factory())
+			}
+			.build()
+	}
 
 	/** Initializes the application and its Firebase integrations. */
 	override fun onCreate() {

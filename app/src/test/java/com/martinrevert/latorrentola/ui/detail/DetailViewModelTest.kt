@@ -261,4 +261,29 @@ class DetailViewModelTest {
         val success = state as DetailUiState.Success
         assertThat(success.backdropUrl).isEqualTo(tmdbResult.fullBackdropUrl)
     }
+
+    @Test
+    fun `setMovie should resolve logo from TMDB when imdbCode is available and complete with isLogoLoading false`() = runTest {
+        val movie = Movie(id = 1, title = "Original Title", imdbCode = "tt1375666")
+        val fullMovie = Movie(id = 1, title = "Inception", imdbCode = "tt1375666")
+        val tmdbResult = com.martinrevert.latorrentola.model.TMDB.TmdbMovieResult(
+            id = 27205,
+            title = "Inception"
+        )
+        val expectedLogoUrl = "https://image.tmdb.org/t/p/w500/logo.png"
+
+        coEvery { repository.isFavorite(1) } returns false
+        coEvery { repository.getMovieFullDetails(1) } returns MovieDetails(data = Data(movie = fullMovie))
+        coEvery { tmdbRepository.getMovieDetailsByImdbId("tt1375666") } returns null
+        coEvery { tmdbRepository.findMovieByImdbId("tt1375666") } returns tmdbResult
+        coEvery { tmdbRepository.getMovieLogo(27205) } returns expectedLogoUrl
+
+        viewModel.setMovie(movie)
+
+        val state = viewModel.uiState.value
+        assertThat(state).isInstanceOf(DetailUiState.Success::class.java)
+        val success = state as DetailUiState.Success
+        assertThat(success.logoUrl).isEqualTo(expectedLogoUrl)
+        assertThat(success.isLogoLoading).isFalse()
+    }
 }
