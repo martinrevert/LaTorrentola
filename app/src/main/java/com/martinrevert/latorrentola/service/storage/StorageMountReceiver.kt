@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import com.martinrevert.latorrentola.service.TorrentDownloadService
 
 /**
@@ -59,7 +60,7 @@ class StorageMountReceiver : BroadcastReceiver() {
         try {
             context.startService(serviceIntent)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to dispatch storage unmount intent to service", e)
+            AppLogger.e(TAG, "Failed to dispatch storage unmount intent to service", e)
         }
     }
 

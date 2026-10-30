@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.service.storage.remote
 
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import com.martinrevert.latorrentola.utils.mediaMimeType
 import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.runBlocking
@@ -85,7 +86,7 @@ class RemoteMediaHttpServer(
                 serveFull(mime)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error serving media stream: ${e.message}", e)
+            AppLogger.e(TAG, "Error serving media stream: ${e.message}", e)
             newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, e.message.orEmpty())
         }
     }

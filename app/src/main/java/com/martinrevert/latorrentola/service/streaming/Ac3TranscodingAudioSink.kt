@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola.service.streaming
 import android.content.Context
 import android.media.AudioFormat
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -165,7 +166,7 @@ class Ac3TranscodingAudioSink(
                 )
                 return
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to initialize AC3 transcoding, falling back to direct PCM output", e)
+                AppLogger.e(TAG, "Failed to initialize AC3 transcoding, falling back to direct PCM output", e)
                 cleanupEncoder()
                 isTranscodingActive = false
             }

@@ -5,6 +5,7 @@ import com.google.firebase.crashlytics.FirebaseCrashlytics
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
+import io.mockk.slot
 import io.mockk.unmockkStatic
 import io.mockk.verify
 import org.junit.After
@@ -63,6 +64,25 @@ class CrashlyticsManagerTest {
     fun `log delegates to FirebaseCrashlytics`() {
         crashlyticsManager.log("Test breadcrumb")
         verify { firebaseCrashlytics.log("Test breadcrumb") }
+    }
+
+    @Test
+    fun `logError logs breadcrumb and delegates exception to FirebaseCrashlytics`() {
+        val exception = IllegalStateException("Critical failure")
+        crashlyticsManager.logError("TestTag", "Something went wrong", exception)
+
+        verify { firebaseCrashlytics.log("[TestTag] Something went wrong") }
+        verify { firebaseCrashlytics.recordException(exception) }
+    }
+
+    @Test
+    fun `logError logs breadcrumb and records synthetic exception when throwable is null`() {
+        crashlyticsManager.logError("TestTag", "Something warning-level")
+
+        val exceptionSlot = slot<Throwable>()
+        verify { firebaseCrashlytics.log("[TestTag] Something warning-level") }
+        verify { firebaseCrashlytics.recordException(capture(exceptionSlot)) }
+        assertThat(exceptionSlot.captured.message).isEqualTo("[TestTag] Something warning-level")
     }
 
     @Test

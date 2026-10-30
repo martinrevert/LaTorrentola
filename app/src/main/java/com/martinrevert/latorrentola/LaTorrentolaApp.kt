@@ -4,6 +4,7 @@ import android.app.Application
 import com.martinrevert.latorrentola.network.CrashlyticsManager
 import com.martinrevert.latorrentola.network.FirebaseMessagingInitializer
 import com.martinrevert.latorrentola.network.PublicTrackersRepository
+import com.martinrevert.latorrentola.utils.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -29,6 +30,7 @@ class LaTorrentolaApp : Application() {
 	/** Initializes the application and its Firebase integrations. */
 	override fun onCreate() {
 		super.onCreate()
+		AppLogger.init(crashlyticsManager)
 		crashlyticsManager.setCollectionEnabled(true)
 		crashlyticsManager.setCustomKey("build_type", if (BuildConfig.DEBUG) "debug" else "release")
 		crashlyticsManager.setCustomKey("version_name", BuildConfig.VERSION_NAME)

@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -189,7 +190,7 @@ class MainActivity : FragmentActivity() {
         val safeIntent = try {
             sanitizer.sanitizeByFiltering(intent)
         } catch (e: Exception) {
-            Log.e("Security", "Intent sanitization failed", e)
+            AppLogger.e("Security", "Intent sanitization failed", e)
             return
         }
 

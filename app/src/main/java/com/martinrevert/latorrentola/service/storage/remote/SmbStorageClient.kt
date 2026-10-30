@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.service.storage.remote
 
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import com.hierynomus.msdtyp.AccessMask
 import com.hierynomus.msfscc.FileAttributes
 import com.hierynomus.mssmb2.SMB2Dialect
@@ -290,7 +291,7 @@ class SmbStorageClient @Inject constructor(
                 true
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to write subtitle to SMB share: ${e.message}", e)
+            AppLogger.e(TAG, "Failed to write subtitle to SMB share: ${e.message}", e)
             false
         }
     }

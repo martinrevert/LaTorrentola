@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.network.UserLibraryRepository
@@ -855,7 +856,7 @@ class TorrentDownloadService : Service() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: IllegalArgumentException) {
-                Log.e(TAG, "Invalid torrent download request", e)
+                AppLogger.e(TAG, "Invalid torrent download request", e)
                 streamServers.remove(request.infoHash)?.stop()
                 readyPlayerIntents.remove(request.infoHash)
                 openWhenReadyHashes.remove(request.infoHash)
@@ -873,7 +874,7 @@ class TorrentDownloadService : Service() {
                     )
                 )
             } catch (e: IllegalStateException) {
-                Log.e(TAG, "Torrent download could not be completed", e)
+                AppLogger.e(TAG, "Torrent download could not be completed", e)
                 streamServers.remove(request.infoHash)?.stop()
                 readyPlayerIntents.remove(request.infoHash)
                 openWhenReadyHashes.remove(request.infoHash)
@@ -891,7 +892,7 @@ class TorrentDownloadService : Service() {
                     )
                 )
             } catch (e: SecurityException) {
-                Log.e(TAG, "Torrent download was blocked by the platform", e)
+                AppLogger.e(TAG, "Torrent download was blocked by the platform", e)
                 streamServers.remove(request.infoHash)?.stop()
                 readyPlayerIntents.remove(request.infoHash)
                 openWhenReadyHashes.remove(request.infoHash)

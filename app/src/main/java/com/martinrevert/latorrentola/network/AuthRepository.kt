@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
@@ -63,7 +64,6 @@ class AuthRepository internal constructor(
             _currentUserFlow.value = user
             if (user != null) {
                 crashlyticsManager.setUserId(user.uid)
-                user.email?.let { crashlyticsManager.setCustomKey("user_email", it) }
             } else {
                 crashlyticsManager.setUserId(null)
             }
@@ -100,7 +100,7 @@ class AuthRepository internal constructor(
                     .addCredentialOption(signInWithGoogleOption)
                     .build()
 
-                Log.d("AuthRepository", "Requesting credential via GetSignInWithGoogleOption with WEB_CLIENT_ID=${Constants.WEB_CLIENT_ID}")
+                Log.d("AuthRepository", "Requesting credential via GetSignInWithGoogleOption")
                 credentialManager.getCredential(
                     request = request,
                     context = targetActivity
@@ -109,7 +109,7 @@ class AuthRepository internal constructor(
                 // User explicitly dismissed or cancelled the account picker; do not trigger fallback
                 throw e
             } catch (e: Exception) {
-                Log.w("AuthRepository", "GetSignInWithGoogleOption failed (${e.message}), attempting fallback to GetGoogleIdOption", e)
+                Log.w("AuthRepository", "GetSignInWithGoogleOption failed, attempting fallback to GetGoogleIdOption", e)
                 val googleIdOption = GetGoogleIdOption.Builder()
                     .setFilterByAuthorizedAccounts(false)
                     .setServerClientId(Constants.WEB_CLIENT_ID)
@@ -135,18 +135,18 @@ class AuthRepository internal constructor(
             Log.d("AuthRepository", "Firebase authentication completed successfully")
             Result.success(Unit)
         } catch (e: GetCredentialCancellationException) {
-            Log.d("AuthRepository", "User cancelled credential request")
+            AppLogger.d("AuthRepository", "User cancelled credential request")
             Result.failure(e)
         } catch (e: NoCredentialException) {
-            Log.e("AuthRepository", "No credential available: ${e.message}", e)
+            AppLogger.d("AuthRepository", "No credential available on device: ${e.message}")
             Result.failure(e)
         } catch (e: GetCredentialException) {
-            Log.e("AuthRepository", "GetCredentialException during sign-in: ${e.message}", e)
+            AppLogger.e("AuthRepository", "GetCredentialException during sign-in", e)
             Result.failure(e)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Unexpected error during Google sign-in: ${e.message}", e)
+            AppLogger.e("AuthRepository", "Unexpected error during Google sign-in", e)
             Result.failure(e)
         }
     }
@@ -157,7 +157,7 @@ class AuthRepository internal constructor(
         try {
             credentialManager.clearCredentialState(ClearCredentialStateRequest())
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Error clearing credential state: ${e.message}")
+            AppLogger.e("AuthRepository", "Error clearing credential state: ${e.message}", e)
         }
     }
 

@@ -5,6 +5,7 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import java.io.File
 import java.nio.ByteBuffer
 
@@ -93,7 +94,7 @@ object MkvToMp4Remuxer {
             Log.i(TAG, "Remuxed ${mkvFile.name} -> ${outputFile.name} (${outputFile.length()} bytes)")
             return true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to remux MKV to MP4", e)
+            AppLogger.e(TAG, "Failed to remux MKV to MP4", e)
             if (outputFile.exists()) outputFile.delete()
             return false
         } finally {

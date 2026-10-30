@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.service.storage.remote
 
 import android.content.Context
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import com.martinrevert.latorrentola.service.storage.TorrentStorageResolver
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -161,7 +162,7 @@ class RemoteStorageManager @Inject constructor(
                 }
                 true
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to save local USB subtitle: ${e.message}", e)
+                AppLogger.e(TAG, "Failed to save local USB subtitle: ${e.message}", e)
                 false
             }
         } else {

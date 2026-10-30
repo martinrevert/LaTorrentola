@@ -147,7 +147,7 @@ class AuthRepositoryTest {
 
         listenerSlot.captured.onAuthStateChanged(firebaseAuth)
         verify { crashlyticsManager.setUserId("user_test_99") }
-        verify { crashlyticsManager.setCustomKey("user_email", "test@example.com") }
+        verify(exactly = 0) { crashlyticsManager.setCustomKey("user_email", any()) }
 
         every { firebaseAuth.currentUser } returns null
         listenerSlot.captured.onAuthStateChanged(firebaseAuth)

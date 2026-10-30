@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.ui.auth
 
 import android.content.Context
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -62,7 +63,7 @@ class AuthViewModel @Inject constructor(
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e("AuthViewModel", "Failed syncing remote settings post-login: ${e.message}")
+                    AppLogger.e("AuthViewModel", "Failed syncing remote settings post-login: ${e.message}", e)
                 }
                 _authState.value = AuthState.Success
             } else {

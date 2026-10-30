@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.service
 
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import fi.iki.elonen.NanoHTTPD
 import java.io.File
 import java.io.IOException
@@ -143,7 +144,7 @@ class VerifiedTorrentHttpServer(
                         addCorsHeaders(this, session)
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error serving subtitle VTT: ${e.message}")
+                    AppLogger.e(TAG, "Error serving subtitle VTT: ${e.message}", e)
                     newFixedLengthResponse(
                         Response.Status.INTERNAL_ERROR,
                         MIME_PLAINTEXT,
@@ -225,7 +226,7 @@ class VerifiedTorrentHttpServer(
         }
 
         if (!activeFile.isFile || activeFile.length() == 0L) {
-            Log.e(TAG, "File not ready on disk for $uri")
+            AppLogger.e(TAG, "File not ready on disk for $uri")
             return newFixedLengthResponse(
                 Response.Status.INTERNAL_ERROR,
                 MIME_PLAINTEXT,

@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.service
 
 import android.content.Intent
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import androidx.annotation.OptIn
 import androidx.media3.cast.CastPlayer
 import androidx.media3.cast.CastTrackSelector
@@ -425,10 +426,10 @@ class PlaybackService : MediaSessionService() {
                         applyCastSubtitleStyle(castContext.sessionManager.currentCastSession)
                     }
                     .addOnFailureListener {
-                        Log.e(TAG, "CastContext failed to initialize", it)
+                        AppLogger.e(TAG, "CastContext failed to initialize", it)
                     }
             } catch (e: Exception) {
-                Log.e(TAG, "Error initializing CastContext", e)
+                AppLogger.e(TAG, "Error initializing CastContext", e)
             }
 
             val proxyPlayer = castPlayerBuilder.build()
@@ -460,7 +461,7 @@ class PlaybackService : MediaSessionService() {
 
             Log.d(TAG, "PlaybackService created with MediaSession")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize PlaybackService", e)
+            AppLogger.e(TAG, "Failed to initialize PlaybackService", e)
         }
     }
 
@@ -638,7 +639,7 @@ class PlaybackService : MediaSessionService() {
             try {
                 userLibraryRepository.savePlaybackProgress(progress)
             } catch (e: Exception) {
-                Log.e(TAG, "Error saving playback progress", e)
+                AppLogger.e(TAG, "Error saving playback progress", e)
             }
         }
     }
@@ -670,7 +671,7 @@ class PlaybackService : MediaSessionService() {
                 userLibraryRepository.savePlaybackProgress(progress)
                 Log.i(TAG, "Explicitly saved progress: $finalPos / $dur ms for $mediaId")
             } catch (e: Exception) {
-                Log.e(TAG, "Error explicitly saving playback progress", e)
+                AppLogger.e(TAG, "Error explicitly saving playback progress", e)
             }
         }
     }

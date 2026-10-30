@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.network
 
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
 import com.martinrevert.latorrentola.model.YTS.Torrent
@@ -44,7 +45,7 @@ class TorrentioRepository @Inject constructor(
                 .filter { !it.infoHash.isNullOrBlank() }
                 .map { stream -> mapStreamToRelease(stream) }
         } catch (e: Exception) {
-            Log.e(TAG, "Error fetching Torrentio movie streams for $cleanId: ${e.message}")
+            AppLogger.e(TAG, "Error fetching Torrentio movie streams for $cleanId: ${e.message}", e)
             emptyList()
         }
     }
@@ -77,7 +78,7 @@ class TorrentioRepository @Inject constructor(
                 .filter { !TorrentioMetadataParser.isSeasonPack(it.title, it.behaviorHints?.filename) }
                 .map { stream -> mapStreamToRelease(stream) }
         } catch (e: Exception) {
-            Log.e(TAG, "Error fetching Torrentio series streams for $seriesParam: ${e.message}")
+            AppLogger.e(TAG, "Error fetching Torrentio series streams for $seriesParam: ${e.message}", e)
             emptyList()
         }
     }

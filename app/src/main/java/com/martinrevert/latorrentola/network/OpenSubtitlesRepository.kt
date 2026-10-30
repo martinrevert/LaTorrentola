@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.network
 
 import android.content.Context
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
 import com.martinrevert.latorrentola.BuildConfig
@@ -526,10 +527,11 @@ class OpenSubtitlesRepository @Inject constructor(
                 cause = error
             )
         } catch (error: Exception) {
-            Log.e(
+            AppLogger.e(
                 TAG,
                 "$operation request failed unexpectedly: ${error.javaClass.simpleName}, " +
-                    "message=${error.message?.let(::sanitizeLogValue) ?: "unavailable"}"
+                    "message=${error.message?.let(::sanitizeLogValue) ?: "unavailable"}",
+                error
             )
             throw OpenSubtitlesException(
                 OpenSubtitlesErrorCode.INVALID_RESPONSE,

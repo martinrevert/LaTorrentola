@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import com.martinrevert.latorrentola.utils.AppLogger
 import com.martinrevert.latorrentola.utils.MediaMetadataResolver
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -60,7 +61,7 @@ class UserLibraryRepository @Inject constructor(
                 .collection("downloads")
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
-                        Log.e("Firestore", "Error fetching downloads: ${error.message}")
+                        AppLogger.e("Firestore", "Error fetching downloads: ${error.message}", error)
                         trySend(emptyList())
                         return@addSnapshotListener
                     }
@@ -88,7 +89,7 @@ class UserLibraryRepository @Inject constructor(
                 .await()
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("Firestore", "Error saving download: ${e.message}")
+            AppLogger.e("Firestore", "Error saving download: ${e.message}", e)
         }
     }
 
@@ -101,7 +102,7 @@ class UserLibraryRepository @Inject constructor(
                 .collection("tv_downloads")
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
-                        Log.e("Firestore", "Error fetching TV downloads: ${error.message}")
+                        AppLogger.e("Firestore", "Error fetching TV downloads: ${error.message}", error)
                         trySend(emptyList())
                         return@addSnapshotListener
                     }
@@ -133,7 +134,7 @@ class UserLibraryRepository @Inject constructor(
                 .await()
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("Firestore", "Error saving TV episode download: ${e.message}")
+            AppLogger.e("Firestore", "Error saving TV episode download: ${e.message}", e)
         }
     }
 
@@ -157,7 +158,7 @@ class UserLibraryRepository @Inject constructor(
                 .await()
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("Firestore", "Error removing remote movie download by hash: ${e.message}")
+            AppLogger.e("Firestore", "Error removing remote movie download by hash: ${e.message}", e)
         }
     }
 
@@ -181,7 +182,7 @@ class UserLibraryRepository @Inject constructor(
                 .await()
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("Firestore", "Error removing remote episode download by hash: ${e.message}")
+            AppLogger.e("Firestore", "Error removing remote episode download by hash: ${e.message}", e)
         }
     }
 
@@ -194,7 +195,7 @@ class UserLibraryRepository @Inject constructor(
                 .collection("favorites")
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
-                        Log.e("Firestore", "Error fetching favorites: ${error.message}")
+                        AppLogger.e("Firestore", "Error fetching favorites: ${error.message}", error)
                         trySend(emptyList())
                         return@addSnapshotListener
                     }
@@ -224,7 +225,7 @@ class UserLibraryRepository @Inject constructor(
                 .await()
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("Firestore", "Error adding favorite: ${e.message}")
+            AppLogger.e("Firestore", "Error adding favorite: ${e.message}", e)
         }
     }
 
@@ -240,7 +241,7 @@ class UserLibraryRepository @Inject constructor(
                 .await()
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("Firestore", "Error removing favorite: ${e.message}")
+            AppLogger.e("Firestore", "Error removing favorite: ${e.message}", e)
         }
     }
 
@@ -253,7 +254,7 @@ class UserLibraryRepository @Inject constructor(
                 .collection("favorites")
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
-                        Log.e("Firestore", "Error fetching favorite TV series: ${error.message}")
+                        AppLogger.e("Firestore", "Error fetching favorite TV series: ${error.message}", error)
                         trySend(emptyList())
                         return@addSnapshotListener
                     }
@@ -456,7 +457,7 @@ class UserLibraryRepository @Inject constructor(
             )
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("UserLibraryRepository", "Error saving watch history locally: ${e.message}")
+            AppLogger.e("UserLibraryRepository", "Error saving watch history locally: ${e.message}", e)
         }
 
         val uid = userId ?: return
@@ -469,7 +470,7 @@ class UserLibraryRepository @Inject constructor(
                 .await()
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("Firestore", "Error saving playback progress: ${e.message}")
+            AppLogger.e("Firestore", "Error saving playback progress: ${e.message}", e)
         }
     }
 
@@ -523,7 +524,7 @@ class UserLibraryRepository @Inject constructor(
                 remoteProgress = parsePlaybackProgress(doc)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                Log.e("UserLibraryRepository", "Error fetching remote watch history: ${e.message}")
+                AppLogger.e("UserLibraryRepository", "Error fetching remote watch history: ${e.message}", e)
             }
         }
 
@@ -532,7 +533,7 @@ class UserLibraryRepository @Inject constructor(
             localEntity = watchHistoryDao.get(mediaId)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("UserLibraryRepository", "Error fetching local watch history: ${e.message}")
+            AppLogger.e("UserLibraryRepository", "Error fetching local watch history: ${e.message}", e)
         }
 
         if (remoteProgress != null && (localEntity == null || remoteProgress.timestamp > localEntity.timestamp)) {
@@ -549,7 +550,7 @@ class UserLibraryRepository @Inject constructor(
                 )
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                Log.e("UserLibraryRepository", "Error saving remote progress to Room: ${e.message}")
+                AppLogger.e("UserLibraryRepository", "Error saving remote progress to Room: ${e.message}", e)
             }
             return remoteProgress
         }
@@ -803,7 +804,7 @@ class UserLibraryRepository @Inject constructor(
             watchHistoryDao.delete(mediaId)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("UserLibraryRepository", "Error deleting watch history locally: ${e.message}")
+            AppLogger.e("UserLibraryRepository", "Error deleting watch history locally: ${e.message}", e)
         }
 
         val uid = userId ?: return
@@ -816,7 +817,7 @@ class UserLibraryRepository @Inject constructor(
                 .await()
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("Firestore", "Error deleting playback progress remotely: ${e.message}")
+            AppLogger.e("Firestore", "Error deleting playback progress remotely: ${e.message}", e)
         }
     }
 
@@ -859,7 +860,7 @@ class UserLibraryRepository @Inject constructor(
             torrentDownloadDao?.deleteForMovie(movieId)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("UserLibraryRepository", "Error deleting movie download local record: ${e.message}")
+            AppLogger.e("UserLibraryRepository", "Error deleting movie download local record: ${e.message}", e)
         }
 
         val uid = userId ?: return
@@ -882,7 +883,7 @@ class UserLibraryRepository @Inject constructor(
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("Firestore", "Error removing remote movie download: ${e.message}")
+            AppLogger.e("Firestore", "Error removing remote movie download: ${e.message}", e)
         }
     }
 
@@ -948,7 +949,7 @@ class UserLibraryRepository @Inject constructor(
             torrentDownloadDao?.deleteForEpisode(seriesId, seasonNumber, episodeNumber)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("UserLibraryRepository", "Error deleting local episode download: ${e.message}")
+            AppLogger.e("UserLibraryRepository", "Error deleting local episode download: ${e.message}", e)
         }
 
         val uid = userId ?: return
@@ -966,7 +967,7 @@ class UserLibraryRepository @Inject constructor(
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.e("Firestore", "Error removing remote episode download: ${e.message}")
+            AppLogger.e("Firestore", "Error removing remote episode download: ${e.message}", e)
         }
     }
 

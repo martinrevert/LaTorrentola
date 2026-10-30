@@ -45,7 +45,20 @@
     public <init>();
 }
 
-# 7. Third-Party Warning Suppressions (-dontwarn)
+# 7. Release Logging Optimization
+# Completely strip Verbose and Debug logging calls and string overhead in release builds
+-assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(java.lang.String, int);
+    public static int v(...);
+    public static int d(...);
+}
+
+-assumenosideeffects class com.martinrevert.latorrentola.utils.AppLogger {
+    public void v(...);
+    public void d(...);
+}
+
+# 8. Third-Party Warning Suppressions (-dontwarn)
 # Suppress references to missing desktop Java classes in SMB / BouncyCastle / Retrofit
 -dontwarn java.rmi.UnmarshalException
 -dontwarn javax.el.**

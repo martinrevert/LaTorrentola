@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessaging
@@ -133,7 +134,7 @@ class FirebaseMessagingInitializer @Inject constructor(
                         val retryCount = preferenceManager.getFcmRetryCount()
                         Log.w(TAG, "Backend sync failed. Retry count: $retryCount")
                         if (retryCount >= 5) {
-                            Log.e(TAG, "Max retries reached. Disabling push notifications.")
+                            AppLogger.e(TAG, "Max retries reached. Disabling push notifications.")
                             preferenceManager.setPushEnabled(false)
                             preferenceManager.setFcmRetryCount(0)
                             // We don't call syncTopicSubscription(false) here to avoid loops, 

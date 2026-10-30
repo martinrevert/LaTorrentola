@@ -78,6 +78,14 @@ class CrashlyticsManager @Inject constructor() {
     }
 
     /**
+     * Records an error message as a breadcrumb and reports the associated non-fatal exception.
+     */
+    fun logError(tag: String, message: String, throwable: Throwable? = null) {
+        log("[$tag] $message")
+        recordException(throwable ?: Exception("[$tag] $message"))
+    }
+
+    /**
      * Throws an intentional unhandled exception to verify the Crashlytics pipeline.
      */
     fun triggerTestCrash() {

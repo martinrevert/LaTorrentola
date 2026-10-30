@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.service.storage.remote
 
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -157,7 +158,7 @@ class NfsStorageClient @Inject constructor() : RemoteStorageClient {
                     val err = synchronized(session.lock) {
                         LibNfsNative.nativeGetErrorMessage(session.ctxPtr)
                     } ?: "Error al abrir archivo"
-                    Log.e(TAG, "Failed to open $cleanPath on NFS: $err")
+                    AppLogger.e(TAG, "Failed to open $cleanPath on NFS: $err")
                     throw IOException("No se pudo abrir $filePath en NFS: $err")
                 }
             }
@@ -233,7 +234,7 @@ class NfsStorageClient @Inject constructor() : RemoteStorageClient {
                 LibNfsNative.nativeWriteFile(session.ctxPtr, cleanPath, vttContent.toByteArray(Charsets.UTF_8))
             }
         } catch (e: Exception) {
-            try { Log.e(TAG, "Failed to write subtitle to NFS export: ${e.message}", e) } catch (_: Throwable) {}
+            try { AppLogger.e(TAG, "Failed to write subtitle to NFS export: ${e.message}", e) } catch (_: Throwable) {}
             false
         }
     }

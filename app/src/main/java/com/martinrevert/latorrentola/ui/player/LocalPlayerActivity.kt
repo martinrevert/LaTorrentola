@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import android.view.WindowManager
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.BackHandler
@@ -1396,7 +1397,7 @@ class LocalPlayerActivity : FragmentActivity() {
                     finish()
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to connect MediaController", e)
+                AppLogger.e(TAG, "Failed to connect MediaController", e)
                 if (pendingMediaUri == null && !intent.getBooleanExtra(EXTRA_FROM_PIP, false)) {
                     finish()
                 }
@@ -1478,7 +1479,7 @@ class LocalPlayerActivity : FragmentActivity() {
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
-                        Log.e(TAG, "Player error encountered during playback: ${error.message}", error)
+                        AppLogger.e(TAG, "Player error encountered during playback: ${error.message}", error)
                         if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_LOCAL) {
                             resolvePlaybackDecodingError(error)?.let { decodingError ->
                                 playbackDecodingError = decodingError
@@ -1748,7 +1749,7 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
-                    Log.e(TAG, "Player error encountered: ${error.errorCodeName} (${error.errorCode}): ${error.message}", error)
+                    AppLogger.e(TAG, "Player error encountered: ${error.errorCodeName} (${error.errorCode}): ${error.message}", error)
                     if (controller.currentPosition > 5000L) {
                         lastKnownPlaybackPositionMs = controller.currentPosition
                     }
