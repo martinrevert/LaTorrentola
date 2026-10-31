@@ -51,6 +51,7 @@ import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.network.TmdbTvFeed
 import com.martinrevert.latorrentola.ui.components.GenreBottomSheet
 import com.martinrevert.latorrentola.ui.components.GenreChips
+import com.martinrevert.latorrentola.ui.components.HandheldMovieImmersiveContainer
 import com.martinrevert.latorrentola.ui.components.MovieList
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.QualityChips
@@ -266,6 +267,10 @@ private fun HomeScreenContent(
 
     val hazeState = if (!isTv) rememberHazeState() else null
 
+    val configuration = LocalConfiguration.current
+    val screenWidthDp = configuration.screenWidthDp
+    val isHandheldMovieMode = !isTv && !isTvMode
+
     val isScrolled by remember {
         derivedStateOf {
             val activeGrid = if (isTvMode) tvGridState else gridState
@@ -283,9 +288,9 @@ private fun HomeScreenContent(
     )
 
     Scaffold(
-        contentWindowInsets = if (isTv && !isTvMode) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
+        contentWindowInsets = if ((isTv && !isTvMode) || isHandheldMovieMode) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
         topBar = {
-            if (!isTv) {
+            if (!isTv && isTvMode) {
                 HomeTopAppBar(
                     userPhotoUrl = userPhotoUrl,
                     favoritesCount = favoritesCount,
@@ -293,7 +298,7 @@ private fun HomeScreenContent(
                     onActorSearchClick = onActorSearchClick,
                     onFavoritesClick = onFavoritesClick,
                     onSettingsClick = onSettingsClick,
-                    isTvMode = isTvMode,
+                    isTvMode = true,
                     onMoviesClick = { selectMediaMode(false) },
                     onTvClick = { selectMediaMode(true) },
                     focusDownRequester = homeControlsFocusRequester,
@@ -441,22 +446,118 @@ private fun HomeScreenContent(
                         )
                     }
                 }
-            } else {
-                // Handheld Layout: Full-screen edge-to-edge with Haze top blur and translucent bottom bar
+            } else if (!isTvMode) {
+                // Handheld Movies Layout (All form factors: Phones < 600dp, Foldables, Tablets):
+                // Immersive hero header with dynamic TMDB backdrop, logo, and 2-touch interactive preview
                 val pullRefreshState = rememberPullRefreshState(
-                    if (isTvMode) tvIsRefreshing else isRefreshing,
+                    isRefreshing,
                     onRefresh = {
                         onSetLastClickedMovieId(null)
-                        if (isTvMode) tvHomeViewModel?.refresh(showIndicator = true) else onRefresh(true)
-                        scope.launch {
-                            (if (isTvMode) tvGridState else gridState).scrollToItem(0)
+                        onRefresh(true)
+                        scope.launch { gridState.scrollToItem(0) }
+                    }
+                )
+                HandheldMovieImmersiveContainer(
+                    focusedMovie = focusedMovie,
+                    focusedMovieTmdb = focusedMovieTmdb,
+                    backdropUrl = focusedMovieBackdrop,
+                    logoUrl = focusedMovieLogo,
+                    isLogoLoading = isFocusedMovieLogoLoading,
+                    onDetailsClick = {
+                        focusedMovie?.let { movie ->
+                            onSetLastClickedMovieId(movie.id)
+                            onMovieClick(movie)
                         }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                    topBar = {
+                        HomeTopAppBar(
+                            userPhotoUrl = userPhotoUrl,
+                            favoritesCount = favoritesCount,
+                            onSearchClick = onSearchClick,
+                            onActorSearchClick = onActorSearchClick,
+                            onFavoritesClick = onFavoritesClick,
+                            onSettingsClick = onSettingsClick,
+                            isTvMode = false,
+                            onMoviesClick = { selectMediaMode(false) },
+                            onTvClick = { selectMediaMode(true) },
+                            focusDownRequester = homeControlsFocusRequester,
+                            containerColor = Color.Transparent,
+                            isTv = false
+                        )
+                    },
+                    chips = {
+                        GenreChips(
+                            genres = topGenres,
+                            onGenreClick = onGenreClick,
+                            onAllGenresClick = { showGenreSheet = true },
+                            onOttClick = { onOttClick(false) },
+                            firstFocusRequester = homeControlsFocusRequester
+                        )
+                        QualityChips(
+                            options = qualityOptions,
+                            selectedQuality = selectedQuality ?: "All",
+                            onQualityClick = onQualityClick
+                        )
+                    }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pullRefresh(pullRefreshState)
+                    ) {
+                        HomeContent(
+                            uiState = uiState,
+                            gridState = gridState,
+                            lastVisitDate = lastVisitDate,
+                            downloadedMovieIds = downloadedMovieIds,
+                            watchHistoryMap = watchHistoryMap,
+                            isLoadingMore = isLoadingMore,
+                            onMovieClick = { movie ->
+                                if (focusedMovie?.id == movie.id) {
+                                    onSetLastClickedMovieId(movie.id)
+                                    onMovieClick(movie)
+                                } else {
+                                    onMovieFocus?.invoke(movie)
+                                }
+                            },
+                            onMovieLongClick = onMovieLongClick,
+                            onLoadMore = onLoadMore,
+                            lastClickedMovieId = lastClickedMovieId,
+                            onFocusRestored = onFocusRestored,
+                            activeHeroMovieId = focusedMovie?.id,
+                            contentPadding = PaddingValues(
+                                top = 8.dp,
+                                bottom = navBarHeight + 16.dp,
+                                start = if (screenWidthDp < 600) 16.dp else 20.dp,
+                                end = if (screenWidthDp < 600) 16.dp else 20.dp
+                            ),
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        PullRefreshIndicator(
+                            refreshing = isRefreshing,
+                            state = pullRefreshState,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 8.dp)
+                        )
+                    }
+                }
+            } else {
+                // Handheld TV Series Mode (!isTv && isTvMode)
+                val pullRefreshState = rememberPullRefreshState(
+                    tvIsRefreshing,
+                    onRefresh = {
+                        onSetLastClickedMovieId(null)
+                        tvHomeViewModel?.refresh(showIndicator = true)
+                        scope.launch { tvGridState.scrollToItem(0) }
                     }
                 )
                 val measuredControlsOffset = if (homeControlsHeightPx > 0) {
                     with(density) { homeControlsHeightPx.toDp() } + 16.dp
                 } else {
-                    if (isTvMode) 208.dp else 160.dp
+                    208.dp
                 }
                 val topContentOffset = padding.calculateTopPadding() + measuredControlsOffset
 
@@ -471,42 +572,22 @@ private fun HomeScreenContent(
                         start = 16.dp,
                         end = 16.dp
                     )
-                    if (isTvMode) {
-                        TvHomeContent(
-                            uiState = tvUiState,
-                            genres = tvGenres,
-                            gridState = tvGridState,
-                            isLoadingMore = tvIsLoadingMore,
-                            downloadedSeriesIds = downloadedSeriesIds,
-                            watchHistoryMap = watchHistoryMap,
-                            onSeriesClick = {
-                                tvHomeViewModel?.setLastClickedSeriesId(it.id)
-                                onTvSeriesClick(it)
-                            },
-                            onLoadMore = { tvHomeViewModel?.loadMore() },
-                            lastClickedSeriesId = lastClickedSeriesId,
-                            onFocusRestored = { tvHomeViewModel?.clearLastClickedSeriesId() },
-                            contentPadding = contentPadding
-                        )
-                    } else {
-                        HomeContent(
-                            uiState = uiState,
-                            gridState = gridState,
-                            lastVisitDate = lastVisitDate,
-                            downloadedMovieIds = downloadedMovieIds,
-                            watchHistoryMap = watchHistoryMap,
-                            isLoadingMore = isLoadingMore,
-                            onMovieClick = {
-                                onSetLastClickedMovieId(it.id)
-                                onMovieClick(it)
-                            },
-                            onMovieLongClick = onMovieLongClick,
-                            onLoadMore = onLoadMore,
-                            lastClickedMovieId = lastClickedMovieId,
-                            onFocusRestored = onFocusRestored,
-                            contentPadding = contentPadding
-                        )
-                    }
+                    TvHomeContent(
+                        uiState = tvUiState,
+                        genres = tvGenres,
+                        gridState = tvGridState,
+                        isLoadingMore = tvIsLoadingMore,
+                        downloadedSeriesIds = downloadedSeriesIds,
+                        watchHistoryMap = watchHistoryMap,
+                        onSeriesClick = {
+                            tvHomeViewModel?.setLastClickedSeriesId(it.id)
+                            onTvSeriesClick(it)
+                        },
+                        onLoadMore = { tvHomeViewModel?.loadMore() },
+                        lastClickedSeriesId = lastClickedSeriesId,
+                        onFocusRestored = { tvHomeViewModel?.clearLastClickedSeriesId() },
+                        contentPadding = contentPadding
+                    )
 
                     Column(
                         modifier = Modifier
@@ -525,50 +606,35 @@ private fun HomeScreenContent(
                                 }
                             }
                     ) {
-                        if (isTvMode) {
-                            TvFeedChips(
-                                selectedFeed = selectedTvFeed,
-                                onFeedClick = {
-                                    tvHomeViewModel?.selectFeed(it)
-                                    scope.launch { tvGridState.scrollToItem(0) }
-                                },
-                                firstFocusRequester = homeControlsFocusRequester
-                            )
-                            tvGenreError?.let {
-                                Text(
-                                    text = it.asString(),
-                                    color = MaterialTheme.colorScheme.error,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(horizontal = 16.dp)
-                                )
-                            }
-                            TvGenreChips(
-                                genres = tvGenres,
-                                onGenreClick = {
-                                    tvHomeViewModel?.recordGenreVisit(it.id)
-                                    onTvGenreClick(it)
-                                },
-                                onAllGenresClick = { showTvGenreSheet = true },
-                                onOttClick = { onOttClick(true) }
-                            )
-                        } else {
-                            GenreChips(
-                                genres = topGenres,
-                                onGenreClick = onGenreClick,
-                                onAllGenresClick = { showGenreSheet = true },
-                                onOttClick = { onOttClick(false) },
-                                firstFocusRequester = homeControlsFocusRequester
-                            )
-                            QualityChips(
-                                options = qualityOptions,
-                                selectedQuality = selectedQuality ?: "All",
-                                onQualityClick = onQualityClick
+                        TvFeedChips(
+                            selectedFeed = selectedTvFeed,
+                            onFeedClick = {
+                                tvHomeViewModel?.selectFeed(it)
+                                scope.launch { tvGridState.scrollToItem(0) }
+                            },
+                            firstFocusRequester = homeControlsFocusRequester
+                        )
+                        tvGenreError?.let {
+                            Text(
+                                text = it.asString(),
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(horizontal = 16.dp)
                             )
                         }
+                        TvGenreChips(
+                            genres = tvGenres,
+                            onGenreClick = {
+                                tvHomeViewModel?.recordGenreVisit(it.id)
+                                onTvGenreClick(it)
+                            },
+                            onAllGenresClick = { showTvGenreSheet = true },
+                            onOttClick = { onOttClick(true) }
+                        )
                     }
 
                     PullRefreshIndicator(
-                        refreshing = if (isTvMode) tvIsRefreshing else isRefreshing,
+                        refreshing = tvIsRefreshing,
                         state = pullRefreshState,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
@@ -820,6 +886,7 @@ private fun HomeContent(
     onFocusRestored: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(16.dp),
     onMovieFocus: ((Movie) -> Unit)? = null,
+    activeHeroMovieId: Int? = null,
     modifier: Modifier = Modifier
 ) {
     when (uiState) {
@@ -841,6 +908,7 @@ private fun HomeContent(
                 onFocusRestored = onFocusRestored,
                 contentPadding = contentPadding,
                 onMovieFocus = onMovieFocus,
+                activeHeroMovieId = activeHeroMovieId,
                 modifier = modifier
             )
         }

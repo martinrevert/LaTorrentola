@@ -2,6 +2,7 @@
 
 package com.martinrevert.latorrentola.ui.ott
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -75,6 +76,7 @@ import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieSummary
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.ui.components.HandheldMovieImmersiveContainer
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.TvGenreSortChips
 import com.martinrevert.latorrentola.ui.components.TvMovieImmersiveContainer
@@ -137,15 +139,16 @@ fun OttCatalogScreen(
         val sortFocusRequester = remember { FocusRequester() }
         val coroutineScope = rememberCoroutineScope()
         val isTvMoviesCatalog = isTv && !isTvMode
+        val isHandheldMoviesCatalog = !isTv && !isTvMode
 
         LaunchedEffect(providerId, isTvMode) {
             viewModel.setProvider(providerId, isTvMode)
         }
 
         Scaffold(
-            contentWindowInsets = if (isTvMoviesCatalog) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
+            contentWindowInsets = if (isTvMoviesCatalog || isHandheldMoviesCatalog) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
             topBar = {
-                if (!isTvMoviesCatalog) {
+                if (!isTvMoviesCatalog && !isHandheldMoviesCatalog) {
                     TopAppBar(
                         title = {
                             Text(
@@ -295,6 +298,131 @@ fun OttCatalogScreen(
                                             text = stringResource(R.string.retry),
                                             modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
                                         )
+                                    }
+                                }
+                            }
+                        }
+                        else -> Unit
+                    }
+                }
+            } else if (isHandheldMoviesCatalog) {
+                HandheldMovieImmersiveContainer(
+                    focusedTmdbSummary = focusedMovie,
+                    backdropUrl = focusedMovieBackdrop,
+                    logoUrl = focusedMovieLogo,
+                    isLogoLoading = isFocusedMovieLogoLoading,
+                    onDetailsClick = { focusedMovie?.let(onMovieClick) },
+                    modifier = Modifier.fillMaxSize(),
+                    topBar = {
+                        TopAppBar(
+                            title = {
+                                Text(
+                                    text = providerName,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            },
+                            navigationIcon = {
+                                IconButton(onClick = onBackClick) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = stringResource(R.string.back_desc)
+                                    )
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                        )
+                    },
+                    chips = {
+                        Column {
+                            Text(
+                                text = stringResource(R.string.tv_sort_by),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+                            )
+                            TvGenreSortChips(
+                                selectedSort = selectedSort,
+                                descending = descending,
+                                onSortClick = { sort ->
+                                    viewModel.setSort(sort)
+                                    coroutineScope.launch { gridState.scrollToItem(0) }
+                                },
+                                onDirectionClick = {
+                                    viewModel.toggleDirection()
+                                    coroutineScope.launch { gridState.scrollToItem(0) }
+                                }
+                            )
+                        }
+                    }
+                ) {
+                    when (val state = uiState) {
+                        OttCatalogUiState.Loading -> {
+                            MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                        }
+                        is OttCatalogUiState.SuccessMovies -> {
+                            if (state.movies.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.ott_empty_catalog),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            } else {
+                                OttMovieGrid(
+                                    movies = state.movies,
+                                    state = gridState,
+                                    activeHeroMovieId = focusedMovie?.id,
+                                    isLoadingMore = isLoadingMore,
+                                    onMovieClick = { movie ->
+                                        if (focusedMovie?.id == movie.id) {
+                                            viewModel.setLastClickedId(movie.id)
+                                            onMovieClick(movie)
+                                        } else {
+                                            viewModel.onMovieFocused(movie)
+                                        }
+                                    },
+                                    onLoadMore = viewModel::loadMore,
+                                    initialFocusId = lastClickedId,
+                                    onFocusRestored = { viewModel.clearLastClickedId() },
+                                    onMovieFocus = viewModel::onMovieFocused,
+                                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 8.dp)
+                                )
+                            }
+                        }
+                        is OttCatalogUiState.Error -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center,
+                                    modifier = Modifier.padding(24.dp)
+                                ) {
+                                    Text(
+                                        text = state.message.asString(context),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.error,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Button(
+                                        onClick = { viewModel.refresh() },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    ) {
+                                        Text(text = stringResource(R.string.retry))
                                     }
                                 }
                             }
@@ -474,6 +602,7 @@ fun OttCatalogScreen(
 private fun OttMovieGrid(
     movies: List<TmdbMovieSummary>,
     state: LazyGridState,
+    activeHeroMovieId: Int? = null,
     isLoadingMore: Boolean,
     onMovieClick: (TmdbMovieSummary) -> Unit,
     onLoadMore: () -> Unit,
@@ -549,6 +678,7 @@ private fun OttMovieGrid(
             OttMovieCard(
                 movie = movie,
                 isTv = isTv,
+                isHeroSelected = !isTv && activeHeroMovieId == movie.id,
                 modifier = Modifier.tvGridRowDpadNavigation(
                     isTv = isTv,
                     index = index,
@@ -599,6 +729,7 @@ private fun OttMovieGrid(
 private fun OttMovieCard(
     movie: TmdbMovieSummary,
     isTv: Boolean,
+    isHeroSelected: Boolean = false,
     shouldRequestFocus: Boolean,
     onFocusRestored: () -> Unit,
     onMovieFocus: ((TmdbMovieSummary) -> Unit)? = null,
@@ -660,6 +791,8 @@ private fun OttMovieCard(
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant
             ),
+            border = if (isHeroSelected) BorderStroke(2.5.dp, MaterialTheme.colorScheme.primary) else null,
+            elevation = CardDefaults.cardElevation(defaultElevation = if (isHeroSelected) 6.dp else 2.dp),
             modifier = modifier.fillMaxWidth()
         ) {
             posterContent()

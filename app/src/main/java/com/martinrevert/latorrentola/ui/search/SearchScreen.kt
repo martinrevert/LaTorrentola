@@ -78,6 +78,7 @@ import com.martinrevert.latorrentola.ui.components.AdaptiveChip
 import com.martinrevert.latorrentola.ui.components.FavoritesChips
 import com.martinrevert.latorrentola.ui.components.FilmographyMetadata
 import com.martinrevert.latorrentola.ui.components.MovieItem
+import com.martinrevert.latorrentola.ui.components.HandheldMovieImmersiveContainer
 import com.martinrevert.latorrentola.ui.components.MovieList
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.QualityChips
@@ -388,11 +389,12 @@ private fun SearchScreenContent(
     val hasTopChips = isShowingFavorites || (!isTvMode && !isActorMode) ||
         (isActorMode && actorUiState is SearchActorUiState.Success)
     val isTvMoviesSearch = isTv && !isTvMode && !isActorMode && !isShowingFavorites
+    val isHandheldMoviesSearch = !isTv && !isTvMode && !isActorMode && !isShowingFavorites
 
     Scaffold(
-        contentWindowInsets = if (isTvMoviesSearch) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
+        contentWindowInsets = if (isTvMoviesSearch || isHandheldMoviesSearch) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
         topBar = {
-            if (!isTvMoviesSearch) {
+            if (!isTvMoviesSearch && !isHandheldMoviesSearch) {
                 TopAppBar(
                     modifier = Modifier
                         .focusProperties {
@@ -734,6 +736,105 @@ private fun SearchScreenContent(
             }
         }
     } else {
+        if (isHandheldMoviesSearch) {
+            HandheldMovieImmersiveContainer(
+                focusedMovie = focusedMovie,
+                focusedMovieTmdb = focusedMovieTmdb,
+                backdropUrl = focusedMovieBackdrop,
+                logoUrl = focusedMovieLogo,
+                isLogoLoading = isFocusedMovieLogoLoading,
+                onDetailsClick = { focusedMovie?.let(onMovieClick) },
+                modifier = Modifier.fillMaxSize(),
+                topBar = {
+                    TopAppBar(
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                        title = {
+                            if (isShowingDownloads) {
+                                Text(stringResource(R.string.already_seen))
+                            } else if (isShowingNew) {
+                                Text(stringResource(R.string.new_movies))
+                            } else if (isShowingGenre && initialGenre != null) {
+                                Text(GenreTranslation.getGenreText(initialGenre).asString())
+                            } else {
+                                SearchTextField(
+                                    searchQuery = searchQuery,
+                                    onSearchQueryChange = onSearchQueryChange,
+                                    onVoiceSearchClick = onVoiceSearchClick,
+                                    showVoiceSearch = true,
+                                    isTvMode = false,
+                                    isActorMode = false,
+                                    modifier = Modifier.focusRequester(focusRequester)
+                                )
+                            }
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = onBackClick) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(R.string.back_desc)
+                                )
+                            }
+                        }
+                    )
+                },
+                chips = {
+                    QualityChips(
+                        options = qualityOptions,
+                        selectedQuality = selectedQuality ?: "All",
+                        onQualityClick = onQualityClick
+                    )
+                }
+            ) {
+                when (uiState) {
+                    is SearchUiState.Idle -> Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = stringResource(R.string.start_searching))
+                    }
+                    is SearchUiState.Loading -> MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                    is SearchUiState.Success -> {
+                        MovieList(
+                            movies = uiState.movies,
+                            state = gridState,
+                            activeHeroMovieId = focusedMovie?.id,
+                            downloadedMovieIds = downloadedMovieIds,
+                            watchHistoryMap = watchHistoryMap,
+                            selectedIds = selectedFavoriteIds,
+                            isLoadingMore = isLoadingMore,
+                            onMovieClick = { movie ->
+                                if (focusedMovie?.id == movie.id) {
+                                    onMovieClick(movie)
+                                } else {
+                                    onMovieFocus?.invoke(movie)
+                                }
+                            },
+                            onLongClick = { id ->
+                                uiState.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick)
+                            },
+                            onLoadMore = {
+                                if (!uiState.isDownloads && !uiState.isNew) onLoadMore()
+                            },
+                            initialFocusId = lastClickedMovieId,
+                            onFocusRestored = onFocusRestored,
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 8.dp)
+                        )
+                    }
+                    is SearchUiState.Empty -> Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = stringResource(R.string.no_results))
+                    }
+                    is SearchUiState.Error -> Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = uiState.message.asString())
+                    }
+                }
+            }
+        } else {
             // Handheld Layout: Edge-to-edge with Haze top blur and translucent bottom bar
             val topExtraOffset = if (hasTopChips) 64.dp else 16.dp
             val searchContentPadding = PaddingValues(
@@ -899,6 +1000,7 @@ private fun SearchScreenContent(
                 }
             }
         }
+    }
     }
 
     LaunchedEffect(actorUiState) {

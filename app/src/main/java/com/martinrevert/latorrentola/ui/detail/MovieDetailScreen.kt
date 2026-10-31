@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -59,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalInspectionMode
 import dev.chrisbanes.haze.rememberHazeState
+import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.glass.hazeGlass
@@ -261,17 +263,7 @@ private fun MovieDetailScreenContent(
 ) {
     val context = LocalContext.current
     val hazeState = rememberHazeState()
-    val isInspection = LocalInspectionMode.current
-    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
-    val topBarContainerColor = if (isPreAndroid12) {
-        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-    } else {
-        Color.Transparent
-    }
-
-    val contentFocusRequester = remember { FocusRequester() }
     val scrollState = rememberScrollState()
-    val coroutineScope = rememberCoroutineScope()
     val insufficientStorageState = remember { mutableStateOf<Pair<Long, Long>?>(null) }
     var torrentToDelete by remember { mutableStateOf<Pair<String, String>?>(null) }
 
@@ -348,159 +340,109 @@ private fun MovieDetailScreenContent(
             }
         }
     } else {
-        Scaffold(
-            contentWindowInsets = WindowInsets.safeDrawing,
-            topBar = {
-                TopAppBar(
-                    modifier = Modifier
-                        .focusProperties { down = contentFocusRequester }
-                        .hazeGlass(input = HazeInput.Sources(hazeState)),
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
-                    title = {
-                        val success = uiState as? DetailUiState.Success
-                        val titleText = success?.movie?.title ?: stringResource(R.string.details_title)
-                        if (success != null) {
-                            MovieLogoHeader(
-                                title = titleText,
-                                logoUrl = success.logoUrl,
-                                isLogoLoading = success.isLogoLoading,
-                                textStyle = MaterialTheme.typography.titleLarge,
-                                textColor = MaterialTheme.colorScheme.onSurface,
-                                minHeight = 24.dp,
-                                maxHeight = 36.dp,
-                                maxWidth = 220.dp,
-                                maxLines = 1
-                            )
-                        } else {
-                            Text(titleText)
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(
-                            onClick = onBackClick,
-                            modifier = Modifier
-                                .focusHighlight(shape = CircleShape)
-                                .focusProperties { down = contentFocusRequester }
-                                .onFocusChanged { focusState ->
-                                    if (focusState.isFocused) {
-                                        coroutineScope.launch { scrollState.animateScrollTo(0) }
-                                    }
-                                }
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back_desc))
-                        }
-                    },
-                    actions = {
-                        if (uiState is DetailUiState.Success) {
-                            IconButton(
-                                onClick = { onShareClick(uiState.movie) },
-                                modifier = Modifier
-                                    .focusHighlight(shape = CircleShape)
-                                    .focusProperties { down = contentFocusRequester }
-                                    .onFocusChanged { focusState ->
-                                        if (focusState.isFocused) {
-                                            coroutineScope.launch { scrollState.animateScrollTo(0) }
-                                        }
-                                    }
-                            ) {
-                                Icon(
-                                    Icons.Default.Share,
-                                    contentDescription = stringResource(R.string.share_desc)
-                                )
-                            }
-                            IconButton(
-                                onClick = { onFavoriteToggle(uiState.movie) },
-                                modifier = Modifier
-                                    .focusHighlight(shape = CircleShape)
-                                    .focusProperties { down = contentFocusRequester }
-                                    .onFocusChanged { focusState ->
-                                        if (focusState.isFocused) {
-                                            coroutineScope.launch { scrollState.animateScrollTo(0) }
-                                        }
-                                    }
-                            ) {
-                                Icon(
-                                    if (uiState.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                    contentDescription = stringResource(R.string.favorite_desc)
-                                )
-                            }
-                        }
-                    }
+        when (uiState) {
+            is DetailUiState.Loading, is DetailUiState.OpenTvDetail -> {
+                val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+                val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                val detailContentPadding = PaddingValues(
+                    top = 64.dp + statusBarHeight + 16.dp,
+                    bottom = 16.dp + navBarHeight,
+                    start = 16.dp,
+                    end = 16.dp
                 )
-            }
-        ) { padding ->
-            val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-            val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-            val detailContentPadding = PaddingValues(
-                top = 64.dp + statusBarHeight + 16.dp,
-                bottom = 16.dp + navBarHeight,
-                start = 16.dp,
-                end = 16.dp
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .hazeSource(state = hazeState)
-                .consumeWindowInsets(padding),
-                contentAlignment = Alignment.TopCenter
-            ) {
-                when (uiState) {
-                    is DetailUiState.Loading, is DetailUiState.OpenTvDetail -> {
-                        MovieDetailPlaceholder(contentPadding = detailContentPadding)
+                Box(modifier = Modifier.fillMaxSize()) {
+                    MovieDetailPlaceholder(contentPadding = detailContentPadding)
+                    IconButton(
+                        onClick = onBackClick,
+                        modifier = Modifier
+                            .statusBarsPadding()
+                            .padding(16.dp)
+                            .size(42.dp)
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back_desc),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
-                    is DetailUiState.Success -> {
-                        MovieDetailContent(
-                            movie = uiState.movie,
-                            releasesByQuality = uiState.releasesByQuality,
-                            downloadedHashes = downloadedHashes,
-                            allDownloads = allDownloads,
+                }
+            }
+            is DetailUiState.Success -> {
+                HandheldMovieDetailContent(
+                    movie = uiState.movie,
+                    tmdbMovie = uiState.tmdbMovie,
+                    director = uiState.director,
+                    studioLogoUrl = uiState.studioLogoUrl,
+                    studioName = uiState.studioName,
+                    ratings = uiState.ratings,
+                    backdropUrl = uiState.backdropUrl,
+                    logoUrl = uiState.logoUrl,
+                    isLogoLoading = uiState.isLogoLoading,
+                    isFavorite = uiState.isFavorite,
+                    releasesByQuality = uiState.releasesByQuality,
+                    downloadedHashes = downloadedHashes,
+                    allDownloads = allDownloads,
+                    mediaController = mediaController,
+                    torrentHandlingMode = torrentHandlingMode,
+                    isWideScreen = isWideScreen,
+                    onBackClick = onBackClick,
+                    onShareClick = { onShareClick(uiState.movie) },
+                    onFavoriteToggle = { onFavoriteToggle(uiState.movie) },
+                    onTorrentClick = { onTorrentClick(uiState.movie, it) },
+                    onReleaseClick = { release ->
+                        val moviePoster = uiState.movie.mediumCoverImage ?: uiState.movie.largeCoverImage
+                        val matchingDownload = allDownloads.firstOrNull { it.infoHash.equals(release.hash, ignoreCase = true) }
+                        TorrentCardActionHandler.performCardClick(
+                            context = context,
+                            releaseHash = release.hash,
+                            releaseTitle = uiState.movie.title ?: release.title,
+                            releaseMagnetUri = release.magnetUrl.orEmpty(),
+                            releaseSizeBytes = release.sizeBytes,
+                            download = matchingDownload,
+                            activeBuffer = activeBuffer,
                             mediaController = mediaController,
-                            torrentHandlingMode = torrentHandlingMode,
-                            isWideScreen = isWideScreen,
                             isTv = isTv,
-                            onTorrentClick = { onTorrentClick(uiState.movie, it) },
-                            onReleaseClick = { release ->
-                                val moviePoster = uiState.movie.mediumCoverImage ?: uiState.movie.largeCoverImage
-                                val matchingDownload = allDownloads.firstOrNull { it.infoHash.equals(release.hash, ignoreCase = true) }
-                                TorrentCardActionHandler.performCardClick(
-                                    context = context,
-                                    releaseHash = release.hash,
-                                    releaseTitle = uiState.movie.title ?: release.title,
-                                    releaseMagnetUri = release.magnetUrl.orEmpty(),
-                                    releaseSizeBytes = release.sizeBytes,
-                                    download = matchingDownload,
-                                    activeBuffer = activeBuffer,
-                                    mediaController = mediaController,
-                                    isTv = isTv,
-                                    torrentHandlingMode = torrentHandlingMode,
-                                    movieId = uiState.movie.id,
-                                    posterUrl = moviePoster,
-                                    onInsufficientStorage = { available, required ->
-                                        insufficientStorageState.value = Pair(available, required)
-                                    },
-                                    onDownloadStarted = {
-                                        onReleaseClick(uiState.movie, release)
-                                    }
-                                )
-                            },
-                            onReleaseLongClick = { release ->
-                                torrentToDelete = release.hash to (uiState.movie.title ?: release.title)
-                            },
-                            onAddLanguageToFilter = onAddLanguageToFilter,
-                            onCastClick = onCastClick,
+                            torrentHandlingMode = torrentHandlingMode,
+                            movieId = uiState.movie.id,
+                            posterUrl = moviePoster,
                             onInsufficientStorage = { available, required ->
                                 insufficientStorageState.value = Pair(available, required)
                             },
-                            contentFocusRequester = contentFocusRequester,
-                            contentPadding = detailContentPadding,
-                            scrollState = scrollState
+                            onDownloadStarted = {
+                                onReleaseClick(uiState.movie, release)
+                            }
                         )
-                    }
-                    is DetailUiState.Error -> {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(text = uiState.message.asString())
-                        }
+                    },
+                    onReleaseLongClick = { release ->
+                        torrentToDelete = release.hash to (uiState.movie.title ?: release.title)
+                    },
+                    onAddLanguageToFilter = onAddLanguageToFilter,
+                    onCastClick = onCastClick,
+                    onInsufficientStorage = { available, required ->
+                        insufficientStorageState.value = Pair(available, required)
+                    },
+                    hazeState = hazeState,
+                    scrollState = scrollState
+                )
+            }
+            is DetailUiState.Error -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(text = uiState.message.asString())
+                    IconButton(
+                        onClick = onBackClick,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .statusBarsPadding()
+                            .padding(16.dp)
+                            .size(42.dp)
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back_desc),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
             }
@@ -540,6 +482,866 @@ private fun MovieDetailScreenContent(
                 torrentToDelete = null
             }
         )
+    }
+}
+
+/**
+ * Modern handheld movie detail layout for Phones, Foldables, and Tablets with
+ * dynamic edge-to-edge backdrop, directional scrims, title logo header, metadata badges,
+ * rich OMDb ratings (IMDb, Rotten Tomatoes, Metacritic), studio/director row, action buttons,
+ * modal trailer dialog, cast section, and quality-grouped torrent releases.
+ */
+@Composable
+private fun HandheldMovieDetailContent(
+    movie: Movie,
+    tmdbMovie: TmdbMovieResult?,
+    director: String? = null,
+    studioLogoUrl: String? = null,
+    studioName: String? = null,
+    ratings: MovieRatings? = null,
+    backdropUrl: String?,
+    logoUrl: String? = null,
+    isLogoLoading: Boolean = false,
+    isFavorite: Boolean,
+    releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>>,
+    downloadedHashes: Set<String>,
+    allDownloads: List<TorrentDownload>,
+    mediaController: MediaController?,
+    torrentHandlingMode: TorrentHandlingMode,
+    isWideScreen: Boolean,
+    onBackClick: () -> Unit,
+    onShareClick: () -> Unit,
+    onFavoriteToggle: () -> Unit,
+    onTorrentClick: (Torrent) -> Unit,
+    onReleaseClick: (TorrentRelease) -> Unit,
+    onReleaseLongClick: (TorrentRelease) -> Unit,
+    onAddLanguageToFilter: (String) -> Unit,
+    onCastClick: (String) -> Unit,
+    onInsufficientStorage: (Long, Long) -> Unit,
+    hazeState: HazeState,
+    scrollState: ScrollState = rememberScrollState(),
+    modifier: Modifier = Modifier
+) {
+    var showTrailerDialog by remember { mutableStateOf(false) }
+    val hasTrailer = !movie.ytTrailerCode.isNullOrEmpty()
+
+    var isRevealed by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        isRevealed = true
+    }
+
+    val posterScale by animateFloatAsState(
+        targetValue = if (isRevealed) 1f else 0.72f,
+        animationSpec = tween(durationMillis = 600, easing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)),
+        label = "posterScale"
+    )
+    val posterAlpha by animateFloatAsState(
+        targetValue = if (isRevealed) 1f else 0f,
+        animationSpec = tween(durationMillis = 350),
+        label = "posterAlpha"
+    )
+    val contentAlpha by animateFloatAsState(
+        targetValue = if (isRevealed) 1f else 0f,
+        animationSpec = tween(durationMillis = 450, delayMillis = 80),
+        label = "contentAlpha"
+    )
+    val contentTranslationY by animateFloatAsState(
+        targetValue = if (isRevealed) 0f else 24f,
+        animationSpec = tween(durationMillis = 450, delayMillis = 80, easing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)),
+        label = "contentTranslationY"
+    )
+    val backdropAlpha by animateFloatAsState(
+        targetValue = if (isRevealed) 1f else 0f,
+        animationSpec = tween(durationMillis = 600, easing = LinearOutSlowInEasing),
+        label = "backdropAlpha"
+    )
+
+    val posterUrl = movie.largeCoverImage
+        ?: movie.mediumCoverImage
+        ?: tmdbMovie?.fullPosterUrl
+
+    val effectiveImdbRating = ratings?.imdbRating
+        ?: movie.rating?.takeIf { it.isNotBlank() && it != "0" && it != "0.0" }?.let { "$it/10" }
+        ?: tmdbMovie?.voteAverage?.takeIf { it > 0.0 }?.let { "%.1f/10".format(Locale.US, it) }
+    val rottenTomatoesRating = ratings?.rottenTomatoesRating
+    val metacriticRating = ratings?.metacriticRating
+
+    val summaryText = movie.summary?.ifEmpty { movie.descriptionFull }
+        ?: movie.descriptionFull
+        ?: tmdbMovie?.overview
+
+    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .hazeSource(state = hazeState)
+            .background(MaterialTheme.colorScheme.surface)
+    ) {
+        // 1. Dynamic TMDB Backdrop with Directional Scrims
+        if (!backdropUrl.isNullOrEmpty()) {
+            val backdropHeight = if (isWideScreen) 380.dp else 260.dp
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(backdropHeight)
+            ) {
+                AsyncImage(
+                    model = backdropUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = backdropAlpha }
+                )
+                // Top scrim for status bar legibility
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+                // Horizontal scrim on wide tablets / foldables
+                if (isWideScreen) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.65f)
+                            .fillMaxHeight()
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                                        MaterialTheme.colorScheme.surface.copy(alpha = 0.65f),
+                                        Color.Transparent
+                                    )
+                                )
+                            )
+                    )
+                }
+                // Bottom fade to solid background
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(130.dp)
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.70f),
+                                    MaterialTheme.colorScheme.surface
+                                )
+                            )
+                        )
+                )
+            }
+        }
+
+        // 2. Main Scrollable Content
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(
+                    top = statusBarHeight + 56.dp,
+                    bottom = navBarHeight + 24.dp,
+                    start = if (isWideScreen) 28.dp else 16.dp,
+                    end = if (isWideScreen) 28.dp else 16.dp
+                )
+        ) {
+            if (isWideScreen) {
+                // FOLDABLE UNPINNED / TABLET (>= 600dp): Wide Cinematic Split Layout
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(28.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    if (!posterUrl.isNullOrEmpty()) {
+                        Card(
+                            shape = MaterialTheme.shapes.medium,
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            ),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                            modifier = Modifier
+                                .width(180.dp)
+                                .aspectRatio(2 / 3f)
+                                .graphicsLayer {
+                                    scaleX = posterScale
+                                    scaleY = posterScale
+                                    alpha = posterAlpha
+                                }
+                                .border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                    shape = MaterialTheme.shapes.medium
+                                )
+                        ) {
+                            AsyncImage(
+                                model = posterUrl,
+                                contentDescription = movie.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .graphicsLayer {
+                                alpha = contentAlpha
+                                translationY = contentTranslationY
+                            }
+                    ) {
+                        MovieLogoHeader(
+                            title = movie.title ?: tmdbMovie?.title.orEmpty(),
+                            logoUrl = logoUrl,
+                            isLogoLoading = isLogoLoading,
+                            textStyle = MaterialTheme.typography.headlineMedium,
+                            textColor = MaterialTheme.colorScheme.onSurface,
+                            minHeight = 36.dp,
+                            maxHeight = 68.dp,
+                            maxWidth = 420.dp,
+                            maxLines = 2
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        HandheldMetadataBadges(movie = movie, tmdbMovie = tmdbMovie)
+
+                        if (!director.isNullOrBlank() || !studioLogoUrl.isNullOrBlank() || !studioName.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            HandheldDirectorAndStudio(
+                                director = director,
+                                studioLogoUrl = studioLogoUrl,
+                                studioName = studioName
+                            )
+                        }
+
+                        if (effectiveImdbRating != null || rottenTomatoesRating != null || metacriticRating != null) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            HandheldRatingsRow(
+                                imdbRating = effectiveImdbRating,
+                                rottenTomatoesRating = rottenTomatoesRating,
+                                metacriticRating = metacriticRating
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(18.dp))
+
+                        HandheldActionButtons(
+                            hasTrailer = hasTrailer,
+                            isFavorite = isFavorite,
+                            onWatchTrailer = { showTrailerDialog = true },
+                            onFavoriteToggle = onFavoriteToggle,
+                            onShareClick = onShareClick
+                        )
+
+                        if (!summaryText.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = summaryText,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 6,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            } else {
+                // PHONE (< 600dp): Compact Two-Row Hero Layout
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    if (!posterUrl.isNullOrEmpty()) {
+                        Card(
+                            shape = MaterialTheme.shapes.medium,
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            ),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                            modifier = Modifier
+                                .width(115.dp)
+                                .aspectRatio(2 / 3f)
+                                .graphicsLayer {
+                                    scaleX = posterScale
+                                    scaleY = posterScale
+                                    alpha = posterAlpha
+                                }
+                                .border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                                    shape = MaterialTheme.shapes.medium
+                                )
+                        ) {
+                            AsyncImage(
+                                model = posterUrl,
+                                contentDescription = movie.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .graphicsLayer {
+                                alpha = contentAlpha
+                                translationY = contentTranslationY
+                            }
+                    ) {
+                        MovieLogoHeader(
+                            title = movie.title ?: tmdbMovie?.title.orEmpty(),
+                            logoUrl = logoUrl,
+                            isLogoLoading = isLogoLoading,
+                            textStyle = MaterialTheme.typography.titleLarge,
+                            textColor = MaterialTheme.colorScheme.onSurface,
+                            minHeight = 28.dp,
+                            maxHeight = 48.dp,
+                            maxWidth = 260.dp,
+                            maxLines = 2
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        HandheldMetadataBadges(movie = movie, tmdbMovie = tmdbMovie)
+
+                        if (effectiveImdbRating != null || rottenTomatoesRating != null || metacriticRating != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            HandheldRatingsRow(
+                                imdbRating = effectiveImdbRating,
+                                rottenTomatoesRating = rottenTomatoesRating,
+                                metacriticRating = metacriticRating
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                HandheldActionButtons(
+                    hasTrailer = hasTrailer,
+                    isFavorite = isFavorite,
+                    onWatchTrailer = { showTrailerDialog = true },
+                    onFavoriteToggle = onFavoriteToggle,
+                    onShareClick = onShareClick
+                )
+
+                if (!director.isNullOrBlank() || !studioLogoUrl.isNullOrBlank() || !studioName.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HandheldDirectorAndStudio(
+                        director = director,
+                        studioLogoUrl = studioLogoUrl,
+                        studioName = studioName
+                    )
+                }
+
+                if (!summaryText.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = stringResource(R.string.summary_header),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = summaryText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 6,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Cast Section
+            if (!movie.cast.isNullOrEmpty()) {
+                Text(
+                    text = stringResource(R.string.cast_header),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp)
+                ) {
+                    items(movie.cast) { cast ->
+                        CastItem(cast = cast, onCastClick = onCastClick)
+                    }
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+
+            // Torrents & Releases Section
+            Text(
+                text = stringResource(R.string.torrents_header),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (releasesByQuality.isNotEmpty()) {
+                releasesByQuality.forEach { (qualityGroup, releases) ->
+                    if (releases.isNotEmpty()) {
+                        val groupHeader = when (qualityGroup) {
+                            VideoQualityGroup.UHD_4K -> stringResource(R.string.quality_group_4k)
+                            VideoQualityGroup.FHD_1080P -> stringResource(R.string.quality_group_1080p)
+                            VideoQualityGroup.HD_720P -> stringResource(R.string.quality_group_720p)
+                            VideoQualityGroup.OTHER -> stringResource(R.string.quality_group_other)
+                        }
+                        Text(
+                            text = groupHeader,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)
+                        )
+                        releases.forEach { release ->
+                            val releaseHash = release.hash
+                            val matchingDownload = allDownloads.firstOrNull { it.infoHash.equals(releaseHash, ignoreCase = true) }
+                            TorrentReleaseShimmerCard(
+                                release = release,
+                                isDownloaded = downloadedHashes.contains(release.hash.lowercase()) || matchingDownload?.state == TorrentDownloadService.STATE_COMPLETED,
+                                onClick = { onReleaseClick(release) },
+                                onLongClick = { onReleaseLongClick(release) },
+                                download = matchingDownload,
+                                mediaController = mediaController,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
+                movie.torrents?.forEach { torrent ->
+                    TorrentItem(
+                        movie = movie,
+                        torrent = torrent,
+                        isDownloaded = downloadedHashes.contains(torrent.hash),
+                        onTorrentClick = onTorrentClick,
+                        handlingMode = torrentHandlingMode,
+                        onInsufficientStorage = onInsufficientStorage
+                    )
+                }
+            }
+        }
+
+        // 3. Floating Modern Top Bar (statusBars padded)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onBackClick,
+                modifier = Modifier
+                    .size(42.dp)
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.back_desc),
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                IconButton(
+                    onClick = onShareClick,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = stringResource(R.string.share_desc),
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                IconButton(
+                    onClick = onFavoriteToggle,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = stringResource(R.string.favorite_desc),
+                        tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+
+        // 4. Modal YouTube Trailer Dialog
+        if (showTrailerDialog && !movie.ytTrailerCode.isNullOrEmpty()) {
+            HandheldTrailerDialog(
+                youtubeVideoId = movie.ytTrailerCode,
+                onDismiss = { showTrailerDialog = false }
+            )
+        }
+    }
+}
+
+@Composable
+private fun HandheldMetadataBadges(
+    movie: Movie,
+    tmdbMovie: TmdbMovieResult?,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        val releaseYear = movie.year?.takeIf { it != 0 }?.toString()
+            ?: tmdbMovie?.releaseDate?.take(4)
+        if (!releaseYear.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .clip(MaterialTheme.shapes.extraSmall)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = releaseYear,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
+        if (!movie.runtime.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .clip(MaterialTheme.shapes.extraSmall)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = movie.runtime,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
+        if (!movie.mpaRating.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .clip(MaterialTheme.shapes.extraSmall)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = movie.mpaRating,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
+        movie.language?.let { lang ->
+            Box(
+                modifier = Modifier
+                    .clip(MaterialTheme.shapes.extraSmall)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = lang.uppercase(Locale.US),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
+        movie.genres?.take(2)?.forEach { genre ->
+            val translatedGenre = GenreTranslation.getGenreText(genre).asString()
+            Box(
+                modifier = Modifier
+                    .clip(MaterialTheme.shapes.extraSmall)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = translatedGenre,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HandheldRatingsRow(
+    imdbRating: String?,
+    rottenTomatoesRating: String?,
+    metacriticRating: String?,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = modifier
+    ) {
+        imdbRating?.let { imdb ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_imdb_logo),
+                    contentDescription = "IMDb",
+                    modifier = Modifier.height(16.dp)
+                )
+                Text(
+                    text = imdb,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
+        rottenTomatoesRating?.let { rt ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_rotten_tomatoes),
+                    contentDescription = "Rotten Tomatoes",
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = rt,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
+        metacriticRating?.let { meta ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_metacritic),
+                    contentDescription = "Metacritic",
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = meta,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HandheldDirectorAndStudio(
+    director: String?,
+    studioLogoUrl: String?,
+    studioName: String?,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier
+    ) {
+        if (!director.isNullOrBlank()) {
+            Text(
+                text = stringResource(R.string.directed_by, director),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+        if (!studioLogoUrl.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .clip(MaterialTheme.shapes.extraSmall)
+                    .background(Color.White.copy(alpha = 0.12f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = studioLogoUrl,
+                    contentDescription = studioName,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .height(20.dp)
+                        .widthIn(max = 90.dp)
+                )
+            }
+        } else if (!studioName.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .clip(MaterialTheme.shapes.extraSmall)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = studioName,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HandheldActionButtons(
+    hasTrailer: Boolean,
+    isFavorite: Boolean,
+    onWatchTrailer: () -> Unit,
+    onFavoriteToggle: () -> Unit,
+    onShareClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        if (hasTrailer) {
+            Button(
+                onClick = onWatchTrailer,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ),
+                shape = MaterialTheme.shapes.small,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                modifier = Modifier.weight(1f, fill = false)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.watch_trailer),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        FilledTonalButton(
+            onClick = onFavoriteToggle,
+            shape = MaterialTheme.shapes.small,
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            Icon(
+                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                contentDescription = null,
+                tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = if (isFavorite) stringResource(R.string.remove_favorite_desc) else stringResource(R.string.add_favorite_desc),
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
+
+        FilledTonalButton(
+            onClick = onShareClick,
+            shape = MaterialTheme.shapes.small,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Share,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun HandheldTrailerDialog(
+    youtubeVideoId: String,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.90f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .aspectRatio(16 / 9f)
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(Color.Black)
+            ) {
+                YoutubePlayer(
+                    youtubeVideoId = youtubeVideoId,
+                    lifecycleOwner = LocalLifecycleOwner.current
+                )
+            }
+
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(16.dp)
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.70f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(R.string.close_trailer),
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
     }
 }
 

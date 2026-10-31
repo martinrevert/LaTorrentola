@@ -1,5 +1,6 @@
 package com.martinrevert.latorrentola.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -50,6 +51,7 @@ fun MovieItem(
     lastVisitDate: Long? = null,
     isDownloaded: Boolean = false,
     isSelected: Boolean = false,
+    isHeroSelected: Boolean = false,
     progressPercent: Int? = null,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
@@ -182,7 +184,8 @@ fun MovieItem(
                         onLongClick = onLongClick
                     )
                     .focusHighlight(shape = MaterialTheme.shapes.medium),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                border = if (isHeroSelected) BorderStroke(2.5.dp, MaterialTheme.colorScheme.primary) else null,
+                elevation = CardDefaults.cardElevation(defaultElevation = if (isHeroSelected) 8.dp else 4.dp),
                 shape = MaterialTheme.shapes.medium
             ) {
                 Box(

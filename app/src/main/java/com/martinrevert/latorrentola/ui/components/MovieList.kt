@@ -42,7 +42,8 @@ fun MovieList(
     initialFocusId: Int? = null,
     onFocusRestored: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(16.dp),
-    onMovieFocus: ((Movie) -> Unit)? = null
+    onMovieFocus: ((Movie) -> Unit)? = null,
+    activeHeroMovieId: Int? = null
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
@@ -57,8 +58,8 @@ fun MovieList(
     val columns = when {
         isTv -> GridCells.Fixed(6) // Enforce exactly 6 columns on TV devices
         screenWidth < 600.dp -> GridCells.Fixed(2)
-        screenWidth < 900.dp -> GridCells.Adaptive(minSize = 160.dp)
-        else -> GridCells.Adaptive(minSize = 200.dp)
+        screenWidth < 840.dp -> GridCells.Adaptive(minSize = 160.dp)
+        else -> GridCells.Adaptive(minSize = 175.dp)
     }
 
     // Proactive prefetch before reaching the bottom of the grid
@@ -126,6 +127,7 @@ fun MovieList(
                 lastVisitDate = lastVisitDate,
                 isDownloaded = downloadedMovieIds.contains(movie.id),
                 isSelected = selectedIds.contains(movie.id),
+                isHeroSelected = activeHeroMovieId == movie.id,
                 progressPercent = progressPercent,
                 onClick = { onMovieClick(movie) },
                 onLongClick = onLongClick?.let { { it(movie.id) } },
