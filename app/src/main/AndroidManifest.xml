@@ -32,6 +32,7 @@
     <application
         android:name=".LaTorrentolaApp"
         android:allowBackup="true"
+        android:largeHeap="true"
         android:allowNativeHeapPointerTagging="false"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"

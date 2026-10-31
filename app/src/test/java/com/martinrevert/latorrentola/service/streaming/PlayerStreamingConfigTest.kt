@@ -1,9 +1,16 @@
 package com.martinrevert.latorrentola.service.streaming
 
+import android.content.Context
+import androidx.annotation.OptIn
 import androidx.media3.common.C
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import com.google.common.truth.Truth.assertThat
+import com.martinrevert.latorrentola.utils.PreferenceManager
+import io.mockk.mockk
 import org.junit.Test
 
+@OptIn(UnstableApi::class)
 class PlayerStreamingConfigTest {
 
     @Test
@@ -38,13 +45,29 @@ class PlayerStreamingConfigTest {
     @Test
     fun `audio extension renderer mode is ON so passthrough and MediaCodec take priority over FFmpeg`() {
         assertThat(PlayerStreamingConfig.AUDIO_EXTENSION_RENDERER_MODE)
-            .isEqualTo(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            .isEqualTo(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
     }
 
     @Test
     fun `buildRenderersFactory creates factory with extension renderer mode ON`() {
-        val context = io.mockk.mockk<android.content.Context>(relaxed = true)
+        val context = mockk<Context>(relaxed = true)
         val renderersFactory = PlayerStreamingConfig.buildRenderersFactory(context)
+        assertThat(renderersFactory).isNotNull()
+    }
+
+    @Test
+    fun `tv buffer for playback is optimized to 2 seconds for snappy startup and 3 seconds on rebuffer`() {
+        assertThat(PlayerStreamingConfig.TV_BUFFER_FOR_PLAYBACK_MS).isEqualTo(2_000)
+        assertThat(PlayerStreamingConfig.TV_BUFFER_AFTER_REBUFFER_MS).isEqualTo(3_000)
+        assertThat(PlayerStreamingConfig.TV_TARGET_BUFFER_BYTES).isEqualTo(96 * 1024 * 1024)
+        assertThat(PlayerStreamingConfig.TV_MAX_BUFFER_MS).isEqualTo(120_000)
+    }
+
+    @Test
+    fun `buildRenderersFactory configures audio sink with custom preference manager`() {
+        val context = mockk<Context>(relaxed = true)
+        val prefs = mockk<PreferenceManager>(relaxed = true)
+        val renderersFactory = PlayerStreamingConfig.buildRenderersFactory(context, prefs)
         assertThat(renderersFactory).isNotNull()
     }
 }

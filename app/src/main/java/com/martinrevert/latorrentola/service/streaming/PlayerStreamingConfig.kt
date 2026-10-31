@@ -19,17 +19,17 @@ import java.io.IOException
 @OptIn(UnstableApi::class)
 object PlayerStreamingConfig {
 
-    const val TV_MIN_BUFFER_MS = 15_000
-    const val TV_MAX_BUFFER_MS = 45_000
-    const val TV_BUFFER_FOR_PLAYBACK_MS = 2_000
-    const val TV_BUFFER_AFTER_REBUFFER_MS = 2_500
-    const val TV_TARGET_BUFFER_BYTES = 48 * 1024 * 1024 // 48 MB
- 
-    const val MOBILE_MIN_BUFFER_MS = 15_000
-    const val MOBILE_MAX_BUFFER_MS = 30_000
+    const val TV_MIN_BUFFER_MS = 30_000 // 30 seconds minimum forward buffer
+    const val TV_MAX_BUFFER_MS = 120_000 // 120 seconds (2 minutes) maximum forward buffer
+    const val TV_BUFFER_FOR_PLAYBACK_MS = 2_000 // 2 seconds startup cushion to prevent stutter on network jitter
+    const val TV_BUFFER_AFTER_REBUFFER_MS = 3_000 // 3 seconds re-buffer cushion to prevent stutter on network jitter
+    const val TV_TARGET_BUFFER_BYTES = 96 * 1024 * 1024 // 96 MB aggressive memory buffer for high-bitrate 1080p/4K
+
+    const val MOBILE_MIN_BUFFER_MS = 20_000 // 20 seconds
+    const val MOBILE_MAX_BUFFER_MS = 60_000 // 60 seconds (1 minute)
     const val MOBILE_BUFFER_FOR_PLAYBACK_MS = 1_500
-    const val MOBILE_BUFFER_AFTER_REBUFFER_MS = 2_000
-    const val MOBILE_TARGET_BUFFER_BYTES = 32 * 1024 * 1024 // 32 MB
+    const val MOBILE_BUFFER_AFTER_REBUFFER_MS = 3_000
+    const val MOBILE_TARGET_BUFFER_BYTES = 64 * 1024 * 1024 // 64 MB
 
     /**
      * Builds a LoadControl that buffers smoothly and recovers quickly from buffer underflows.
@@ -119,9 +119,16 @@ object PlayerStreamingConfig {
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean
             ): androidx.media3.exoplayer.audio.AudioSink {
+                val bufferSizeProvider = androidx.media3.exoplayer.audio.DefaultAudioTrackBufferSizeProvider.Builder()
+                    .setPassthroughBufferDurationUs(250_000) // Bound passthrough buffer to 250ms to prevent AudioFlinger memory allocation errors (-12) on high-bitrate DTS-HD
+                    .build()
+                val audioOutputProvider = androidx.media3.exoplayer.audio.AudioTrackAudioOutputProvider.Builder(context)
+                    .setAudioTrackBufferSizeProvider(bufferSizeProvider)
+                    .build()
                 val defaultSink = androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
                     .setEnableFloatOutput(enableFloatOutput)
                     .setEnableAudioOutputPlaybackParameters(enableAudioTrackPlaybackParams)
+                    .setAudioOutputProvider(audioOutputProvider)
                     .build()
                 return Ac3TranscodingAudioSink(defaultSink, context, prefs)
             }

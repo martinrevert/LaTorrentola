@@ -381,9 +381,12 @@ To ensure optimal audio fidelity and prevent silent stereo downmixes:
 2. **AC3 Surround Transcoding (`Ac3TranscodingAudioSink`)**:
    * Wraps Media3's `DefaultAudioSink`.
    * Real-time transcoding (AAC 5.1 -> AC3, E-AC3 -> AC3, DTS -> AC3) activates when the user enables the preference AND the connected soundbar/AVR does NOT support the source format natively, BUT DOES support AC3 bitstream passthrough (`SINK_FORMAT_SUPPORTED_DIRECTLY`).
-3. **Hardware DSP Offload & Global Tunneled Playback**:
-   * `AUDIO_OFFLOAD_MODE_ENABLED` delegates audio buffering to hardware DSPs.
-   * `setTunnelingEnabled(true)` is configured globally in `DefaultTrackSelector.Parameters`, enabling hardware master clock synchronization on supported TVs.
+3. **Tunneling & Audio Offload Prohibitions During Video Streaming**:
+   * Video tunneling is explicitly DISABLED (`setTunnelingEnabled(false)`). When tunneling (`FLAG_HW_AV_SYNC`) is active during bitstream passthrough (especially DTS-HD Master Audio, DTS:X, or TrueHD), Android TV audio HALs fail to emit hardware AV sync clock ticks, freezing video rendering. Software AV sync clock tracking (`AudioTrack.getPlaybackHeadPosition()`) is enforced for smooth playback.
+   * Audio offload is explicitly DISABLED (`AUDIO_OFFLOAD_MODE_DISABLED`). Offload mode introduces multi-second buffer bloat and excessive startup preroll, causing noticeable delays on Dolby Atmos (E-AC3 JOC).
+   * TV playback startup buffer (`TV_BUFFER_FOR_PLAYBACK_MS`) is optimized to 2,000 ms (2.0 s) for stable playback onset, with `TV_BUFFER_AFTER_REBUFFER_MS` set to 3,000 ms (3.0 s) to provide an ample safety cushion against stutter upon buffer underruns.
+   * Forward network streaming buffer in `DefaultLoadControl` is aggressively expanded for large heaps (96 MB and up to 120 seconds on TV, 64 MB and 60 seconds on Mobile) to maximize piece download absorption in partial torrent streams without memory pressure.
+   * `DefaultAudioTrackBufferSizeProvider` caps passthrough buffer duration to 250 ms (`setPassthroughBufferDurationUs(250_000)`), preventing `AudioFlinger` memory allocation errors (`-12` ENOMEM) on 24.5 Mbps DTS-HD streams.
 
 ### 5.7 Video Playback & Google Cast Ecosystem
 * **Single Player Architecture (`LocalPlayerActivity`)**: Orchestrates playback across ExoPlayer (local) and Google Cast (`CastPlayer`).
@@ -846,6 +849,7 @@ sequenceDiagram
 
 Before committing modifications to the codebase, verify:
 * [x] **Theme Mode Propagation**: `themeMode` is resolved from `PreferenceManager` and passed to BOTH `TvLaTorrentolaTheme` and `LaTorrentolaTheme` in every Dialog, BottomSheet, and Compose entry point.
+* [x] **Audio Offload & Tunneling Prohibitions**: Video tunneling and audio offload remain disabled during video streaming, TV playback buffer is set to 2,000ms with a 3,000ms rebuffer cushion, and passthrough buffer duration is capped at 250ms.
 * [x] **Surround Transcoding Guardrails**: `EXTENSION_RENDERER_MODE_ON` is preserved (never `_PREFER`), direct passthrough precedes FFmpeg, and AC3 transcoding only activates when the sink directly supports AC3 bitstream passthrough.
 * [x] **Remote Media Streaming Performance**: `SmbStorageClient` and `NfsStorageClient` retain cached sessions across seeks, `SmbPrefetchInputStream` buffers 16 MB with recycled pools, and hot-path read loops remain free of `Log.d`.
 * [x] **Zero Speculative Player State Flipping**: Player controls command explicit target states (`shouldPause ? pause() : play()`), and `RemoteCastCanvas` uses `RemoteMediaClient` as single state authority.

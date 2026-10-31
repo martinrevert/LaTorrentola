@@ -122,19 +122,24 @@ class PlaybackService : MediaSessionService() {
                 }
             })
 
-            // Configure hardware optimizations: Audio Offload and Tunneled hardware playback
+            // Configure track selector parameters:
+            // Explicitly disable video tunneling and audio offload for video streaming playback.
+            // Tunneled playback (FLAG_HW_AV_SYNC) with bitstream passthrough (especially high-bitrate DTS-HD)
+            // causes hardware AV sync stalls where the audio HAL never emits clock ticks, freezing video rendering.
+            // Audio offload is designed for battery saving on screen-off music playback; in multichannel video playback,
+            // it forces large buffer allocations, creating severe startup delays on Dolby Atmos (E-AC3 JOC).
             val currentParams = exoPlayer.trackSelectionParameters
             val trackParamsBuilder = (currentParams as? DefaultTrackSelector.Parameters)?.buildUpon()
-                ?: DefaultTrackSelector.Parameters.Builder(this)
+                ?: @Suppress("DEPRECATION") DefaultTrackSelector.Parameters.Builder(this)
             trackParamsBuilder
                 .setAudioOffloadPreferences(
                     AudioOffloadPreferences.Builder()
-                        .setAudioOffloadMode(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
+                        .setAudioOffloadMode(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED)
                         .setIsGaplessSupportRequired(false)
                         .setIsSpeedChangeSupportRequired(false)
                         .build()
                 )
-                .setTunnelingEnabled(true)
+                .setTunnelingEnabled(false)
             exoPlayer.trackSelectionParameters = trackParamsBuilder.build()
 
             localPlayer = exoPlayer

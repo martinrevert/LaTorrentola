@@ -208,7 +208,7 @@ When implementing, touching, or refactoring remote network storage (SMB / NFS) a
 
 3. **ExoPlayer LoadControl Buffer Tuning**:
    - When configuring `DefaultLoadControl` in [`PlayerStreamingConfig.kt`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/service/streaming/PlayerStreamingConfig.kt), `.setPrioritizeTimeOverSizeThresholds(true)` MUST be enabled.
-   - Target buffers MUST be sized for high-bitrate 1080p/4K bursts (minimum 48 MB on TV, 32 MB on Mobile) with a dedicated back-buffer ($\ge 10\text{s}$) to absorb LAN jitter.
+   - Target buffers MUST be sized for high-bitrate 1080p/4K bursts (minimum 96 MB on TV, 64 MB on Mobile, with up to 120s forward buffer) with a dedicated back-buffer ($\ge 10\text{s}$) to absorb network jitter.
 
 4. **Zero Hot-Path Logging**:
    - **PROHIBITION**: NEVER introduce `Log.d`, `Log.v`, or string formatting into hot read paths like `RemoteMediaDataSource.read()` or `SmbPrefetchInputStream.read()`. In Android, frequent logcat IPC calls during 32 KB / 64 KB read loops consume severe CPU time and trigger buffer underruns.
@@ -236,10 +236,14 @@ To ensure digital bitstream passthrough to AVRs / soundbars over HDMI (ARC/eARC)
    - If the receiver already supports the source codec natively, the stream MUST pass through untouched without invoking the software encoder.
    - Stereo streams (AAC 2.0, PCM 2.0) MUST NEVER be transcoded.
 
-3. **Global Hardware Audio Offload & Tunneled Playback**:
-   - In [`PlaybackService.kt`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/service/PlaybackService.kt), `exoPlayer.trackSelectionParameters` MUST configure:
-     - `AudioOffloadPreferences` with `AUDIO_OFFLOAD_MODE_ENABLED` to offload audio buffering and processing to the SoC hardware DSP.
-     - `.setTunnelingEnabled(true)` enabled globally across all devices via `DefaultTrackSelector.Parameters`. Media3 automatically checks `FEATURE_TunneledPlayback` and falls back gracefully on non-capable devices, while ensuring zero jitter and hardware master clock lip-sync on supported hardware.
+3. **Strict Prohibition on Video Tunneling & Audio Offload During Bitstream Passthrough (ZERO REGRESSION)**:
+   - **Tunneling Stall Trap**: `setTunnelingEnabled(true)` forces `MediaCodecVideoRenderer` to synchronize video presentation to hardware audio clocks (`FLAG_HW_AV_SYNC`). However, Android TV audio HALs (MediaTek, Amlogic, Realtek) fail to generate hardware sync timestamps for IEC 61937 High Bit Rate (HBR) streams (especially DTS-HD Master Audio, DTS:X, and TrueHD). Because the audio clock never advances, the hardware video decoder pauses indefinitely, freezing video playback completely. Furthermore, tunneling delays initial video display on Dolby Atmos (E-AC3 JOC) while waiting for the HDMI eARC hardware handshake.
+   - **PROHIBITION: NEVER enable global tunneled playback (`setTunnelingEnabled(true)`) when audio bitstream passthrough is supported or active.** Tunneling must remain disabled (`setTunnelingEnabled(false)`). Standard Media3 software AV sync clock tracking (`AudioTrack.getPlaybackHeadPosition()`) MUST be used for smooth, non-blocking video presentation.
+   - **Audio Offload Buffer Bloat Trap**: `AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED` is intended for mobile screen-off music playback to let the CPU sleep. In video playback, it forces massive multi-second buffer prerolls, causing severe startup latency on Dolby Atmos (E-AC3 JOC) and risking `AudioFlinger` memory allocation failures (`-12` ENOMEM) on high-bitrate surround bitstreams.
+   - **PROHIBITION: NEVER enable Audio Offload (`AUDIO_OFFLOAD_MODE_ENABLED`) for video streaming pipelines.** Audio offload must remain disabled (`AUDIO_OFFLOAD_MODE_DISABLED`).
+   - **Fast TV Playback Buffer & Bounded Passthrough Allocations**:
+     - In [`PlayerStreamingConfig.kt`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/service/streaming/PlayerStreamingConfig.kt), `TV_BUFFER_FOR_PLAYBACK_MS` MUST be set to `2_000ms` (2.0s) and `TV_BUFFER_AFTER_REBUFFER_MS` to `3_000ms` for stable startup on Dolby Atmos and high-bitrate surround streams with a protective 3-second cushion on re-buffer to prevent stutter on volatile connections.
+     - `DefaultAudioSink` MUST configure `AudioTrackAudioOutputProvider` with `DefaultAudioTrackBufferSizeProvider` setting `.setPassthroughBufferDurationUs(250_000)` (250ms) to ensure passthrough buffer allocations fit safely within Android TV `AudioFlinger` memory bounds without throwing `-12` (ENOMEM).
 
 ### ⏯️ Player Transport Controls, Play/Pause State Authority & Race Condition Prevention Mandate (STRICT)
 To eliminate state desynchronization, inverted buttons, and jarring UX across ExoPlayer and Google Cast:
@@ -297,7 +301,7 @@ Before marking a task complete, verify:
 8. [ ] Did I run unit tests (`testDebugUnitTest`) as validation instead of assembling release/debug APKs?
 9. [ ] If modifying remote storage/streaming, did I preserve session caching, asynchronous prefetching, and keep hot-path read loops free of Log.d?
 10. [ ] If modifying player controls or Cast handoff, did I avoid speculative `!isPlaying` flips, bind to `RemoteMediaClient`, and ensure zero bottom sheet flashing on Cast start?
-11. [ ] If modifying audio rendering or player streaming config, did I preserve `EXTENSION_RENDERER_MODE_ON` (never `_PREFER`), keep direct passthrough ahead of FFmpeg, retain surround transcoding guardrails (`getFormatSupport == SINK_FORMAT_SUPPORTED_DIRECTLY`), and keep Audio Offload and global Tunneling intact?
+11. [ ] If modifying audio rendering or player streaming config, did I preserve `EXTENSION_RENDERER_MODE_ON` (never `_PREFER`), keep direct passthrough ahead of FFmpeg, retain surround transcoding guardrails (`getFormatSupport == SINK_FORMAT_SUPPORTED_DIRECTLY`), ensure Tunneling and Audio Offload remain DISABLED to prevent video stalls and Atmos startup delays, keep TV playback buffer at 2,000ms, and maintain rebuffer cushion at 3,000ms?
 12. [ ] If modifying proguard-rules.pro, models, or dependencies, did I avoid blanket package wildcards ({ *; }), verify library consumer rules, and ensure R8 optimizations/inlining remain unhindered?
 13. [ ] Did I update `README.md`, `README.es.md`, and `ARCHITECTURE.md` on the fly to reflect all new features, settings, or architectural components?
 14. [ ] If resolving a bug, regression, or edge-case failure, did I automatically document a new mandatory directive in `AGENTS.md` and add its corresponding checklist item to prevent future regressions?
