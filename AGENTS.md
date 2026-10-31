@@ -56,7 +56,29 @@
 
 ---
 
-## 🚫 5. ZERO TOLERANCE CONSTRAINTS (DO NOT VIOLATE)
+## 📚 5. ON-THE-FLY LIVING DOCUMENTATION & AUTONOMOUS DIRECTIVE HARDENING (STRICT MANDATE)
+
+### A. Mandatory On-The-Fly Documentation Synchronization
+Every architectural, feature, UI, or configuration change MUST be reflected across all project documentation files **on the fly** in the very same turn:
+- **`README.md`** (Global User Guide - English): Keep updated with human-friendly descriptions of all user-facing features, settings, and step-by-step instructions.
+- **`README.es.md`** (Spanish User Guide - Español): Keep in exact structural and conceptual parity with `README.md`.
+- **`ARCHITECTURE.md`** (Technical Manual - English): Keep updated with all deep technical details, system designs, APIs, audio/streaming pipelines, data flows, and Mermaid diagrams (ensuring 100% valid syntax without HTML tag parsing errors).
+- **`AGENTS.md`** (System Rules & Guidelines): Keep updated whenever a new architectural rule, pattern, or constraint is established.
+- **PROHIBITION**: AI agents are **STRICTLY FORBIDDEN** from deferring documentation to future tasks or finishing functional code changes without updating the corresponding documentation files. Documentation synchronization is a non-negotiable part of the Definition of Done.
+
+### B. Autonomous Directive Hardening on Regressions & Failure Modes
+Whenever a regression, bug, edge-case failure, race condition, build error, or architectural drift is encountered, triaged, or resolved:
+- The AI agent **MUST AUTOMATICALLY and IMMEDIATELY** record a new mandatory directive or rule in `AGENTS.md`.
+- Each new directive must explicitly define:
+  1. **The Root Cause / Failure Trap**: What went wrong and why it caused an issue.
+  2. **The Mandatory Architectural Contract**: The exact pattern, code structure, or invariant to uphold.
+  3. **Explicit Prohibitions**: A clear `PROHIBITION: NEVER ...` clause to forbid the problematic behavior.
+  4. **Checklist Integration**: A corresponding verification item added to the Execution Checklist in Section 8.
+- **PURPOSE**: Ensure continuous, institutional learning so that future AI agents and developers never repeat past regressions.
+
+---
+
+## 🚫 6. ZERO TOLERANCE CONSTRAINTS (DO NOT VIOLATE)
 
 ### A. Theming & Hardcoded Values
 - **NEVER** use explicit colors (e.g., `Color.Black`, `Color(0xFF...)`).
@@ -96,7 +118,7 @@
 
 ---
 
-## 🚦 6. DOMAIN-SPECIFIC LOGIC RULES
+## 🚦 7. DOMAIN-SPECIFIC LOGIC RULES
 
 ### Torrent Routing (`TorrentHandlingMode`)
 When triggering a download/play action, read `TorrentHandlingMode` and execute:
@@ -263,7 +285,7 @@ To preserve maximum runtime performance, fast startup time, minimal APK/AAB size
 
 ---
 
-## 🧠 7. EXECUTION CHECKLIST
+## 🧠 8. EXECUTION CHECKLIST
 Before marking a task complete, verify:
 1. [ ] Did I ask the user if this applies to Mobile, TV, or both? (If ambiguous).
 2. [ ] Are Unit Tests written, updated, and passing?
@@ -277,3 +299,5 @@ Before marking a task complete, verify:
 10. [ ] If modifying player controls or Cast handoff, did I avoid speculative `!isPlaying` flips, bind to `RemoteMediaClient`, and ensure zero bottom sheet flashing on Cast start?
 11. [ ] If modifying audio rendering or player streaming config, did I preserve `EXTENSION_RENDERER_MODE_ON` (never `_PREFER`), keep direct passthrough ahead of FFmpeg, retain surround transcoding guardrails (`getFormatSupport == SINK_FORMAT_SUPPORTED_DIRECTLY`), and keep Audio Offload and global Tunneling intact?
 12. [ ] If modifying proguard-rules.pro, models, or dependencies, did I avoid blanket package wildcards ({ *; }), verify library consumer rules, and ensure R8 optimizations/inlining remain unhindered?
+13. [ ] Did I update `README.md`, `README.es.md`, and `ARCHITECTURE.md` on the fly to reflect all new features, settings, or architectural components?
+14. [ ] If resolving a bug, regression, or edge-case failure, did I automatically document a new mandatory directive in `AGENTS.md` and add its corresponding checklist item to prevent future regressions?
