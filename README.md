@@ -1,116 +1,137 @@
-# La Torrentola 🎬
+# La Torrentola 🎬🍿
 
-**La Torrentola** is a modern Android application for exploring high-definition movie and TV series catalogs, discovering new releases and episodes, watching movie trailers, and managing a personal media library with cloud synchronization through your Google account.
+🌐 **Languages / Idiomas:** **English** | [Español](README.es.md)
 
-Built for phones, tablets, foldables, and **Android TV / Chromecast**, the app features a *Frosted Glass* UI aesthetic (powered by Haze 2.0), native D-pad remote navigation, and direct integration with torrent managers on mobile or remote NAS home servers (such as Transdrone, Synology DS get, or local downloaders).
+Welcome to **La Torrentola**! Your ultimate, unrestricted media hub for Android and Android TV. Crafted from the ground up to deliver a modern, smooth, and cinematic entertainment experience, La Torrentola lets you explore high-definition movie and TV series catalogs, stream torrents instantly without endless waits, connect your home media servers and drives, and seamlessly synchronize your personal library to the cloud with your Google account.
 
----
-
-## 🌟 Key Features
-
-### 📱 For Users
-* **Catalog & Quality Filters**: Browse movies sorted by video quality (**4K 2160p**, **1080p x265**, **1080p**, **720p**) and genres (Action, Sci-Fi, Comedy, Drama, New Releases, and Previously Watched).
-* **TV Series Catalog**: Switch Home between Movies and TV to browse TMDB series by airing status, popularity, rating, or genre. Open seasons and episodes, find releases through EZTV, and use the configured torrent mode.
-* **Google Cloud Library Sync**: Sign in with your Google account to back up and automatically synchronize your favorite movies and watch history across all your devices.
-* **TV Episode Download History**: TV episode torrent selections are recorded separately from movie downloads and synced to the signed-in user's cloud library.
-* **Integrated Trailer Player**: Watch official YouTube HD trailers directly inside the app without ads or pop-ups.
-* **On-Device Spanish Translation**: Instant, automatic summary translation powered by local on-device AI—no additional mobile data or cloud costs.
-* **Language Exclusion Filter**: Automatically hide movies in languages you prefer not to watch.
-* **100% Android TV & Remote Ready**: Smooth navigation engineered for TV remotes with responsive card scaling, high-contrast focus indicators, and D-pad shortcuts.
-* **Torrent handling**: Choose external-client handoff, in-app download with local playback, or in-app download with Chromecast from Settings. In-app playback starts after a contiguous startup buffer has been verified by libtorrent4j; later HTTP byte ranges are served only after every overlapping torrent piece passes its hash check. Completed downloads remain in the app's download manager until deleted.
-* **Watch History & Resume**: Local playback automatically tracks position via Room (`WatchHistoryDao`) for seamless resume across sessions, with background sync to Firestore.
-* **Home Network Media Storage (SMB & NFS)**: Connect directly to personal home servers, NAS devices (Synology, QNAP, TrueNAS, Unraid), and PCs (Windows File Sharing, Samba, Linux NFS exports). Browse shared media folders, enjoy stutter-free playback powered by high-speed 16 MB asynchronous prefetching, and cast movies or shows directly to your TV over the local Wi-Fi.
-* **Subtitles & Casting**: Enhanced subtitle handling via OpenSubtitles (backed by `OpenSubtitlesCredentialStore` using Android Keystore encryption) and refined Google Cast integration supporting local server handoff via `PlaybackService` and `LocalPlayerActivity`.
-* **Push Notifications**: Receive alerts about new releases and updates via Firebase Cloud Messaging. Notifications deep-link directly to the relevant movie or screen inside the app.
+Whether on your phone's touchscreen, your tablet, a foldable device, or comfortably from your living room sofa using your Smart TV remote control, La Torrentola turns any screen into your personal cinema.
 
 ---
 
-## 💡 Quick User Guide
+## ✨ Why You Will Love La Torrentola
 
-1. **Explore the Catalog**: Scroll through the main home screen to discover popular movies and new releases. Use the top chips to filter by genre or resolution.
-2. **Browse TV Series**: Select **TV** on Home, choose a feed or genre, then open a series to select a season and episode.
-3. **Find an Episode Release**: Open an episode to see matching EZTV releases and available quality/seed information.
-4. **Start Downloads**: Select a movie quality or TV episode release. Settings choose whether the magnet is sent to an external torrent app, downloaded and streamed locally, or downloaded and offered to a Chromecast-compatible receiver. In-app transfers can be paused, resumed, played, or deleted from **In-app downloads** in Settings.
-5. **Search and Details**: Search movie titles, or open a movie poster for summaries, full cast (enriched via TMDB), IMDb ratings, and trailers.
-6. **Sync Your Library**: Sign in and save favorites or select downloads; movie and TV download histories are stored separately in your account.
-7. **Stream from your Home NAS or PC (SMB / NFS)**:
-   * **Open Network Storage**: Navigate to **Settings** ➔ **External media / Network storage** (or tap the active storage indicator).
-   * **Scan or Add Server**: Tap **Scan Network** to automatically detect SMB and NFS servers on your local Wi-Fi, or tap **Add Server** to manually enter the IP address (e.g. `192.168.1.100`), select **SMB** (port 445) or **NFS** (port 2049), and enter the share name (e.g. `Movies` or `/volume1/video`).
-   * **Secure Credentials**: If your SMB share requires authentication, enter your username and password. Credentials are encrypted on-device via the Android Keystore.
-   * **Stutter-Free Streaming**: Browse folders and tap any video file (`.mkv`, `.mp4`, `.avi`, `.webm`, `.ts`, etc.). Playback starts instantly with smooth streaming powered by our 16 MB asynchronous prefetch cache.
-   * **Cast to Big Screen**: Tap the Cast button on any remote video item to stream it directly to your Chromecast or Android TV / Google TV.
+* 🚀 **Instant Streaming**: Forget waiting hours for a complete download. The app prioritizes and verifies the initial file segments so your movie or TV episode starts playing in seconds.
+* 📺 **Built for Your Television (100% Android TV & Google TV Ready)**: Say goodbye to clumsy virtual cursors. The user interface navigates naturally with your TV remote (D-pad), featuring interactive card scaling, high-contrast focus rings, and large-screen optimized layouts.
+* 💎 **Modern "Frosted Glass" Aesthetic**: Experience a premium visual presentation powered by real-time translucent frosted glass blur, smooth scrolling animations, and adaptive Material 3 styling.
+* 📡 **Your Home Cloud (NAS, PC, SMB & NFS)**: Connect directly to shared folders on your Windows PC, Linux home servers, or NAS appliances (Synology, QNAP, TrueNAS, Unraid). Stream your home video collection over Wi-Fi without stuttering!
+* ☁️ **Full Google Cloud Synchronization**: Sign in with a single tap. Your favorite movies, followed TV shows, and exact playback progress synchronize across all your phones, tablets, and TVs.
+* 🏷️ **Quick Progress Marking**: Finished an episode or movie? Long-press its poster to instantly mark it as "Completed" or "Uncompleted", complete with the streaming industry-standard red progress bar.
+* 🌐 **On-Device Smart Translation**: Using local on-device machine learning, movie summaries are automatically translated into Spanish without consuming mobile data or uploading your reading history to the cloud.
+* 🍿 **Streaming Platform Explorer (OTT)**: Discover what is trending and streaming on Netflix, Disney+, Max (HBO), Amazon Prime Video, Apple TV+, and more.
 
 ---
 
-## 💻 Technical Overview for Developers
+## 🧭 Everything You Can Do: Comprehensive Feature Guide
 
-This app has been refactored to leverage the latest Jetpack Compose libraries and reactive Android architecture:
+### 1. 🎬 Explore Movies in Maximum Definition
+* **Quality Filtering**: Browse titles in **4K Ultra HD (2160p)**, **1080p x265 (High Efficiency)**, **1080p Full HD**, and **720p**.
+* **Genre Discovery**: Explore Action, Sci-Fi, Comedy, Drama, Horror, Romance, New Releases, or your Previously Watched history.
+* **Immersive Movie Details**:
+  * Full-screen panoramic backdrop and official movie logo artwork.
+  * Detailed plot synopsis translated on the fly.
+  * **Aggregated Ratings**: Side-by-side scores from IMDb, Rotten Tomatoes, and Metacritic for informed viewing choices.
+  * **Official Trailers**: Watch official YouTube HD trailers directly inside the app without ads or pop-up interruptions.
+* **Cast & Actor Filmographies**: Tap any actor or actress photo to view their biography, birthdate, and complete filmography to jump directly to their other movies or TV series.
 
-* **Language**: [Kotlin 2.1+](https://kotlinlang.org/) with the K2 compiler.
-* **UI Framework**: [Jetpack Compose](https://developer.android.com/compose) with **Material 3** for mobile and **TV Material 3** for Android TV.
-* **Visual Effects**: [Haze 2.0](https://github.com/chrisbanes/haze) for frosted glass blur on app bars and headers, featuring scroll-driven `EaseInOutCubic` alpha interpolation.
-* **Dependency Injection**: [Hilt](https://developer.android.com/training/dependency-injection/hilt-android).
-* **Auth & Cloud Persistence**: [Firebase Auth](https://firebase.google.com/docs/auth) via **Google Credential Manager** and [Cloud Firestore](https://firebase.google.com/docs/firestore) for remote synchronization.
-* **Push Notifications**: [Firebase Cloud Messaging](https://firebase.google.com/docs/cloud-messaging) with token sync to the app backend; notification taps deep-link into the app.
-* **Navigation**: [AndroidX Navigation 3](https://developer.android.com/jetpack/androidx/releases/navigation) Compose-first runtime.
-* **Networking**: [Retrofit 3.0](https://square.github.io/retrofit/) with OkHttp 5 and Coroutines Flow.
-* **TV Catalog & Episode Releases**: TMDB provides series/season/episode metadata and movie cast enrichment via IMDb ID; EZTV provides episode torrent releases matched through each series' IMDb identifier.
-* **In-App Torrent & Playback**: [libtorrent4j](https://github.com/aldenml/libtorrent4j) foreground service with piece-verified HTTP streaming (`VerifiedTorrentHttpServer`); [Media3 ExoPlayer](https://developer.android.com/media/media3/exoplayer) for local playback and [Cast SDK](https://developers.google.com/cast) with `PlaybackService` for Chromecast handoff over LAN.
-* **Remote Network Storage (SMB / NFS)**: Native C [libnfs](https://github.com/sahlberg/libnfs) JNI bindings for NFSv3/v4; [smbj](https://github.com/hierynomus/smbj) with persistent session pooling and asynchronous chunk prefetching (`SmbPrefetchInputStream` with 16 MB recycled buffers) for SMBv2/v3; custom Media3 `RemoteMediaDataSource` for direct ExoPlayer streaming without local proxy overhead; and `RemoteMediaHttpServer` with CORS headers for Chromecast handoff.
-* **Local Persistence**: [Room](https://developer.android.com/training/data-storage/room) for genre usage statistics, in-app transfer records, watch history, and session metadata.
-* **On-Device AI Translation**: [Google ML Kit Translate](https://developers.google.com/ml-kit/language/translation) for local summary translation.
+### 2. 📺 TV Series Season by Season
+* **Extensive TV Catalog**: Browse currently airing shows, popular series, and all-time top-rated television.
+* **Intuitive Season & Episode Navigation**: Pick seasons and episodes with localized titles, air dates, and synopsis overviews.
+* **Smart Next-Episode Detection**: Finished an episode? The app immediately evaluates whether the next episode is ready to stream, still awaiting broadcast, or if the season has concluded.
+* **Multi-Release Scraping**: Automatically aggregates the best available torrent releases sorted by peer seed counts for maximum download bandwidth.
 
-> [!NOTE]
-> For a full breakdown of the software architecture, modular UI components, and sequence diagrams, refer to the **[Architecture Guide (ARCHITECTURE.md)](ARCHITECTURE.md)**.
+### 3. 🍿 Streaming Platform Catalog (OTT Providers)
+* Want to know what is hot on your favorite streaming platform?
+* Navigate to the **Streaming Providers** section and filter the catalog by network:
+  * **Netflix**, **Disney+**, **Max**, **Amazon Prime Video**, **Apple TV+**, and many more.
+* Discover popular titles and open their complete details with a single tap.
 
----
+### 4. ⚡ Instant Playback & Torrent Management
+Choose the torrent handling mode in **Settings** that fits your personal workflow:
+1. **Direct In-App Playback (Streaming)**: Tap any video quality badge and the built-in media player begins streaming within seconds using our verified piece pipeline. Zero waiting!
+2. **Cast to Smart TV / Chromecast**: Stream the torrent directly to your Google Cast or Android TV receiver on your local Wi-Fi.
+3. **External Client Handoff**: Prefer your external torrent app (Flud, LibreTorrent, uTorrent, or Synology DS get)? The app will hand off the magnet link automatically.
+* **Integrated Download Manager**: Monitor active transfers in the background, pause, resume, check speeds and peer counts, or clean up completed files.
 
-## 🛠️ Setup & Build Instructions
+### 5. 🏠 Connect Your Home Server (NAS, PC, SMB & NFS)
+Have a personal movie collection stored on your computer or home server? La Torrentola connects directly:
+* **One-Tap Network Scanner**: Automatically scans your local Wi-Fi network for active SMB (Windows/Samba) and NFS (Linux/NAS) shares.
+* **Fast Folder Browsing**: Navigate your media folders with the same speed as local storage.
+* **Stutter-Free 4K Streaming**: Powered by our asynchronous 16 MB ring-buffer prefetch engine, eliminating Wi-Fi jitter and playback stalls even on high-bitrate 1080p and 4K media.
+* **Cast from NAS to TV**: Stream any video from your home server directly to your Chromecast with one tap.
 
-### Prerequisites
+### 6. 💾 USB Drives & External Storage
+* Connect a USB flash drive or portable hard drive to your Android TV box or phone.
+* The app automatically detects removable volumes, lets you choose where to save torrent downloads, and plays media files directly from the drive.
 
-1. **Credentials in `local.properties`**:
-   Add the Firebase Web Client ID and TMDB / OpenSubtitles API keys to `local.properties` in the project root:
-   ```properties
-   FIREBASE_WEB_CLIENT_ID=your_web_client_id_here
-   TMDB_API_KEY=your_tmdb_api_key_here
-   OPEN_SUBTITLES_API_KEY=your_opensubtitles_api_key_here
-   ```
-   The build exposes these through `BuildConfig`; do not commit credentials or hardcode them in source.
-   A TMDB key is required for the TV-series catalog and detail screens. The OpenSubtitles API key is required for subtitle search; users enter their own OpenSubtitles username and password in Settings, where credentials are encrypted using Android Keystore.
-   Build-time API keys can be extracted from a distributed APK; do not treat them as secrets and use appropriately scoped keys and quotas.
-   In-app libtorrent support raises `minSdk` to Android 9 (API 28). Cast playback requires the phone/TV and receiver to be reachable on the same local network.
+### 7. 💬 Tailored Subtitles & Cinema Audio
+* **Integrated & Online Subtitles**: Use embedded subtitle tracks (MKV/MP4) or search and download matching subtitles in your language on the fly via OpenSubtitles.
+* **Full Subtitle Styling**: Customize font size, text color, dark background contrast, and time offset synchronization.
+* **Smart Surround Audio**:
+  * Enjoy multi-channel audio tracks in multiple languages (5.1 and 7.1).
+  * Connected to an older soundbar or AVR via optical (SPDIF) or HDMI ARC? The app automatically transcodes multichannel audio to **Dolby Digital (AC3)** so you never experience silent audio or flat stereo downmixes.
 
-2. **Google Services Config**:
-   Place your `google-services.json` inside the `app/` folder. Ensure your development SHA-1 fingerprint is registered in the Firebase Console.
+### 8. ☁️ Your Library Everywhere You Go
+* **Favorites List**: Bookmark movies and TV shows you plan to watch later.
+* **Smart Watch History**: The app remembers the exact minute and second where you paused, whether you were streaming a torrent, playing from your NAS, or watching a local file.
+* **Cloud Sync**: Start watching on your phone during your commute and continue right where you left off on your living room Smart TV.
 
-### Build Commands (Windows PowerShell `pwsh` / Bash)
-
-* **Compile Debug APK**:
-  ```powershell
-  pwsh -Command ".\gradlew.bat assembleDebug"
-  ```
-
-* **Install on Connected Device or Emulator**:
-  ```powershell
-  pwsh -Command ".\gradlew.bat installDebug"
-  ```
-
-* **Run Unit Tests**:
-  ```powershell
-  pwsh -Command ".\gradlew.bat testDebugUnitTest"
-  ```
-
-* **Generate JaCoCo Coverage Report**:
-  ```powershell
-  pwsh -Command ".\gradlew.bat testDebugUnitTest jacocoTestReport"
-  ```
+### 9. 🎙️ Voice Search & Release Notifications
+* **Voice Search**: Tap the microphone icon or press the voice button on your TV remote to search for titles naturally without tedious on-screen keyboard typing.
+* **New Release Alerts**: Receive notifications for hot new releases and jump straight into the movie details with a single tap.
 
 ---
 
-## 🧪 Testing & Coverage
+## 📖 Step-by-Step User Guide: How to Accomplish It
 
-The project includes a comprehensive test suite using **MockK**, **Turbine**, **Google Truth**, **JaCoCo**, and Compose UI tests with **HiltTestRunner**.
+### How to watch a movie instantly
+1. Open **La Torrentola** and browse the home catalog (or search for a specific title).
+2. Tap the movie poster to open its detail screen.
+3. Select your preferred video quality badge (**1080p**, **4K**, **720p**).
+4. The built-in player opens and playback begins within seconds.
+5. Tap the **Subtitles** icon inside the player controls to enable or search for subtitles in your preferred language.
 
-* **Repositories & ViewModels**: Verification of asynchronous flows (`StateFlow`), language filtering, pagination, and error handling.
-* **UI Components**: Parallel Compose Previews (`@PreviewLightDark` for mobile and `*TvPreview` for TV).
+### How to watch a TV series episode by episode
+1. On the home screen, select the **TV Series** tab.
+2. Select a show, choose the **Season**, and tap the desired **Episode**.
+3. View the list of matching releases sorted by speed and pick one to begin streaming.
+4. When the episode concludes, the player presents a prompt to proceed straight into the next episode.
+
+### How to connect your home NAS or PC (SMB / NFS)
+1. Go to **Settings** ➔ **External media / Network storage** (or tap the storage icon on the top app bar).
+2. Tap **Scan Network** to automatically detect local SMB and NFS servers, or tap **Add Server** to manually enter the IP address (e.g. `192.168.1.100`).
+3. Choose the protocol (**SMB** for Windows/Samba or **NFS** for Linux/NAS) and enter credentials if your share is password-protected.
+4. Browse your shared folders and tap any video file to start streaming.
+
+### How to cast content to your Smart TV / Chromecast
+1. Make sure your phone/tablet and your Chromecast/Android TV are connected to the **same Wi-Fi network**.
+2. While playing any video in the app (or from the detail screen), tap the **Cast** icon.
+3. Select your TV from the device list.
+4. Video and subtitles transfer to the big screen, turning your phone into a remote control with play/pause, seek, and volume adjustments.
+
+### How to mark movies or episodes as watched
+* **On mobile/touchscreen**: Long-press any movie poster, season chip, or episode card for one second. From the dialog menu, select **"Mark as completed"**.
+* **On Android TV**: Move D-pad focus to the target card and hold down the **OK / Center** button. The options dialog appears to mark as watched or unwatched.
+* The 100% red progress bar and completed badge will appear immediately.
+
+---
+
+## 🔒 Privacy & Personal Customization
+
+* **Dark Mode, Light Mode & AMOLED Pure Black**: Pick your preferred visual style in Settings, including an *AMOLED Pure Black* theme engineered for maximum contrast and battery conservation on OLED panels.
+* **Language Exclusion Filter**: Automatically hide catalog titles whose original language you prefer not to see.
+* **Minimum Rating Threshold**: Configure a minimum IMDb rating score to filter out low-rated releases.
+* **Hardware-Backed Security**: Network passwords and subtitle credentials are encrypted and stored inside your device's hardware security module (**Android Keystore**).
+
+---
+
+## 🛠️ Developer Information & Architecture
+
+Are you a software engineer, Android developer, or interested in the technical inner workings of the app?
+
+All technical specifications regarding Clean Architecture, MVI/MVVM patterns, Jetpack Compose, the `libtorrent4j` streaming pipeline, real-time surround audio transcoding (`Ac3TranscodingAudioSink`), native JNI `libnfs` integration, reactive Room/Firestore sync, R8/ProGuard shrinking rules, and complete Mermaid sequence diagrams are detailed in:
+
+👉 **[Read the Technical Architecture Guide (ARCHITECTURE.md)](ARCHITECTURE.md)** 👈
+
+---
+
+Enjoy the ultimate movie and TV series experience with **La Torrentola**! 🎬✨

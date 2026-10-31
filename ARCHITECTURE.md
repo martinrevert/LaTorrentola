@@ -1,110 +1,139 @@
-# Architecture & Workflows — La Torrentola
+# Architecture & Technical Specifications — La Torrentola 🏗️⚡
 
-Detailed technical documentation covering system architecture, design patterns, modular UI components, and data flow diagrams for **La Torrentola**.
+Comprehensive technical documentation covering the system architecture, design patterns, media pipelines, networking engines, audio transcoding, hybrid persistence, security models, and formal workflows of **La Torrentola**.
 
 ---
 
-## 🏗️ System Architecture Overview
+## 📑 Table of Contents
+1. [System Architecture Overview](#1-system-architecture-overview)
+2. [Tech Stack & Toolchain](#2-tech-stack--toolchain)
+3. [Setup, Build & Testing Guidelines](#3-setup-build--testing-guidelines)
+4. [UI Architecture & Surface Design](#4-ui-architecture--surface-design)
+5. [Core Subsystems](#5-core-subsystems)
+   - [5.1 Dual-Catalog Engine (Movies & TV Series)](#51-dual-catalog-engine-movies--tv-series)
+   - [5.2 OTT Watch Providers & Platform Discovery](#52-ott-watch-providers--platform-discovery)
+   - [5.3 In-App Torrent Streaming & Verified HTTP Server](#53-in-app-torrent-streaming--verified-http-server)
+   - [5.4 High-Performance Network Storage (SMB & NFS)](#54-high-performance-network-storage-smb--nfs)
+   - [5.5 Storage Management & Removable Media](#55-storage-management--removable-media)
+   - [5.6 Digital Audio Engine & AC3 Surround Transcoding](#56-digital-audio-engine--ac3-surround-transcoding)
+   - [5.7 Video Playback & Google Cast Ecosystem](#57-video-playback--google-cast-ecosystem)
+   - [5.8 Canonical Watch History & Cross-Source Resume](#58-canonical-watch-history--cross-source-resume)
+   - [5.9 Cloud Library, FCM & Google Identity](#59-cloud-library-fcm--google-identity)
+   - [5.10 Hardware Keystore & Security Model](#510-hardware-keystore--security-model)
+   - [5.11 R8, ProGuard & App Shrinking Architecture](#511-r8-proguard--app-shrinking-architecture)
+6. [Complete Suite of Sequence & Flow Diagrams](#6-complete-suite-of-sequence--flow-diagrams)
 
-The application follows **Android Clean Architecture** principles paired with reactive **MVVM (Model-View-ViewModel)**. It is structured as a **Single-Activity App** using Jetpack Compose and AndroidX Navigation 3.
+---
+
+## 1. System Architecture Overview
+
+La Torrentola is engineered following **Android Clean Architecture** principles paired with a reactive **MVI/MVVM (Model-View-Intent / Model-View-ViewModel)** unidirectional data flow. The application runs as a **Single-Activity App** powered by Jetpack Compose and AndroidX Navigation 3.
 
 ```mermaid
 graph TD
-    subgraph UI_Layer [UI Layer - Jetpack Compose and TV Material 3]
-        MA[MainActivity]
-        NV[AppNavigation - Nav3]
-        LS[LoginScreen]
-        HS[HomeScreen]
-        DS[MovieDetailScreen]
-        SS[SearchScreen]
-        STS[SettingsScreen]
-        TVGR[TvGenreResultsScreen]
-        TVDS[TvDetailScreen]
-        TVES[TvEpisodeDetailScreen]
-        TDS[TorrentDownloadsScreen]
-        EMBS[ExternalMediaBrowserScreen]
-        LPA[LocalPlayerActivity]
-
-        subgraph Modular_Components [Reusable Components - ui/components]
-            ML[MovieList]
-            MI[MovieItem]
-            AC[AdaptiveChip/Chips]
-            TVC[TvCatalogComponents/TvSeriesGrid]
-            GB[GenreBottomSheet]
-            AB[ActorDetailBottomSheet]
-            PL[Placeholders]
-            QD[QualityChoiceDialog]
-        end
+    subgraph UI_Layer ["UI Layer - Jetpack Compose & TV Material 3"]
+        MA["MainActivity"]
+        NV["AppNavigation - Navigation 3"]
+        LS["LoginScreen"]
+        HS["HomeScreen"]
+        DS["MovieDetailScreen"]
+        SS["SearchScreen"]
+        STS["SettingsScreen"]
+        TVGR["TvGenreResultsScreen"]
+        TVDS["TvDetailScreen"]
+        TVES["TvEpisodeDetailScreen"]
+        TDS["TorrentDownloadsScreen"]
+        EMBS["ExternalMediaBrowserScreen"]
+        OPS["OttProvidersScreen"]
+        OCS["OttCatalogScreen"]
+        LPA["LocalPlayerActivity"]
     end
 
-    subgraph Presentation_Layer [Presentation Layer - ViewModels]
-        AVM[AuthViewModel]
-        HVM[HomeViewModel]
-        DVM[DetailViewModel]
-        SVM[SearchViewModel]
-        STVM[SettingsViewModel]
-        TVHVM[TvHomeViewModel]
-        TVGVM[TvGenreResultsViewModel]
-        TVDVM[TvDetailViewModel]
-        TVEVM[TvEpisodeDetailViewModel]
-        TDVM[TorrentDownloadsViewModel]
-        EMBVM[ExternalMediaBrowserViewModel]
-        TPVM[TvPlayerViewModel]
+    subgraph Presentation_Layer ["Presentation Layer - ViewModels"]
+        AVM["AuthViewModel"]
+        HVM["HomeViewModel"]
+        DVM["DetailViewModel"]
+        SVM["SearchViewModel"]
+        STVM["SettingsViewModel"]
+        TVHVM["TvHomeViewModel"]
+        TVGVM["TvGenreResultsViewModel"]
+        TVDVM["TvDetailViewModel"]
+        TVEVM["TvEpisodeDetailViewModel"]
+        TDVM["TorrentDownloadsViewModel"]
+        EMBVM["ExternalMediaBrowserViewModel"]
+        OPVM["OttProvidersViewModel"]
+        OCVM["OttCatalogViewModel"]
+        TPVM["TvPlayerViewModel"]
     end
 
-    subgraph Data_Layer [Data Layer]
-        AREP[AuthRepository]
-        UREP[UserLibraryRepository - Firestore]
-        REP[YtsRepository]
-        RS[YtsService - Retrofit]
-        TR[TmdbRepository / TmdbService]
-        ER[EztvRepository / EztvService]
-        OSR[OpenSubtitlesRepository / Service]
-        FCMR[FcmRepository / FcmService]
-        DB[AppDatabase - Room]
-        GENDAO[GenreDao]
-        TVGDAO[TvGenreDao]
-        TDAO[TorrentDownloadDao]
-        DATEDAO[DateDao]
-        WDAO[WatchHistoryDao]
-        MLK[ML Kit Translator]
-        PM[PreferenceManager]
-        TDS_SVC[TorrentDownloadService - Foreground]
-        HTTP[VerifiedTorrentHttpServer]
-        RSM[RemoteStorageManager]
-        SMB[SmbStorageClient - smbj]
-        NFS[NfsStorageClient - libnfs JNI]
-        RMDS[RemoteMediaDataSource]
-        RMHTTP[RemoteMediaHttpServer]
-        SMBCS[SmbCredentialStore]
-        RSR[RemoteServerRepository]
-        NSS[NetworkStorageScanner]
+    subgraph Domain_Services ["Domain & Core Services Layer"]
+        TDS_SVC["TorrentDownloadService - Foreground"]
+        HTTP["VerifiedTorrentHttpServer - NanoHTTPD"]
+        RSM["RemoteStorageManager"]
+        SMB["SmbStorageClient - smbj 0.15.0"]
+        NFS["NfsStorageClient - native libnfs JNI"]
+        PREFETCH["SmbPrefetchInputStream - 16 MB Buffer Pool"]
+        RMDS["RemoteMediaDataSource - Media3"]
+        RMHTTP["RemoteMediaHttpServer - Cast Proxy"]
+        AUD_SINK["Ac3TranscodingAudioSink - Surround DSP"]
+        MMR["MediaMetadataResolver & Canonical IDs"]
+        TSR["TorrentStorageResolver & USB Inspector"]
     end
 
-    subgraph External [External APIs, Network and Services]
-        YTS[YTS API]
-        TMDB[TMDB API]
-        EZTV[EZTV API]
-        OSAPI[OpenSubtitles API]
-        FCMBE[App FCM Backend]
-        FIREBASE[Firebase Auth and Firestore]
-        CAST[Chromecast / Cast SDK]
-        NAS[Home NAS / PC - SMBv2/v3 and NFSv3/v4]
+    subgraph Data_Layer ["Data Layer - Repositories & Databases"]
+        AREP["AuthRepository"]
+        UREP["UserLibraryRepository - Firestore Sync"]
+        REP["YtsRepository / YtsService"]
+        TR["TmdbRepository / TmdbService"]
+        ER["EztvRepository / EztvService"]
+        TIOR["TorrentioRepository / Service"]
+        TEPR["TvEpisodeReleasesRepository"]
+        OMDBR["OmdbRepository / OmdbService"]
+        PTR["PublicTrackersRepository"]
+        OSR["OpenSubtitlesRepository / Store"]
+        FCMR["FcmRepository / FcmService"]
+        DB["AppDatabase - Room"]
+        WDAO["WatchHistoryDao"]
+        TDAO["TorrentDownloadDao"]
+        TVGDAO["TvGenreDao"]
+        GENDAO["GenreDao"]
+        MLK["Google ML Kit Translator"]
+        PM["PreferenceManager"]
+        SMBCS["SmbCredentialStore - Keystore"]
+    end
+
+    subgraph External ["External Services, Devices & Storage"]
+        YTS["YTS Movie Catalog API"]
+        TMDB["TMDB Catalog & Watch Providers"]
+        EZTV["EZTV Torrent API"]
+        TIO["Torrentio Scraper API"]
+        OMDB["OMDb Ratings API"]
+        OSAPI["OpenSubtitles REST API"]
+        FCMBE["Firebase Cloud Messaging"]
+        FIREBASE["Firebase Auth & Firestore"]
+        CAST["Google Cast CAF Receivers"]
+        NAS["Home NAS / PC - SMBv2/v3 & NFSv3/v4"]
+        USB_DEV["USB Storage / Removable Media"]
     end
 
     MA --> NV
-    NV --> LS & HS & DS & SS & STS & TDS & EMBS
-    NV --> TVGR & TVDS & TVES
+    NV --> LS
+    NV --> HS
+    NV --> DS
+    NV --> SS
+    NV --> STS
+    NV --> TDS
+    NV --> EMBS
+    NV --> OPS
+    NV --> OCS
+    NV --> TVGR
+    NV --> TVDS
+    NV --> TVES
     MA --> LPA
 
-    HS & SS --> ML & AC & PL
-    TVGR & TVDS & TVES --> TVC & PL
-    DS --> MI & PL & QD & AB
-    TVES --> QD
-    STS --> TDS & EMBS
-
     LS --> AVM
-    HS --> HVM & TVHVM
+    HS --> HVM
+    HS --> TVHVM
     DS --> DVM
     SS --> SVM
     STS --> STVM
@@ -113,128 +142,285 @@ graph TD
     TVES --> TVEVM
     TDS --> TDVM
     EMBS --> EMBVM
+    OPS --> OPVM
+    OCS --> OCVM
     LPA --> TPVM
 
     AVM --> AREP
-    AREP -->|Firebase Auth| FIREBASE
-    HVM & DVM & SVM & STVM & TVDVM & TVEVM --> UREP
-    UREP -->|Firestore| FIREBASE
-    HVM & DVM & SVM --> REP
-    STVM --> PM & FCMR
-    REP --> RS & DB & MLK & UREP
-    RS -->|YTS API| YTS
-    TVHVM & TVGVM & TVDVM & TVEVM --> TR
-    TVEVM --> ER
-    TR --> TVGDAO
-    TR -->|TMDB API| TMDB
-    ER -->|EZTV API| EZTV
-    TVGDAO --> DB
-    GENDAO --> DB
-    TDAO --> DB
-    DATEDAO --> DB
-    WDAO --> DB
-    DVM & TVEVM --> OSR
-    OSR -->|OpenSubtitles API| OSAPI
+    AREP --> FIREBASE
+
+    HVM --> REP
+    HVM --> UREP
+    DVM --> REP
+    DVM --> TR
+    DVM --> OMDBR
+    DVM --> MLK
+    DVM --> UREP
+
+    TVHVM --> TR
+    TVGVM --> TR
+    TVDVM --> TR
+    TVEVM --> TEPR
+    TEPR --> TIOR
+    TEPR --> ER
+    TEPR --> TR
+
+    OPS --> OPVM
+    OPVM --> TR
+    OCS --> OCVM
+    OCVM --> TR
+
+    STVM --> PM
+    STVM --> FCMR
     STVM --> UREP
-    FCMR -->|FCM backend| FCMBE
+    STVM --> TSR
+
     TDVM --> TDAO
-    TDS_SVC --> TDAO & HTTP
-    EMBVM --> RSM & NSS & RSR & SMBCS
-    RSM --> SMB & NFS & RSR & SMBCS
-    SMB & NFS -->|LAN Storage| NAS
-    LPA --> TDS_SVC & HTTP & OSR & UREP & WDAO & RMDS & RMHTTP
-    LPA -->|Cast SDK| CAST
-    RMHTTP -->|Cast Stream LAN Proxy| CAST
+    TDVM --> TDS_SVC
+
+    EMBVM --> RSM
+    EMBVM --> SMBCS
+    EMBVM --> TSR
+
+    LPA --> TDS_SVC
+    LPA --> HTTP
+    LPA --> RSM
+    LPA --> RMDS
+    LPA --> RMHTTP
+    LPA --> AUD_SINK
+    LPA --> MMR
+    LPA --> WDAO
+    LPA --> UREP
+    LPA --> OSR
+    LPA --> CAST
+
+    RSM --> SMB
+    RSM --> NFS
+    SMB --> PREFETCH
+    SMB --> NAS
+    NFS --> NAS
+    RMHTTP --> CAST
+    TSR --> USB_DEV
+
+    REP --> YTS
+    TR --> TMDB
+    ER --> EZTV
+    TIOR --> TIO
+    OMDBR --> OMDB
+    OSR --> OSAPI
+    FCMR --> FCMBE
+    UREP --> FIREBASE
+    TDS_SVC --> PTR
+    TDS_SVC --> HTTP
+    TDS_SVC --> TDAO
+    DB --> WDAO
+    DB --> TDAO
+    DB --> TVGDAO
+    DB --> GENDAO
 ```
 
-**Dual catalog design:** Home hosts two independent feeds. The movie path sources from YTS using the `Movie` model; the TV path sources from TMDB using `TmdbTvSummary`/`TmdbTvEpisode`. Series IDs remain TMDB IDs throughout navigation. EZTV lookup is keyed by the linked IMDb ID (numeric part only, `tt` prefix stripped).
+---
 
-### TV Subsystem Entry Points
+## 2. Tech Stack & Toolchain
 
-| Concern | Main implementation |
-|---|---|
-| Home feeds, genre chips, series grid, and focus state | `ui/home/HomeScreen.kt`, `ui/home/TvHomeViewModel.kt`, `ui/components/TvCatalogComponents.kt` |
-| TV genre discovery and sorting | `ui/home/TvGenreResultsScreen.kt`, `ui/home/TvGenreResultsViewModel.kt` |
-| Series/season/episode details | `ui/detail/TvDetailScreen.kt`, `TvDetailViewModel.kt` |
-| Episode release lookup, magnet launch, and episode record creation | `ui/detail/TvEpisodeDetailScreen.kt`, `TvEpisodeDetailViewModel.kt` |
-| TMDB and EZTV transport/data access | `network/TmdbService.kt`, `TmdbRepository.kt`, `EztvService.kt`, `EztvRepository.kt` |
-| Local genre usage and cloud episode history | `database/TvGenreDao.kt`, `model/stats/TvGenreStats.kt`, `model/user/DownloadedEpisode.kt`, `network/UserLibraryRepository.kt` |
-| Typed route definitions and screen transitions | `ui/navigation/AppNavigation.kt` |
-
-### In-App Torrent & Playback Subsystem
-
-| Concern | Main implementation |
-|---|---|
-| Download orchestration (libtorrent4j), piece verification, and queue | `service/TorrentDownloadService.kt` |
-| Verified HTTP byte-range server for local & Cast playback | `service/VerifiedTorrentHttpServer.kt` |
-| Local ExoPlayer + Cast player activity | `ui/player/LocalPlayerActivity.kt`, `ui/player/TvPlayerViewModel.kt` |
-| Watch History tracking & persistence | `database/WatchHistoryDao.kt`, `network/UserLibraryRepository.kt` |
-| In-app download management screen | `ui/downloads/TorrentDownloadsScreen.kt`, `TorrentDownloadsViewModel.kt` |
-| Torrent mode setting (`EXTERNAL_CLIENT` / `LOCAL_PLAYBACK` / `CHROMECAST`) | `model/torrent/TorrentHandlingMode.kt` |
-| Subtitle search and download | `network/OpenSubtitlesRepository.kt`, `OpenSubtitlesService.kt`, `OpenSubtitlesCredentialStore.kt` |
-| Persistent in-app transfer records | `database/TorrentDownloadDao.kt`, `model/torrent/TorrentDownload.kt` |
-
-### Remote Network Storage Subsystem (SMB & NFS)
-
-| Concern | Main implementation |
-|---|---|
-| Remote storage manager & unified protocol router | `service/storage/remote/RemoteStorageManager.kt` |
-| SMB protocol client (smbj 0.15.0) & session pooling | `service/storage/remote/SmbStorageClient.kt` |
-| NFS protocol client (native C `libnfs` JNI wrapper) | `service/storage/remote/NfsStorageClient.kt`, `LibNfsNative.kt` |
-| Asynchronous prefetch worker & 16 MB ring buffer | `service/storage/remote/SmbPrefetchInputStream.kt` |
-| Direct Media3 remote DataSource (`remote://`) | `service/storage/remote/RemoteMediaDataSource.kt`, `PlayerStreamingConfig.kt` |
-| Local HTTP byte-range proxy server for Chromecast | `service/storage/remote/RemoteMediaHttpServer.kt` |
-| Hardware Keystore encrypted credential storage (SMB) | `service/storage/remote/SmbCredentialStore.kt` |
-| Saved server configurations repository | `service/storage/remote/RemoteServerRepository.kt` |
-| LAN server discovery scanner (SMB/NFS port probes) | `service/storage/remote/NetworkStorageScanner.kt` |
-| External & network storage browser UI | `ui/media/ExternalMediaBrowserScreen.kt`, `ExternalMediaBrowserViewModel.kt` |
+* **Language**: [Kotlin 2.1+](https://kotlinlang.org/) utilizing the Kotlin K2 compiler with strong skipping mode enabled for Jetpack Compose.
+* **Target SDKs**: `minSdk = 28` (Android 9.0 Pie, required for high-performance JNI and libtorrent4j), `targetSdk = 35`, `compileSdk = 35`.
+* **UI Framework**:
+  * **Handheld / Foldables / Tablets**: Jetpack Compose with Material 3 (`androidx.compose.material3`).
+  * **Android TV & Google TV**: Jetpack Compose for TV (`androidx.tv.material3`, `androidx.tv.foundation`).
+  * **Visual Polish**: [Haze 2.0](https://github.com/chrisbanes/haze) hardware-accelerated frosted glass blur using `RenderEffect` on Android 12+ (API 31+).
+* **Dependency Injection**: [Hilt](https://developer.android.com/training/dependency-injection/hilt-android) with `@HiltViewModel` lifecycle scoping.
+* **Navigation**: [AndroidX Navigation 3](https://developer.android.com/jetpack/androidx/releases/navigation) Compose-first backstack with polymorphic `@Serializable` `Route` contracts.
+* **Media & Audio Subsystem**:
+  * [Media3 ExoPlayer 1.5+](https://developer.android.com/media/media3/exoplayer) with custom `LoadControl`, `RenderersFactory`, and `RemoteMediaDataSource`.
+  * Software Audio Fallback via [Media3 FFmpeg Decoder](https://developer.android.com/media/media3/exoplayer/customizing-playback#ffmpeg-extension).
+  * [Google Cast SDK CAF](https://developers.google.com/cast) integration via `CastContext`, `SessionManager`, and `RemoteMediaClient`.
+  * Custom real-time surround transcoding audio sink (`Ac3TranscodingAudioSink`).
+* **P2P Torrent Engine**: [libtorrent4j](https://github.com/aldenml/libtorrent4j) (native C++ libtorrent 1.2+ bindings via JNI) with custom piece tracker (`VerifiedPieceTracker`), piece planner (`StreamingPiecePlanner`), and HTTP byte-range server (`VerifiedTorrentHttpServer`).
+* **Remote Network Storage**:
+  * **SMB**: [smbj 0.15.0](https://github.com/hierynomus/smbj) with persistent session pooling and asynchronous chunk prefetching (`SmbPrefetchInputStream`).
+  * **NFS**: Native C [libnfs](https://github.com/sahlberg/libnfs) JNI bindings (`LibNfsNative.kt`) supporting NFSv3 and NFSv4.
+* **Networking & Web APIs**:
+  * [Retrofit 3.0](https://square.github.io/retrofit/) with [OkHttp 5](https://square.github.io/okhttp/) and Kotlin Coroutines `Flow`.
+  * [NanoHTTPD](https://github.com/NanoHttpd/nanohttpd) embedded micro-servers for loopback byte-range delivery and Cast LAN streaming.
+* **Cloud & Persistence**:
+  * [Room 2.6+](https://developer.android.com/training/data-storage/room) as the fast, reactive Single Source of Truth for local state.
+  * [Firebase Auth](https://firebase.google.com/docs/auth) with Google Credential Manager API.
+  * [Cloud Firestore](https://firebase.google.com/docs/firestore) for multi-device cloud synchronization.
+  * [Firebase Cloud Messaging](https://firebase.google.com/docs/cloud-messaging) for release notifications and deep linking.
+* **On-Device AI**: [Google ML Kit Translate](https://developers.google.com/ml-kit/language/translation) for offline, zero-data summary translation.
+* **Security**: Android Hardware Keystore (`AndroidKeyStore`) with AES-GCM 256-bit envelope encryption for network and third-party credentials.
 
 ---
 
-## 🎨 UI Architecture & Visual System
+## 3. Setup, Build & Testing Guidelines
 
-### 1. Adaptive & Responsive UI (`isTvDevice`)
-* **Shared Logic, Split Presentation**: The application logic (ViewModels/Repositories) is shared across mobile and Android TV, but the UI presentation layer completely branches based on `Context.isTvDevice()`.
-* **Theme Injection**: Mobile uses `LaTorrentolaTheme(themeMode = preferenceManager.getTheme())` utilizing `androidx.compose.material3`. TV uses `TvLaTorrentolaTheme` utilizing `androidx.tv.material3`.
-* **Adaptive Breakpoints**: Where TV components aren't explicitly used on mobile/tablet, Compose Window Size Classes determine layout span counts and navigation rail vs bottom bar presence.
+### 3.1 Environment Prerequisites & Secret Injection
+API keys and secrets MUST NEVER be hardcoded into version control. They are injected at build time via `local.properties`:
 
-### 2. Haze 2.0 Visual Blur System
-* **Platform Requirements**: Hardware-accelerated real-time blur (`RenderEffect`) requires Android 12+ (API 31+).
-* **Pre-Android 12 Fallback**: On devices running API < 31 and during Android Studio Compose Previews, the app falls back to a semi-opaque surface container (`surface.copy(alpha = 0.9f)`) to prevent invisible or overlapping content.
-* **Animated Interpolation (`EaseInOutCubic`)**: Translucent opacity (`hazeAlpha`) is calculated dynamically based on grid scroll state (`gridState`). It interpolates smoothly between `1.0f` (at rest at the top) and `0.15f` (when scrolled) over 600 ms using `EaseInOutCubic`.
-* **Full-Screen `hazeSource`**: The scrollable list container fills the entire screen (`fillMaxSize()`) behind the top header and bottom system navigation bar, delivering a true edge-to-edge frosted glass experience.
+```properties
+# Root local.properties
+FIREBASE_WEB_CLIENT_ID=your_firebase_web_client_id.apps.googleusercontent.com
+TMDB_API_KEY=your_tmdb_api_key_v3
+OPEN_SUBTITLES_API_KEY=your_opensubtitles_api_key
+```
 
-### 3. Android TV D-Pad Focus Navigation Engine
-* **Single Vertical Layout Tree (`isTv`)**: On TVs and Chromecasts (`isTv == true`), headers and grid lists reside in a single vertical `Column` layout tree. This eliminates focus search dead zones between filter chips and grid items.
-* **Native TV Components (`androidx.tv.material3.Surface`)**: All chips and buttons on TV use `tv-material3` components (`TvChip`), providing smooth focus scaling (`focusedScale = 1.1f` or `1.05f`).
-* **Dialog Focus Trapping**: Android TV overlays use `androidx.compose.ui.window.Dialog` to prevent the D-pad focus engine from falling through to the underlying views (crucial for overlapping ExoPlayer surfaces).
-* **YouTube Player Focus Isolation**: Embedded `YouTubePlayerView` instances block D-pad focus stealing via `descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS`, overlaying a native `IconButton` for play/pause control.
+* **Google Services Configuration**: Place the generated `google-services.json` inside the `app/` folder. Ensure the SHA-1 and SHA-256 fingerprint hashes match your local keystore.
+* **Java Toolchain**: Java 17+ (Android Studio JetBrains Runtime / OpenJDK 17). Toolchain auto-detection can be configured via `gradle.properties`:
+  ```properties
+  org.gradle.java.installations.auto-detect=false
+  ```
+
+### 3.2 CLI Commands
+
+#### Windows (PowerShell Core `pwsh` or Windows PowerShell):
+```powershell
+# Compile debug APK
+pwsh -Command ".\gradlew.bat assembleDebug"
+
+# Install on connected device/emulator
+pwsh -Command ".\gradlew.bat installDebug"
+
+# Run unit tests (Primary agent verification task)
+pwsh -Command ".\gradlew.bat testDebugUnitTest"
+
+# Generate JaCoCo code coverage report
+pwsh -Command ".\gradlew.bat testDebugUnitTest jacocoTestReport"
+```
+
+#### Linux / macOS (POSIX Bash):
+```bash
+# Make wrapper executable
+chmod +x ./gradlew
+
+# Compile debug APK
+./gradlew assembleDebug
+
+# Run unit tests
+./gradlew testDebugUnitTest
+```
+
+### 3.3 Testing Architecture
+* **Unit Tests (`app/src/test/`)**: Mirror the application package structure. Powered by **JUnit4**, **MockK**, **Turbine** (for Kotlin Flow state verification), and **Google Truth**.
+* **Zero APK Building Mandate for AI Agents**: In development and CI environments, running `testDebugUnitTest` is the mandatory verification step to confirm zero regressions across ViewModels, Repositories, and Utility classes.
 
 ---
 
-## 📦 Data Layer & Hybrid Persistence
+## 4. UI Architecture & Surface Design
 
-1. **Retrofit + Gson**: Fetches movie catalog data from the YTS API.
-2. **TMDB Retrofit service**: Supplies TV feeds, genres, genre discovery, TV details, seasons/episodes, cast/crew enrichment for movies via IMDb ID, and series external IDs. `TMDB_API_KEY` is injected via `BuildConfig`; it must not be hardcoded.
-3. **EZTV Retrofit service**: Supplies torrent releases for a numeric IMDb ID. `EztvRepository` filters by exact season/episode and sorts matches by seed count.
-4. **OpenSubtitles Retrofit service**: Searches and downloads subtitle tracks. Credentials (username/password) are securely encrypted inside the Android hardware Keystore via `OpenSubtitlesCredentialStore`; the API key is injected via `BuildConfig`.
-5. **libtorrent4j (`TorrentDownloadService`)**: Foreground service managing a native libtorrent session. Downloads are queued, pieces are hash-verified, and byte ranges are served via `VerifiedTorrentHttpServer` only after verification. Raises `minSdk` to Android 9 (API 28).
-6. **Media3 ExoPlayer + Cast SDK (`LocalPlayerActivity`)**: Plays media from the local HTTP server. Switches between `ExoPlayer` (local) and `CastPlayer` (Chromecast) when a Cast session becomes available on the same LAN.
-7. **Cloud Firestore (Cloud-First Sync)**: Synchronizes user favorites and movie downloads (`users/{uid}/downloads/{hash}`) separately from TV episode downloads (`users/{uid}/tv_downloads/{hash}`). Also stores per-user cloud preferences (language filter, minimum rating).
-8. **Room Database (Local Metadata)**: Acts as the Single Source of Truth for rapid UI access. Stores:
-   * **Watch History**: `WatchHistoryDao` (Fast local UI resume, syncs to Firestore in background).
-   * **Transfer Records**: `TorrentDownloadDao`.
-   * **Usage Stats**: `GenreDao`, `TvGenreDao`, `DateDao`.
-9. **Google ML Kit Translate**: On-device AI translation of movie summaries from English to Spanish.
-10. **Firebase Cloud Messaging**: Push notifications managed by `FcmRepository`/`FcmService`. Token is registered with the app backend on sign-in and removed on sign-out. Deep linking implemented via Notification intents.
-11. **SMB & NFS Network Storage (`RemoteStorageManager`)**: Direct access to local network media servers using `smbj` (SMBv2/v3) and native C `libnfs` JNI wrapper (NFSv3/v4). Host credentials for SMB shares are encrypted in the Android Keystore via `SmbCredentialStore`.
-12. **High-Performance Streaming Pipeline (`RemoteMediaDataSource` & `SmbPrefetchInputStream`)**: High-throughput media pipeline for local playback and Cast streaming. Uses custom `remote://` URI routing directly in Media3 ExoPlayer, asynchronous 16 MB ring-buffered prefetching (`SmbPrefetchInputStream`) to eliminate SMB stop-and-wait stalls, persistent session reuse, and a dedicated LAN HTTP proxy server (`RemoteMediaHttpServer`) for Chromecast receivers.
+### 4.1 Surface Branching (`Context.isTvDevice()`)
+La Torrentola shares 100% of its ViewModels, Repositories, and Domain logic across all form factors. The presentation layer branches at the entry points:
+* **Mobile / Tablet**: Uses `androidx.compose.material3` components inside `LaTorrentolaTheme`.
+* **Android TV / Google TV**: Uses `androidx.tv.material3` components inside `TvLaTorrentolaTheme`.
+
+### 4.2 Theme Mode Propagation & Dark Mode Trap Prevention
+Compose `Dialog`s, `BottomSheet`s, and isolated windows spawn in distinct Android `Window` contexts that do not inherit ambient LocalProviders. Calling `TvLaTorrentolaTheme` without passing `themeMode` resets the theme to `THEME_SYSTEM`, breaking user Dark Mode on TV.
+
+```kotlin
+// Component-level contract
+val effectiveThemeMode = remember(context, themeMode) {
+    themeMode ?: PreferenceManager(context).getTheme()
+}
+if (context.isTvDevice()) {
+    TvLaTorrentolaTheme(themeMode = effectiveThemeMode) { /* TV UI */ }
+} else {
+    LaTorrentolaTheme(themeMode = effectiveThemeMode) { /* Mobile UI */ }
+}
+```
+
+### 4.3 Haze 2.0 Real-Time Blur System
+* **Hardware Acceleration**: Powered by Skia `RenderEffect` on Android 12+ (API 31+).
+* **Graceful Degradation**: On devices running API < 31 or during IDE Compose Previews, the app falls back to a solid translucent container (`surface.copy(alpha = 0.90f)`).
+* **Scroll-Driven Interpolation**: `hazeAlpha` dynamically interpolates between `1.0f` (at rest at the top) and `0.15f` (when scrolled) over 600 ms via `EaseInOutCubic`.
+
+### 4.4 Android TV Focus Trapping & D-Pad Navigation
+* **Single Vertical Column Tree**: Eliminates focus search dead zones between sticky headers, chips, and grid items.
+* **Dialog Focus Traps**: Dialogs use `androidx.compose.ui.window.Dialog(properties = DialogProperties(usePlatformDefaultWidth = false))` with opaque container surfaces ($\alpha \ge 0.95f$) to prevent D-pad events from leaking into underlying video surfaces.
+* **YouTube Focus Isolation**: Embedded `YouTubePlayerView` instances are isolated (`descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS`) and overlaid with a focusable native `IconButton`.
 
 ---
 
-## 🔄 Sequence & Flow Diagrams
+## 5. Core Subsystems
 
-### 1. Movie Discovery & Pagination
+### 5.1 Dual-Catalog Engine (Movies & TV Series)
+* **Movie Pipeline**: Catalogs are queried from YTS via `YtsRepository`. Detail requests enrich the movie with TMDB cast/crew credits (via IMDb ID resolution), OMDb aggregated ratings (Rotten Tomatoes, Metacritic, IMDb), and on-device ML Kit summary translation.
+* **TV Series Pipeline**: Powered by TMDB via `TmdbRepository` for series overview, seasons, and episodes. Episode torrent releases are resolved via `TvEpisodeReleasesRepository`, which queries both `TorrentioRepository` and `EztvRepository` (matching by numeric IMDb ID with `tt` stripped).
+* **Next Episode Continuation Evaluation**: `SeriesContinuationState` evaluates whether a subsequent episode is ready to play, unaired, or if the series has concluded.
+
+### 5.2 OTT Watch Providers & Platform Discovery
+* `OttProvidersScreen` and `OttCatalogScreen` integrate with TMDB's `/watch/providers` endpoints.
+* Enables browsing movies and TV series categorized by global streaming services (Netflix, Disney+, HBO Max, Amazon Prime Video, Apple TV+, etc.).
+* Supports sorting by popularity, release date, and user ratings with seamless navigation directly to movie or TV detail screens.
+
+### 5.3 In-App Torrent Streaming & Verified HTTP Server
+The application features a robust in-app streaming pipeline that eliminates the need for full pre-downloads:
+1. `TorrentDownloadService` starts a foreground service managing a native `libtorrent4j` session.
+2. `StreamingPiecePlanner` prioritizes sequential pieces: the first 2% of the file (container header, index, and metadata) and the current playback head are requested with top priority.
+3. `VerifiedPieceTracker` listens to libtorrent piece-finished events and validates piece hashes.
+4. `VerifiedTorrentHttpServer` (embedded NanoHTTPD) serves HTTP range requests (`206 Partial Content`). **Crucial Guardrail**: A byte range is ONLY served once every overlapping torrent piece has passed its cryptographic SHA-1 hash check. Unverified ranges are held until verified, preventing player decoder corruption.
+5. `PublicTrackersRepository` dynamically fetches live public tracker lists from GitHub (`ngosang/trackerslist`) to maximize DHT peer discovery.
+
+### 5.4 High-Performance Network Storage (SMB & NFS)
+Direct playback of high-bitrate 1080p and 4K media from local home servers without local file copying:
+* **Session & Share Caching**: `SmbStorageClient` and `NfsStorageClient` maintain active session pools keyed by server credentials. Seeks and stream closes ONLY close the file handle, never the connection or tree-connect context.
+* **Asynchronous Prefetch Engine (`SmbPrefetchInputStream`)**:
+  * Solves SMB synchronous request/response decoder starvation.
+  * Dedicated background worker thread continuously fetches 1 MB chunks ahead of the player cursor.
+  * 16 MB ring buffer capacity with thread-safe `ByteBuffer` recycling pools to eliminate garbage collection pauses and dropped frames.
+* **Direct Media3 Integration**: `RemoteMediaDataSource` registers custom `remote://` URIs directly into Media3's `DataSource.Factory`, bypassing loopback HTTP overhead for local playback.
+* **Google Cast LAN Proxy (`RemoteMediaHttpServer`)**: Cast receivers cannot parse custom Android URI schemes. When casting remote files, `RemoteMediaHttpServer` serves the media over the LAN with full Private Network CORS headers (`Access-Control-Allow-Private-Network: true`).
+
+### 5.5 Storage Management & Removable Media
+* `StorageMountReceiver` listens to `ACTION_MEDIA_MOUNTED` and `ACTION_MEDIA_UNMOUNTED` broadcasts.
+* `TorrentStorageResolver` and `StorageVolumeInspector` inspect internal and external storage volumes (USB drives, SD cards) and provide available space stats.
+* `InsufficientStorageDialog` warns the user if available space is below torrent size thresholds.
+
+### 5.6 Digital Audio Engine & AC3 Surround Transcoding
+To ensure optimal audio fidelity and prevent silent stereo downmixes:
+1. **Renderer Precedence**: `EXTENSION_RENDERER_MODE_ON` is strictly enforced (NEVER `EXTENSION_RENDERER_MODE_PREFER`). Direct hardware passthrough (`MediaCodecAudioRenderer`) takes precedence over software FFmpeg decoding.
+2. **AC3 Surround Transcoding (`Ac3TranscodingAudioSink`)**:
+   * Wraps Media3's `DefaultAudioSink`.
+   * Real-time transcoding (AAC 5.1 -> AC3, E-AC3 -> AC3, DTS -> AC3) activates when the user enables the preference AND the connected soundbar/AVR does NOT support the source format natively, BUT DOES support AC3 bitstream passthrough (`SINK_FORMAT_SUPPORTED_DIRECTLY`).
+3. **Hardware DSP Offload & Global Tunneled Playback**:
+   * `AUDIO_OFFLOAD_MODE_ENABLED` delegates audio buffering to hardware DSPs.
+   * `setTunnelingEnabled(true)` is configured globally in `DefaultTrackSelector.Parameters`, enabling hardware master clock synchronization on supported TVs.
+
+### 5.7 Video Playback & Google Cast Ecosystem
+* **Single Player Architecture (`LocalPlayerActivity`)**: Orchestrates playback across ExoPlayer (local) and Google Cast (`CastPlayer`).
+* **Zero Speculative State Toggling**: Transport controls command explicit target states (`shouldPause ? pause() : play()`) to prevent race conditions.
+* **Direct State Authority (`RemoteCastCanvas`)**: Listens to `RemoteMediaClient.Callback.onStatusUpdated()` as the single source of truth during Cast sessions, polling at 250 ms intervals for automatic self-healing.
+* **Clean Cast Transition**: Device selection sheets dismiss immediately without artificial delays to eliminate UI flickering.
+
+### 5.8 Canonical Watch History & Cross-Source Resume
+To guarantee seamless watch history parity across Torrents, Local files, and Network Storage (SMB/NFS):
+* **Canonical Movie IDs**: Must always be numeric TMDB/YTS IDs (e.g. `"12230"`), NEVER raw infoHashes or filenames.
+* **Canonical TV Episode IDs**: Must follow the format `"media_${seriesId}_s${season}_e${episode}"`.
+* **Inverse Metadata Resolution (`MediaMetadataResolver`)**: Filenames from NAS or local storage are regex-cleaned and queried against TMDB/YTS asynchronously before saving watch history.
+* **Single Source of Truth**: Room (`WatchHistoryDao`) is written to immediately for instant UI updates, followed by background Firestore synchronization.
+* **Manual Watch Progress**: Long-press on cards triggers `WatchProgressOptionDialog` to mark items as completed (100% progress + download record in Firestore) or uncompleted.
+
+### 5.9 Cloud Library, FCM & Google Identity
+* **Google Credential Manager**: Modern, one-tap identity retrieval passing ID Tokens to Firebase Auth.
+* **Cloud Firestore Sync**: User collections (`users/{uid}/favorites`, `downloads`, `tv_downloads`, `preferences`) sync bidirectionally.
+* **Push Notifications**: Managed by `MyFirebaseMessagingService` and `FcmRepository`, registering tokens with the app backend and enabling deep-linking into specific movie or series destinations.
+
+### 5.10 Hardware Keystore & Security Model
+* Sensitive credentials (OpenSubtitles passwords, SMB network passwords) are never stored in plaintext.
+* Encrypted using AES-256 GCM authenticated encryption via `OpenSubtitlesCredentialStore` and `SmbCredentialStore`, with keys permanently bound to the device's hardware-backed Secure Element or TrustZone (`AndroidKeyStore`).
+
+### 5.11 R8, ProGuard & App Shrinking Architecture
+* **No Blanket Wildcard Keeps**: Package-wide wildcard keeps (`-keep class com.martinrevert.latorrentola.** { *; }`) are strictly prohibited to permit dead-code stripping, member inlining, and identifier obfuscation.
+* **Annotation-Driven Model Retention**:
+  * `@SerializedName`: `-keepclassmembers class * { @com.google.gson.annotations.SerializedName <fields>; }`.
+  * Firestore Documents: `-keepclassmembers @com.google.firebase.firestore.IgnoreExtraProperties class * { public <init>(); <fields>; <methods>; }`.
+  * Kotlinx Serialization: `-keep,allowoptimization @kotlinx.serialization.Serializable class * { *; }`.
+* **Reflection & JNI Entry Points**: Targeted constructor keeps for `AppCastOptionsProvider` and explicit JNI preservation for `libtorrent_jni` and `LibNfsNative`.
+
+---
+
+## 6. Complete Suite of Sequence & Flow Diagrams
+
+### Diagram 1: Movie Discovery & Infinite Pagination
 ```mermaid
 sequenceDiagram
     participant U as User
@@ -243,21 +429,21 @@ sequenceDiagram
     participant R as YtsRepository
     participant N as YtsService
 
-    U->>HS: Open App / Select Movie mode
+    U->>HS: Open App / Select Movie Feed
     HS->>VM: Observe uiState (StateFlow)
     VM->>R: getMovies(page, filters)
     R->>N: listMovies(page)
-    N-->>R: List<Movie>
-    R->>R: Apply language and rating filters (MovieFilter)
-    R-->>VM: Flow<List<Movie>>
-    VM-->>HS: Update UI State
-    HS-->>U: Render grid with Haze glass blur
+    N-->>R: List of Movie objects
+    R->>R: Apply language & rating filters (MovieFilter)
+    R-->>VM: Flow of List of Movie
+    VM-->>HS: Emit Success state
+    HS-->>U: Render grid with Haze frosted blur
     U->>HS: Scroll to bottom
     HS->>VM: loadMore()
     VM->>R: getMovies(nextPage, filters)
 ```
 
-### 2. Movie Details, TMDB Cast Enrichment & Torrent Mode Selection
+### Diagram 2: Movie Details, TMDB Cast Enrichment & Torrent Launch
 ```mermaid
 sequenceDiagram
     participant U as User
@@ -265,37 +451,32 @@ sequenceDiagram
     participant VM as DetailViewModel
     participant TR as TmdbRepository
     participant TMDB as TMDB API
-    participant MLK as ML Kit Translator
+    participant MLK as Google ML Kit
     participant UREP as UserLibraryRepository
 
-    U->>DS: Select movie poster
+    U->>DS: Tap movie poster
     DS->>VM: Initialize(Movie)
     VM->>MLK: translate(summary EN to ES)
     MLK-->>VM: Spanish summary
     VM->>TR: findByImdbId(imdbCode)
-    TR->>TMDB: find/imdb_id external_source=imdb_id
+    TR->>TMDB: /find/imdb_id (external_source=imdb_id)
     TMDB-->>TR: TMDB movie ID
     TR->>TMDB: /movie/tmdb_id/credits
-    TMDB-->>TR: Cast and crew list
-    TR-->>VM: List of Cast (name, character, w185 profile image)
-    VM-->>DS: Full details, translated summary, cast, quality options
+    TMDB-->>TR: Cast & crew payload
+    TR-->>VM: List of TmdbCastCredit
+    VM-->>DS: Enriched details, cast, ratings, and qualities
     U->>DS: Tap quality badge (2160p / 1080p / 720p)
     DS->>DS: Show QualityChoiceDialog
     alt EXTERNAL_CLIENT mode
-        DS->>DS: Build magnet URI
-        DS-->>U: startActivity ACTION_VIEW magnet CATEGORY_BROWSABLE
+        DS-->>U: Intent ACTION_VIEW (magnet URI)
         DS->>UREP: markAsDownloaded(DownloadedMovie)
     else LOCAL_PLAYBACK or CHROMECAST mode
-        DS->>DS: Build magnet URI
-        DS-->>U: Start TorrentDownloadService and open LocalPlayerActivity
+        DS-->>U: Start TorrentDownloadService & open LocalPlayerActivity
         DS->>UREP: markAsDownloaded(DownloadedMovie)
     end
-    U->>DS: Tap favorite icon
-    DS->>UREP: toggleFavorite(movie)
-    UREP->>UREP: users/uid/favorites/movieId
 ```
 
-### 3. In-App Torrent Download, Playback, Watch History & Cast
+### Diagram 3: In-App Torrent Streaming, Piece Verification & Playback Resume
 ```mermaid
 sequenceDiagram
     participant U as User
@@ -304,161 +485,138 @@ sequenceDiagram
     participant LT as libtorrent4j
     participant HTTP as VerifiedTorrentHttpServer
     participant EXO as ExoPlayer
-    participant CAST as CastPlayer
-    participant OSR as OpenSubtitlesRepository
     participant WDAO as WatchHistoryDao
 
-    LPA->>TDS: Start (magnet URI, expected file)
-    TDS->>LT: Add torrent, set sequential piece priority
+    LPA->>TDS: Start transfer (magnet URI, file index)
+    TDS->>LT: Add torrent & configure sequential piece priority
     LT-->>TDS: Piece hash verified events
     TDS->>HTTP: Register verified byte ranges
     TDS-->>LPA: Broadcast startup buffer ready
-    LPA->>WDAO: Query saved playback progress
-    WDAO-->>LPA: Resume position (ms)
-    LPA->>HTTP: GET http://127.0.0.1:port/file (range request)
-    HTTP-->>LPA: Verified byte range
-    LPA->>EXO: setMediaItem(local HTTP URL), seekTo(resume position)
-    EXO-->>U: Playback begins
-    opt Playback Tracking
-        EXO-->>LPA: onPositionChanged
-        LPA->>WDAO: Save position to local DB
-    end
-    opt Cast session available on LAN
-        LPA->>CAST: Load media item (local HTTP URL)
-        CAST-->>U: Chromecast plays stream
-    end
-    opt Subtitle search
-        U->>LPA: Request subtitles
-        LPA->>OSR: searchSubtitles(title, language)
-        OSR-->>LPA: List of SubtitleResult
-        U->>LPA: Select subtitle
-        LPA->>OSR: downloadSubtitle(fileId)
-        OSR-->>LPA: SRT/VTT file path
-        LPA->>EXO: addSubtitleTrack(file)
+    LPA->>WDAO: Query saved progress for canonical mediaId
+    WDAO-->>LPA: Resume position in milliseconds
+    LPA->>HTTP: GET http://127.0.0.1:port/stream (Range request)
+    HTTP-->>LPA: HTTP 206 (Verified byte range)
+    LPA->>EXO: setMediaItem(localUrl), seekTo(resumeMs)
+    EXO-->>U: Smooth video playback starts
+    loop Every 10 seconds & on Pause
+        EXO-->>LPA: onPositionChanged(posMs)
+        LPA->>WDAO: Save position to Room
     end
 ```
 
-### 4. TV Series Discovery, Episode Releases & Downloads
+### Diagram 4: TV Series Discovery, Episode Releases & Continuation State
 ```mermaid
 sequenceDiagram
     participant U as User
     participant HS as HomeScreen
-    participant TVVM as "TvHomeViewModel"
-    participant TD as "TmdbRepository"
-    participant TMDB as "TMDB API"
-    participant DB as "TvGenreDao"
-    participant NAV as "AppNavigation"
-    participant SD as "TvDetailScreen"
-    participant ED as "TvEpisodeDetailScreen"
-    participant EZ as "EztvRepository"
-    participant UL as "UserLibraryRepository"
-    participant EXT as "Torrent Client"
+    participant TVVM as TvHomeViewModel
+    participant TR as TmdbRepository
+    participant TMDB as TMDB API
+    participant TEPR as TvEpisodeReleasesRepository
+    participant TIO as TorrentioRepository
+    participant EZ as EztvRepository
+    participant NAV as AppNavigation
+    participant SD as TvDetailScreen
+    participant ED as TvEpisodeDetailScreen
 
-    U->>HS: Select TV mode or genre chip
-    HS->>TVVM: Activate feed / record genre visit
-    TVVM->>TD: Request feed or discover by genre (paged)
-    TD->>TMDB: TV API request with configured API key
-    TMDB-->>TD: Series pages / TV genres
-    TD-->>TVVM: Series data
-    TD->>DB: Observe/update local TV genre usage
-    TVVM-->>HS: Render sorted genre chips and series grid
-    U->>HS: Select a series poster
-    HS->>NAV: Route.TvDetail(tmdbSeriesId)
-    NAV->>SD: Open series details
-    SD->>TD: Fetch series metadata and first non-special season
-    TD->>TMDB: /tv/id and /tv/id/season/n
-    TMDB-->>SD: Series metadata and episodes
+    U->>HS: Select TV Series tab
+    HS->>TVVM: Load TV feed
+    TVVM->>TR: getPopularTvSeries(page)
+    TR->>TMDB: /tv/popular
+    TMDB-->>TVVM: List of TmdbTvSummary
+    TVVM-->>HS: Render TV series grid
+    U->>HS: Select series poster
+    HS->>NAV: Navigate to TvDetail(seriesId)
+    NAV->>SD: Open series view
+    SD->>TR: getSeasonDetails(seriesId, seasonNumber)
+    TR-->>SD: TmdbTvSeasonDetails (episodes)
     U->>SD: Select episode
-    SD->>NAV: Route.TvEpisodeDetail(seriesId, season, episode, metadata)
-    NAV->>ED: Open episode details
-    ED->>TD: Resolve series IMDb external ID
-    TD->>TMDB: /tv/id/external_ids
-    TMDB-->>ED: IMDb ID (tt prefix stripped for EZTV)
-    ED->>EZ: Get releases by numeric IMDb ID, match S/E exactly
-    EZ-->>ED: Matching EZTV torrents, seed-sorted
-    U->>ED: Select release
-    ED->>UL: Save DownloadedEpisode (users/uid/tv_downloads/hash)
-    ED-->>EXT: ACTION_VIEW magnet URI (CATEGORY_BROWSABLE, no chooser)
+    SD->>NAV: Navigate to TvEpisodeDetail(seriesId, season, episode)
+    NAV->>ED: Open episode view
+    ED->>TEPR: getEpisodeReleases(imdbId, season, episode)
+    TEPR->>TIO: Query Torrentio streams
+    TEPR->>EZ: Query EZTV releases
+    TEPR-->>ED: Merged & quality-grouped releases
+    ED-->>U: Display sorted releases with seed count
 ```
 
-### 5. Search & Cloud Library
+### Diagram 5: Search & Cloud Library (Favorites, Downloads & Actors)
 ```mermaid
 sequenceDiagram
     participant U as User
     participant SS as SearchScreen
     participant VM as SearchViewModel
-    participant R as YtsRepository
+    participant YTS as YtsRepository
+    participant TR as TmdbRepository
     participant UR as UserLibraryRepository
     participant FS as Cloud Firestore
 
-    U->>SS: Enter query / select tab
-    alt Remote YTS search
+    U->>SS: Enter query or select tab
+    alt Remote Movie Search
         SS->>VM: onSearch(query)
-        VM->>R: searchMovies(query)
-        R-->>VM: YTS results (language-filtered)
-    else Favorites tab
+        VM->>YTS: searchMovies(query)
+        YTS-->>VM: Filtered movie results
+    else Actor Search
+        SS->>VM: onSearchActor(query)
+        VM->>TR: searchActors(query)
+        TR-->>VM: List of TmdbActor
+    else Favorites Tab
         VM->>UR: getFavoriteMovies()
-        UR->>FS: users/uid/favorites (no rating filter)
-        FS-->>UR: List of Movie
-        UR-->>VM: Favorites list
-    else Downloaded movies tab
+        UR->>FS: users/uid/favorites
+        FS-->>VM: List of favorite movies
+    else Downloaded Movies Tab
         VM->>UR: getDownloadedMovies()
-        UR->>FS: users/uid/downloads (no rating filter)
-        FS-->>UR: List of DownloadedMovie
-        UR-->>VM: Downloads list
+        UR->>FS: users/uid/downloads
+        FS-->>VM: List of downloaded movies
     end
-    VM-->>SS: Update UI State
+    VM-->>SS: Emit updated UI state
     SS-->>U: Render results grid
 ```
 
-### 6. Google Credential Manager Authentication
+### Diagram 6: Google Credential Manager Authentication & Cloud Sync
 ```mermaid
 sequenceDiagram
     participant U as User
     participant LS as LoginScreen
     participant VM as AuthViewModel
-    participant R as AuthRepository
-    participant CM as Credential Manager
+    participant AREP as AuthRepository
+    participant CM as Google Credential Manager
     participant FA as Firebase Auth
     participant FS as Cloud Firestore
-    participant FCM as FcmRepository
 
     U->>LS: Tap Sign in with Google
     LS->>VM: signInWithGoogle()
-    VM->>R: signInWithGoogle()
-    R->>CM: getCredential()
-    CM-->>U: Show native Google account picker
-    U->>CM: Select account
-    CM-->>R: ID Token
-    R->>FA: signInWithCredential(ID Token)
-    FA-->>R: FirebaseUser (UID)
-    R-->>VM: AuthState.Success(UID)
-    VM->>FCM: syncToken(token, subscribe=true)
-    FCM-->>VM: Token registered with backend
-    VM-->>LS: Navigate to HomeScreen
-    LS->>FS: Start observing users/uid (favorites, downloads, preferences)
+    VM->>AREP: signInWithGoogle()
+    AREP->>CM: getCredential(GetGoogleIdOption)
+    CM-->>U: Display native Google account bottom sheet
+    U->>CM: Choose account
+    CM-->>AREP: GoogleIdTokenCredential
+    AREP->>FA: signInWithCredential(GoogleAuthProvider)
+    FA-->>AREP: FirebaseUser (UID)
+    AREP-->>VM: AuthState.Success(UID)
+    VM-->>LS: Navigate to Home
+    LS->>FS: Begin listening to users/uid cloud documents
 ```
 
-### 7. Push Notifications & Deep Linking (FCM)
+### Diagram 7: Push Notifications & Deep Linking (FCM)
 ```mermaid
 sequenceDiagram
     participant FCMBE as App FCM Backend
-    participant GCM as Google FCM
+    participant GCM as Google Cloud Messaging
     participant MFMS as MyFirebaseMessagingService
     participant MA as MainActivity
     participant U as User
 
-    FCMBE->>GCM: Send push notification
+    FCMBE->>GCM: Send push notification payload
     GCM-->>MFMS: onMessageReceived(RemoteMessage)
-    MFMS->>MFMS: Build NotificationCompat (channel, intent)
-    MFMS-->>U: System notification displayed
+    MFMS->>MFMS: Construct NotificationCompat with pending intent
+    MFMS-->>U: System heads-up notification displayed
     U->>MA: Tap notification
-    MA->>MA: Handle intent extras (PELI movie deep-link)
-    MA-->>U: Navigate to relevant screen
-    note over MFMS: Token refresh: onNewToken() calls FcmRepository.subscribe(newToken)
+    MA->>MA: Extract deep-link payload from Intent extras
+    MA-->>U: Deep-link navigate to target movie or series detail
 ```
 
-### 8. In-App Downloads & Transfer Management
+### Diagram 8: In-App Downloads & Transfer Management
 ```mermaid
 sequenceDiagram
     participant U as User
@@ -467,24 +625,24 @@ sequenceDiagram
     participant TDAO as TorrentDownloadDao
     participant TSERV as TorrentDownloadService
 
-    U->>TDS: Open In-App Downloads (Settings -> Downloads)
+    U->>TDS: Open In-App Downloads
     TDS->>VM: observeDownloads()
     VM->>TDAO: getActiveDownloads() (Flow)
-    TDAO-->>VM: List<TorrentDownload>
-    VM-->>TDS: Update UI State
-    TDS-->>U: Render transfer list (progress, speed, seeders)
-    U->>TDS: Tap Pause / Resume / Delete
-    alt Pause/Resume
-        TDS->>VM: updateDownloadStatus(hash, status)
-        VM->>TSERV: Pause or resume active libtorrent task
-    else Delete
-        TDS->>VM: deleteDownload(hash)
-        VM->>TDAO: delete(TorrentDownload)
-        VM->>TSERV: Stop task and remove files if requested
+    TDAO-->>VM: List of TorrentDownload entities
+    VM-->>TDS: Render active transfer cards
+    alt Pause or Resume
+        U->>TDS: Tap Pause/Resume
+        TDS->>VM: toggleStatus(hash)
+        VM->>TSERV: pauseTorrent(hash) / resumeTorrent(hash)
+    else Delete Transfer
+        U->>TDS: Tap Delete
+        TDS->>VM: deleteDownload(hash, deleteFiles=true)
+        VM->>TSERV: stopAndRemove(hash)
+        VM->>TDAO: deleteByHash(hash)
     end
 ```
 
-### 9. Settings, Preferences & Secure Credential Storage
+### Diagram 9: Settings, Preferences & Keystore Encryption
 ```mermaid
 sequenceDiagram
     participant U as User
@@ -494,112 +652,202 @@ sequenceDiagram
     participant KS as OpenSubtitlesCredentialStore
     participant FCMR as FcmRepository
 
-    U->>SS: Change theme, torrent mode, or language filter
+    U->>SS: Change theme, torrent mode, or rating filter
     SS->>VM: updatePreference(...)
-    VM->>PM: Save value to SharedPreferences
-    PM-->>VM: Updated preference state
+    VM->>PM: Save to SharedPreferences
+    PM-->>VM: Preference updated
     U->>SS: Enter OpenSubtitles username & password
     SS->>VM: saveOpenSubtitlesCredentials(user, pass)
     VM->>KS: Encrypt & store credentials in Android Keystore
-    KS-->>VM: Success
+    KS-->>VM: KeyStore write success
     U->>SS: Toggle Push Notifications
     SS->>VM: setNotificationsEnabled(enabled)
-### 10. Remote Network Media Streaming (SMB / NFS) & Cast Flow
+    VM->>FCMR: subscribeOrUnsubscribe(enabled)
+    FCMR-->>VM: Success
+    VM-->>SS: Notification status updated
+```
+
+### Diagram 10: Remote Network Media Streaming (SMB / NFS) & Cast Flow
 ```mermaid
 sequenceDiagram
     participant U as User
     participant EMBS as ExternalMediaBrowserScreen
     participant EMBVM as ExternalMediaBrowserViewModel
+    participant LPA as LocalPlayerActivity
     participant RSM as RemoteStorageManager
     participant SMB as SmbStorageClient
     participant PREFETCH as SmbPrefetchInputStream
     participant RMDS as RemoteMediaDataSource
     participant EXO as ExoPlayer
     participant RMHTTP as RemoteMediaHttpServer
-    participant CAST as CastPlayer / Receiver
+    participant CAST as "CastPlayer / Receiver"
 
-    U->>EMBS: Select configured SMB / NFS server
+    U->>EMBS: Select configured SMB or NFS server
     EMBS->>EMBVM: browseRemotePath(server, path)
     EMBVM->>RSM: listRemoteFiles(server, path)
-    RSM->>SMB: listFiles(server, path) (reuses cached session)
-    SMB-->>EMBVM: List<RemoteFileItem>
-    EMBVM-->>EMBS: Render directories & playable media files
+    RSM->>SMB: listFiles(server, path) (reuses pooled session)
+    SMB-->>EMBVM: List of RemoteFileItem
+    EMBVM-->>EMBS: Render directories & media files
 
     alt Local Playback via ExoPlayer
-        U->>EMBS: Tap playable video file (.mkv, .mp4, etc.)
+        U->>EMBS: Tap playable video file (.mkv, .mp4)
         EMBS->>LPA: Launch LocalPlayerActivity(remote://serverId?path=...)
         LPA->>EXO: setMediaItem(remote://...)
-        EXO->>RMDS: open(DataSpec(remote://..., position, length))
+        EXO->>RMDS: open(DataSpec(remote://...))
         RMDS->>RSM: openInputStream(server, path, offset)
         RSM->>SMB: openInputStream(server, path, offset)
-        SMB->>PREFETCH: Wrap with SmbPrefetchInputStream(16 MB capacity)
-        PREFETCH-->>PREFETCH: Background worker begins asynchronous read ahead
-        RMDS-->>EXO: Instant byte availability from memory buffer
-        EXO-->>U: Smooth zero-stutter local playback begins
+        SMB->>PREFETCH: Wrap with SmbPrefetchInputStream (16 MB ring buffer)
+        PREFETCH-->>PREFETCH: Worker thread begins async prefetch
+        RMDS-->>EXO: High-speed byte delivery from memory buffer
+        EXO-->>U: Stutter-free playback starts
     else Google Cast Playback
         U->>EMBS: Tap Cast button on video item
-        EMBS->>LPA: Launch LocalPlayerActivity(EXTRA_CAST_URL, castImmediately=true)
+        EMBS->>LPA: Launch LocalPlayerActivity(EXTRA_CAST_URL)
         LPA->>RSM: startRemoteStreamServer(server, fileItem)
-        RSM->>RMHTTP: Start NanoHTTPD HTTP 206 range server on LAN
-        RMHTTP-->>LPA: lanUrl (http://<LAN_IP>:<PORT>/stream?...)
+        RSM->>RMHTTP: Start NanoHTTPD HTTP 206 server on LAN
+        RMHTTP-->>LPA: lanUrl (http://lan-ip:port/stream)
         LPA->>CAST: Load MediaQueueItem with LAN HTTP URL & WebVTT tracks
-        CAST->>RMHTTP: GET range request with CORS headers
+        CAST->>RMHTTP: GET range request with Private Network CORS
         RMHTTP->>RSM: openInputStream(offset)
         RMHTTP-->>CAST: Stream video bytes over LAN
-        CAST-->>U: Seamless TV playback on Chromecast / Google TV
+        CAST-->>U: Playback on Chromecast / Google TV
+    end
+```
+
+### Diagram 11: OTT Streaming Providers & Catalog Discovery
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant OPS as OttProvidersScreen
+    participant OPVM as OttProvidersViewModel
+    participant OCS as OttCatalogScreen
+    participant OCVM as OttCatalogViewModel
+    participant TR as TmdbRepository
+    participant TMDB as TMDB API
+    participant NAV as AppNavigation
+
+    U->>OPS: Open OTT Streaming Providers
+    OPS->>OPVM: loadProviders(isTvMode)
+    OPVM->>TR: getWatchProviders(isTvMode)
+    TR->>TMDB: /watch/providers/movie (or /tv)
+    TMDB-->>TR: List of TmdbWatchProvider
+    TR-->>OPVM: Filtered provider list (Netflix, Disney+, etc.)
+    OPVM-->>OPS: Render provider logo grid
+    U->>OPS: Tap provider (e.g. Netflix)
+    OPS->>NAV: Navigate to OttCatalog(providerId, providerName)
+    NAV->>OCS: Open catalog view
+    OCS->>OCVM: loadCatalog(providerId, sortBy)
+    OCVM->>TR: discoverByWatchProvider(providerId, page, sortBy)
+    TR->>TMDB: /discover/movie with with_watch_providers=id
+    TMDB-->>TR: Paginated media results
+    TR-->>OCVM: List of Movie / TmdbTvSummary
+    OCVM-->>OCS: Render catalog grid
+    U->>OCS: Tap movie or series poster
+    OCS->>NAV: Navigate to MovieDetail or TvDetail
+```
+
+### Diagram 12: Digital Audio Bitstream Passthrough & Surround Transcoding
+```mermaid
+sequenceDiagram
+    participant LPA as LocalPlayerActivity
+    participant EXO as ExoPlayer
+    participant RF as RenderersFactory
+    participant MCA as MediaCodecAudioRenderer
+    participant AS as Ac3TranscodingAudioSink
+    participant AVR as "Soundbar / AVR Audio Sink"
+    participant FF as FfmpegAudioRenderer
+
+    LPA->>EXO: Play media with 5.1/7.1 audio track
+    EXO->>RF: buildAudioRenderers()
+    RF->>MCA: MediaCodecAudioRenderer (Primary)
+    RF->>FF: FfmpegAudioRenderer (Software Fallback)
+    EXO->>AS: formatChanged(sourceFormat)
+    AS->>AVR: Query getFormatSupport(sourceFormat)
+    alt AVR supports direct bitstream (AC3, E-AC3, DTS)
+        AVR-->>AS: SINK_FORMAT_SUPPORTED_DIRECTLY
+        AS->>AVR: Direct bitstream passthrough (No transcoding)
+    else Source is AAC 5.1 / E-AC3 / DTS AND AVR only supports AC3 passthrough
+        AVR-->>AS: SINK_FORMAT_UNSUPPORTED
+        AS->>AVR: Query getFormatSupport(AC3)
+        AVR-->>AS: SINK_FORMAT_SUPPORTED_DIRECTLY
+        AS->>AS: Real-time transcode PCM to Dolby Digital AC3 5.1
+        AS->>AVR: Direct AC3 bitstream passthrough over Optical / ARC
+    else Receiver does not support bitstream
+        AS->>MCA: Fallback to multi-channel PCM decoding
+        MCA->>AVR: Multi-channel PCM audio
+    end
+```
+
+### Diagram 13: Canonical Watch History Media ID & Cross-Source Resume
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant LPA as LocalPlayerActivity
+    participant MMR as MediaMetadataResolver
+    participant TR as TmdbRepository
+    participant YTS as YtsRepository
+    participant WDAO as WatchHistoryDao
+    participant UREP as UserLibraryRepository
+    participant FS as Cloud Firestore
+
+    U->>LPA: Play video from NAS / SMB / Torrent
+    LPA->>MMR: resolveCanonicalMediaId(filename, title)
+    alt Media is a TV Episode
+        MMR->>MMR: extractSeasonAndEpisode(regex)
+        MMR->>TR: searchTvSeries(cleanTitle)
+        TR-->>MMR: Resolved seriesId
+        MMR-->>LPA: Canonical ID: "media_{seriesId}_s{season}_e{episode}"
+    else Media is a Movie
+        MMR->>YTS: searchMovies(cleanTitle)
+        YTS-->>MMR: Resolved canonical movieId
+        MMR-->>LPA: Canonical ID: "{movieId}"
+    end
+    LPA->>WDAO: getProgress(canonicalId)
+    WDAO-->>LPA: PlaybackProgress (resume position)
+    LPA->>LPA: seekTo(resume position)
+    loop Periodic Save & Playback End
+        LPA->>WDAO: saveProgress(canonicalId, positionMs, durationMs)
+        WDAO-->>LPA: Room updated (Immediate local SSOT)
+        LPA->>UREP: syncWatchHistoryToCloud(canonicalId, progress)
+        UREP->>FS: users/uid/watch_history/canonicalId
+    end
+```
+
+### Diagram 14: Manual Watch Progress & Download Marking System
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant UI as MovieItem / EpisodeCard
+    participant DIALOG as WatchProgressOptionDialog
+    participant WDAO as WatchHistoryDao
+    participant UREP as UserLibraryRepository
+    participant TDAO as TorrentDownloadDao
+    participant FS as Cloud Firestore
+
+    U->>UI: Long-press gesture (touch or D-pad hold)
+    UI->>DIALOG: Show WatchProgressOptionDialog(canonicalId)
+    alt User selects "Mark as Completed"
+        DIALOG->>WDAO: saveProgress(positionMs=1000L, durationMs=1000L)
+        DIALOG->>UREP: markAsDownloaded(canonicalId)
+        UREP->>FS: users/uid/downloads (or tv_downloads)
+        DIALOG-->>UI: UI displays 100% red progress bar & downloaded badge
+    else User selects "Mark as Uncompleted"
+        DIALOG->>WDAO: deleteProgress(canonicalId)
+        DIALOG->>UREP: deleteDownloadedRecord(canonicalId)
+        UREP->>FS: Remove from users/uid/downloads
+        DIALOG->>TDAO: deleteByMediaId(canonicalId)
+        DIALOG-->>UI: UI clears progress bar & download indicators
     end
 ```
 
 ---
 
-## 🌐 Remote Media Storage & Streaming Architecture
+## 7. Architectural Integrity & Guidelines Checklist
 
-### 1. Unified Client Abstraction (`RemoteStorageManager`)
-`RemoteStorageManager` acts as the single facade orchestrating remote file discovery, folder navigation, read streams, and server lifecycle across protocols:
-* **Protocol Routing**: Routes calls to `SmbStorageClient` for `RemoteServerType.SMB` and `NfsStorageClient` for `RemoteServerType.NFS`.
-* **Zero Loopback Overhead for Local Playback**: Unlike conventional media players that mandate an internal HTTP proxy daemon for all network files, La Torrentola registers `RemoteMediaDataSource` directly into Media3's `DataSource.Factory`. Media3 interacts natively with `openInputStream(offset)` and `read()`, avoiding loopback socket overhead.
-
-### 2. Protocol Engine Details & Session Management
-
-#### A. NFS (Native C `libnfs` JNI Wrapper)
-* **Underlying Engine**: Uses the high-performance native C library `libnfs` compiled via Android NDK, accessed through `LibNfsNative.kt`.
-* **Performance Profile**: Direct UNIX socket I/O with native RPC framing. Provides high sequential throughput and near-zero latency on seek operations.
-* **Session Lifecycle**: Connections are cached in `NfsStorageClient.sessionCache`. Closing an `InputStream` closes the native file descriptor (`nfs_close`) while preserving the mounted RPC export context.
-
-#### B. SMB (Server Message Block via `smbj` 0.15.0)
-* **Underlying Engine**: Implements SMB2 and SMB3 dialects (SMB 2.1, 3.0, 3.1.1) in pure Kotlin/Java via `com.hierynomus:smbj`.
-* **Authentication & Keystore**: Supports guest sessions and NTLMv2 authenticated sessions. Passwords are encrypted at rest using AES-GCM via the Android hardware Keystore (`SmbCredentialStore`).
-* **Session & TreeConnect Caching**: `SmbStorageClient.sessionCache` pools active `SmbSession` and `DiskShare` instances keyed by `host:port:share:username`. Opening a file against an active session takes ~1ms (1 single `SMB2 CREATE` round-trip) instead of ~150ms (6 round-trips for TCP connect, negotiate, session setup, and tree connect).
-* **Stream Disconnect Isolation**: Closing an `InputStream` MUST ONLY invoke `File.close()`. The underlying `DiskShare` and `SmbSession` remain cached and active for subsequent seeks and reads.
-
-### 3. Asynchronous Prefetch Engine (`SmbPrefetchInputStream`)
-Network file protocols (specifically SMB) operate over synchronous request/response message packets. When ExoPlayer's media extractor executes synchronous small-buffer reads (e.g. 32 KB or 64 KB) in its decoding loop, network roundtrip latency causes extractor starvation, resulting in persistent rebuffering and frame drops.
-
-To solve this, `SmbPrefetchInputStream` decouples network I/O from player consumption:
-* **Dedicated Worker Thread**: A background thread continuously fetches 1 MB chunks sequentially ahead of the player's read position.
-* **16 MB Pooled Capacity**: Holds up to 16 chunks in memory ahead of the playback cursor, fully absorbing network jitter and Wi-Fi latency spikes.
-* **Buffer Recycling**: When chunks are consumed, their backing `ByteBuffer` instances are returned to a thread-safe `ArrayDeque` pool instead of being discarded, completely eliminating GC allocations and GC-pause frame stutters.
-* **Thread Synchronization**: Uses atomic offsets and monitor waits (`wait()` / `notifyAll()`) to pause the worker when the buffer is full and awaken it immediately when the player consumes data.
-
-### 4. Player Buffer Configuration (`PlayerStreamingConfig`)
-`PlayerStreamingConfig.buildLoadControl()` configures ExoPlayer's `DefaultLoadControl`:
-* **`prioritizeTimeOverSizeThresholds = true`**: Prevents ExoPlayer from halting buffer loads early when playing high-bitrate video where file size limits would otherwise trigger premature stopping.
-* **Device-Tailored Buffer Targets**:
-  * **Android TV**: 48 MB target buffer, 15s to 45s playback buffer range, 2s playback start threshold, 10s retained back-buffer.
-  * **Mobile / Tablet**: 32 MB target buffer, 15s to 30s playback buffer range, 1.5s playback start threshold, 10s retained back-buffer.
-
-### 5. Google Cast Integration & HTTP Proxy (`RemoteMediaHttpServer`)
-Chromecast CAF receivers do not support custom Android URI schemes (`remote://`). When casting remote network files:
-1. `RemoteStorageManager.startRemoteStreamServer(server, fileItem)` instantiates a lightweight `RemoteMediaHttpServer` (powered by NanoHTTPD).
-2. The server exposes HTTP byte-range requests (`206 Partial Content`) on the device's local LAN IP (`http://<LAN_IP>:<PORT>/stream?...`).
-3. CORS headers (`Access-Control-Allow-Origin: *`, `Access-Control-Allow-Private-Network: true`) are served on all responses and `OPTIONS` preflights.
-4. If subtitles are present or downloaded via OpenSubtitles, they are converted to WebVTT format and served from the same server for native Chromecast display.
-
----
-
-## 🔐 Identity and Ownership Notes
-
-- **TV ID Bridging**: TV catalog, genre discovery, and details are TMDB-backed. Torrent release metadata is EZTV-backed. Navigation carries the TMDB series ID plus season/episode identity. The TMDB external-ID endpoint bridges to IMDb; EZTV expects the numeric part without `tt`.
-- **Hybrid Persistence Paradigm**: Room stores local fast-access metadata (Watch History, transfer records, local usage statistics). Firestore acts as the definitive cloud backup (favorites, downloaded entities, preferences). **Data flow enforces Room as the Single Source of Truth for immediate UI reflection**, syncing to Firestore in the background. User collections (favorites, downloads) bypass runtime threshold filters like minimum rating.
-- **Security Compliance**: Sensitive OpenSubtitles credentials exist only transiently in memory, encrypted at rest via the Android Keystore.
-- **Network Storage Credentials**: SMB passwords entered by users are encrypted via `SmbCredentialStore` backed by the Android Keystore, ensuring plaintext credentials never touch unencrypted storage.
+Before committing modifications to the codebase, verify:
+* [x] **Theme Mode Propagation**: `themeMode` is resolved from `PreferenceManager` and passed to BOTH `TvLaTorrentolaTheme` and `LaTorrentolaTheme` in every Dialog, BottomSheet, and Compose entry point.
+* [x] **Surround Transcoding Guardrails**: `EXTENSION_RENDERER_MODE_ON` is preserved (never `_PREFER`), direct passthrough precedes FFmpeg, and AC3 transcoding only activates when the sink directly supports AC3 bitstream passthrough.
+* [x] **Remote Media Streaming Performance**: `SmbStorageClient` and `NfsStorageClient` retain cached sessions across seeks, `SmbPrefetchInputStream` buffers 16 MB with recycled pools, and hot-path read loops remain free of `Log.d`.
+* [x] **Zero Speculative Player State Flipping**: Player controls command explicit target states (`shouldPause ? pause() : play()`), and `RemoteCastCanvas` uses `RemoteMediaClient` as single state authority.
+* [x] **R8 & ProGuard Safety**: Serialization is retained via annotations (`@SerializedName`, `@Serializable`), reflection constructors are preserved, and package-wide wildcard keeps (`{ *; }`) are avoided.
+* [x] **Unit Testing Validation**: Run unit tests (`testDebugUnitTest`) to validate all functional changes before marking tasks as complete.
