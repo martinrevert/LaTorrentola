@@ -41,6 +41,12 @@ class PreferenceManager @Inject constructor(
     /** Observable setting for converting multichannel AAC 5.1 to AC3 5.1. */
     val convertAac51ToAc3Flow: StateFlow<Boolean> get() = _convertAac51ToAc3Flow.asStateFlow()
 
+    /** Observable setting for converting E-AC3 (DD+) to AC3 5.1 when receiver lacks native E-AC3. */
+    val convertEac3ToAc3Flow: StateFlow<Boolean> get() = _convertEac3ToAc3Flow.asStateFlow()
+
+    /** Observable setting for converting DTS to AC3 5.1 when receiver lacks native DTS. */
+    val convertDtsToAc3Flow: StateFlow<Boolean> get() = _convertDtsToAc3Flow.asStateFlow()
+
     /** Listener to mirror changes from SharedPreferences directly into reactive StateFlows. */
     private val preferenceChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
@@ -51,6 +57,8 @@ class PreferenceManager @Inject constructor(
             KEY_AUTO_PLAY_QUALITY_SELECTION_METHOD -> _autoPlayQualitySelectionFlow.value = getAutoPlayQualitySelectionMethod()
             KEY_STORAGE_LOCATION -> _storageLocationFlow.value = getStorageLocation()
             KEY_CONVERT_AAC51_TO_AC3 -> _convertAac51ToAc3Flow.value = getConvertAac51ToAc3()
+            KEY_CONVERT_EAC3_TO_AC3 -> _convertEac3ToAc3Flow.value = getConvertEac3ToAc3()
+            KEY_CONVERT_DTS_TO_AC3 -> _convertDtsToAc3Flow.value = getConvertDtsToAc3()
         }
     }
 
@@ -62,6 +70,8 @@ class PreferenceManager @Inject constructor(
         _autoPlayQualitySelectionFlow.value = getAutoPlayQualitySelectionMethod()
         _storageLocationFlow.value = getStorageLocation()
         _convertAac51ToAc3Flow.value = getConvertAac51ToAc3()
+        _convertEac3ToAc3Flow.value = getConvertEac3ToAc3()
+        _convertDtsToAc3Flow.value = getConvertDtsToAc3()
         sharedPreferences.registerOnSharedPreferenceChangeListener(preferenceChangeListener)
     }
 
@@ -257,6 +267,24 @@ class PreferenceManager @Inject constructor(
     /** Returns whether AAC 5.1 to AC3 5.1 transcoding is enabled (defaults to false). */
     fun getConvertAac51ToAc3(): Boolean = sharedPreferences.getBoolean(KEY_CONVERT_AAC51_TO_AC3, false)
 
+    /** Persists whether E-AC3 (DD+) tracks should be transcoded to AC3 5.1 when receiver lacks native E-AC3. */
+    fun setConvertEac3ToAc3(enabled: Boolean) {
+        sharedPreferences.edit { putBoolean(KEY_CONVERT_EAC3_TO_AC3, enabled) }
+        _convertEac3ToAc3Flow.value = enabled
+    }
+
+    /** Returns whether E-AC3 to AC3 5.1 transcoding is enabled (defaults to false). */
+    fun getConvertEac3ToAc3(): Boolean = sharedPreferences.getBoolean(KEY_CONVERT_EAC3_TO_AC3, false)
+
+    /** Persists whether DTS tracks should be transcoded to AC3 5.1 when receiver lacks native DTS. */
+    fun setConvertDtsToAc3(enabled: Boolean) {
+        sharedPreferences.edit { putBoolean(KEY_CONVERT_DTS_TO_AC3, enabled) }
+        _convertDtsToAc3Flow.value = enabled
+    }
+
+    /** Returns whether DTS to AC3 5.1 transcoding is enabled (defaults to false). */
+    fun getConvertDtsToAc3(): Boolean = sharedPreferences.getBoolean(KEY_CONVERT_DTS_TO_AC3, false)
+
     companion object {
         /** Preference key controlling general voice guidance. */
         private const val KEY_VOICE_SYSTEM = "voice_system"
@@ -290,6 +318,10 @@ class PreferenceManager @Inject constructor(
         private const val KEY_STORAGE_LOCATION = "storage_location"
         /** Preference key controlling AAC 5.1 to AC3 5.1 transcoding. */
         private const val KEY_CONVERT_AAC51_TO_AC3 = "convert_aac51_to_ac3"
+        /** Preference key controlling E-AC3 to AC3 5.1 transcoding. */
+        private const val KEY_CONVERT_EAC3_TO_AC3 = "convert_eac3_to_ac3"
+        /** Preference key controlling DTS to AC3 5.1 transcoding. */
+        private const val KEY_CONVERT_DTS_TO_AC3 = "convert_dts_to_ac3"
         private const val KEY_SUBTITLE_FONT_NAME = "subtitle_font_name"
         private const val KEY_SUBTITLE_SIZE_FRACTION = "subtitle_size_fraction"
         private const val KEY_SUBTITLE_FG_COLOR = "subtitle_fg_color"
@@ -327,6 +359,10 @@ class PreferenceManager @Inject constructor(
         private val _storageLocationFlow = MutableStateFlow("internal")
         /** Mutable backing stream for AAC 5.1 to AC3 5.1 conversion preference shared across instances. */
         private val _convertAac51ToAc3Flow = MutableStateFlow(false)
+        /** Mutable backing stream for E-AC3 to AC3 5.1 conversion preference shared across instances. */
+        private val _convertEac3ToAc3Flow = MutableStateFlow(false)
+        /** Mutable backing stream for DTS to AC3 5.1 conversion preference shared across instances. */
+        private val _convertDtsToAc3Flow = MutableStateFlow(false)
     }
 }
 

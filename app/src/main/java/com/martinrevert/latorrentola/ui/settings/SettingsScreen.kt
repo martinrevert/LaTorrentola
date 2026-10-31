@@ -122,6 +122,8 @@ fun SettingsScreen(
             onToggleVibrator = { viewModel.toggleVibrator(it) },
             onTogglePushEnabled = { viewModel.togglePushEnabled(it) },
             onToggleConvertAac51ToAc3 = { viewModel.setConvertAac51ToAc3(it) },
+            onToggleConvertEac3ToAc3 = { viewModel.setConvertEac3ToAc3(it) },
+            onToggleConvertDtsToAc3 = { viewModel.setConvertDtsToAc3(it) },
             onSetTheme = { viewModel.setTheme(it) },
             onSetFilteredLanguages = { viewModel.setFilteredLanguages(it) },
             onSetMinimumRating = { viewModel.setMinimumRating(it) },
@@ -166,6 +168,8 @@ private fun SettingsScreenContent(
     onToggleVibrator: (Boolean) -> Unit,
     onTogglePushEnabled: (Boolean) -> Unit,
     onToggleConvertAac51ToAc3: (Boolean) -> Unit = {},
+    onToggleConvertEac3ToAc3: (Boolean) -> Unit = {},
+    onToggleConvertDtsToAc3: (Boolean) -> Unit = {},
     onSetTheme: (Int) -> Unit,
     onSetFilteredLanguages: (String) -> Unit,
     onSetMinimumRating: (Float) -> Unit,
@@ -342,6 +346,18 @@ private fun SettingsScreenContent(
                         checked = uiState.convertAac51ToAc3,
                         onCheckedChange = onToggleConvertAac51ToAc3
                     )
+                    SettingsToggle(
+                        title = stringResource(R.string.settings_convert_eac3_to_ac3),
+                        subtitle = stringResource(R.string.settings_convert_eac3_to_ac3_summary),
+                        checked = uiState.convertEac3ToAc3,
+                        onCheckedChange = onToggleConvertEac3ToAc3
+                    )
+                    SettingsToggle(
+                        title = stringResource(R.string.settings_convert_dts_to_ac3),
+                        subtitle = stringResource(R.string.settings_convert_dts_to_ac3_summary),
+                        checked = uiState.convertDtsToAc3,
+                        onCheckedChange = onToggleConvertDtsToAc3
+                    )
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
@@ -446,6 +462,18 @@ private fun SettingsScreenContent(
                     subtitle = stringResource(R.string.settings_convert_aac51_to_ac3_summary),
                     checked = uiState.convertAac51ToAc3,
                     onCheckedChange = onToggleConvertAac51ToAc3
+                )
+                SettingsToggle(
+                    title = stringResource(R.string.settings_convert_eac3_to_ac3),
+                    subtitle = stringResource(R.string.settings_convert_eac3_to_ac3_summary),
+                    checked = uiState.convertEac3ToAc3,
+                    onCheckedChange = onToggleConvertEac3ToAc3
+                )
+                SettingsToggle(
+                    title = stringResource(R.string.settings_convert_dts_to_ac3),
+                    subtitle = stringResource(R.string.settings_convert_dts_to_ac3_summary),
+                    checked = uiState.convertDtsToAc3,
+                    onCheckedChange = onToggleConvertDtsToAc3
                 )
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))

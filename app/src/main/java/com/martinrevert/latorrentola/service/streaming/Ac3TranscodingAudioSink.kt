@@ -1,17 +1,14 @@
 package com.martinrevert.latorrentola.service.streaming
 
 import android.content.Context
-import android.media.AudioFormat
 import android.util.Log
 import com.martinrevert.latorrentola.utils.AppLogger
 import androidx.annotation.OptIn
-import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.decoder.ffmpeg.FfmpegAc3Encoder
-import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.audio.AudioSink
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import java.nio.ByteBuffer
@@ -30,7 +27,6 @@ import java.nio.ByteOrder
 @OptIn(UnstableApi::class)
 class Ac3TranscodingAudioSink(
     private val delegate: AudioSink,
-    private val context: Context,
     private val preferenceManager: PreferenceManager,
     private val encoderFactory: (sampleRate: Int, channelCount: Int, bitrate: Int, inputFloat: Boolean) -> FfmpegAc3Encoder =
         { sr, ch, br, isFloat -> FfmpegAc3Encoder(sr, ch, br, isFloat) }
@@ -38,12 +34,23 @@ class Ac3TranscodingAudioSink(
 
     constructor(
         delegate: AudioSink,
-        context: Context,
+        @Suppress("UNUSED_PARAMETER") context: Context,
+        preferenceManager: PreferenceManager,
+        encoderFactory: (sampleRate: Int, channelCount: Int, bitrate: Int, inputFloat: Boolean) -> FfmpegAc3Encoder =
+            { sr, ch, br, isFloat -> FfmpegAc3Encoder(sr, ch, br, isFloat) }
+    ) : this(
+        delegate = delegate,
+        preferenceManager = preferenceManager,
+        encoderFactory = encoderFactory
+    )
+
+    constructor(
+        delegate: AudioSink,
+        @Suppress("UNUSED_PARAMETER") context: Context,
         preferenceManager: PreferenceManager,
         legacyEncoderFactory: (sampleRate: Int, channelCount: Int, bitrate: Int) -> FfmpegAc3Encoder
     ) : this(
         delegate = delegate,
-        context = context,
         preferenceManager = preferenceManager,
         encoderFactory = { sr, ch, br, _ -> legacyEncoderFactory(sr, ch, br) }
     )
@@ -87,13 +94,19 @@ class Ac3TranscodingAudioSink(
     }
 
     override fun getFormatSupport(format: Format): @AudioSink.SinkFormatSupport Int {
-        // When AAC 5.1 -> AC3 transcoding is applicable, instruct FfmpegAudioRenderer and
+        // When surround -> AC3 transcoding is applicable, instruct FfmpegAudioRenderer and
         // MediaCodecAudioRenderer to prefer 16-bit integer PCM over 32-bit float PCM.
         if (format.sampleMimeType == MimeTypes.AUDIO_RAW &&
             format.pcmEncoding == C.ENCODING_PCM_FLOAT &&
-            preferenceManager.getConvertAac51ToAc3() &&
-            (currentSourceFormat == null || isAacFormat(currentSourceFormat)) &&
-            format.channelCount >= 6
+            format.channelCount >= 6 &&
+            delegate.getFormatSupport(buildAc3Format(format.sampleRate.takeIf { it > 0 } ?: 48000)) == AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY &&
+            (
+                (preferenceManager.getConvertAac51ToAc3() && (currentSourceFormat == null || isAacFormat(currentSourceFormat))) ||
+                (preferenceManager.getConvertEac3ToAc3() && isEac3Format(currentSourceFormat) &&
+                    (currentSourceFormat == null || delegate.getFormatSupport(currentSourceFormat!!) != AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY)) ||
+                (preferenceManager.getConvertDtsToAc3() && isDtsFormat(currentSourceFormat) &&
+                    (currentSourceFormat == null || delegate.getFormatSupport(currentSourceFormat!!) != AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY))
+            )
         ) {
             return AudioSink.SINK_FORMAT_SUPPORTED_WITH_TRANSCODING
         }
@@ -137,13 +150,7 @@ class Ac3TranscodingAudioSink(
                     encodedOutputBuffer?.order(ByteOrder.LITTLE_ENDIAN)
                 }
 
-                val ac3Format = Format.Builder()
-                    .setSampleMimeType(MimeTypes.AUDIO_AC3)
-                    .setChannelCount(AC3_CHANNELS)
-                    .setSampleRate(ac3SampleRate)
-                    .setAverageBitrate(AC3_BITRATE)
-                    .setPeakBitrate(AC3_BITRATE)
-                    .build()
+                val ac3Format = buildAc3Format(ac3SampleRate)
 
                 val ac3Config = AudioSink.AudioSinkConfig.Builder(ac3Format)
                     .setTimeline(audioSinkConfig.timeline)
@@ -162,7 +169,7 @@ class Ac3TranscodingAudioSink(
                 isTranscodingActive = true
                 Log.d(
                     TAG,
-                    "AAC 5.1 -> AC3 5.1 transcoding ACTIVATED (inRate=$inSampleRate, ac3Rate=$ac3SampleRate, inCh=$inChannels, float=$isFloatPcm)"
+                    "Surround -> AC3 5.1 transcoding ACTIVATED (src=${currentSourceFormat?.sampleMimeType}, inRate=$inSampleRate, ac3Rate=$ac3SampleRate, inCh=$inChannels, float=$isFloatPcm)"
                 )
                 return
             } catch (e: Exception) {
@@ -361,34 +368,61 @@ class Ac3TranscodingAudioSink(
         bufferedPcmFrames = 0L
     }
 
+    private fun buildAc3Format(sampleRate: Int): Format {
+        return Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_AC3)
+            .setChannelCount(AC3_CHANNELS)
+            .setSampleRate(sampleRate)
+            .setAverageBitrate(AC3_BITRATE)
+            .setPeakBitrate(AC3_BITRATE)
+            .build()
+    }
+
     private fun shouldTranscodeToAc3(sourceFormat: Format?, decodedChannelCount: Int): Boolean {
-        if (!preferenceManager.getConvertAac51ToAc3()) {
-            return false
-        }
-        if (!isAacFormat(sourceFormat)) {
-            return false
-        }
-        val sourceChannels = sourceFormat?.channelCount ?: decodedChannelCount
+        val src = sourceFormat
         val effectiveChannels = if (decodedChannelCount != Format.NO_VALUE && decodedChannelCount > 0) {
+            val sourceChannels = src?.channelCount ?: decodedChannelCount
             minOf(
                 if (sourceChannels != Format.NO_VALUE && sourceChannels > 0) sourceChannels else decodedChannelCount,
                 decodedChannelCount
             )
         } else {
-            sourceChannels
+            src?.channelCount ?: decodedChannelCount
         }
-        // STRICT MANDATE: Only transcode if AAC AND channelCount >= 6 (5.1+).
-        // If channelCount <= 2 (AAC 2.0 / stereo), NEVER transcode.
+
+        // Surround transcoding only applies to multichannel tracks (5.1+). Never transcode stereo (2.0).
         if (effectiveChannels < 6) {
             return false
         }
-        val capabilities = AudioCapabilities.getCapabilities(
-            context,
-            AudioAttributes.DEFAULT,
-            null,
-            emptyList()
-        )
-        return capabilities.supportsEncoding(AudioFormat.ENCODING_AC3)
+
+        // 1. Evaluate candidate transcoding triggers based on user preferences and source codec
+        val isCandidate = when {
+            // Case A: Multichannel AAC 5.1+
+            isAacFormat(src) -> {
+                preferenceManager.getConvertAac51ToAc3()
+            }
+            // Case B: E-AC3 (DD+ / Atmos) when receiver lacks direct E-AC3 playback
+            isEac3Format(src) -> {
+                preferenceManager.getConvertEac3ToAc3() &&
+                    src != null &&
+                    delegate.getFormatSupport(src) != AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+            }
+            // Case C: DTS (Core / DTS-HD / DTS:X) when receiver lacks direct DTS playback
+            isDtsFormat(src) -> {
+                preferenceManager.getConvertDtsToAc3() &&
+                    src != null &&
+                    delegate.getFormatSupport(src) != AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+            }
+            else -> false
+        }
+
+        if (!isCandidate) {
+            return false
+        }
+
+        // 2. Transcode ONLY IF the connected receiver/soundbar natively supports AC3 bitstream passthrough
+        val candidateAc3Format = buildAc3Format(src?.sampleRate?.takeIf { it > 0 } ?: 48000)
+        return delegate.getFormatSupport(candidateAc3Format) == AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
     }
 
     private fun isAacFormat(format: Format?): Boolean {
@@ -397,5 +431,24 @@ class Ac3TranscodingAudioSink(
                 mime.equals("audio/mp4a-latm", ignoreCase = true) ||
                 mime.equals("audio/aac", ignoreCase = true) ||
                 mime.equals("audio/x-aac", ignoreCase = true)
+    }
+
+    private fun isEac3Format(format: Format?): Boolean {
+        val mime = format?.sampleMimeType ?: return false
+        return mime.equals(MimeTypes.AUDIO_E_AC3, ignoreCase = true) ||
+                mime.equals(MimeTypes.AUDIO_E_AC3_JOC, ignoreCase = true) ||
+                mime.equals("audio/e-ac3", ignoreCase = true) ||
+                mime.equals("audio/eac3", ignoreCase = true)
+    }
+
+    private fun isDtsFormat(format: Format?): Boolean {
+        val mime = format?.sampleMimeType ?: return false
+        return mime.equals(MimeTypes.AUDIO_DTS, ignoreCase = true) ||
+                mime.equals(MimeTypes.AUDIO_DTS_HD, ignoreCase = true) ||
+                mime.equals(MimeTypes.AUDIO_DTS_EXPRESS, ignoreCase = true) ||
+                mime.equals(MimeTypes.AUDIO_DTS_X, ignoreCase = true) ||
+                mime.equals("audio/vnd.dts", ignoreCase = true) ||
+                mime.equals("audio/vnd.dts.hd", ignoreCase = true) ||
+                mime.equals("audio/x-dts", ignoreCase = true)
     }
 }

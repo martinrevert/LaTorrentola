@@ -5,7 +5,6 @@ import android.util.Log
 import com.martinrevert.latorrentola.utils.AppLogger
 import androidx.annotation.OptIn
 import androidx.media3.cast.CastPlayer
-import androidx.media3.cast.CastTrackSelector
 import androidx.media3.cast.DefaultMediaItemConverter
 import androidx.media3.cast.MediaItemConverter
 import androidx.media3.cast.RemoteCastPlayer
@@ -13,8 +12,10 @@ import androidx.media3.cast.SessionAvailabilityListener
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.google.android.gms.cast.MediaInfo
@@ -85,6 +86,57 @@ class PlaybackService : MediaSessionService() {
                 .setLoadControl(loadControl)
                 .setMediaSourceFactory(mediaSourceFactory)
                 .build()
+
+            // Diagnostics listener for audio decoder and AudioTrack hardware output routing
+            exoPlayer.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+                override fun onAudioDecoderInitialized(
+                    eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                    decoderName: String,
+                    initializedTimestampMs: Long,
+                    initializationDurationMs: Long
+                ) {
+                    AppLogger.i(TAG, "Audio decoder initialized: $decoderName (${initializationDurationMs}ms)")
+                }
+
+                override fun onAudioTrackInitialized(
+                    eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                    audioTrackConfig: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig
+                ) {
+                    val encodingLabel = when (audioTrackConfig.encoding) {
+                        android.media.AudioFormat.ENCODING_AC3 -> "AC3 / Dolby Digital (5)"
+                        android.media.AudioFormat.ENCODING_E_AC3 -> "E-AC3 / Dolby Digital Plus (6)"
+                        android.media.AudioFormat.ENCODING_E_AC3_JOC -> "E-AC3 JOC / Atmos (18)"
+                        android.media.AudioFormat.ENCODING_DTS -> "DTS (7)"
+                        android.media.AudioFormat.ENCODING_DTS_HD -> "DTS-HD (8)"
+                        android.media.AudioFormat.ENCODING_DOLBY_TRUEHD -> "Dolby TrueHD (14)"
+                        android.media.AudioFormat.ENCODING_PCM_16BIT -> "PCM 16-bit (2)"
+                        android.media.AudioFormat.ENCODING_PCM_FLOAT -> "PCM Float (4)"
+                        else -> "Encoding ${audioTrackConfig.encoding}"
+                    }
+                    val offloadMode = if (audioTrackConfig.offload) "OFFLOAD/PASSTHROUGH" else "NORMAL"
+                    AppLogger.i(
+                        TAG,
+                        "AudioTrack initialized: output=$encodingLabel, rate=${audioTrackConfig.sampleRate}Hz, " +
+                            "chMask=${audioTrackConfig.channelConfig}, mode=$offloadMode, bufSize=${audioTrackConfig.bufferSize}"
+                    )
+                }
+            })
+
+            // Configure hardware optimizations: Audio Offload and Tunneled hardware playback
+            val currentParams = exoPlayer.trackSelectionParameters
+            val trackParamsBuilder = (currentParams as? DefaultTrackSelector.Parameters)?.buildUpon()
+                ?: DefaultTrackSelector.Parameters.Builder(this)
+            trackParamsBuilder
+                .setAudioOffloadPreferences(
+                    AudioOffloadPreferences.Builder()
+                        .setAudioOffloadMode(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
+                        .setIsGaplessSupportRequired(false)
+                        .setIsSpeedChangeSupportRequired(false)
+                        .build()
+                )
+                .setTunnelingEnabled(true)
+            exoPlayer.trackSelectionParameters = trackParamsBuilder.build()
+
             localPlayer = exoPlayer
 
             val trackSelector = AppCastTrackSelector()

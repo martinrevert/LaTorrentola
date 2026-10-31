@@ -199,6 +199,26 @@ When implementing, touching, or refactoring remote network storage (SMB / NFS) a
      - `Access-Control-Allow-Headers: *`
      - `Access-Control-Allow-Private-Network: true`
 
+### 🔊 Digital Audio Passthrough, Surround Transcoding & Hardware Pipeline Mandate (STRICT - ZERO REGRESSION)
+To ensure digital bitstream passthrough to AVRs / soundbars over HDMI (ARC/eARC) and optical, and eliminate silent downmixes to stereo:
+1. **Renderer Priority (NO `EXTENSION_RENDERER_MODE_PREFER`)**:
+   - In [`PlayerStreamingConfig.kt`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/service/streaming/PlayerStreamingConfig.kt), the extension renderer mode MUST be `EXTENSION_RENDERER_MODE_ON`, NEVER `EXTENSION_RENDERER_MODE_PREFER`.
+   - **REASON**: `EXTENSION_RENDERER_MODE_PREFER` places `FfmpegAudioRenderer` before `MediaCodecAudioRenderer`. Since FFmpeg natively supports AC3, E-AC3, and DTS, it claims `FORMAT_HANDLED` and decodes the stream to PCM, completely bypassing the receiver's hardware bitstream passthrough.
+   - **Correct Precedence**: Passthrough direct bitstream (`MediaCodecAudioRenderer` bypass) > Hardware MediaCodec decoding > FFmpeg software fallback.
+
+2. **Surround Transcoding Guardrails (`Ac3TranscodingAudioSink`)**:
+   - Transcoding (AAC 5.1 -> AC3, E-AC3 -> AC3, DTS -> AC3) MUST ONLY occur when:
+     - The corresponding user preference (`convertAac51ToAc3`, `convertEac3ToAc3`, `convertDtsToAc3`) is enabled in `PreferenceManager`.
+     - For E-AC3 and DTS: The connected audio sink does NOT support direct bitstream playback (`delegate.getFormatSupport(src) != SINK_FORMAT_SUPPORTED_DIRECTLY`).
+     - The connected audio sink DOES support direct AC3 bitstream passthrough (`delegate.getFormatSupport(ac3Format) == SINK_FORMAT_SUPPORTED_DIRECTLY`).
+   - If the receiver already supports the source codec natively, the stream MUST pass through untouched without invoking the software encoder.
+   - Stereo streams (AAC 2.0, PCM 2.0) MUST NEVER be transcoded.
+
+3. **Global Hardware Audio Offload & Tunneled Playback**:
+   - In [`PlaybackService.kt`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/service/PlaybackService.kt), `exoPlayer.trackSelectionParameters` MUST configure:
+     - `AudioOffloadPreferences` with `AUDIO_OFFLOAD_MODE_ENABLED` to offload audio buffering and processing to the SoC hardware DSP.
+     - `.setTunnelingEnabled(true)` enabled globally across all devices via `DefaultTrackSelector.Parameters`. Media3 automatically checks `FEATURE_TunneledPlayback` and falls back gracefully on non-capable devices, while ensuring zero jitter and hardware master clock lip-sync on supported hardware.
+
 ### ⏯️ Player Transport Controls, Play/Pause State Authority & Race Condition Prevention Mandate (STRICT)
 To eliminate state desynchronization, inverted buttons, and jarring UX across ExoPlayer and Google Cast:
 1. **Zero Speculative State Toggling (STRICT PROHIBITION)**:
@@ -255,4 +275,5 @@ Before marking a task complete, verify:
 8. [ ] Did I run unit tests (`testDebugUnitTest`) as validation instead of assembling release/debug APKs?
 9. [ ] If modifying remote storage/streaming, did I preserve session caching, asynchronous prefetching, and keep hot-path read loops free of Log.d?
 10. [ ] If modifying player controls or Cast handoff, did I avoid speculative `!isPlaying` flips, bind to `RemoteMediaClient`, and ensure zero bottom sheet flashing on Cast start?
-11. [ ] If modifying proguard-rules.pro, models, or dependencies, did I avoid blanket package wildcards ({ *; }), verify library consumer rules, and ensure R8 optimizations/inlining remain unhindered?
+11. [ ] If modifying audio rendering or player streaming config, did I preserve `EXTENSION_RENDERER_MODE_ON` (never `_PREFER`), keep direct passthrough ahead of FFmpeg, retain surround transcoding guardrails (`getFormatSupport == SINK_FORMAT_SUPPORTED_DIRECTLY`), and keep Audio Offload and global Tunneling intact?
+12. [ ] If modifying proguard-rules.pro, models, or dependencies, did I avoid blanket package wildcards ({ *; }), verify library consumer rules, and ensure R8 optimizations/inlining remain unhindered?

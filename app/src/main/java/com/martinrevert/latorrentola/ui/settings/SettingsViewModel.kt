@@ -77,7 +77,9 @@ class SettingsViewModel @Inject constructor(
             openSubtitlesUsername = openSubtitlesCredentials?.username.orEmpty(),
             openSubtitlesPassword = openSubtitlesCredentials?.password.orEmpty(),
             openSubtitlesCredentialsConfigured = openSubtitlesCredentials != null,
-            convertAac51ToAc3 = preferenceManager.getConvertAac51ToAc3()
+            convertAac51ToAc3 = preferenceManager.getConvertAac51ToAc3(),
+            convertEac3ToAc3 = preferenceManager.getConvertEac3ToAc3(),
+            convertDtsToAc3 = preferenceManager.getConvertDtsToAc3()
         )
         syncSettings()
         observeSettingsChanges()
@@ -124,6 +126,20 @@ class SettingsViewModel @Inject constructor(
             preferenceManager.convertAac51ToAc3Flow.collect { enabled ->
                 if (_uiState.value.convertAac51ToAc3 != enabled) {
                     _uiState.value = _uiState.value.copy(convertAac51ToAc3 = enabled)
+                }
+            }
+        }
+        viewModelScope.launch {
+            preferenceManager.convertEac3ToAc3Flow.collect { enabled ->
+                if (_uiState.value.convertEac3ToAc3 != enabled) {
+                    _uiState.value = _uiState.value.copy(convertEac3ToAc3 = enabled)
+                }
+            }
+        }
+        viewModelScope.launch {
+            preferenceManager.convertDtsToAc3Flow.collect { enabled ->
+                if (_uiState.value.convertDtsToAc3 != enabled) {
+                    _uiState.value = _uiState.value.copy(convertDtsToAc3 = enabled)
                 }
             }
         }
@@ -250,6 +266,26 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
+     * Updates and persists whether E-AC3 (DD+) tracks should be transcoded to AC3 5.1.
+     *
+     * @param enabled Whether E-AC3 to AC3 5.1 transcoding is active.
+     */
+    fun setConvertEac3ToAc3(enabled: Boolean) {
+        preferenceManager.setConvertEac3ToAc3(enabled)
+        _uiState.value = _uiState.value.copy(convertEac3ToAc3 = enabled)
+    }
+
+    /**
+     * Updates and persists whether DTS tracks should be transcoded to AC3 5.1.
+     *
+     * @param enabled Whether DTS to AC3 5.1 transcoding is active.
+     */
+    fun setConvertDtsToAc3(enabled: Boolean) {
+        preferenceManager.setConvertDtsToAc3(enabled)
+        _uiState.value = _uiState.value.copy(convertDtsToAc3 = enabled)
+    }
+
+    /**
      * Encrypts and stores the user's OpenSubtitles login.
      *
      * @param username Account username.
@@ -329,5 +365,7 @@ data class SettingsUiState(
     val openSubtitlesUsername: String = "",
     val openSubtitlesPassword: String = "",
     val openSubtitlesCredentialsConfigured: Boolean = false,
-    val convertAac51ToAc3: Boolean = false
+    val convertAac51ToAc3: Boolean = false,
+    val convertEac3ToAc3: Boolean = false,
+    val convertDtsToAc3: Boolean = false
 )

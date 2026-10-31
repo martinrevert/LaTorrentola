@@ -36,7 +36,13 @@ class PlayerStreamingConfigTest {
     }
 
     @Test
-    fun `buildRenderersFactory creates factory with preferred extension renderer mode`() {
+    fun `audio extension renderer mode is ON so passthrough and MediaCodec take priority over FFmpeg`() {
+        assertThat(PlayerStreamingConfig.AUDIO_EXTENSION_RENDERER_MODE)
+            .isEqualTo(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+    }
+
+    @Test
+    fun `buildRenderersFactory creates factory with extension renderer mode ON`() {
         val context = io.mockk.mockk<android.content.Context>(relaxed = true)
         val renderersFactory = PlayerStreamingConfig.buildRenderersFactory(context)
         assertThat(renderersFactory).isNotNull()

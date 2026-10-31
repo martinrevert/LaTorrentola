@@ -67,4 +67,25 @@ class PreferenceManagerTest {
         preferenceManager.setSubtitlesEnabled(false)
         verify { editor.putBoolean("subtitles_enabled", false) }
     }
+
+    @Test
+    fun `audio transcoding toggles persist state to sharedPreferences`() {
+        every { sharedPreferences.getBoolean("convert_aac51_to_ac3", false) } returns false
+        every { sharedPreferences.getBoolean("convert_eac3_to_ac3", false) } returns false
+        every { sharedPreferences.getBoolean("convert_dts_to_ac3", false) } returns false
+
+        val preferenceManager = PreferenceManager(context)
+        assertThat(preferenceManager.getConvertAac51ToAc3()).isFalse()
+        assertThat(preferenceManager.getConvertEac3ToAc3()).isFalse()
+        assertThat(preferenceManager.getConvertDtsToAc3()).isFalse()
+
+        preferenceManager.setConvertAac51ToAc3(true)
+        verify { editor.putBoolean("convert_aac51_to_ac3", true) }
+
+        preferenceManager.setConvertEac3ToAc3(true)
+        verify { editor.putBoolean("convert_eac3_to_ac3", true) }
+
+        preferenceManager.setConvertDtsToAc3(true)
+        verify { editor.putBoolean("convert_dts_to_ac3", true) }
+    }
 }

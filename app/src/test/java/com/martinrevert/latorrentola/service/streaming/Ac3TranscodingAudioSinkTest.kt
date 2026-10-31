@@ -29,16 +29,16 @@ class Ac3TranscodingAudioSinkTest {
     private val delegateSink = mockk<AudioSink>(relaxed = true)
     private val context = mockk<Context>(relaxed = true)
     private val preferenceManager = mockk<PreferenceManager>(relaxed = true)
-    private val audioCapabilities = mockk<AudioCapabilities>(relaxed = true)
     private val mockEncoder = mockk<androidx.media3.decoder.ffmpeg.FfmpegAc3Encoder>(relaxed = true)
 
     private lateinit var transcodingSink: Ac3TranscodingAudioSink
 
     @Before
     fun setUp() {
-        mockkStatic(AudioCapabilities::class)
-        every { AudioCapabilities.getCapabilities(any(), any(), any(), any()) } returns audioCapabilities
-        every { audioCapabilities.supportsEncoding(AudioFormat.ENCODING_AC3) } returns true
+        // By default in tests, downstream delegate sink natively supports direct AC3 bitstream passthrough
+        every {
+            delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_AC3 })
+        } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
 
         transcodingSink = Ac3TranscodingAudioSink(
             delegate = delegateSink,
@@ -50,7 +50,6 @@ class Ac3TranscodingAudioSinkTest {
 
     @After
     fun tearDown() {
-        unmockkStatic(AudioCapabilities::class)
     }
 
     @Test
@@ -84,7 +83,6 @@ class Ac3TranscodingAudioSinkTest {
     @Test
     fun `when aac 5_1 and setting enabled and receiver supports ac3, configure ac3 format via AudioSinkConfig`() {
         every { preferenceManager.getConvertAac51ToAc3() } returns true
-        every { audioCapabilities.supportsEncoding(AudioFormat.ENCODING_AC3) } returns true
 
         val aac51Format = Format.Builder()
             .setSampleMimeType(MimeTypes.AUDIO_AAC)
@@ -142,20 +140,20 @@ class Ac3TranscodingAudioSinkTest {
     }
 
     @Test
-    fun `when format is non-aac such as opus flac ac3 eac3 or dts, never transcode`() {
+    fun `when format is non-transcoded such as opus flac ac3 or truehd, never transcode`() {
         every { preferenceManager.getConvertAac51ToAc3() } returns true
+        every { preferenceManager.getConvertEac3ToAc3() } returns false
+        every { preferenceManager.getConvertDtsToAc3() } returns false
 
-        val nonAacMimeTypes = listOf(
+        val nonTranscodedMimeTypes = listOf(
             MimeTypes.AUDIO_OPUS,
             MimeTypes.AUDIO_FLAC,
             MimeTypes.AUDIO_AC3,
-            MimeTypes.AUDIO_E_AC3,
-            MimeTypes.AUDIO_DTS,
             MimeTypes.AUDIO_TRUEHD,
             MimeTypes.AUDIO_VORBIS
         )
 
-        for (mime in nonAacMimeTypes) {
+        for (mime in nonTranscodedMimeTypes) {
             val sourceFormat = Format.Builder()
                 .setSampleMimeType(mime)
                 .setChannelCount(6)
@@ -182,9 +180,103 @@ class Ac3TranscodingAudioSinkTest {
     }
 
     @Test
+    fun `when eac3 5_1 and toggle enabled and receiver lacks direct eac3 but supports ac3, transcode to ac3`() {
+        every { preferenceManager.getConvertEac3ToAc3() } returns true
+        val eac3Format = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_E_AC3)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .build()
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_E_AC3 }) } returns AudioSink.SINK_FORMAT_UNSUPPORTED
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_AC3 }) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+
+        val rawPcm51 = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_RAW)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .setPcmEncoding(C.ENCODING_PCM_16BIT)
+            .build()
+
+        transcodingSink.setSourceAudioFormat(eac3Format)
+        transcodingSink.configure(AudioSink.AudioSinkConfig.Builder(rawPcm51).build())
+
+        verify {
+            delegateSink.configure(
+                match<AudioSink.AudioSinkConfig> {
+                    it.format.sampleMimeType == MimeTypes.AUDIO_AC3 &&
+                        it.format.channelCount == 6 &&
+                        it.format.sampleRate == 48000 &&
+                        it.format.averageBitrate == 640_000
+                }
+            )
+        }
+    }
+
+    @Test
+    fun `when eac3 5_1 and toggle enabled but receiver natively supports direct eac3 passthrough, never transcode`() {
+        every { preferenceManager.getConvertEac3ToAc3() } returns true
+        val eac3Format = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_E_AC3)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .build()
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_E_AC3 }) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+
+        val rawPcm51 = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_RAW)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .setPcmEncoding(C.ENCODING_PCM_16BIT)
+            .build()
+
+        transcodingSink.setSourceAudioFormat(eac3Format)
+        transcodingSink.configure(AudioSink.AudioSinkConfig.Builder(rawPcm51).build())
+
+        verify {
+            delegateSink.configure(
+                match<AudioSink.AudioSinkConfig> {
+                    it.format.sampleMimeType == MimeTypes.AUDIO_RAW && it.format.channelCount == 6
+                }
+            )
+        }
+    }
+
+    @Test
+    fun `when dts 5_1 and toggle enabled and receiver lacks direct dts but supports ac3, transcode to ac3`() {
+        every { preferenceManager.getConvertDtsToAc3() } returns true
+        val dtsFormat = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_DTS)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .build()
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_DTS }) } returns AudioSink.SINK_FORMAT_UNSUPPORTED
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_AC3 }) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+
+        val rawPcm51 = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_RAW)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .setPcmEncoding(C.ENCODING_PCM_16BIT)
+            .build()
+
+        transcodingSink.setSourceAudioFormat(dtsFormat)
+        transcodingSink.configure(AudioSink.AudioSinkConfig.Builder(rawPcm51).build())
+
+        verify {
+            delegateSink.configure(
+                match<AudioSink.AudioSinkConfig> {
+                    it.format.sampleMimeType == MimeTypes.AUDIO_AC3 &&
+                        it.format.channelCount == 6 &&
+                        it.format.sampleRate == 48000 &&
+                        it.format.averageBitrate == 640_000
+                }
+            )
+        }
+    }
+
+    @Test
     fun `when handleBuffer encounters downstream AudioTrack backpressure, drains pending AC3 frame without re-encoding or losing data`() {
         every { preferenceManager.getConvertAac51ToAc3() } returns true
-        every { audioCapabilities.supportsEncoding(AudioFormat.ENCODING_AC3) } returns true
 
         val aac51Format = Format.Builder()
             .setSampleMimeType(MimeTypes.AUDIO_AAC)
@@ -232,7 +324,6 @@ class Ac3TranscodingAudioSinkTest {
     @Test
     fun `when encode produces multiple AC3 syncframes, passes accurate encodedAccessUnitCount and resets cleanly on flush`() {
         every { preferenceManager.getConvertAac51ToAc3() } returns true
-        every { audioCapabilities.supportsEncoding(AudioFormat.ENCODING_AC3) } returns true
 
         val aac51Format = Format.Builder()
             .setSampleMimeType(MimeTypes.AUDIO_AAC)
@@ -275,7 +366,6 @@ class Ac3TranscodingAudioSinkTest {
     @Test
     fun `when aac 5_1 transcoding is enabled, getFormatSupport reports float PCM as supported with transcoding so 16-bit PCM is preferred`() {
         every { preferenceManager.getConvertAac51ToAc3() } returns true
-        every { audioCapabilities.supportsEncoding(AudioFormat.ENCODING_AC3) } returns true
         every { delegateSink.getFormatSupport(any()) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
 
         val aac51Format = Format.Builder()
@@ -299,7 +389,6 @@ class Ac3TranscodingAudioSinkTest {
     @Test
     fun `when handleDiscontinuity is called, resets encoder and clears buffered frames`() {
         every { preferenceManager.getConvertAac51ToAc3() } returns true
-        every { audioCapabilities.supportsEncoding(AudioFormat.ENCODING_AC3) } returns true
 
         val aac51Format = Format.Builder()
             .setSampleMimeType(MimeTypes.AUDIO_AAC)
@@ -325,7 +414,6 @@ class Ac3TranscodingAudioSinkTest {
     @Test
     fun `when playToEndOfStream is called, flushes trailing encoder samples and delivers to delegate`() {
         every { preferenceManager.getConvertAac51ToAc3() } returns true
-        every { audioCapabilities.supportsEncoding(AudioFormat.ENCODING_AC3) } returns true
 
         val aac51Format = Format.Builder()
             .setSampleMimeType(MimeTypes.AUDIO_AAC)
@@ -363,7 +451,6 @@ class Ac3TranscodingAudioSinkTest {
     @Test
     fun `when hasPendingAc3Output is true, isEnded returns false even if delegate isEnded is true`() {
         every { preferenceManager.getConvertAac51ToAc3() } returns true
-        every { audioCapabilities.supportsEncoding(AudioFormat.ENCODING_AC3) } returns true
         every { delegateSink.isEnded } returns true
 
         val aac51Format = Format.Builder()
@@ -397,7 +484,6 @@ class Ac3TranscodingAudioSinkTest {
     @Test
     fun `negative presentationTimeUs is preserved for preroll frames`() {
         every { preferenceManager.getConvertAac51ToAc3() } returns true
-        every { audioCapabilities.supportsEncoding(AudioFormat.ENCODING_AC3) } returns true
 
         val aac51Format = Format.Builder()
             .setSampleMimeType(MimeTypes.AUDIO_AAC)
@@ -431,7 +517,6 @@ class Ac3TranscodingAudioSinkTest {
     @Test
     fun `when currentSourceFormat is null but setting is enabled, getFormatSupport returns supported with transcoding for multichannel format`() {
         every { preferenceManager.getConvertAac51ToAc3() } returns true
-        every { audioCapabilities.supportsEncoding(AudioFormat.ENCODING_AC3) } returns true
         every { delegateSink.getFormatSupport(any()) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
 
         // currentSourceFormat is NOT set (null)
@@ -444,5 +529,160 @@ class Ac3TranscodingAudioSinkTest {
 
         assertThat(transcodingSink.getFormatSupport(floatPcm51))
             .isEqualTo(AudioSink.SINK_FORMAT_SUPPORTED_WITH_TRANSCODING)
+    }
+
+    @Test
+    fun `when eac3 2_0 stereo, never transcode even if setting enabled and receiver lacks direct eac3`() {
+        every { preferenceManager.getConvertEac3ToAc3() } returns true
+        val eac3Stereo = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_E_AC3)
+            .setChannelCount(2)
+            .setSampleRate(48000)
+            .build()
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_E_AC3 }) } returns AudioSink.SINK_FORMAT_UNSUPPORTED
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_AC3 }) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+
+        val rawPcmStereo = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_RAW)
+            .setChannelCount(2)
+            .setSampleRate(48000)
+            .setPcmEncoding(C.ENCODING_PCM_16BIT)
+            .build()
+
+        transcodingSink.setSourceAudioFormat(eac3Stereo)
+        transcodingSink.configure(AudioSink.AudioSinkConfig.Builder(rawPcmStereo).build())
+
+        verify {
+            delegateSink.configure(
+                match<AudioSink.AudioSinkConfig> {
+                    it.format.sampleMimeType == MimeTypes.AUDIO_RAW && it.format.channelCount == 2
+                }
+            )
+        }
+    }
+
+    @Test
+    fun `when dts 2_0 stereo, never transcode even if setting enabled and receiver lacks direct dts`() {
+        every { preferenceManager.getConvertDtsToAc3() } returns true
+        val dtsStereo = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_DTS)
+            .setChannelCount(2)
+            .setSampleRate(48000)
+            .build()
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_DTS }) } returns AudioSink.SINK_FORMAT_UNSUPPORTED
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_AC3 }) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+
+        val rawPcmStereo = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_RAW)
+            .setChannelCount(2)
+            .setSampleRate(48000)
+            .setPcmEncoding(C.ENCODING_PCM_16BIT)
+            .build()
+
+        transcodingSink.setSourceAudioFormat(dtsStereo)
+        transcodingSink.configure(AudioSink.AudioSinkConfig.Builder(rawPcmStereo).build())
+
+        verify {
+            delegateSink.configure(
+                match<AudioSink.AudioSinkConfig> {
+                    it.format.sampleMimeType == MimeTypes.AUDIO_RAW && it.format.channelCount == 2
+                }
+            )
+        }
+    }
+
+    @Test
+    fun `when input is 7_1 surround with 8 channels, encoderFactory is configured with 8 channels for native downmixing`() {
+        every { preferenceManager.getConvertEac3ToAc3() } returns true
+        val eac371Format = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_E_AC3)
+            .setChannelCount(8)
+            .setSampleRate(48000)
+            .build()
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_E_AC3 }) } returns AudioSink.SINK_FORMAT_UNSUPPORTED
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_AC3 }) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+
+        var capturedEncoderChannels = 0
+        val customSink = Ac3TranscodingAudioSink(
+            delegate = delegateSink,
+            preferenceManager = preferenceManager,
+            encoderFactory = { _, ch, _, _ ->
+                capturedEncoderChannels = ch
+                mockEncoder
+            }
+        )
+
+        val rawPcm71 = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_RAW)
+            .setChannelCount(8)
+            .setSampleRate(48000)
+            .setPcmEncoding(C.ENCODING_PCM_16BIT)
+            .build()
+
+        customSink.setSourceAudioFormat(eac371Format)
+        customSink.configure(AudioSink.AudioSinkConfig.Builder(rawPcm71).build())
+
+        assertThat(capturedEncoderChannels).isEqualTo(8)
+        verify {
+            delegateSink.configure(
+                match<AudioSink.AudioSinkConfig> {
+                    it.format.sampleMimeType == MimeTypes.AUDIO_AC3 && it.format.channelCount == 6
+                }
+            )
+        }
+    }
+
+    @Test
+    fun `when receiver lacks direct ac3 passthrough, getFormatSupport delegates directly without reporting transcoding`() {
+        every { preferenceManager.getConvertAac51ToAc3() } returns true
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_AC3 }) } returns AudioSink.SINK_FORMAT_UNSUPPORTED
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_RAW }) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+
+        val aac51Format = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_AAC)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .build()
+        val floatPcm51 = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_RAW)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .setPcmEncoding(C.ENCODING_PCM_FLOAT)
+            .build()
+
+        transcodingSink.setSourceAudioFormat(aac51Format)
+
+        assertThat(transcodingSink.getFormatSupport(floatPcm51))
+            .isEqualTo(AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY)
+    }
+
+    @Test
+    fun `when eac3 5_1 and toggle enabled but receiver lacks direct ac3 passthrough, never transcode`() {
+        every { preferenceManager.getConvertEac3ToAc3() } returns true
+        val eac3Format = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_E_AC3)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .build()
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_E_AC3 }) } returns AudioSink.SINK_FORMAT_UNSUPPORTED
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_AC3 }) } returns AudioSink.SINK_FORMAT_UNSUPPORTED
+
+        val rawPcm51 = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_RAW)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .setPcmEncoding(C.ENCODING_PCM_16BIT)
+            .build()
+
+        transcodingSink.setSourceAudioFormat(eac3Format)
+        transcodingSink.configure(AudioSink.AudioSinkConfig.Builder(rawPcm51).build())
+
+        verify {
+            delegateSink.configure(
+                match<AudioSink.AudioSinkConfig> {
+                    it.format.sampleMimeType == MimeTypes.AUDIO_RAW && it.format.channelCount == 6
+                }
+            )
+        }
     }
 }

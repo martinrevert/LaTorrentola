@@ -94,11 +94,15 @@ object PlayerStreamingConfig {
         return defaultFactory
     }
 
+    /** Extension renderer mode: ON enables MediaCodec passthrough/decoding first, with FFmpeg as fallback. */
+    const val AUDIO_EXTENSION_RENDERER_MODE = androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+
     /**
-     * Builds a RenderersFactory that prefers software extension decoders (such as FFmpeg)
-     * when hardware decoders are unavailable or fail to support the audio format (e.g. AC3, DTS, TrueHD),
-     * and wraps the audio sink with [Ac3TranscodingAudioSink] to support real-time AAC 5.1 -> AC3 5.1
-     * passthrough for SPDIF/ARC soundbars when enabled.
+     * Builds a RenderersFactory that prioritizes direct digital audio passthrough (AC3, E-AC3, DTS, TrueHD)
+     * and hardware decoders via [MediaCodecAudioRenderer], while keeping [FfmpegAudioRenderer] enabled as a robust
+     * software fallback when hardware decoders cannot handle a format. Wraps the audio sink with
+     * [Ac3TranscodingAudioSink] to support real-time surround transcoding (AAC 5.1, E-AC3, DTS -> AC3 5.1)
+     * for SPDIF and HDMI ARC soundbars when direct bitstream playback is unsupported by the receiver.
      */
     fun buildRenderersFactory(
         context: android.content.Context,
@@ -107,7 +111,7 @@ object PlayerStreamingConfig {
         val prefs = preferenceManager ?: com.martinrevert.latorrentola.utils.PreferenceManager(context)
         return object : androidx.media3.exoplayer.DefaultRenderersFactory(context) {
             init {
-                setExtensionRendererMode(EXTENSION_RENDERER_MODE_PREFER)
+                setExtensionRendererMode(AUDIO_EXTENSION_RENDERER_MODE)
             }
 
             override fun buildAudioSink(

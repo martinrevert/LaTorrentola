@@ -49,12 +49,16 @@ class SettingsViewModelTest {
         every { preferenceManager.getAutoPlayQualitySelectionMethod() } returns com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod.OFF
         every { preferenceManager.getStorageLocation() } returns "internal"
         every { preferenceManager.getConvertAac51ToAc3() } returns false
+        every { preferenceManager.getConvertEac3ToAc3() } returns false
+        every { preferenceManager.getConvertDtsToAc3() } returns false
         every { preferenceManager.themeFlow } returns themeFlow
         every { preferenceManager.filteredLanguagesFlow } returns MutableStateFlow("es")
         every { preferenceManager.minimumRatingFlow } returns MutableStateFlow(PreferenceManager.DEFAULT_MINIMUM_RATING)
         every { preferenceManager.autoPlayQualitySelectionFlow } returns MutableStateFlow(com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod.OFF)
         every { preferenceManager.storageLocationFlow } returns MutableStateFlow("internal")
         every { preferenceManager.convertAac51ToAc3Flow } returns MutableStateFlow(false)
+        every { preferenceManager.convertEac3ToAc3Flow } returns MutableStateFlow(false)
+        every { preferenceManager.convertDtsToAc3Flow } returns MutableStateFlow(false)
         every { authRepository.authStateFlow } returns MutableStateFlow(null)
         
         viewModel = SettingsViewModel(
@@ -115,6 +119,24 @@ class SettingsViewModelTest {
 
         verify { preferenceManager.setConvertAac51ToAc3(true) }
         assertThat(viewModel.uiState.value.convertAac51ToAc3).isTrue()
+    }
+
+    @Test
+    fun `setConvertEac3ToAc3 should update preference and state`() {
+        every { preferenceManager.setConvertEac3ToAc3(any()) } returns Unit
+        viewModel.setConvertEac3ToAc3(true)
+
+        verify { preferenceManager.setConvertEac3ToAc3(true) }
+        assertThat(viewModel.uiState.value.convertEac3ToAc3).isTrue()
+    }
+
+    @Test
+    fun `setConvertDtsToAc3 should update preference and state`() {
+        every { preferenceManager.setConvertDtsToAc3(any()) } returns Unit
+        viewModel.setConvertDtsToAc3(true)
+
+        verify { preferenceManager.setConvertDtsToAc3(true) }
+        assertThat(viewModel.uiState.value.convertDtsToAc3).isTrue()
     }
 
     /** Checks that subtitle account credentials are stored and cleared through the secure store. */
