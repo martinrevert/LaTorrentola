@@ -4,8 +4,13 @@ import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 
 import android.util.Log
+import androidx.media3.common.Player
+import com.martinrevert.latorrentola.ui.components.resolvePlaybackDecodingError
 import io.mockk.every
+import io.mockk.mockk
 import io.mockk.mockkStatic
+import io.mockk.verify
+import kotlinx.coroutines.Job
 import org.junit.Before
 import org.junit.Test
 
@@ -381,6 +386,22 @@ class LocalPlayerActivityTest {
     }
 
     @Test
+    fun `resolvePlaybackDecodingError resolves audio vnd dts error message to standard DTS and not DTS-HD`() {
+        val dtsCoreError = androidx.media3.common.PlaybackException(
+            "AudioTrack write failed: audio/vnd.dts buffer rejected",
+            null,
+            androidx.media3.common.PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED
+        )
+
+        val resolved = resolvePlaybackDecodingError(dtsCoreError)
+
+        assertThat(resolved).isNotNull()
+        assertThat(resolved?.isAudioError).isTrue()
+        assertThat(resolved?.codecSummary).isEqualTo("DTS")
+        assertThat(resolved?.isDtsHdError).isFalse()
+    }
+
+    @Test
     fun `handlePlayerTvKeyEvent pauses and shows controls with single OK press while playing`() {
         var seekBackCalled = false
         var seekForwardCalled = false
@@ -592,6 +613,65 @@ class LocalPlayerActivityTest {
         // Mobile - casting: allow screen timeout
         assertThat(LocalPlayerActivity.shouldKeepScreenAwake(isTv = false, isPlaying = true, isLocalPlayback = false)).isFalse()
     }
+
+    @Test
+    fun `isDtsHdStallCondition enforces bufferAheadMs threshold and ignores absolute buffered position`() {
+        // Starvation scenario: playback head stalled at 10_000ms, but forward buffer is only 1500ms
+        val underbuffered = LocalPlayerActivity.isDtsHdStallCondition(
+            playWhenReady = true,
+            playbackState = Player.STATE_READY,
+            bufferAheadMs = 1500L,
+            currentPosition = 10_000L,
+            lastPosition = 10_000L
+        )
+        assertThat(underbuffered).isFalse()
+
+        // True hardware stall: playback head stalled at 10_000ms with >= 2000ms forward buffer
+        val stalled = LocalPlayerActivity.isDtsHdStallCondition(
+            playWhenReady = true,
+            playbackState = Player.STATE_READY,
+            bufferAheadMs = 2000L,
+            currentPosition = 10_000L,
+            lastPosition = 10_000L
+        )
+        assertThat(stalled).isTrue()
+
+        // Not stalled if playing head is moving
+        val moving = LocalPlayerActivity.isDtsHdStallCondition(
+            playWhenReady = true,
+            playbackState = Player.STATE_READY,
+            bufferAheadMs = 5000L,
+            currentPosition = 11_000L,
+            lastPosition = 10_000L
+        )
+        assertThat(moving).isFalse()
+
+        // Not stalled if paused
+        val paused = LocalPlayerActivity.isDtsHdStallCondition(
+            playWhenReady = false,
+            playbackState = Player.STATE_READY,
+            bufferAheadMs = 5000L,
+            currentPosition = 10_000L,
+            lastPosition = 10_000L
+        )
+        assertThat(paused).isFalse()
+    }
+
+    @Test
+    fun `cancelDtsHdStallWatchdog cancels active job and returns null`() {
+        val mockJob = mockk<Job>(relaxed = true)
+        val result = LocalPlayerActivity.cancelDtsHdStallWatchdog(mockJob)
+
+        verify(exactly = 1) { mockJob.cancel() }
+        assertThat(result).isNull()
+    }
+
+    @Test
+    fun `cancelDtsHdStallWatchdog handles null gracefully`() {
+        val result = LocalPlayerActivity.cancelDtsHdStallWatchdog(null)
+        assertThat(result).isNull()
+    }
 }
+
 
 

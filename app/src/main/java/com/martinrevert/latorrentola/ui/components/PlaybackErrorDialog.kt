@@ -175,7 +175,7 @@ fun resolvePlaybackDecodingError(error: PlaybackException): PlaybackDecodingErro
 
     val isDtsHd = sampleMimeType?.let { Ac3TranscodingAudioSink.isDtsHdMime(it) } == true ||
         baseCodecLabel == "DTS-HD" ||
-        (isAudioError && (message.contains("dts.hd", ignoreCase = true) || message.contains("dts-hd", ignoreCase = true) || message.contains("dts:x", ignoreCase = true) || message.contains("audio/vnd.dts", ignoreCase = true)))
+        (isAudioError && (message.contains("dts.hd", ignoreCase = true) || message.contains("dts-hd", ignoreCase = true) || message.contains("dts:x", ignoreCase = true) || message.contains("audio/vnd.dts.hd", ignoreCase = true) || message.contains("audio/vnd.dts-hd", ignoreCase = true)))
 
     val effectiveIsAudio = if (isDtsHd) true else isAudioError
     val codecSummary = when {

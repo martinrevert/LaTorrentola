@@ -2929,6 +2929,7 @@ class LocalPlayerActivity : FragmentActivity() {
         }
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         mediaController?.clearVideoSurface()
+        dtsHdStallWatchdogJob = cancelDtsHdStallWatchdog(dtsHdStallWatchdogJob)
         saveCurrentProgress(mediaController)
         super.onStop()
     }
@@ -2972,10 +2973,13 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
 
                 val bufferAheadMs = player.bufferedPosition - player.currentPosition
-                val isStalled = player.playWhenReady &&
-                    player.playbackState == Player.STATE_READY &&
-                    (bufferAheadMs > 2000L || player.bufferedPosition > 4000L) &&
-                    player.currentPosition == lastPosition
+                val isStalled = isDtsHdStallCondition(
+                    playWhenReady = player.playWhenReady,
+                    playbackState = player.playbackState,
+                    bufferAheadMs = bufferAheadMs,
+                    currentPosition = player.currentPosition,
+                    lastPosition = lastPosition
+                )
 
                 if (isStalled) {
                     consecutiveStallTicks++
@@ -3204,8 +3208,7 @@ class LocalPlayerActivity : FragmentActivity() {
         mediaController?.clearVideoSurface()
         progressTickerJob?.cancel()
         progressTickerJob = null
-        dtsHdStallWatchdogJob?.cancel()
-        dtsHdStallWatchdogJob = null
+        dtsHdStallWatchdogJob = cancelDtsHdStallWatchdog(dtsHdStallWatchdogJob)
         castSessionManagerListener?.let { listener ->
             try {
                 val castContext = safeGetCastContext(this)
@@ -3243,6 +3246,26 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     companion object {
+        @androidx.annotation.VisibleForTesting
+        internal fun isDtsHdStallCondition(
+            playWhenReady: Boolean,
+            playbackState: Int,
+            bufferAheadMs: Long,
+            currentPosition: Long,
+            lastPosition: Long
+        ): Boolean {
+            return playWhenReady &&
+                playbackState == Player.STATE_READY &&
+                bufferAheadMs >= 2000L &&
+                currentPosition == lastPosition
+        }
+
+        @androidx.annotation.VisibleForTesting
+        internal fun cancelDtsHdStallWatchdog(job: Job?): Job? {
+            job?.cancel()
+            return null
+        }
+
         fun shouldPauseOnTvExit(isTv: Boolean): Boolean = isTv
 
         fun shouldKeepScreenAwake(
