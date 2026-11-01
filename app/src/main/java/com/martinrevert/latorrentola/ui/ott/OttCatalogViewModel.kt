@@ -14,6 +14,7 @@ import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -57,6 +58,9 @@ class OttCatalogViewModel @Inject constructor(
 
     private val _focusedMovie = MutableStateFlow<TmdbMovieSummary?>(null)
     val focusedMovie: StateFlow<TmdbMovieSummary?> = _focusedMovie.asStateFlow()
+
+    private val _focusedSeries = MutableStateFlow<TmdbTvSummary?>(null)
+    val focusedSeries: StateFlow<TmdbTvSummary?> = _focusedSeries.asStateFlow()
 
     private val _focusedMovieBackdrop = MutableStateFlow<String?>(null)
     val focusedMovieBackdrop: StateFlow<String?> = _focusedMovieBackdrop.asStateFlow()
@@ -145,6 +149,30 @@ class OttCatalogViewModel @Inject constructor(
         }
     }
 
+    fun onSeriesFocused(series: TmdbTvSummary) {
+        if (_focusedSeries.value?.id == series.id) return
+        _focusedSeries.value = series
+        _focusedMovieBackdrop.value = series.fullBackdropUrl ?: series.fullPosterUrl
+        _focusedMovieLogo.value = null
+        _isFocusedMovieLogoLoading.value = true
+        movieFocusJob?.cancel()
+        movieFocusJob = viewModelScope.launch {
+            try {
+                delay(120)
+                val logo = tmdbRepository.getTvSeriesLogo(series.id)
+                if (_focusedSeries.value?.id == series.id) {
+                    _focusedMovieLogo.value = logo
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            } finally {
+                if (_focusedSeries.value?.id == series.id) {
+                    _isFocusedMovieLogoLoading.value = false
+                }
+            }
+        }
+    }
+
     fun loadMore() {
         if (isFetching || currentPage > totalPages || currentProviderId == null) return
         isFetching = true
@@ -168,6 +196,7 @@ class OttCatalogViewModel @Inject constructor(
         accumulatedSeries.clear()
         seenSeriesIds.clear()
         _focusedMovie.value = null
+        _focusedSeries.value = null
         _focusedMovieBackdrop.value = null
         _focusedMovieLogo.value = null
         _isFocusedMovieLogoLoading.value = false
@@ -204,6 +233,9 @@ class OttCatalogViewModel @Inject constructor(
                 accumulatedSeries.addAll(newSeries)
                 currentPage++
                 _uiState.value = OttCatalogUiState.SuccessTv(accumulatedSeries.toList())
+                if (_focusedSeries.value == null && accumulatedSeries.isNotEmpty()) {
+                    onSeriesFocused(accumulatedSeries.first())
+                }
             } else {
                 val page = tmdbRepository.discoverMoviesByProvider(
                     providerId = providerId,

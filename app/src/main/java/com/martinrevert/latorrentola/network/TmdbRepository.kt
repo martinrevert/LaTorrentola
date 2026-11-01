@@ -18,6 +18,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -54,6 +55,12 @@ class TmdbRepository @Inject constructor(
 
     /** In-memory cache of TMDB movie logo URLs keyed by TMDB movie ID and language tag. */
     private val movieLogoCache = ConcurrentHashMap<String, String>()
+
+    /** In-memory cache of TMDB TV series logo URLs keyed by TMDB series ID and language tag. */
+    private val tvLogoCache = ConcurrentHashMap<String, String>()
+
+    /** In-memory cache of TMDB TV series trailer YouTube keys keyed by TMDB series ID. */
+    private val tvTrailerCache = ConcurrentHashMap<Int, String>()
 
     /**
      * Searches TMDB for people (actors/actresses) matching [query].
@@ -507,6 +514,74 @@ class TmdbRepository @Inject constructor(
             )
             findResponse.tvResults?.firstOrNull()
         } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Resolves the primary logo image URL for a TMDB TV series, with in-memory caching.
+     *
+     * @param seriesId TMDB TV series identifier.
+     * @return Full logo URL (PNG/SVG) or null if unavailable.
+     */
+    suspend fun getTvSeriesLogo(seriesId: Int): String? {
+        if (apiKey.isEmpty() || seriesId <= 0) return null
+        val cacheKey = "${seriesId}_${TmdbLanguage.imageLanguages()}"
+        tvLogoCache[cacheKey]?.let { return it.ifEmpty { null } }
+
+        return try {
+            val images = tmdbService.getTvImages(
+                seriesId = seriesId,
+                apiKey = apiKey,
+                includeImageLanguage = TmdbLanguage.imageLanguages()
+            )
+            val logoUrl = images.bestLogoUrl ?: ""
+            tvLogoCache[cacheKey] = logoUrl
+            logoUrl.ifEmpty { null }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            null
+        }
+    }
+
+    /**
+     * Resolves the primary YouTube trailer video key for a TMDB TV series, with in-memory caching.
+     *
+     * @param seriesId TMDB TV series identifier.
+     * @return YouTube video key (e.g., "KPLWWIOCOOQ") or null if unavailable.
+     */
+    suspend fun getTvSeriesTrailer(seriesId: Int): String? {
+        if (apiKey.isEmpty() || seriesId <= 0) return null
+        tvTrailerCache[seriesId]?.let { return it.ifEmpty { null } }
+
+        return try {
+            val cachedTrailer = tvDetailsCache[seriesId]?.videos?.getBestTrailerKey()
+            if (!cachedTrailer.isNullOrBlank()) {
+                tvTrailerCache[seriesId] = cachedTrailer
+                return cachedTrailer
+            }
+
+            val currentLangVideos = tmdbService.getTvVideos(
+                seriesId = seriesId,
+                apiKey = apiKey,
+                language = TmdbLanguage.current()
+            ).getBestTrailerKey()
+
+            val trailer = if (!currentLangVideos.isNullOrBlank()) {
+                currentLangVideos
+            } else {
+                tmdbService.getTvVideos(
+                    seriesId = seriesId,
+                    apiKey = apiKey,
+                    language = "en-US"
+                ).getBestTrailerKey()
+            }
+
+            val result = trailer ?: ""
+            tvTrailerCache[seriesId] = result
+            result.ifEmpty { null }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
             null
         }
     }

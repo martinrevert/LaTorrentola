@@ -125,7 +125,10 @@ data class TmdbTvSummary(
     val seasons: List<TmdbTvSeason>? = emptyList(),
     @SerializedName("aggregate_credits")
     @SerialName("aggregate_credits")
-    val aggregateCredits: TmdbTvAggregateCredits? = null
+    val aggregateCredits: TmdbTvAggregateCredits? = null,
+    @SerializedName("videos")
+    @SerialName("videos")
+    val videos: TmdbVideosResponse? = null
 ) {
     /** Full-size poster image URL, or `null` when no poster is available. */
     val fullPosterUrl: String?
@@ -439,3 +442,92 @@ data class TmdbTvExternalIds(
     @SerialName("tvdb_id")
     val tvdbId: Int? = null
 )
+
+/**
+ * A video asset (such as a YouTube trailer or teaser) associated with a TMDB television series or movie.
+ *
+ * @property id TMDB video identifier.
+ * @property iso6391 Language code of the video.
+ * @property iso31661 Country code of the video.
+ * @property key Platform-specific video key (e.g., YouTube video ID).
+ * @property name Video title.
+ * @property site Hosting platform (e.g., "YouTube").
+ * @property size Video resolution (e.g., 1080).
+ * @property type Type of video (e.g., "Trailer", "Teaser", "Clip").
+ * @property official Whether the video is officially released.
+ * @property publishedAt Publication timestamp.
+ */
+@Serializable
+data class TmdbVideoItem(
+    @SerializedName("id")
+    @SerialName("id")
+    val id: String? = null,
+    @SerializedName("iso_639_1")
+    @SerialName("iso_639_1")
+    val iso6391: String? = null,
+    @SerializedName("iso_3166_1")
+    @SerialName("iso_3166_1")
+    val iso31661: String? = null,
+    @SerializedName("key")
+    @SerialName("key")
+    val key: String? = null,
+    @SerializedName("name")
+    @SerialName("name")
+    val name: String? = null,
+    @SerializedName("site")
+    @SerialName("site")
+    val site: String? = null,
+    @SerializedName("size")
+    @SerialName("size")
+    val size: Int? = null,
+    @SerializedName("type")
+    @SerialName("type")
+    val type: String? = null,
+    @SerializedName("official")
+    @SerialName("official")
+    val official: Boolean? = null,
+    @SerializedName("published_at")
+    @SerialName("published_at")
+    val publishedAt: String? = null
+)
+
+/**
+ * Video collection returned by TMDB for a television series or movie.
+ *
+ * @property id TMDB media identifier.
+ * @property results Available video assets.
+ */
+@Serializable
+data class TmdbVideosResponse(
+    @SerializedName("id")
+    @SerialName("id")
+    val id: Int? = null,
+    @SerializedName("results")
+    @SerialName("results")
+    val results: List<TmdbVideoItem>? = emptyList()
+) {
+    /**
+     * Resolves the best YouTube trailer key:
+     * Filters for YouTube hosting, prioritizes "Trailer" over teasers/clips,
+     * prefers official trailers, and matches the preferred or device language before falling back to English.
+     */
+    fun getBestTrailerKey(preferredLanguage: String? = null): String? {
+        val youtubeVideos = results?.filter {
+            it.site.equals("YouTube", ignoreCase = true) && !it.key.isNullOrBlank()
+        } ?: return null
+        if (youtubeVideos.isEmpty()) return null
+
+        val targetLang = preferredLanguage?.takeIf(String::isNotBlank)?.lowercase(Locale.ROOT)
+            ?: Locale.getDefault().language.lowercase(Locale.ROOT)
+
+        val trailers = youtubeVideos.filter { it.type.equals("Trailer", ignoreCase = true) }
+        val pool = if (trailers.isNotEmpty()) trailers else youtubeVideos
+
+        return pool.firstOrNull { it.iso6391?.lowercase(Locale.ROOT) == targetLang && it.official == true }?.key
+            ?: pool.firstOrNull { it.iso6391?.lowercase(Locale.ROOT) == targetLang }?.key
+            ?: pool.firstOrNull { it.iso6391?.lowercase(Locale.ROOT) == "en" && it.official == true }?.key
+            ?: pool.firstOrNull { it.iso6391?.lowercase(Locale.ROOT) == "en" }?.key
+            ?: pool.firstOrNull { it.official == true }?.key
+            ?: pool.firstOrNull()?.key
+    }
+}

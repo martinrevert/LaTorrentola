@@ -35,7 +35,8 @@ Whether on your phone's touchscreen, your tablet, a foldable device, or comforta
 
 ### 2. 📺 TV Series Season by Season
 * **Extensive TV Catalog**: Browse currently airing shows, popular series, and all-time top-rated television.
-* **Intuitive Season & Episode Navigation**: Pick seasons and episodes with localized titles, air dates, and synopsis overviews.
+* **Cinematic Immersive Experience**: Dynamic full-bleed backdrop headers with transparent title logos and directional scrims for both Android TV and handheld devices.
+* **Intuitive Season & Episode Navigation**: Pick seasons and episodes with localized titles, air dates, synopsis overviews, and full D-pad remote accessibility on episode hero banners.
 * **Smart Next-Episode Detection**: Finished an episode? The app immediately evaluates whether the next episode is ready to stream, still awaiting broadcast, or if the season has concluded.
 * **Multi-Release Scraping**: Automatically aggregates the best available torrent releases sorted by peer seed counts for maximum download bandwidth.
 

@@ -210,6 +210,10 @@ class SearchViewModel @Inject constructor(
     private val _focusedMovie = MutableStateFlow<Movie?>(null)
     val focusedMovie: StateFlow<Movie?> = _focusedMovie.asStateFlow()
 
+    /** Currently focused TV series in TV immersive search/favorites mode. */
+    private val _focusedSeries = MutableStateFlow<TmdbTvSummary?>(null)
+    val focusedSeries: StateFlow<TmdbTvSummary?> = _focusedSeries.asStateFlow()
+
     /** High-resolution TMDB or fallback backdrop URL for the currently focused movie. */
     private val _focusedMovieBackdrop = MutableStateFlow<String?>(null)
     val focusedMovieBackdrop: StateFlow<String?> = _focusedMovieBackdrop.asStateFlow()
@@ -232,6 +236,7 @@ class SearchViewModel @Inject constructor(
     fun onMovieFocused(movie: Movie) {
         if (_focusedMovie.value?.id == movie.id) return
         _focusedMovie.value = movie
+        _focusedSeries.value = null
         _focusedMovieBackdrop.value = movie.backgroundImageOriginal ?: movie.backgroundImage ?: movie.largeCoverImage
         _focusedMovieTmdb.value = null
         _focusedMovieLogo.value = null
@@ -271,11 +276,42 @@ class SearchViewModel @Inject constructor(
     }
 
     /**
+     * Updates the focused TV series for the immersive layout and fetches its transparent TMDB logo.
+     */
+    fun onSeriesFocused(series: TmdbTvSummary) {
+        if (_focusedSeries.value?.id == series.id) return
+        _focusedSeries.value = series
+        _focusedMovie.value = null
+        _focusedMovieTmdb.value = null
+        _focusedMovieBackdrop.value = series.fullBackdropUrl ?: series.fullPosterUrl
+        _focusedMovieLogo.value = null
+        _isFocusedMovieLogoLoading.value = true
+
+        movieFocusJob?.cancel()
+        movieFocusJob = viewModelScope.launch {
+            try {
+                delay(120)
+                val logo = tmdbRepository.getTvSeriesLogo(series.id)
+                if (_focusedSeries.value?.id == series.id) {
+                    _focusedMovieLogo.value = logo
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+            } finally {
+                if (_focusedSeries.value?.id == series.id) {
+                    _isFocusedMovieLogoLoading.value = false
+                }
+            }
+        }
+    }
+
+    /**
      * Clears the currently focused movie, TMDB details, backdrop, and logo.
      */
     fun clearFocusedMovie() {
         movieFocusJob?.cancel()
         _focusedMovie.value = null
+        _focusedSeries.value = null
         _focusedMovieBackdrop.value = null
         _focusedMovieTmdb.value = null
         _focusedMovieLogo.value = null

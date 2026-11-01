@@ -77,9 +77,11 @@ import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieSummary
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.ui.components.HandheldMovieImmersiveContainer
+import com.martinrevert.latorrentola.ui.components.HandheldTvSeriesImmersiveContainer
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.TvGenreSortChips
 import com.martinrevert.latorrentola.ui.components.TvMovieImmersiveContainer
+import com.martinrevert.latorrentola.ui.components.TvSeriesImmersiveContainer
 import com.martinrevert.latorrentola.ui.components.TvSeriesGrid
 import com.martinrevert.latorrentola.ui.components.tvGridRowDpadNavigation
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
@@ -106,6 +108,7 @@ import kotlinx.coroutines.launch
  * @param themeMode User selected theme setting for mode propagation.
  */
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun OttCatalogScreen(
     viewModel: OttCatalogViewModel,
@@ -131,6 +134,7 @@ fun OttCatalogScreen(
         val lastClickedId by viewModel.lastClickedId.collectAsState()
         val tvGenres by viewModel.tvGenres.collectAsState()
         val focusedMovie by viewModel.focusedMovie.collectAsState()
+        val focusedSeries by viewModel.focusedSeries.collectAsState()
         val focusedMovieBackdrop by viewModel.focusedMovieBackdrop.collectAsState()
         val focusedMovieLogo by viewModel.focusedMovieLogo.collectAsState()
         val isFocusedMovieLogoLoading by viewModel.isFocusedMovieLogoLoading.collectAsState()
@@ -146,34 +150,8 @@ fun OttCatalogScreen(
         }
 
         Scaffold(
-            contentWindowInsets = if (isTvMoviesCatalog || isHandheldMoviesCatalog) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
-            topBar = {
-                if (!isTvMoviesCatalog && !isHandheldMoviesCatalog) {
-                    TopAppBar(
-                        title = {
-                            Text(
-                                text = providerName,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.Bold
-                            )
-                        },
-                        navigationIcon = {
-                            IconButton(
-                                onClick = onBackClick,
-                                modifier = Modifier
-                                    .focusHighlight(shape = CircleShape)
-                                    .focusProperties { down = sortFocusRequester }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = stringResource(R.string.back_desc)
-                                )
-                            }
-                        }
-                    )
-                }
-            }
-        ) { innerPadding ->
+            contentWindowInsets = WindowInsets(0, 0, 0, 0)
+        ) { paddingValues ->
             if (isTvMoviesCatalog) {
                 TvMovieImmersiveContainer(
                     focusedTmdbSummary = focusedMovie,
@@ -430,154 +408,263 @@ fun OttCatalogScreen(
                         else -> Unit
                     }
                 }
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding),
-                    verticalArrangement = Arrangement.Top
-                ) {
-                    Column {
-                        Text(
-                            text = stringResource(R.string.tv_sort_by),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 16.dp, top = 8.dp)
-                        )
-                        TvGenreSortChips(
-                            selectedSort = selectedSort,
-                            descending = descending,
-                            onSortClick = { sort ->
-                                viewModel.setSort(sort)
-                                coroutineScope.launch { gridState.scrollToItem(0) }
+            } else if (isTv) {
+                TvSeriesImmersiveContainer(
+                    focusedSeries = focusedSeries,
+                    backdropUrl = focusedMovieBackdrop,
+                    logoUrl = focusedMovieLogo,
+                    isLogoLoading = isFocusedMovieLogoLoading,
+                    themeMode = effectiveThemeMode,
+                    modifier = Modifier.fillMaxSize(),
+                    topBar = {
+                        TopAppBar(
+                            title = {
+                                Text(
+                                    text = providerName,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.Bold
+                                )
                             },
-                            onDirectionClick = {
-                                viewModel.toggleDirection()
-                                coroutineScope.launch { gridState.scrollToItem(0) }
+                            navigationIcon = {
+                                IconButton(
+                                    onClick = onBackClick,
+                                    modifier = Modifier
+                                        .focusHighlight(shape = CircleShape)
+                                        .focusProperties { down = sortFocusRequester }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = stringResource(R.string.back_desc)
+                                    )
+                                }
                             },
-                            firstFocusRequester = sortFocusRequester
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                         )
+                    },
+                    chips = {
+                        Column {
+                            Text(
+                                text = stringResource(R.string.tv_sort_by),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+                            )
+                            TvGenreSortChips(
+                                selectedSort = selectedSort,
+                                descending = descending,
+                                onSortClick = { sort ->
+                                    viewModel.setSort(sort)
+                                    coroutineScope.launch { gridState.scrollToItem(0) }
+                                },
+                                onDirectionClick = {
+                                    viewModel.toggleDirection()
+                                    coroutineScope.launch { gridState.scrollToItem(0) }
+                                },
+                                firstFocusRequester = sortFocusRequester
+                            )
+                        }
                     }
-
-                    Box(modifier = Modifier.weight(1f)) {
-                        when (val state = uiState) {
-                            OttCatalogUiState.Loading -> {
-                                MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
-                            }
-
-                            is OttCatalogUiState.SuccessTv -> {
-                                if (state.series.isEmpty()) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(16.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = stringResource(R.string.ott_empty_catalog),
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                } else {
-                                    TvSeriesGrid(
-                                        series = state.series,
-                                        genres = tvGenres,
-                                        state = gridState,
-                                        isLoadingMore = isLoadingMore,
-                                        onSeriesClick = { series ->
-                                            viewModel.setLastClickedId(series.id)
-                                            onTvSeriesClick(series)
-                                        },
-                                        onLoadMore = viewModel::loadMore,
-                                        initialFocusId = lastClickedId,
-                                        onFocusRestored = { viewModel.clearLastClickedId() },
-                                        contentPadding = PaddingValues(16.dp)
-                                    )
-                                }
-                            }
-
-                            is OttCatalogUiState.SuccessMovies -> {
-                                if (state.movies.isEmpty()) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(16.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = stringResource(R.string.ott_empty_catalog),
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                } else {
-                                    OttMovieGrid(
-                                        movies = state.movies,
-                                        state = gridState,
-                                        isLoadingMore = isLoadingMore,
-                                        onMovieClick = { movie ->
-                                            viewModel.setLastClickedId(movie.id)
-                                            onMovieClick(movie)
-                                        },
-                                        onLoadMore = viewModel::loadMore,
-                                        initialFocusId = lastClickedId,
-                                        onFocusRestored = { viewModel.clearLastClickedId() },
-                                        onMovieFocus = viewModel::onMovieFocused,
-                                        contentPadding = PaddingValues(16.dp)
-                                    )
-                                }
-                            }
-
-                            is OttCatalogUiState.Error -> {
+                ) {
+                    when (val state = uiState) {
+                        OttCatalogUiState.Loading -> {
+                            MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                        }
+                        is OttCatalogUiState.SuccessTv -> {
+                            if (state.series.isEmpty()) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .padding(16.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.Center,
-                                        modifier = Modifier.padding(24.dp)
+                                    Text(
+                                        text = stringResource(R.string.ott_empty_catalog),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            } else {
+                                TvSeriesGrid(
+                                    series = state.series,
+                                    genres = tvGenres,
+                                    state = gridState,
+                                    isLoadingMore = isLoadingMore,
+                                    onSeriesClick = { series ->
+                                        viewModel.setLastClickedId(series.id)
+                                        onTvSeriesClick(series)
+                                    },
+                                    onLoadMore = viewModel::loadMore,
+                                    initialFocusId = lastClickedId,
+                                    onFocusRestored = { viewModel.clearLastClickedId() },
+                                    onSeriesFocus = viewModel::onSeriesFocused,
+                                    activeHeroSeriesId = focusedSeries?.id,
+                                    contentPadding = PaddingValues(16.dp)
+                                )
+                            }
+                        }
+                        is OttCatalogUiState.Error -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center,
+                                    modifier = Modifier.padding(24.dp)
+                                ) {
+                                    Text(
+                                        text = state.message.asString(context),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.error,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Surface(
+                                        onClick = { viewModel.refresh() },
+                                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+                                        colors = ClickableSurfaceDefaults.colors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        ),
+                                        shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small)
                                     ) {
                                         Text(
-                                            text = state.message.asString(context),
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.error,
-                                            textAlign = TextAlign.Center
+                                            text = stringResource(R.string.retry),
+                                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
                                         )
-                                        Spacer(modifier = Modifier.height(16.dp))
-                                        if (isTv) {
-                                            Surface(
-                                                onClick = { viewModel.refresh() },
-                                                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
-                                                colors = ClickableSurfaceDefaults.colors(
-                                                    containerColor = MaterialTheme.colorScheme.primary,
-                                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                                ),
-                                                shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small)
-                                            ) {
-                                                Text(
-                                                    text = stringResource(R.string.retry),
-                                                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
-                                                )
-                                            }
-                                        } else {
-                                            Button(
-                                                onClick = { viewModel.refresh() },
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = MaterialTheme.colorScheme.primary,
-                                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                                )
-                                            ) {
-                                                Text(text = stringResource(R.string.retry))
-                                            }
-                                        }
                                     }
                                 }
                             }
                         }
+                        else -> Unit
+                    }
+                }
+            } else {
+                HandheldTvSeriesImmersiveContainer(
+                    focusedSeries = focusedSeries,
+                    backdropUrl = focusedMovieBackdrop,
+                    logoUrl = focusedMovieLogo,
+                    isLogoLoading = isFocusedMovieLogoLoading,
+                    onDetailsClick = { focusedSeries?.let(onTvSeriesClick) },
+                    modifier = Modifier.fillMaxSize(),
+                    topBar = {
+                        TopAppBar(
+                            title = {
+                                Text(
+                                    text = providerName,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            },
+                            navigationIcon = {
+                                IconButton(onClick = onBackClick) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = stringResource(R.string.back_desc)
+                                    )
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                        )
+                    },
+                    chips = {
+                        Column {
+                            Text(
+                                text = stringResource(R.string.tv_sort_by),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+                            )
+                            TvGenreSortChips(
+                                selectedSort = selectedSort,
+                                descending = descending,
+                                onSortClick = { sort ->
+                                    viewModel.setSort(sort)
+                                    coroutineScope.launch { gridState.scrollToItem(0) }
+                                },
+                                onDirectionClick = {
+                                    viewModel.toggleDirection()
+                                    coroutineScope.launch { gridState.scrollToItem(0) }
+                                }
+                            )
+                        }
+                    }
+                ) {
+                    when (val state = uiState) {
+                        OttCatalogUiState.Loading -> {
+                            MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                        }
+                        is OttCatalogUiState.SuccessTv -> {
+                            if (state.series.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.ott_empty_catalog),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            } else {
+                                TvSeriesGrid(
+                                    series = state.series,
+                                    genres = tvGenres,
+                                    state = gridState,
+                                    activeHeroSeriesId = focusedSeries?.id,
+                                    isLoadingMore = isLoadingMore,
+                                    onSeriesClick = { series ->
+                                        if (focusedSeries?.id == series.id) {
+                                            viewModel.setLastClickedId(series.id)
+                                            onTvSeriesClick(series)
+                                        } else {
+                                            viewModel.onSeriesFocused(series)
+                                        }
+                                    },
+                                    onLoadMore = viewModel::loadMore,
+                                    initialFocusId = lastClickedId,
+                                    onFocusRestored = { viewModel.clearLastClickedId() },
+                                    onSeriesFocus = viewModel::onSeriesFocused,
+                                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 8.dp)
+                                )
+                            }
+                        }
+                        is OttCatalogUiState.Error -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center,
+                                    modifier = Modifier.padding(24.dp)
+                                ) {
+                                    Text(
+                                        text = state.message.asString(context),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.error,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Button(
+                                        onClick = { viewModel.refresh() },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    ) {
+                                        Text(text = stringResource(R.string.retry))
+                                    }
+                                }
+                            }
+                        }
+                        else -> Unit
                     }
                 }
             }

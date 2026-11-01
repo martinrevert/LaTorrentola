@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.ui.components
 
 import android.content.Intent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -47,13 +48,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -65,6 +69,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
@@ -76,6 +81,7 @@ import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.di.RepositoryEntryPoint
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenre
@@ -357,6 +363,8 @@ fun TvSeriesGrid(
     watchHistoryMap: Map<String, PlaybackProgress> = emptyMap(),
     initialFocusId: Int? = null,
     onFocusRestored: () -> Unit = {},
+    onSeriesFocus: ((TmdbTvSummary) -> Unit)? = null,
+    activeHeroSeriesId: Int? = null,
     contentPadding: PaddingValues = PaddingValues(16.dp),
     modifier: Modifier = Modifier
 ) {
@@ -411,6 +419,15 @@ fun TvSeriesGrid(
             val itemGenres = remember(item.genreIds, genreNames) {
                 item.genreIds.orEmpty().mapNotNull(genreNames::get)
             }
+            val progress = remember(item.id, item.name, watchHistoryMap) {
+                watchHistoryMap[item.id.toString()]
+                    ?: watchHistoryMap[item.name.orEmpty()]
+                    ?: watchHistoryMap.values
+                        .filter { it.mediaId.startsWith("media_${item.id}_") }
+                        .maxByOrNull { it.timestamp }
+            }
+            val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
+
             TvSeriesCard(
                 series = item,
                 genres = itemGenres,
@@ -429,7 +446,10 @@ fun TvSeriesGrid(
                     }
                 ),
                 hasDownloads = item.id in downloadedSeriesIds,
+                isHeroSelected = item.id == activeHeroSeriesId,
+                progressPercent = progressPercent,
                 onClick = { onSeriesClick(item) },
+                onFocus = { onSeriesFocus?.invoke(item) },
                 shouldRequestFocus = item.id == initialFocusId,
                 onFocusRestored = onFocusRestored,
                 isTv = isTv
@@ -471,41 +491,31 @@ fun TvSeriesGrid(
     }
 }
 
-/** Displays one TMDB TV poster card with phone and native TV focus behavior. */
-@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
+/** Displays a clean TMDB TV poster card with adaptive TV/handheld interaction, watch progress, and badges. */
+@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun TvSeriesCard(
     series: TmdbTvSummary,
-    genres: List<String>,
     modifier: Modifier = Modifier,
+    genres: List<String> = emptyList(),
     hasDownloads: Boolean = false,
     isSelected: Boolean = false,
+    isHeroSelected: Boolean = false,
+    progressPercent: Int? = null,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
+    onToggleSelection: (() -> Unit)? = null,
     shouldRequestFocus: Boolean = false,
     onFocusRestored: () -> Unit = {},
-    isTv: Boolean? = null
+    isTv: Boolean? = null,
+    onFocus: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
-    val resources = LocalResources.current
     val effectiveIsTv = remember(context, isTv) { isTv ?: context.isTvDevice() }
     val focusRequester = remember { FocusRequester() }
-    val scope = rememberCoroutineScope()
-    val repository = remember(context, effectiveIsTv) {
-        if (!effectiveIsTv) {
-            EntryPointAccessors.fromApplication(
-                context.applicationContext,
-                RepositoryEntryPoint::class.java
-            ).tmdbRepository()
-        } else {
-            null
-        }
-    }
-    val title = series.name.orEmpty()
-    val genreText = remember(genres) { genres.joinToString(", ") }
-    val ratingText = remember(series.voteAverage) {
-        series.voteAverage?.let { "⭐ ${"%.1f".format(Locale.US, it)}" }.orEmpty()
-    }
+
+    val isPreview = LocalInspectionMode.current
+    var isImageLoading by remember(series.fullPosterUrl) { mutableStateOf(!isPreview) }
 
     if (shouldRequestFocus) {
         LaunchedEffect(Unit) {
@@ -523,90 +533,67 @@ fun TvSeriesCard(
     Box(modifier = if (!effectiveIsTv) modifier else Modifier) {
         if (effectiveIsTv) {
             Surface(
-                onClick = onClick,
+                onClick = onToggleSelection ?: onClick,
                 onLongClick = onLongClick,
                 scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
                 shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
+                colors = ClickableSurfaceDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    focusedContentColor = MaterialTheme.colorScheme.onSurface
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
                     .then(modifier)
-                    .onFocusChanged { if (it.isFocused && shouldRequestFocus) onFocusRestored() }
+                    .onFocusChanged { state ->
+                        if (state.isFocused) {
+                            onFocus?.invoke()
+                            if (shouldRequestFocus) {
+                                onFocusRestored()
+                            }
+                        }
+                    }
                     .tvDpadLongClickable(onLongClick)
             ) {
-                Column {
-                    Box {
-                        AsyncImage(
-                            model = series.fullPosterUrl,
-                            contentDescription = title,
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.67f)
+                        .then(if (isImageLoading) Modifier.shimmer() else Modifier)
+                ) {
+                    AsyncImage(
+                        model = series.fullPosterUrl,
+                        contentDescription = series.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        onState = { state ->
+                            isImageLoading = state is AsyncImagePainter.State.Loading
+                        }
+                    )
+
+                    if (hasDownloads) {
+                        Icon(
+                            imageVector = Icons.Default.CloudDone,
+                            contentDescription = stringResource(R.string.downloaded_desc),
+                            tint = MaterialTheme.colorScheme.tertiary,
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(0.67f),
-                            contentScale = ContentScale.Crop
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp)
+                                .size(24.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                    CircleShape
+                                )
+                                .padding(2.dp)
                         )
-                        if (hasDownloads) {
-                            Icon(
-                                imageVector = Icons.Default.CloudDone,
-                                contentDescription = stringResource(R.string.downloaded_desc),
-                                tint = Color.Yellow,
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .padding(8.dp)
-                                    .size(24.dp)
-                                    .background(
-                                        MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                                        CircleShape
-                                    )
-                                    .padding(2.dp)
-                            )
-                        }
                     }
-                    Column(
-                        modifier = Modifier
-                            .background(androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(12.dp)
-                            .fillMaxWidth()
-                    ) {
-                        Text(
-                            text = title,
-                            style = androidx.tv.material3.MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        if (genreText.isNotEmpty()) {
-                            Text(
-                                text = genreText,
-                                style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
-                                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(vertical = 2.dp)
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = series.firstAirYear,
-                                style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
-                                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = ratingText,
-                                style = androidx.tv.material3.MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
+
+                    WatchProgressBar(
+                        progressPercent = progressPercent,
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    )
                 }
             }
         } else {
@@ -614,131 +601,57 @@ fun TvSeriesCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
-                    .onFocusChanged { if (it.isFocused && shouldRequestFocus) onFocusRestored() }
-                    .focusHighlight(shape = MaterialTheme.shapes.medium)
-                    .semantics(mergeDescendants = true) { }
-                    .combinedClickable(
-                        onClick = onClick,
-                        onLongClick = onLongClick
-                    ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                shape = MaterialTheme.shapes.medium
-            ) {
-                Box {
-                    Column {
-                        Box {
-                            AsyncImage(
-                                model = series.fullPosterUrl,
-                                contentDescription = title,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(0.67f),
-                                contentScale = ContentScale.Crop
-                            )
-                            if (hasDownloads) {
-                                Icon(
-                                    imageVector = Icons.Default.CloudDone,
-                                    contentDescription = stringResource(R.string.downloaded_desc),
-                                    tint = Color.Yellow,
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(8.dp)
-                                        .size(24.dp)
-                                        .background(
-                                            MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                                            CircleShape
-                                        )
-                                        .padding(2.dp)
-                                )
-                            }
-                        }
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp)
-                        ) {
-                            Text(
-                                text = title,
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            if (genreText.isNotEmpty()) {
-                                Text(
-                                    text = genreText,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
-                                )
-                            }
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 48.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = series.firstAirYear,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false)
-                                )
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.End
-                                ) {
-                                    IconButton(
-                                        onClick = {
-                                            scope.launch {
-                                                val imdbId = repository?.getTvImdbId(series.id)
-                                                val shareUrl = if (!imdbId.isNullOrBlank()) {
-                                                    "https://www.imdb.com/title/tt${imdbId.removePrefix("tt")}"
-                                                } else {
-                                                    "https://www.themoviedb.org/tv/${series.id}"
-                                                }
-                                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                                    type = "text/plain"
-                                                    putExtra(Intent.EXTRA_SUBJECT, title)
-                                                    val shareText = resources.getString(
-                                                        R.string.share_movie_text,
-                                                        title,
-                                                        shareUrl
-                                                    )
-                                                    putExtra(Intent.EXTRA_TEXT, shareText)
-                                                }
-                                                context.startActivity(Intent.createChooser(shareIntent, resources.getString(R.string.share_movie_chooser)))
-                                            }
-                                        },
-                                        modifier = Modifier.size(48.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Share,
-                                            contentDescription = "${stringResource(R.string.share_desc)} $title",
-                                            modifier = Modifier.size(24.dp),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = ratingText,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
+                    .onFocusChanged { state ->
+                        if (state.isFocused && shouldRequestFocus) {
+                            onFocusRestored()
                         }
                     }
+                    .adaptiveLongClickable(
+                        onClick = onToggleSelection ?: onClick,
+                        onLongClick = onLongClick
+                    )
+                    .focusHighlight(shape = MaterialTheme.shapes.medium),
+                border = if (isHeroSelected) BorderStroke(2.5.dp, MaterialTheme.colorScheme.primary) else null,
+                elevation = CardDefaults.cardElevation(defaultElevation = if (isHeroSelected) 8.dp else 4.dp),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.67f)
+                        .then(if (isImageLoading) Modifier.shimmer() else Modifier)
+                ) {
+                    AsyncImage(
+                        model = series.fullPosterUrl,
+                        contentDescription = series.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        onState = { state ->
+                            isImageLoading = state is AsyncImagePainter.State.Loading
+                        }
+                    )
+
+                    if (hasDownloads) {
+                        Icon(
+                            imageVector = Icons.Default.CloudDone,
+                            contentDescription = stringResource(R.string.downloaded_desc),
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp)
+                                .size(24.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                    CircleShape
+                                )
+                                .padding(2.dp)
+                        )
+                    }
+
+                    WatchProgressBar(
+                        progressPercent = progressPercent,
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    )
                 }
             }
         }
@@ -747,6 +660,7 @@ fun TvSeriesCard(
             Box(
                 modifier = Modifier
                     .matchParentSize()
+                    .clip(MaterialTheme.shapes.medium)
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
             )
             Icon(

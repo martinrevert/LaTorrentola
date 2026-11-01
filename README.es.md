@@ -35,7 +35,8 @@ Ya sea en la pantalla táctil de tu teléfono, en tu tablet, en un dispositivo p
 
 ### 2. 📺 Series de TV Temporada a Temporada
 * **Catálogo Completo**: Explora series en emisión, las más populares y las mejor valoradas del momento.
-* **Navegación Intuitiva**: Elige la temporada y el episodio que deseas ver con sus títulos, fechas de estreno y resúmenes.
+* **Experiencia Cinematográfica Inmersiva**: Cabeceras dinámicas con pósteres/fondos a pantalla completa, logotipos transparentes y degradados optimizados para móviles, tablets y Android TV.
+* **Navegación Intuitiva**: Elige la temporada y el episodio que deseas ver con sus títulos, fechas de estreno, resúmenes y accesibilidad completa con mando a distancia D-pad.
 * **Detección Automática de Próximo Episodio**: Al terminar un capítulo, la app sabe si el siguiente está listo para reproducir, si aún no se ha emitido o si la temporada ha finalizado.
 * **Versiones y Fuentes Múltiples**: Encuentra automáticamente las mejores versiones disponibles ordenadas por número de personas compartiendo (*seeders*) para garantizar la máxima velocidad.
 

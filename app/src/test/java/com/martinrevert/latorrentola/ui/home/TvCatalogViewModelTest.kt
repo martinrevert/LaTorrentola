@@ -12,12 +12,14 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Rule
 import org.junit.Test
 
 /** Verifies TV Home feed and genre discovery state behavior. */
+@OptIn(ExperimentalCoroutinesApi::class)
 class TvCatalogViewModelTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
@@ -149,5 +151,44 @@ class TvCatalogViewModelTest {
         assertThat(viewModel.lastClickedSeriesId.value).isEqualTo(99)
         viewModel.clearLastClickedSeriesId()
         assertThat(viewModel.lastClickedSeriesId.value).isNull()
+    }
+
+    @Test
+    fun `tv home onSeriesFocused updates backdrop and resolves logo`() = runTest {
+        every { repository.observeTvGenreUsage() } returns flowOf(emptyMap())
+        every { userLibraryRepository.getDownloadedEpisodes() } returns flowOf(emptyList())
+        coEvery { repository.getTvGenres() } returns emptyList()
+        coEvery { repository.getTvSeriesLogo(42) } returns "https://image.tmdb.org/t/p/w500/series_logo.png"
+
+        val viewModel = TvHomeViewModel(repository, userLibraryRepository)
+        val series = TmdbTvSummary(
+            id = 42,
+            name = "Awesome Series",
+            backdropPath = "/series_backdrop.jpg",
+            posterPath = "/series_poster.jpg"
+        )
+
+        viewModel.onSeriesFocused(series)
+        testScheduler.advanceTimeBy(100)
+        testScheduler.advanceUntilIdle()
+
+        assertThat(viewModel.focusedSeries.value).isEqualTo(series)
+        assertThat(viewModel.focusedSeriesBackdrop.value).isEqualTo("https://image.tmdb.org/t/p/w1280/series_backdrop.jpg")
+        assertThat(viewModel.focusedSeriesLogo.value).isEqualTo("https://image.tmdb.org/t/p/w500/series_logo.png")
+        assertThat(viewModel.isFocusedSeriesLogoLoading.value).isFalse()
+    }
+
+    @Test
+    fun `refresh resets focused series logo loading state`() = runTest {
+        every { repository.observeTvGenreUsage() } returns flowOf(emptyMap())
+        every { userLibraryRepository.getDownloadedEpisodes() } returns flowOf(emptyList())
+        val viewModel = TvHomeViewModel(repository, userLibraryRepository)
+        val series = TmdbTvSummary(id = 42, name = "Series")
+        viewModel.onSeriesFocused(series)
+        assertThat(viewModel.isFocusedSeriesLogoLoading.value).isTrue()
+
+        viewModel.refresh()
+
+        assertThat(viewModel.isFocusedSeriesLogoLoading.value).isFalse()
     }
 }

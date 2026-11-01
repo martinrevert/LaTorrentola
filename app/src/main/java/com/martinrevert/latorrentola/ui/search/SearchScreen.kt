@@ -234,6 +234,7 @@ fun SearchScreen(
         isLoadingMore = isLoadingMore,
         focusRequester = focusRequester,
         onMovieFocus = { viewModel.onMovieFocused(it) },
+        onSeriesFocus = { viewModel.onSeriesFocused(it) },
         onSearchQueryChange = { newQuery ->
             viewModel.onSearchQueryChange(newQuery)
         },
@@ -336,6 +337,7 @@ private fun SearchScreenContent(
     isLoadingMore: Boolean = false,
     focusRequester: FocusRequester,
     onMovieFocus: ((Movie) -> Unit)? = null,
+    onSeriesFocus: ((TmdbTvSummary) -> Unit)? = null,
     onSearchQueryChange: (String) -> Unit,
     onVoiceSearchClick: () -> Unit,
     onQualityClick: (String) -> Unit,
@@ -702,6 +704,8 @@ private fun SearchScreenContent(
                                         onMovieLongClick = onLongClick,
                                         onMovieFocusRestored = onFocusRestored,
                                         onTvFocusRestored = onTvFocusRestored,
+                                        onMovieFocus = onMovieFocus,
+                                        onSeriesFocus = onSeriesFocus,
                                         contentPadding = PaddingValues(16.dp),
                                         modifier = Modifier.focusRequester(resultsFocusRequester)
                                     )
@@ -929,6 +933,8 @@ private fun SearchScreenContent(
                                     onMovieLongClick = onLongClick,
                                     onMovieFocusRestored = onFocusRestored,
                                     onTvFocusRestored = onTvFocusRestored,
+                                    onMovieFocus = onMovieFocus,
+                                    onSeriesFocus = onSeriesFocus,
                                     contentPadding = searchContentPadding
                                 )
                             } else MovieList(
@@ -1425,6 +1431,8 @@ private fun FavoriteItemsGrid(
     onMovieLongClick: (Int) -> Unit,
     onMovieFocusRestored: () -> Unit,
     onTvFocusRestored: () -> Unit,
+    onMovieFocus: ((Movie) -> Unit)? = null,
+    onSeriesFocus: ((TmdbTvSummary) -> Unit)? = null,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier
 ) {
@@ -1485,6 +1493,7 @@ private fun FavoriteItemsGrid(
                 onLongClick = { onMovieLongClick(movie.id) },
                 shouldRequestFocus = movie.id == lastClickedMovieId,
                 onFocusRestored = onMovieFocusRestored,
+                onFocus = { onMovieFocus?.invoke(movie) },
                 isTv = isTv
             )
         }
@@ -1499,6 +1508,10 @@ private fun FavoriteItemsGrid(
                 }
             }
             val absoluteIndex = movies.size + seriesIndex
+            val progress = watchHistoryMap[item.id.toString()]
+                ?: watchHistoryMap[item.name.orEmpty()]
+                ?: watchHistoryMap.values.find { it.mediaId.startsWith("media_${item.id}_") }
+            val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
             TvSeriesCard(
                 series = item,
                 genres = itemGenres,
@@ -1518,10 +1531,12 @@ private fun FavoriteItemsGrid(
                 ),
                 hasDownloads = item.id in downloadedSeriesIds,
                 isSelected = item.id in selectedMovieIds,
+                progressPercent = progressPercent,
                 onClick = { onTvSeriesClick(item) },
                 onLongClick = { onMovieLongClick(item.id) },
                 shouldRequestFocus = item.id == lastClickedSeriesId,
                 onFocusRestored = onTvFocusRestored,
+                onFocus = { onSeriesFocus?.invoke(item) },
                 isTv = isTv
             )
         }

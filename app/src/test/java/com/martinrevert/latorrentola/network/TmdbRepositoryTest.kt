@@ -8,6 +8,8 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbMoviePage
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieSummary
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvPage
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.model.TMDB.TmdbVideoItem
+import com.martinrevert.latorrentola.model.TMDB.TmdbVideosResponse
 import com.martinrevert.latorrentola.model.TMDB.TmdbWatchProvider
 import com.martinrevert.latorrentola.model.TMDB.TmdbWatchProvidersResponse
 import io.mockk.coEvery
@@ -257,5 +259,86 @@ class TmdbRepositoryTest {
 
         val selectedLogo = imagesResponse.getBestLogoUrl("en")
         assertThat(selectedLogo).isEqualTo("https://image.tmdb.org/t/p/w500/logo_en_high.png")
+    }
+
+    @Test
+    fun `getTvSeriesLogo caches positive result across calls`() = runTest {
+        val logos = listOf(TmdbImageItem(filePath = "/tv_logo.png", iso6391 = "en"))
+        val imagesResponse = TmdbImagesResponse(id = 1399, logos = logos)
+        coEvery {
+            tmdbService.getTvImages(
+                seriesId = 1399,
+                apiKey = any(),
+                includeImageLanguage = any()
+            )
+        } returns imagesResponse
+
+        val logoFirst = repository.getTvSeriesLogo(1399)
+        val logoSecond = repository.getTvSeriesLogo(1399)
+
+        assertThat(logoFirst).isNotNull()
+        assertThat(logoSecond).isEqualTo(logoFirst)
+        coVerify(exactly = 1) {
+            tmdbService.getTvImages(seriesId = 1399, apiKey = any(), includeImageLanguage = any())
+        }
+    }
+
+    @Test
+    fun `getTvSeriesLogo caches negative result when no logo exists`() = runTest {
+        val emptyImagesResponse = TmdbImagesResponse(id = 2000, logos = emptyList())
+        coEvery {
+            tmdbService.getTvImages(
+                seriesId = 2000,
+                apiKey = any(),
+                includeImageLanguage = any()
+            )
+        } returns emptyImagesResponse
+
+        val logoFirst = repository.getTvSeriesLogo(2000)
+        val logoSecond = repository.getTvSeriesLogo(2000)
+
+        assertThat(logoFirst).isNull()
+        assertThat(logoSecond).isNull()
+        coVerify(exactly = 1) {
+            tmdbService.getTvImages(seriesId = 2000, apiKey = any(), includeImageLanguage = any())
+        }
+    }
+
+    @Test
+    fun `getTvSeriesTrailer caches positive result across calls`() = runTest {
+        val videos = listOf(
+            TmdbVideoItem(key = "trailer_key_1", site = "YouTube", type = "Trailer", official = true, iso6391 = "en")
+        )
+        val response = TmdbVideosResponse(id = 1399, results = videos)
+        coEvery {
+            tmdbService.getTvVideos(
+                seriesId = 1399,
+                apiKey = any(),
+                language = any()
+            )
+        } returns response
+
+        val trailerFirst = repository.getTvSeriesTrailer(1399)
+        val trailerSecond = repository.getTvSeriesTrailer(1399)
+
+        assertThat(trailerFirst).isEqualTo("trailer_key_1")
+        assertThat(trailerSecond).isEqualTo("trailer_key_1")
+        coVerify(exactly = 1) {
+            tmdbService.getTvVideos(seriesId = 1399, apiKey = any(), language = any())
+        }
+    }
+
+    @Test
+    fun `getBestTrailerKey prioritizes official YouTube trailers matching language`() {
+        val videos = listOf(
+            TmdbVideoItem(key = "clip_es", site = "YouTube", type = "Clip", official = true, iso6391 = "es"),
+            TmdbVideoItem(key = "trailer_en", site = "YouTube", type = "Trailer", official = true, iso6391 = "en"),
+            TmdbVideoItem(key = "trailer_es", site = "YouTube", type = "Trailer", official = true, iso6391 = "es"),
+            TmdbVideoItem(key = "vimeo_trailer", site = "Vimeo", type = "Trailer", official = true, iso6391 = "es")
+        )
+        val response = TmdbVideosResponse(id = 100, results = videos)
+
+        assertThat(response.getBestTrailerKey("es")).isEqualTo("trailer_es")
+        assertThat(response.getBestTrailerKey("fr")).isEqualTo("trailer_en")
     }
 }

@@ -27,7 +27,9 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class SearchViewModelTest {
 
     @get:Rule
@@ -506,5 +508,26 @@ class SearchViewModelTest {
         assertThat(viewModel.focusedMovie.value).isNull()
         assertThat(viewModel.focusedMovieBackdrop.value).isNull()
         assertThat(viewModel.focusedMovieTmdb.value).isNull()
+    }
+
+    @Test
+    fun `onSeriesFocused should update focused series and load logo`() = runTest {
+        val series = TmdbTvSummary(
+            id = 100,
+            name = "Search TV Series",
+            backdropPath = "/series_backdrop.jpg"
+        )
+        coEvery { tmdbRepository.getTvSeriesLogo(100) } returns "https://image.tmdb.org/t/p/w500/series_logo.png"
+
+        viewModel.onSeriesFocused(series)
+
+        assertThat(viewModel.focusedSeries.value?.id).isEqualTo(100)
+        assertThat(viewModel.focusedMovieBackdrop.value).isEqualTo("https://image.tmdb.org/t/p/w1280/series_backdrop.jpg")
+        assertThat(viewModel.isFocusedMovieLogoLoading.value).isTrue()
+
+        testScheduler.advanceTimeBy(200)
+
+        assertThat(viewModel.focusedMovieLogo.value).isEqualTo("https://image.tmdb.org/t/p/w500/series_logo.png")
+        assertThat(viewModel.isFocusedMovieLogoLoading.value).isFalse()
     }
 }

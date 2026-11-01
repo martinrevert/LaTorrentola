@@ -16,7 +16,9 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class OttCatalogViewModelTest {
 
     @get:Rule
@@ -259,5 +261,29 @@ class OttCatalogViewModelTest {
         viewModel.onMovieFocused(secondMovie)
         assertThat(viewModel.focusedMovie.value).isEqualTo(secondMovie)
         assertThat(viewModel.focusedMovieBackdrop.value).isEqualTo("https://image.tmdb.org/t/p/w1280/dune2_backdrop.jpg")
+    }
+
+    @Test
+    fun `series focus updates focusedSeries and loads logo after debounce`() = runTest {
+        val series = TmdbTvSummary(
+            id = 101,
+            name = "Severance",
+            backdropPath = "/severance.jpg"
+        )
+        coEvery { tmdbRepository.getTvSeriesLogo(101) } returns "https://image.tmdb.org/t/p/w500/logo.png"
+
+        viewModel.onSeriesFocused(series)
+        assertThat(viewModel.focusedSeries.value).isEqualTo(series)
+        assertThat(viewModel.focusedMovieBackdrop.value).isEqualTo("https://image.tmdb.org/t/p/w1280/severance.jpg")
+        assertThat(viewModel.isFocusedMovieLogoLoading.value).isTrue()
+
+        testScheduler.advanceTimeBy(100)
+        assertThat(viewModel.focusedMovieLogo.value).isNull()
+
+        testScheduler.advanceTimeBy(20)
+        testScheduler.advanceUntilIdle()
+
+        assertThat(viewModel.focusedMovieLogo.value).isEqualTo("https://image.tmdb.org/t/p/w500/logo.png")
+        assertThat(viewModel.isFocusedMovieLogoLoading.value).isFalse()
     }
 }

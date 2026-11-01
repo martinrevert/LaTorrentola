@@ -14,6 +14,7 @@ import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +40,24 @@ class TvHomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<TvHomeUiState>(TvHomeUiState.Loading)
     /** Current TV feed state. */
     val uiState: StateFlow<TvHomeUiState> = _uiState.asStateFlow()
+
+    /** Currently focused TV series in the home catalog. */
+    private val _focusedSeries = MutableStateFlow<TmdbTvSummary?>(null)
+    val focusedSeries: StateFlow<TmdbTvSummary?> = _focusedSeries.asStateFlow()
+
+    /** Backdrop URL for the currently focused TV series. */
+    private val _focusedSeriesBackdrop = MutableStateFlow<String?>(null)
+    val focusedSeriesBackdrop: StateFlow<String?> = _focusedSeriesBackdrop.asStateFlow()
+
+    /** Transparent logo URL for the currently focused TV series. */
+    private val _focusedSeriesLogo = MutableStateFlow<String?>(null)
+    val focusedSeriesLogo: StateFlow<String?> = _focusedSeriesLogo.asStateFlow()
+
+    /** Whether logo resolution for the focused TV series is actively loading. */
+    private val _isFocusedSeriesLogoLoading = MutableStateFlow(false)
+    val isFocusedSeriesLogoLoading: StateFlow<Boolean> = _isFocusedSeriesLogoLoading.asStateFlow()
+
+    private var seriesFocusJob: Job? = null
 
     /** IDs of TV series containing downloaded episodes. */
     val downloadedSeriesIds: StateFlow<Set<Int>> = userLibraryRepository.getDownloadedEpisodes()
@@ -136,6 +155,11 @@ class TvHomeViewModel @Inject constructor(
         totalPages = 1
         allSeries.clear()
         seenSeriesIds.clear()
+        _focusedSeries.value = null
+        _focusedSeriesBackdrop.value = null
+        _focusedSeriesLogo.value = null
+        _isFocusedSeriesLogoLoading.value = false
+        seriesFocusJob?.cancel()
         _uiState.value = TvHomeUiState.Loading
         feedJob = viewModelScope.launch {
             _isRefreshing.value = showIndicator
@@ -144,6 +168,34 @@ class TvHomeViewModel @Inject constructor(
             } finally {
                 if (generation == requestGeneration) {
                     _isRefreshing.value = false
+                }
+            }
+        }
+    }
+
+    /**
+     * Updates the focused TV series for the immersive layout and fetches its transparent TMDB logo.
+     */
+    fun onSeriesFocused(series: TmdbTvSummary) {
+        if (_focusedSeries.value?.id == series.id) return
+        _focusedSeries.value = series
+        _focusedSeriesBackdrop.value = series.fullBackdropUrl ?: series.fullPosterUrl
+        _focusedSeriesLogo.value = null
+        _isFocusedSeriesLogoLoading.value = true
+
+        seriesFocusJob?.cancel()
+        seriesFocusJob = viewModelScope.launch {
+            try {
+                delay(120)
+                val logo = tmdbRepository.getTvSeriesLogo(series.id)
+                if (_focusedSeries.value?.id == series.id) {
+                    _focusedSeriesLogo.value = logo
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            } finally {
+                if (_focusedSeries.value?.id == series.id) {
+                    _isFocusedSeriesLogoLoading.value = false
                 }
             }
         }
@@ -211,6 +263,9 @@ class TvHomeViewModel @Inject constructor(
                 _uiState.value = TvHomeUiState.Error(UiText.StringResource(R.string.tv_no_results))
             } else {
                 _uiState.value = TvHomeUiState.Success(allSeries.toList())
+                if (_focusedSeries.value == null) {
+                    allSeries.firstOrNull()?.let { onSeriesFocused(it) }
+                }
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e

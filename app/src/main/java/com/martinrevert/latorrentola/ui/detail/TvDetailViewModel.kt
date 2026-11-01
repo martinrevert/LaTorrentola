@@ -98,20 +98,62 @@ class TvDetailViewModel @Inject constructor(
     /** Whether TMDB actor details are currently loading. */
     val isActorLoading: StateFlow<Boolean> = _isActorLoading.asStateFlow()
 
+    /** Resolved transparent title logo URL from TMDB. */
+    private val _logoUrl = MutableStateFlow<String?>(null)
+    val logoUrl: StateFlow<String?> = _logoUrl.asStateFlow()
+
+    /** Whether logo resolution is in flight. */
+    private val _isLogoLoading = MutableStateFlow(false)
+    val isLogoLoading: StateFlow<Boolean> = _isLogoLoading.asStateFlow()
+
+    /** Resolved YouTube trailer key for the TV series. */
+    private val _trailerKey = MutableStateFlow<String?>(null)
+    val trailerKey: StateFlow<String?> = _trailerKey.asStateFlow()
+
     /** Series ID whose details have been requested. */
     private var requestedSeriesId: Int? = null
 
     /** Active season request, canceled when a different season is selected. */
     private var seasonJob: Job? = null
 
+    /** Active logo request, canceled when a different series is loaded. */
+    private var logoJob: Job? = null
+
+    /** Active trailer request, canceled when a different series is loaded. */
+    private var trailerJob: Job? = null
+
     /** Loads detail for [seriesId] unless the same series is already displayed. */
     fun load(seriesId: Int) {
         if (requestedSeriesId == seriesId) return
         requestedSeriesId = seriesId
+        _logoUrl.value = null
+        _isLogoLoading.value = true
+        logoJob?.cancel()
+        logoJob = viewModelScope.launch {
+            try {
+                _logoUrl.value = tmdbRepository.getTvSeriesLogo(seriesId)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            } finally {
+                _isLogoLoading.value = false
+            }
+        }
+        _trailerKey.value = null
+        trailerJob?.cancel()
+        trailerJob = viewModelScope.launch {
+            try {
+                _trailerKey.value = tmdbRepository.getTvSeriesTrailer(seriesId)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+        }
         viewModelScope.launch {
             _uiState.value = TvDetailUiState.Loading
             try {
                 val series = tmdbRepository.getTvDetails(seriesId)
+                if (_trailerKey.value.isNullOrBlank()) {
+                    series.videos?.getBestTrailerKey()?.let { _trailerKey.value = it }
+                }
                 val imdbId = tmdbRepository.getTvImdbId(seriesId)
                 _uiState.value = TvDetailUiState.Success(series, imdbId)
                 val seasons = series.seasons.orEmpty()

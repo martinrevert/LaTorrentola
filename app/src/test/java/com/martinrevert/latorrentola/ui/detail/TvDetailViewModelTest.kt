@@ -132,4 +132,67 @@ class TvDetailViewModelTest {
             )
         }
     }
+
+    @Test
+    fun `load fetches TV series logo and updates state`() = runTest {
+        val series = TmdbTvSummary(id = 100, name = "Test TV Series")
+        coEvery { tmdbRepository.getTvDetails(100) } returns series
+        coEvery { tmdbRepository.getTvSeriesLogo(100) } returns "https://image.tmdb.org/t/p/w500/logo.png"
+
+        viewModel.load(100)
+        testScheduler.advanceUntilIdle()
+
+        assertThat(viewModel.logoUrl.value).isEqualTo("https://image.tmdb.org/t/p/w500/logo.png")
+        assertThat(viewModel.isLogoLoading.value).isFalse()
+    }
+
+    @Test
+    fun `load cancels previous logo job when called with new seriesId`() = runTest {
+        val series1 = TmdbTvSummary(id = 100, name = "Series 1")
+        val series2 = TmdbTvSummary(id = 200, name = "Series 2")
+        coEvery { tmdbRepository.getTvDetails(100) } returns series1
+        coEvery { tmdbRepository.getTvDetails(200) } returns series2
+        coEvery { tmdbRepository.getTvSeriesLogo(100) } coAnswers {
+            kotlinx.coroutines.delay(500)
+            "https://logo1.png"
+        }
+        coEvery { tmdbRepository.getTvSeriesLogo(200) } returns "https://logo2.png"
+
+        viewModel.load(100)
+        viewModel.load(200)
+        testScheduler.advanceUntilIdle()
+
+        assertThat(viewModel.logoUrl.value).isEqualTo("https://logo2.png")
+    }
+
+    @Test
+    fun `load fetches TV series trailer key and updates state`() = runTest {
+        val series = TmdbTvSummary(id = 100, name = "Test TV Series")
+        coEvery { tmdbRepository.getTvDetails(100) } returns series
+        coEvery { tmdbRepository.getTvSeriesTrailer(100) } returns "dQw4w9WgXcQ"
+
+        viewModel.load(100)
+        testScheduler.advanceUntilIdle()
+
+        assertThat(viewModel.trailerKey.value).isEqualTo("dQw4w9WgXcQ")
+    }
+
+    @Test
+    fun `load cancels previous trailer job when called with new seriesId`() = runTest {
+        val series1 = TmdbTvSummary(id = 100, name = "Series 1")
+        val series2 = TmdbTvSummary(id = 200, name = "Series 2")
+        coEvery { tmdbRepository.getTvDetails(100) } returns series1
+        coEvery { tmdbRepository.getTvDetails(200) } returns series2
+        coEvery { tmdbRepository.getTvSeriesTrailer(100) } coAnswers {
+            kotlinx.coroutines.delay(500)
+            "trailer1"
+        }
+        coEvery { tmdbRepository.getTvSeriesTrailer(200) } returns "trailer2"
+
+        viewModel.load(100)
+        viewModel.load(200)
+        testScheduler.advanceUntilIdle()
+
+        assertThat(viewModel.trailerKey.value).isEqualTo("trailer2")
+    }
 }

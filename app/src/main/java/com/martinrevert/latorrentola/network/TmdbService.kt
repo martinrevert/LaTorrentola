@@ -13,6 +13,7 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbTvGenrePage
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvPage
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.model.TMDB.TmdbVideosResponse
 import com.martinrevert.latorrentola.model.TMDB.TmdbWatchProvidersResponse
 import retrofit2.http.GET
 import retrofit2.http.Path
@@ -176,12 +177,12 @@ interface TmdbService {
         @Query("language") language: String = TmdbLanguage.current()
     ): TmdbWatchProvidersResponse
 
-    /** Retrieves TV series details, seasons, and aggregate cast. */
+    /** Retrieves TV series details, seasons, aggregate cast, and videos. */
     @GET("tv/{series_id}")
     suspend fun getTvDetails(
         @Path("series_id") seriesId: Int,
         @Query("api_key") apiKey: String,
-        @Query("append_to_response") appendToResponse: String = "aggregate_credits",
+        @Query("append_to_response") appendToResponse: String = "aggregate_credits,videos",
         @Query("language") language: String = TmdbLanguage.current()
     ): TmdbTvSummary
 
@@ -200,4 +201,20 @@ interface TmdbService {
         @Path("series_id") seriesId: Int,
         @Query("api_key") apiKey: String
     ): TmdbTvExternalIds
+
+    /** Retrieves image collections (including TV series logos) for a TMDB television series. */
+    @GET("tv/{series_id}/images")
+    suspend fun getTvImages(
+        @Path("series_id") seriesId: Int,
+        @Query("api_key") apiKey: String,
+        @Query("include_image_language") includeImageLanguage: String = TmdbLanguage.imageLanguages()
+    ): TmdbImagesResponse
+
+    /** Retrieves video collections (including trailers and teasers) for a TMDB television series. */
+    @GET("tv/{series_id}/videos")
+    suspend fun getTvVideos(
+        @Path("series_id") seriesId: Int,
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String = TmdbLanguage.current()
+    ): TmdbVideosResponse
 }

@@ -2,6 +2,9 @@
 
 package com.martinrevert.latorrentola.ui.ott
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,7 +39,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,6 +51,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -55,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.TMDB.TmdbWatchProvider
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
@@ -63,7 +73,9 @@ import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
-import androidx.compose.runtime.withFrameNanos
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Screen displaying the global grid of OTT streaming provider logos.
@@ -275,7 +287,7 @@ fun OttProvidersScreen(
 }
 
 /**
- * Individual provider tile with TMDB CDN logo and provider title.
+ * Individual provider tile with TMDB CDN logo, provider title, and dynamic brand surface color.
  */
 @Composable
 private fun OttProviderCard(
@@ -287,6 +299,29 @@ private fun OttProviderCard(
     onFocusRestored: () -> Unit = {}
 ) {
     val focusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val logoKey = provider.fullLogoUrl ?: provider.providerId.toString()
+
+    var surfaceColors by remember(logoKey, isDark) {
+        mutableStateOf(OttLogoColorExtractor.getColors(logoKey, isDark))
+    }
+    var isFocused by remember { mutableStateOf(false) }
+
+    val fallbackColor = MaterialTheme.colorScheme.surfaceVariant
+    val baseTopColor = surfaceColors?.topColor ?: fallbackColor
+    val baseBottomColor = surfaceColors?.bottomColor ?: fallbackColor
+
+    val animatedTopColor by animateColorAsState(
+        targetValue = baseTopColor,
+        animationSpec = tween(durationMillis = 350),
+        label = "ott_card_top_color"
+    )
+    val animatedBottomColor by animateColorAsState(
+        targetValue = baseBottomColor,
+        animationSpec = tween(durationMillis = 350),
+        label = "ott_card_bottom_color"
+    )
 
     if (shouldRequestFocus) {
         LaunchedEffect(Unit) {
@@ -303,16 +338,18 @@ private fun OttProviderCard(
             scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
             shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
             colors = ClickableSurfaceDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                focusedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                focusedContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                containerColor = animatedBottomColor,
+                focusedContainerColor = animatedBottomColor,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                focusedContentColor = MaterialTheme.colorScheme.onSurface
             ),
             modifier = modifier
                 .fillMaxWidth()
                 .height(130.dp)
+                .focusHighlight(shape = MaterialTheme.shapes.medium)
                 .focusRequester(focusRequester)
                 .onFocusChanged {
+                    isFocused = it.isFocused
                     if (it.isFocused && shouldRequestFocus) {
                         onFocusRestored()
                     }
@@ -321,6 +358,11 @@ private fun OttProviderCard(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(animatedTopColor, animatedBottomColor)
+                        )
+                    )
                     .padding(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
@@ -329,6 +371,23 @@ private fun OttProviderCard(
                     model = provider.fullLogoUrl,
                     contentDescription = provider.providerName,
                     contentScale = ContentScale.Fit,
+                    onState = { state ->
+                        if (state is AsyncImagePainter.State.Success && surfaceColors == null) {
+                            val image = state.result.image
+                            coroutineScope.launch(Dispatchers.Default) {
+                                try {
+                                    val colors = OttLogoColorExtractor.extractAndCache(
+                                        key = logoKey,
+                                        image = image,
+                                        isDark = isDark
+                                    )
+                                    withContext(Dispatchers.Main) {
+                                        surfaceColors = colors
+                                    }
+                                } catch (_: Throwable) {}
+                            }
+                        }
+                    },
                     modifier = Modifier
                         .size(60.dp)
                         .clip(RoundedCornerShape(12.dp))
@@ -349,8 +408,8 @@ private fun OttProviderCard(
             onClick = onClick,
             shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                containerColor = animatedBottomColor,
+                contentColor = MaterialTheme.colorScheme.onSurface
             ),
             modifier = modifier
                 .fillMaxWidth()
@@ -359,6 +418,11 @@ private fun OttProviderCard(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(animatedTopColor, animatedBottomColor)
+                        )
+                    )
                     .padding(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
@@ -367,6 +431,23 @@ private fun OttProviderCard(
                     model = provider.fullLogoUrl,
                     contentDescription = provider.providerName,
                     contentScale = ContentScale.Fit,
+                    onState = { state ->
+                        if (state is AsyncImagePainter.State.Success && surfaceColors == null) {
+                            val image = state.result.image
+                            coroutineScope.launch(Dispatchers.Default) {
+                                try {
+                                    val colors = OttLogoColorExtractor.extractAndCache(
+                                        key = logoKey,
+                                        image = image,
+                                        isDark = isDark
+                                    )
+                                    withContext(Dispatchers.Main) {
+                                        surfaceColors = colors
+                                    }
+                                } catch (_: Throwable) {}
+                            }
+                        }
+                    },
                     modifier = Modifier
                         .size(52.dp)
                         .clip(RoundedCornerShape(12.dp))

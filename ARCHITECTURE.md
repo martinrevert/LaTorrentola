@@ -345,6 +345,8 @@ if (context.isTvDevice()) {
 ### 5.1 Dual-Catalog Engine (Movies & TV Series)
 * **Movie Pipeline**: Catalogs are queried from YTS via `YtsRepository`. Detail requests enrich the movie with TMDB cast/crew credits (via IMDb ID resolution), OMDb aggregated ratings (Rotten Tomatoes, Metacritic, IMDb), and on-device ML Kit summary translation.
 * **TV Series Pipeline**: Powered by TMDB via `TmdbRepository` for series overview, seasons, and episodes. Episode torrent releases are resolved via `TvEpisodeReleasesRepository`, which queries both `TorrentioRepository` and `EztvRepository` (matching by numeric IMDb ID with `tt` stripped).
+* **Cinematic Immersive Layouts & TMDB Logo Resolution**: Both Handheld (`HandheldTvSeriesImmersiveContainer`) and Android TV (`TvSeriesImmersiveContainer`) utilize debounced D-pad/touch focus traversal (120ms) and dynamic transparent title logo resolution (`TmdbRepository.getTvSeriesLogo`) with cooperative coroutine cancellation and language-keyed memory caching.
+* **10-Foot D-Pad Accessibility on Episode Details**: `TvEpisodeDetailScreen` establishes seamless bidirectional focus bridges between top navigation, the hero episode still banner (supporting `adaptiveLongClickable` for watch progress options), and categorized torrent release lists.
 * **Next Episode Continuation Evaluation**: `SeriesContinuationState` evaluates whether a subsequent episode is ready to play, unaired, or if the series has concluded.
 
 ### 5.2 OTT Watch Providers & Platform Discovery
