@@ -51,6 +51,7 @@ class SettingsViewModelTest {
         every { preferenceManager.getConvertAac51ToAc3() } returns false
         every { preferenceManager.getConvertEac3ToAc3() } returns false
         every { preferenceManager.getConvertDtsToAc3() } returns false
+        every { preferenceManager.getDecodeDtsHdToPcm() } returns false
         every { preferenceManager.themeFlow } returns themeFlow
         every { preferenceManager.filteredLanguagesFlow } returns MutableStateFlow("es")
         every { preferenceManager.minimumRatingFlow } returns MutableStateFlow(PreferenceManager.DEFAULT_MINIMUM_RATING)
@@ -59,6 +60,7 @@ class SettingsViewModelTest {
         every { preferenceManager.convertAac51ToAc3Flow } returns MutableStateFlow(false)
         every { preferenceManager.convertEac3ToAc3Flow } returns MutableStateFlow(false)
         every { preferenceManager.convertDtsToAc3Flow } returns MutableStateFlow(false)
+        every { preferenceManager.decodeDtsHdToPcmFlow } returns MutableStateFlow(false)
         every { authRepository.authStateFlow } returns MutableStateFlow(null)
         
         viewModel = SettingsViewModel(
@@ -137,6 +139,15 @@ class SettingsViewModelTest {
 
         verify { preferenceManager.setConvertDtsToAc3(true) }
         assertThat(viewModel.uiState.value.convertDtsToAc3).isTrue()
+    }
+
+    @Test
+    fun `setDecodeDtsHdToPcm should update preference and state`() {
+        every { preferenceManager.setDecodeDtsHdToPcm(any()) } returns Unit
+        viewModel.setDecodeDtsHdToPcm(true)
+
+        verify { preferenceManager.setDecodeDtsHdToPcm(true) }
+        assertThat(viewModel.uiState.value.decodeDtsHdToPcm).isTrue()
     }
 
     /** Checks that subtitle account credentials are stored and cleared through the secure store. */

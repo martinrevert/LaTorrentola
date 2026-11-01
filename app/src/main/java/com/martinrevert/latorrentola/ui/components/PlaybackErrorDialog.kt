@@ -48,6 +48,7 @@ import androidx.tv.material3.Surface as TvSurface
 import androidx.tv.material3.SurfaceDefaults as TvSurfaceDefaults
 import androidx.tv.material3.Text as TvText
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.service.streaming.Ac3TranscodingAudioSink
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.PreferenceManager
@@ -60,10 +61,12 @@ import kotlinx.coroutines.delay
  *
  * @param isAudioError True when the failing renderer/track is audio; false when it is video.
  * @param codecSummary Optional human-readable codec description (e.g., "HEVC / H.265 10-bit").
+ * @param isDtsHdError True when the error was caused by a DTS-HD bitstream passthrough failure.
  */
 data class PlaybackDecodingError(
     val isAudioError: Boolean,
-    val codecSummary: String?
+    val codecSummary: String?,
+    val isDtsHdError: Boolean = false
 )
 
 private val MIME_REGEX = Regex("""\b((?:video|audio)/[A-Za-z0-9.+-]+)\b""", RegexOption.IGNORE_CASE)
@@ -89,6 +92,11 @@ private val CONTAINER_MIMES = setOf(
  */
 @OptIn(UnstableApi::class)
 fun resolvePlaybackDecodingError(error: PlaybackException): PlaybackDecodingError? {
+    val isAudioTrackError = when (error.errorCode) {
+        PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
+        PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED -> true
+        else -> false
+    }
     val isDecoderError = when (error.errorCode) {
         PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
         PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
@@ -97,7 +105,7 @@ fun resolvePlaybackDecodingError(error: PlaybackException): PlaybackDecodingErro
         PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED -> true
         else -> false
     }
-    if (!isDecoderError) return null
+    if (!isDecoderError && !isAudioTrackError) return null
 
     val message = error.message.orEmpty()
     val exoError = error as? ExoPlaybackException
@@ -165,7 +173,13 @@ fun resolvePlaybackDecodingError(error: PlaybackException): PlaybackDecodingErro
         }
     }
 
+    val isDtsHd = sampleMimeType?.let { Ac3TranscodingAudioSink.isDtsHdMime(it) } == true ||
+        baseCodecLabel == "DTS-HD" ||
+        (isAudioError && (message.contains("dts.hd", ignoreCase = true) || message.contains("dts-hd", ignoreCase = true) || message.contains("dts:x", ignoreCase = true) || message.contains("audio/vnd.dts", ignoreCase = true)))
+
+    val effectiveIsAudio = if (isDtsHd) true else isAudioError
     val codecSummary = when {
+        isDtsHd -> "DTS-HD"
         baseCodecLabel != null && !isAudioError && isTenBit -> "$baseCodecLabel 10-bit"
         baseCodecLabel != null -> baseCodecLabel
         !isAudioError && isTenBit -> "10-bit"
@@ -173,8 +187,9 @@ fun resolvePlaybackDecodingError(error: PlaybackException): PlaybackDecodingErro
     }
 
     return PlaybackDecodingError(
-        isAudioError = isAudioError,
-        codecSummary = codecSummary
+        isAudioError = effectiveIsAudio,
+        codecSummary = codecSummary,
+        isDtsHdError = isDtsHd
     )
 }
 
@@ -187,6 +202,7 @@ fun PlaybackErrorDialog(
     error: PlaybackDecodingError,
     onDismiss: () -> Unit,
     onChangeAudioTrack: (() -> Unit)? = null,
+    onEnableDtsHdLpcm: (() -> Unit)? = null,
     themeMode: Int? = null
 ) {
     val context = LocalContext.current
@@ -218,7 +234,8 @@ fun PlaybackErrorDialog(
                     PlaybackErrorDialogTvCard(
                         error = error,
                         onDismiss = onDismiss,
-                        onChangeAudioTrack = onChangeAudioTrack
+                        onChangeAudioTrack = onChangeAudioTrack,
+                        onEnableDtsHdLpcm = onEnableDtsHdLpcm
                     )
                 }
             }
@@ -238,7 +255,8 @@ fun PlaybackErrorDialog(
                     PlaybackErrorDialogMobileCard(
                         error = error,
                         onDismiss = onDismiss,
-                        onChangeAudioTrack = onChangeAudioTrack
+                        onChangeAudioTrack = onChangeAudioTrack,
+                        onEnableDtsHdLpcm = onEnableDtsHdLpcm
                     )
                 }
             }
@@ -251,14 +269,16 @@ internal fun PlaybackErrorDialogTvCard(
     error: PlaybackDecodingError,
     onDismiss: () -> Unit,
     onChangeAudioTrack: (() -> Unit)? = null,
+    onEnableDtsHdLpcm: (() -> Unit)? = null,
     closeButtonFocusRequester: FocusRequester = remember { FocusRequester() }
 ) {
-    val title = if (error.isAudioError) {
-        stringResource(R.string.player_decoding_error_audio_title)
-    } else {
-        stringResource(R.string.player_decoding_error_video_title)
+    val title = when {
+        error.isDtsHdError -> stringResource(R.string.player_decoding_error_dts_hd_title)
+        error.isAudioError -> stringResource(R.string.player_decoding_error_audio_title)
+        else -> stringResource(R.string.player_decoding_error_video_title)
     }
     val message = when {
+        error.isDtsHdError -> stringResource(R.string.player_decoding_error_dts_hd_message)
         error.isAudioError && !error.codecSummary.isNullOrBlank() ->
             stringResource(R.string.player_decoding_error_audio_message_with_codec, error.codecSummary)
         error.isAudioError ->
@@ -315,7 +335,22 @@ internal fun PlaybackErrorDialogTvCard(
                 horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (error.isAudioError && onChangeAudioTrack != null) {
+                if (error.isDtsHdError && onEnableDtsHdLpcm != null) {
+                    TvButton(
+                        onClick = onEnableDtsHdLpcm,
+                        modifier = Modifier.focusRequester(closeButtonFocusRequester)
+                    ) {
+                        TvText(text = stringResource(R.string.player_decoding_error_enable_dts_hd_pcm))
+                    }
+                    if (onChangeAudioTrack != null) {
+                        TvButton(onClick = onChangeAudioTrack) {
+                            TvText(text = stringResource(R.string.player_decoding_error_change_audio))
+                        }
+                    }
+                    TvButton(onClick = onDismiss) {
+                        TvText(text = stringResource(R.string.player_decoding_error_close))
+                    }
+                } else if (error.isAudioError && onChangeAudioTrack != null) {
                     TvButton(
                         onClick = onChangeAudioTrack,
                         modifier = Modifier.focusRequester(closeButtonFocusRequester)
@@ -342,14 +377,16 @@ internal fun PlaybackErrorDialogTvCard(
 internal fun PlaybackErrorDialogMobileCard(
     error: PlaybackDecodingError,
     onDismiss: () -> Unit,
-    onChangeAudioTrack: (() -> Unit)? = null
+    onChangeAudioTrack: (() -> Unit)? = null,
+    onEnableDtsHdLpcm: (() -> Unit)? = null
 ) {
-    val title = if (error.isAudioError) {
-        stringResource(R.string.player_decoding_error_audio_title)
-    } else {
-        stringResource(R.string.player_decoding_error_video_title)
+    val title = when {
+        error.isDtsHdError -> stringResource(R.string.player_decoding_error_dts_hd_title)
+        error.isAudioError -> stringResource(R.string.player_decoding_error_audio_title)
+        else -> stringResource(R.string.player_decoding_error_video_title)
     }
     val message = when {
+        error.isDtsHdError -> stringResource(R.string.player_decoding_error_dts_hd_message)
         error.isAudioError && !error.codecSummary.isNullOrBlank() ->
             stringResource(R.string.player_decoding_error_audio_message_with_codec, error.codecSummary)
         error.isAudioError ->
@@ -400,7 +437,19 @@ internal fun PlaybackErrorDialogMobileCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (error.isAudioError && onChangeAudioTrack != null) {
+                if (error.isDtsHdError && onEnableDtsHdLpcm != null) {
+                    OutlinedButton(onClick = onDismiss) {
+                        Text(text = stringResource(R.string.player_decoding_error_close))
+                    }
+                    if (onChangeAudioTrack != null) {
+                        OutlinedButton(onClick = onChangeAudioTrack) {
+                            Text(text = stringResource(R.string.player_decoding_error_change_audio))
+                        }
+                    }
+                    Button(onClick = onEnableDtsHdLpcm) {
+                        Text(text = stringResource(R.string.player_decoding_error_enable_dts_hd_pcm))
+                    }
+                } else if (error.isAudioError && onChangeAudioTrack != null) {
                     OutlinedButton(onClick = onDismiss) {
                         Text(text = stringResource(R.string.player_decoding_error_close))
                     }

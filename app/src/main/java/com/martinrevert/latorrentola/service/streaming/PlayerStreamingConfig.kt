@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.service.streaming
 
 import androidx.annotation.OptIn
+import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
@@ -8,6 +9,7 @@ import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.FormatHolder
 import androidx.media3.exoplayer.LoadControl
+import androidx.media3.exoplayer.RendererCapabilities
 import androidx.media3.exoplayer.audio.MediaCodecAudioRenderer
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
@@ -181,6 +183,25 @@ object PlayerStreamingConfig {
                         wrappedEventListener,
                         audioSink
                     ) {
+                        override fun shouldUseBypass(format: Format): Boolean {
+                            if (prefs.getDecodeDtsHdToPcm() && Ac3TranscodingAudioSink.isDtsHdMime(format.sampleMimeType)) {
+                                return false
+                            }
+                            return super.shouldUseBypass(format)
+                        }
+
+                        override fun supportsFormat(
+                            mediaCodecSelector: androidx.media3.exoplayer.mediacodec.MediaCodecSelector,
+                            format: Format
+                        ): Int {
+                            // When decodeDtsHdToPcm is enabled, reject DTS-HD in MediaCodecAudioRenderer to prevent
+                            // Android TV audio HAL IEC 61937 HBR passthrough stalls and force FfmpegAudioRenderer to decode.
+                            if (prefs.getDecodeDtsHdToPcm() && Ac3TranscodingAudioSink.isDtsHdMime(format.sampleMimeType)) {
+                                return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_SUBTYPE)
+                            }
+                            return super.supportsFormat(mediaCodecSelector, format)
+                        }
+
                         override fun onInputFormatChanged(
                             formatHolder: FormatHolder
                         ): DecoderReuseEvaluation? {

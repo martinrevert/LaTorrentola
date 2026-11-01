@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola.service.streaming
 import android.content.Context
 import androidx.annotation.OptIn
 import androidx.media3.common.C
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import com.google.common.truth.Truth.assertThat
@@ -69,5 +70,19 @@ class PlayerStreamingConfigTest {
         val prefs = mockk<PreferenceManager>(relaxed = true)
         val renderersFactory = PlayerStreamingConfig.buildRenderersFactory(context, prefs)
         assertThat(renderersFactory).isNotNull()
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `isDtsHdMime correctly identifies DTS-HD and DTS-X mime types`() {
+        assertThat(Ac3TranscodingAudioSink.isDtsHdMime("audio/vnd.dts.hd")).isTrue()
+        assertThat(Ac3TranscodingAudioSink.isDtsHdMime("audio/dts-hd")).isTrue()
+        assertThat(Ac3TranscodingAudioSink.isDtsHdMime(MimeTypes.AUDIO_DTS_HD)).isTrue()
+        assertThat(Ac3TranscodingAudioSink.isDtsHdMime(MimeTypes.AUDIO_DTS_EXPRESS)).isTrue()
+        assertThat(Ac3TranscodingAudioSink.isDtsHdMime(MimeTypes.AUDIO_DTS_X)).isTrue()
+        assertThat(Ac3TranscodingAudioSink.isDtsHdMime("audio/vnd.dts")).isFalse()
+        assertThat(Ac3TranscodingAudioSink.isDtsHdMime(MimeTypes.AUDIO_DTS)).isFalse()
+        assertThat(Ac3TranscodingAudioSink.isDtsHdMime(MimeTypes.AUDIO_AC3)).isFalse()
+        assertThat(Ac3TranscodingAudioSink.isDtsHdMime(null)).isFalse()
     }
 }

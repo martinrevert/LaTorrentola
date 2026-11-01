@@ -245,6 +245,33 @@ To ensure digital bitstream passthrough to AVRs / soundbars over HDMI (ARC/eARC)
      - In [`PlayerStreamingConfig.kt`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/service/streaming/PlayerStreamingConfig.kt), `TV_BUFFER_FOR_PLAYBACK_MS` MUST be set to `2_000ms` (2.0s) and `TV_BUFFER_AFTER_REBUFFER_MS` to `3_000ms` for stable startup on Dolby Atmos and high-bitrate surround streams with a protective 3-second cushion on re-buffer to prevent stutter on volatile connections.
      - `DefaultAudioSink` MUST configure `AudioTrackAudioOutputProvider` with `DefaultAudioTrackBufferSizeProvider` setting `.setPassthroughBufferDurationUs(250_000)` (250ms) to ensure passthrough buffer allocations fit safely within Android TV `AudioFlinger` memory bounds without throwing `-12` (ENOMEM).
 
+4. **DTS-HD (Master Audio / High Resolution / DTS:X) Passthrough Trap & User Decision Mandate (ZERO REGRESSION)**:
+   - **The False-Positive EDID / Audio HAL Lockup Trap**: When an Android TV / Google TV is connected to an eARC AVR, the AVR advertises DTS-HD MA support in its HDMI EDID. Android OS reads this and includes `AudioFormat.ENCODING_DTS_HD` in `AudioCapabilities`. However, internal Android TV audio HALs (MediaTek, Amlogic, Realtek) often CANNOT transmit IEC 61937 High Bit Rate (HBR) bursts (up to 24.5 Mbps) across the TV's internal bridge from Android OS to the eARC transmitter. Opening `AudioTrack` with `ENCODING_DTS_HD` stalls the audio hardware clock (`AudioTrack.getPlaybackHeadPosition()` remains frozen at 0). Because video frames wait for audio presentation timestamps, the picture freezes permanently at 0s, the network buffer fills up to 96 MB, and playback halts completely.
+   - **USER-CONTROLLED RESOLUTION WITH PROACTIVE ERROR RESILIENCE**:
+     - Controlled by user preference `decode_dts_hd_to_pcm` in `PreferenceManager.kt` (`decodeDtsHdToPcm`, **defaults to `false`** so direct bitstream passthrough is attempted first).
+     - When `decodeDtsHdToPcm == true`:
+       - [`Ac3TranscodingAudioSink.getFormatSupport`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/service/streaming/Ac3TranscodingAudioSink.kt) returns `AudioSink.SINK_FORMAT_UNSUPPORTED` for DTS-HD formats.
+       - [`PlayerStreamingConfig.buildRenderersFactory`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/service/streaming/PlayerStreamingConfig.kt) rejects DTS-HD in `MediaCodecAudioRenderer.supportsFormat` (`C.FORMAT_UNSUPPORTED_SUBTYPE`) and `shouldUseBypass`.
+       - ExoPlayer automatically routes DTS-HD to [`FfmpegAudioRenderer`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/androidx/media3/decoder/ffmpeg/FfmpegAudioRenderer.java) (`dca` decoder), decoding the lossless bitstream into uncompressed multichannel LPCM (5.1/7.1) over eARC without hardware clock stalls, OR transcodes to AC3 5.1 if `convertDtsToAc3` is enabled in settings.
+     - When `decodeDtsHdToPcm == false`:
+       - Direct bitstream passthrough is attempted natively.
+       - If bitstream passthrough fails or stalls (`startDtsHdStallWatchdog` in `LocalPlayerActivity.kt` detects playback head halted at 0 while buffer is filled >= 2s for 4s, or `onPlayerError` receives `ERROR_CODE_AUDIO_TRACK_*` / decoder failure), [`PlaybackErrorDialog`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/ui/components/PlaybackErrorDialog.kt) alerts the user with an actionable 1-tap button to enable LPCM decoding immediately and seamlessly resume playback.
+     - Standard DTS core (`audio/vnd.dts` / `MimeTypes.AUDIO_DTS` at 1.5 Mbps) is non-HBR IEC 61937 and remains fully supported for native direct bitstream passthrough.
+
+5. **Dolby Developer Guidelines & Theatrical Audio Attributes Mandate (ZERO REGRESSION)**:
+   - **Official References**:
+     - Android TV: [Enabling Dolby Atmos and Dolby Audio in Android TV media apps](https://professionalsupport.dolby.com/s/article/Enabling-Dolby-Atmos-and-Dolby-Audio-in-Android-TV-media-apps?language=en_US)
+     - Android Mobile: [Enabling Dolby Atmos in Android Mobile media apps](https://professionalsupport.dolby.com/s/article/Enabling-Dolby-Atmos-in-Android-Mobile-media-apps?language=en_US)
+   - **Mandatory Movie Audio Attributes**:
+     - `exoPlayer` in [`PlaybackService.kt`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/service/PlaybackService.kt) MUST be initialized with `.setAudioAttributes(AudioAttributes.Builder().setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).setUsage(C.USAGE_MEDIA).build(), true)`.
+     - **WHY**:
+       - On Android TV: Informs HDMI eARC/ARC sinks and TV audio processors that the stream is a theatrical movie, triggering proper multichannel routing and Dolby Atmos decoding on soundbars/AVRs.
+       - On Android Mobile: OEM Dolby Atmos audio engines (Samsung, Xiaomi, Motorola, Sony, etc.) and Android 13+ `Spatializer` explicitly require `CONTENT_TYPE_MOVIE` to activate the theatrical Dolby Atmos profile and binaural spatializer for headphones/speakers.
+       - Automatic Audio Focus: Passing `handleAudioFocus = true` ensures proper focus preemption and resumption when phone calls or system alerts occur.
+   - **Dolby Atmos Streaming Format Distinctions in Audits**:
+     - Streaming releases tagged with "Atmos" are predominantly **Dolby Digital Plus with JOC** (`audio/eac3-joc` / `AudioFormat.ENCODING_E_AC3_JOC`), NOT TrueHD.
+     - In [`DevicePlaybackCapabilities.kt`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/utils/DevicePlaybackCapabilities.kt), releases with "Atmos" (without "TrueHD") MUST check for `ENCODING_E_AC3_JOC`, `ENCODING_E_AC3`, `ENCODING_AC4`, or OEM platform decoders, preventing false-positive incompatibilities on mobile and TV devices.
+
 ### ⏯️ Player Transport Controls, Play/Pause State Authority & Race Condition Prevention Mandate (STRICT)
 To eliminate state desynchronization, inverted buttons, and jarring UX across ExoPlayer and Google Cast:
 1. **Zero Speculative State Toggling (STRICT PROHIBITION)**:

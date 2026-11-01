@@ -73,6 +73,8 @@
     <string name="settings_convert_eac3_to_ac3_summary">Transcodes Dolby Digital Plus (E-AC3) to Dolby Digital (AC3 5.1) when connected to an older receiver or soundbar over HDMI ARC / Optical that does not support E-AC3 bitstreams.</string>
     <string name="settings_convert_dts_to_ac3">Convert DTS to AC3 5.1</string>
     <string name="settings_convert_dts_to_ac3_summary">Transcodes DTS / DTS-HD audio tracks to Dolby Digital (AC3 5.1) when connected to a receiver or soundbar that lacks native DTS decoding capabilities.</string>
+    <string name="settings_decode_dts_hd_to_pcm">Decode DTS-HD to Multichannel PCM</string>
+    <string name="settings_decode_dts_hd_to_pcm_summary">Decodes DTS-HD Master Audio and DTS:X to lossless 5.1/7.1 LPCM in software. Recommended to enable if video freezes or stalls during bitstream passthrough to an eARC/ARC receiver or soundbar.</string>
     <string name="settings_theme">Theme</string>
     <string name="torrent_mode_title">Torrent handling</string>
     <string name="torrent_mode_external">External torrent client</string>
@@ -417,6 +419,9 @@
     <string name="player_decoding_error_audio_message_generic">This device could not decode the audio track. Try selecting another audio track or release.</string>
     <string name="player_decoding_error_close">Close Player</string>
     <string name="player_decoding_error_change_audio">Change Audio Track</string>
+    <string name="player_decoding_error_dts_hd_title">DTS-HD Passthrough Error</string>
+    <string name="player_decoding_error_dts_hd_message">Could not play DTS-HD audio via bitstream passthrough (video stalled or receiver rejected high bitrate stream). It is recommended to enable \"Decode DTS-HD to Multichannel PCM\" in Audio Settings for lossless 5.1/7.1 playback.</string>
+    <string name="player_decoding_error_enable_dts_hd_pcm">Enable LPCM Decoding</string>
 
     <!-- OTT Streaming Providers -->
     <string name="ott_chip_label">OTT</string>

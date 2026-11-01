@@ -124,6 +124,7 @@ fun SettingsScreen(
             onToggleConvertAac51ToAc3 = { viewModel.setConvertAac51ToAc3(it) },
             onToggleConvertEac3ToAc3 = { viewModel.setConvertEac3ToAc3(it) },
             onToggleConvertDtsToAc3 = { viewModel.setConvertDtsToAc3(it) },
+            onToggleDecodeDtsHdToPcm = { viewModel.setDecodeDtsHdToPcm(it) },
             onSetTheme = { viewModel.setTheme(it) },
             onSetFilteredLanguages = { viewModel.setFilteredLanguages(it) },
             onSetMinimumRating = { viewModel.setMinimumRating(it) },
@@ -170,6 +171,7 @@ private fun SettingsScreenContent(
     onToggleConvertAac51ToAc3: (Boolean) -> Unit = {},
     onToggleConvertEac3ToAc3: (Boolean) -> Unit = {},
     onToggleConvertDtsToAc3: (Boolean) -> Unit = {},
+    onToggleDecodeDtsHdToPcm: (Boolean) -> Unit = {},
     onSetTheme: (Int) -> Unit,
     onSetFilteredLanguages: (String) -> Unit,
     onSetMinimumRating: (Float) -> Unit,
@@ -358,6 +360,12 @@ private fun SettingsScreenContent(
                         checked = uiState.convertDtsToAc3,
                         onCheckedChange = onToggleConvertDtsToAc3
                     )
+                    SettingsToggle(
+                        title = stringResource(R.string.settings_decode_dts_hd_to_pcm),
+                        subtitle = stringResource(R.string.settings_decode_dts_hd_to_pcm_summary),
+                        checked = uiState.decodeDtsHdToPcm,
+                        onCheckedChange = onToggleDecodeDtsHdToPcm
+                    )
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
@@ -474,6 +482,12 @@ private fun SettingsScreenContent(
                     subtitle = stringResource(R.string.settings_convert_dts_to_ac3_summary),
                     checked = uiState.convertDtsToAc3,
                     onCheckedChange = onToggleConvertDtsToAc3
+                )
+                SettingsToggle(
+                    title = stringResource(R.string.settings_decode_dts_hd_to_pcm),
+                    subtitle = stringResource(R.string.settings_decode_dts_hd_to_pcm_summary),
+                    checked = uiState.decodeDtsHdToPcm,
+                    onCheckedChange = onToggleDecodeDtsHdToPcm
                 )
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))

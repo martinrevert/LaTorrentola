@@ -685,4 +685,118 @@ class Ac3TranscodingAudioSinkTest {
             )
         }
     }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `when dts-hd format queried and decodeDtsHdToPcm enabled, returns SINK_FORMAT_UNSUPPORTED to prevent IEC 61937 HBR stall even if delegate supports it`() {
+        every { preferenceManager.getDecodeDtsHdToPcm() } returns true
+        val dtsHdMimes = listOf(
+            MimeTypes.AUDIO_DTS_HD,
+            "audio/vnd.dts.hd",
+            "audio/dts-hd",
+            MimeTypes.AUDIO_DTS_EXPRESS,
+            MimeTypes.AUDIO_DTS_X
+        )
+        for (mime in dtsHdMimes) {
+            val dtsHdFormat = Format.Builder()
+                .setSampleMimeType(mime)
+                .setChannelCount(6)
+                .setSampleRate(48000)
+                .build()
+            every { delegateSink.getFormatSupport(match { it.sampleMimeType == mime }) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+
+            val support = transcodingSink.getFormatSupport(dtsHdFormat)
+            assertThat(support).isEqualTo(AudioSink.SINK_FORMAT_UNSUPPORTED)
+        }
+    }
+
+    @Test
+    fun `when dts-hd format queried and decodeDtsHdToPcm disabled, delegates format support to downstream sink`() {
+        every { preferenceManager.getDecodeDtsHdToPcm() } returns false
+        val dtsHdFormat = Format.Builder()
+            .setSampleMimeType("audio/vnd.dts.hd")
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .build()
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == "audio/vnd.dts.hd" }) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+
+        val support = transcodingSink.getFormatSupport(dtsHdFormat)
+        assertThat(support).isEqualTo(AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY)
+    }
+
+    @Test
+    fun `when dts core queried for format support, delegates to downstream sink`() {
+        val dtsFormat = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_DTS)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .build()
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_DTS }) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+
+        val support = transcodingSink.getFormatSupport(dtsFormat)
+        assertThat(support).isEqualTo(AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY)
+    }
+
+    @Test
+    fun `when dts-hd 5_1 and toggle enabled, transcodes decoded pcm to ac3`() {
+        every { preferenceManager.getDecodeDtsHdToPcm() } returns true
+        every { preferenceManager.getConvertDtsToAc3() } returns true
+        val dtsHdFormat = Format.Builder()
+            .setSampleMimeType("audio/vnd.dts.hd")
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .build()
+        // Downstream delegate may report direct support via EDID, but sink should still transcode
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == "audio/vnd.dts.hd" }) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+        every { delegateSink.getFormatSupport(match { it.sampleMimeType == MimeTypes.AUDIO_AC3 }) } returns AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+
+        val rawPcm51 = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_RAW)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .setPcmEncoding(C.ENCODING_PCM_16BIT)
+            .build()
+
+        transcodingSink.setSourceAudioFormat(dtsHdFormat)
+        transcodingSink.configure(AudioSink.AudioSinkConfig.Builder(rawPcm51).build())
+
+        verify {
+            delegateSink.configure(
+                match<AudioSink.AudioSinkConfig> {
+                    it.format.sampleMimeType == MimeTypes.AUDIO_AC3 &&
+                        it.format.channelCount == 6 &&
+                        it.format.sampleRate == 48000 &&
+                        it.format.averageBitrate == 640_000
+                }
+            )
+        }
+    }
+
+    @Test
+    fun `when dts-hd 7_1 and toggle disabled, passes decoded pcm directly to delegate as uncompressed multichannel pcm`() {
+        every { preferenceManager.getConvertDtsToAc3() } returns false
+        val dtsHdFormat = Format.Builder()
+            .setSampleMimeType("audio/vnd.dts.hd")
+            .setChannelCount(8)
+            .setSampleRate(48000)
+            .build()
+
+        val rawPcm71 = Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_RAW)
+            .setChannelCount(8)
+            .setSampleRate(48000)
+            .setPcmEncoding(C.ENCODING_PCM_16BIT)
+            .build()
+
+        transcodingSink.setSourceAudioFormat(dtsHdFormat)
+        transcodingSink.configure(AudioSink.AudioSinkConfig.Builder(rawPcm71).build())
+
+        verify {
+            delegateSink.configure(
+                match<AudioSink.AudioSinkConfig> {
+                    it.format.sampleMimeType == MimeTypes.AUDIO_RAW && it.format.channelCount == 8
+                }
+            )
+        }
+    }
 }

@@ -365,6 +365,22 @@ class LocalPlayerActivityTest {
     }
 
     @Test
+    fun `resolvePlaybackDecodingError identifies DTS-HD passthrough and AudioTrack failures`() {
+        val audioTrackError = androidx.media3.common.PlaybackException(
+            "AudioTrack write failed: audio/vnd.dts.hd buffer rejected",
+            null,
+            androidx.media3.common.PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED
+        )
+
+        val resolved = com.martinrevert.latorrentola.ui.components.resolvePlaybackDecodingError(audioTrackError)
+
+        assertThat(resolved).isNotNull()
+        assertThat(resolved?.isAudioError).isTrue()
+        assertThat(resolved?.codecSummary).isEqualTo("DTS-HD")
+        assertThat(resolved?.isDtsHdError).isTrue()
+    }
+
+    @Test
     fun `handlePlayerTvKeyEvent pauses and shows controls with single OK press while playing`() {
         var seekBackCalled = false
         var seekForwardCalled = false

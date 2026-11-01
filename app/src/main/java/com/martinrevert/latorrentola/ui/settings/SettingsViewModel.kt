@@ -79,7 +79,8 @@ class SettingsViewModel @Inject constructor(
             openSubtitlesCredentialsConfigured = openSubtitlesCredentials != null,
             convertAac51ToAc3 = preferenceManager.getConvertAac51ToAc3(),
             convertEac3ToAc3 = preferenceManager.getConvertEac3ToAc3(),
-            convertDtsToAc3 = preferenceManager.getConvertDtsToAc3()
+            convertDtsToAc3 = preferenceManager.getConvertDtsToAc3(),
+            decodeDtsHdToPcm = preferenceManager.getDecodeDtsHdToPcm()
         )
         syncSettings()
         observeSettingsChanges()
@@ -140,6 +141,13 @@ class SettingsViewModel @Inject constructor(
             preferenceManager.convertDtsToAc3Flow.collect { enabled ->
                 if (_uiState.value.convertDtsToAc3 != enabled) {
                     _uiState.value = _uiState.value.copy(convertDtsToAc3 = enabled)
+                }
+            }
+        }
+        viewModelScope.launch {
+            preferenceManager.decodeDtsHdToPcmFlow.collect { enabled ->
+                if (_uiState.value.decodeDtsHdToPcm != enabled) {
+                    _uiState.value = _uiState.value.copy(decodeDtsHdToPcm = enabled)
                 }
             }
         }
@@ -286,6 +294,16 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
+     * Updates and persists whether DTS-HD tracks should be decoded to multichannel PCM instead of bitstream passthrough.
+     *
+     * @param enabled Whether DTS-HD to PCM decoding is active.
+     */
+    fun setDecodeDtsHdToPcm(enabled: Boolean) {
+        preferenceManager.setDecodeDtsHdToPcm(enabled)
+        _uiState.value = _uiState.value.copy(decodeDtsHdToPcm = enabled)
+    }
+
+    /**
      * Encrypts and stores the user's OpenSubtitles login.
      *
      * @param username Account username.
@@ -367,5 +385,6 @@ data class SettingsUiState(
     val openSubtitlesCredentialsConfigured: Boolean = false,
     val convertAac51ToAc3: Boolean = false,
     val convertEac3ToAc3: Boolean = false,
-    val convertDtsToAc3: Boolean = false
+    val convertDtsToAc3: Boolean = false,
+    val decodeDtsHdToPcm: Boolean = false
 )

@@ -63,9 +63,12 @@ class DevicePlaybackCapabilities @Inject constructor(
         }
 
         val isDts = audioUpper.contains("DTS")
-        val isTrueHd = audioUpper.contains("TRUEHD") || audioUpper.contains("ATMOS")
+        val isTrueHd = audioUpper.contains("TRUEHD")
+        val isAtmos = audioUpper.contains("ATMOS")
         val isDdpOrAc3 = audioUpper.contains("DDP") || audioUpper.contains("EAC3") ||
-                audioUpper.contains("AC3") || audioUpper.contains("DD5.1") || audioUpper.contains("DD 5.1")
+                audioUpper.contains("E-AC3") || audioUpper.contains("AC3") ||
+                audioUpper.contains("AC4") || audioUpper.contains("AC-4") ||
+                audioUpper.contains("DD5.1") || audioUpper.contains("DD 5.1")
 
         if (isDts) {
             val hasDts = hasDtsSupport()
@@ -75,14 +78,24 @@ class DevicePlaybackCapabilities @Inject constructor(
         if (isTrueHd) {
             val hasTrueHd = hasTrueHdSupport()
             if (!hasTrueHd) return PlaybackCompatibility.AUDIO_REQUIRES_PASSTHROUGH_OR_EXTERNAL
-        }
-
-        if (isDdpOrAc3) {
+        } else if (isAtmos) {
+            // Per official Dolby developer guidelines, streaming Atmos releases use Dolby Digital Plus
+            // with JOC (E-AC-3 JOC) or AC-4. Only full Blu-ray remuxes use TrueHD Atmos.
+            val hasAtmos = hasAtmosSupport()
+            if (!hasAtmos) return PlaybackCompatibility.AUDIO_REQUIRES_PASSTHROUGH_OR_EXTERNAL
+        } else if (isDdpOrAc3) {
             val hasDdp = hasDdpOrAc3Support()
             if (!hasDdp) return PlaybackCompatibility.AUDIO_REQUIRES_PASSTHROUGH_OR_EXTERNAL
         }
 
         return PlaybackCompatibility.NATIVE
+    }
+
+    private val movieAudioAttributes: AudioAttributes by lazy {
+        AudioAttributes.Builder()
+            .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
+            .setUsage(androidx.media3.common.C.USAGE_MEDIA)
+            .build()
     }
 
     private fun hasDtsSupport(): Boolean {
@@ -91,7 +104,7 @@ class DevicePlaybackCapabilities @Inject constructor(
         }
         val audioCaps = AudioCapabilities.getCapabilities(
             context,
-            AudioAttributes.DEFAULT,
+            movieAudioAttributes,
             null,
             emptyList()
         )
@@ -102,25 +115,50 @@ class DevicePlaybackCapabilities @Inject constructor(
     private fun hasTrueHdSupport(): Boolean {
         val audioCaps = AudioCapabilities.getCapabilities(
             context,
-            AudioAttributes.DEFAULT,
+            movieAudioAttributes,
             null,
             emptyList()
         )
         return audioCaps.supportsEncoding(AudioFormat.ENCODING_DOLBY_TRUEHD)
     }
 
-    private fun hasDdpOrAc3Support(): Boolean {
-        if (nativeAudioMimes.contains("audio/ac3") || nativeAudioMimes.contains("audio/eac3")) {
+    private fun hasAtmosSupport(): Boolean {
+        if (nativeAudioMimes.contains("audio/eac3-joc") ||
+            nativeAudioMimes.contains("audio/eac3") ||
+            nativeAudioMimes.contains("audio/ac4")
+        ) {
             return true
         }
         val audioCaps = AudioCapabilities.getCapabilities(
             context,
-            AudioAttributes.DEFAULT,
+            movieAudioAttributes,
+            null,
+            emptyList()
+        )
+        return audioCaps.supportsEncoding(AudioFormat.ENCODING_E_AC3_JOC) ||
+                audioCaps.supportsEncoding(AudioFormat.ENCODING_E_AC3) ||
+                audioCaps.supportsEncoding(AudioFormat.ENCODING_AC4) ||
+                audioCaps.supportsEncoding(AudioFormat.ENCODING_DOLBY_TRUEHD)
+    }
+
+    private fun hasDdpOrAc3Support(): Boolean {
+        if (nativeAudioMimes.contains("audio/ac3") ||
+            nativeAudioMimes.contains("audio/eac3") ||
+            nativeAudioMimes.contains("audio/eac3-joc") ||
+            nativeAudioMimes.contains("audio/ac4")
+        ) {
+            return true
+        }
+        val audioCaps = AudioCapabilities.getCapabilities(
+            context,
+            movieAudioAttributes,
             null,
             emptyList()
         )
         return audioCaps.supportsEncoding(AudioFormat.ENCODING_AC3) ||
-                audioCaps.supportsEncoding(AudioFormat.ENCODING_E_AC3)
+                audioCaps.supportsEncoding(AudioFormat.ENCODING_E_AC3) ||
+                audioCaps.supportsEncoding(AudioFormat.ENCODING_E_AC3_JOC) ||
+                audioCaps.supportsEncoding(AudioFormat.ENCODING_AC4)
     }
 
     private fun querySupportedVideoMimes(): Set<String> {

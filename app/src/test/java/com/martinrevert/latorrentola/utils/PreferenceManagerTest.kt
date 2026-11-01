@@ -73,11 +73,13 @@ class PreferenceManagerTest {
         every { sharedPreferences.getBoolean("convert_aac51_to_ac3", false) } returns false
         every { sharedPreferences.getBoolean("convert_eac3_to_ac3", false) } returns false
         every { sharedPreferences.getBoolean("convert_dts_to_ac3", false) } returns false
+        every { sharedPreferences.getBoolean("decode_dts_hd_to_pcm", false) } returns false
 
         val preferenceManager = PreferenceManager(context)
         assertThat(preferenceManager.getConvertAac51ToAc3()).isFalse()
         assertThat(preferenceManager.getConvertEac3ToAc3()).isFalse()
         assertThat(preferenceManager.getConvertDtsToAc3()).isFalse()
+        assertThat(preferenceManager.getDecodeDtsHdToPcm()).isFalse()
 
         preferenceManager.setConvertAac51ToAc3(true)
         verify { editor.putBoolean("convert_aac51_to_ac3", true) }
@@ -87,5 +89,8 @@ class PreferenceManagerTest {
 
         preferenceManager.setConvertDtsToAc3(true)
         verify { editor.putBoolean("convert_dts_to_ac3", true) }
+
+        preferenceManager.setDecodeDtsHdToPcm(true)
+        verify { editor.putBoolean("decode_dts_hd_to_pcm", true) }
     }
 }

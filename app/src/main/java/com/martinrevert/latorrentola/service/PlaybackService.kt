@@ -81,10 +81,19 @@ class PlaybackService : MediaSessionService() {
 
             val renderersFactory = PlayerStreamingConfig.buildRenderersFactory(this)
 
+            // Configure theatrical movie audio attributes per official Dolby developer guidelines:
+            // USAGE_MEDIA + CONTENT_TYPE_MOVIE activates the Dolby Atmos Movie profile and binaural
+            // spatializer on mobile (Samsung, Xiaomi, etc.) and signals proper home theater routing on Android TV.
+            val movieAudioAttributes = androidx.media3.common.AudioAttributes.Builder()
+                .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
+                .setUsage(androidx.media3.common.C.USAGE_MEDIA)
+                .build()
+
             // Build the local player
             val exoPlayer = ExoPlayer.Builder(this, renderersFactory)
                 .setLoadControl(loadControl)
                 .setMediaSourceFactory(mediaSourceFactory)
+                .setAudioAttributes(movieAudioAttributes, true)
                 .build()
 
             // Diagnostics listener for audio decoder and AudioTrack hardware output routing
@@ -106,6 +115,7 @@ class PlaybackService : MediaSessionService() {
                         android.media.AudioFormat.ENCODING_AC3 -> "AC3 / Dolby Digital (5)"
                         android.media.AudioFormat.ENCODING_E_AC3 -> "E-AC3 / Dolby Digital Plus (6)"
                         android.media.AudioFormat.ENCODING_E_AC3_JOC -> "E-AC3 JOC / Atmos (18)"
+                        android.media.AudioFormat.ENCODING_AC4 -> "Dolby AC-4 (17)"
                         android.media.AudioFormat.ENCODING_DTS -> "DTS (7)"
                         android.media.AudioFormat.ENCODING_DTS_HD -> "DTS-HD (8)"
                         android.media.AudioFormat.ENCODING_DOLBY_TRUEHD -> "Dolby TrueHD (14)"

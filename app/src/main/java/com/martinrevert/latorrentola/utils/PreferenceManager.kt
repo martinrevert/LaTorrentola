@@ -47,6 +47,9 @@ class PreferenceManager @Inject constructor(
     /** Observable setting for converting DTS to AC3 5.1 when receiver lacks native DTS. */
     val convertDtsToAc3Flow: StateFlow<Boolean> get() = _convertDtsToAc3Flow.asStateFlow()
 
+    /** Observable setting for decoding DTS-HD Master Audio / DTS:X to multichannel PCM in software. */
+    val decodeDtsHdToPcmFlow: StateFlow<Boolean> get() = _decodeDtsHdToPcmFlow.asStateFlow()
+
     /** Listener to mirror changes from SharedPreferences directly into reactive StateFlows. */
     private val preferenceChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
@@ -59,6 +62,7 @@ class PreferenceManager @Inject constructor(
             KEY_CONVERT_AAC51_TO_AC3 -> _convertAac51ToAc3Flow.value = getConvertAac51ToAc3()
             KEY_CONVERT_EAC3_TO_AC3 -> _convertEac3ToAc3Flow.value = getConvertEac3ToAc3()
             KEY_CONVERT_DTS_TO_AC3 -> _convertDtsToAc3Flow.value = getConvertDtsToAc3()
+            KEY_DECODE_DTS_HD_TO_PCM -> _decodeDtsHdToPcmFlow.value = getDecodeDtsHdToPcm()
         }
     }
 
@@ -72,6 +76,7 @@ class PreferenceManager @Inject constructor(
         _convertAac51ToAc3Flow.value = getConvertAac51ToAc3()
         _convertEac3ToAc3Flow.value = getConvertEac3ToAc3()
         _convertDtsToAc3Flow.value = getConvertDtsToAc3()
+        _decodeDtsHdToPcmFlow.value = getDecodeDtsHdToPcm()
         sharedPreferences.registerOnSharedPreferenceChangeListener(preferenceChangeListener)
     }
 
@@ -285,6 +290,15 @@ class PreferenceManager @Inject constructor(
     /** Returns whether DTS to AC3 5.1 transcoding is enabled (defaults to false). */
     fun getConvertDtsToAc3(): Boolean = sharedPreferences.getBoolean(KEY_CONVERT_DTS_TO_AC3, false)
 
+    /** Persists whether DTS-HD / DTS:X should be decoded to multichannel PCM in software. */
+    fun setDecodeDtsHdToPcm(enabled: Boolean) {
+        sharedPreferences.edit { putBoolean(KEY_DECODE_DTS_HD_TO_PCM, enabled) }
+        _decodeDtsHdToPcmFlow.value = enabled
+    }
+
+    /** Returns whether DTS-HD to multichannel PCM decoding is enabled (defaults to false). */
+    fun getDecodeDtsHdToPcm(): Boolean = sharedPreferences.getBoolean(KEY_DECODE_DTS_HD_TO_PCM, false)
+
     companion object {
         /** Preference key controlling general voice guidance. */
         private const val KEY_VOICE_SYSTEM = "voice_system"
@@ -322,6 +336,8 @@ class PreferenceManager @Inject constructor(
         private const val KEY_CONVERT_EAC3_TO_AC3 = "convert_eac3_to_ac3"
         /** Preference key controlling DTS to AC3 5.1 transcoding. */
         private const val KEY_CONVERT_DTS_TO_AC3 = "convert_dts_to_ac3"
+        /** Preference key controlling DTS-HD / DTS:X to multichannel PCM decoding. */
+        private const val KEY_DECODE_DTS_HD_TO_PCM = "decode_dts_hd_to_pcm"
         private const val KEY_SUBTITLE_FONT_NAME = "subtitle_font_name"
         private const val KEY_SUBTITLE_SIZE_FRACTION = "subtitle_size_fraction"
         private const val KEY_SUBTITLE_FG_COLOR = "subtitle_fg_color"
@@ -363,6 +379,8 @@ class PreferenceManager @Inject constructor(
         private val _convertEac3ToAc3Flow = MutableStateFlow(false)
         /** Mutable backing stream for DTS to AC3 5.1 conversion preference shared across instances. */
         private val _convertDtsToAc3Flow = MutableStateFlow(false)
+        /** Mutable backing stream for DTS-HD to multichannel PCM decoding preference shared across instances. */
+        private val _decodeDtsHdToPcmFlow = MutableStateFlow(false)
     }
 }
 

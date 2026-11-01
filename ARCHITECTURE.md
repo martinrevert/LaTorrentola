@@ -381,12 +381,29 @@ To ensure optimal audio fidelity and prevent silent stereo downmixes:
 2. **AC3 Surround Transcoding (`Ac3TranscodingAudioSink`)**:
    * Wraps Media3's `DefaultAudioSink`.
    * Real-time transcoding (AAC 5.1 -> AC3, E-AC3 -> AC3, DTS -> AC3) activates when the user enables the preference AND the connected soundbar/AVR does NOT support the source format natively, BUT DOES support AC3 bitstream passthrough (`SINK_FORMAT_SUPPORTED_DIRECTLY`).
-3. **Tunneling & Audio Offload Prohibitions During Video Streaming**:
-   * Video tunneling is explicitly DISABLED (`setTunnelingEnabled(false)`). When tunneling (`FLAG_HW_AV_SYNC`) is active during bitstream passthrough (especially DTS-HD Master Audio, DTS:X, or TrueHD), Android TV audio HALs fail to emit hardware AV sync clock ticks, freezing video rendering. Software AV sync clock tracking (`AudioTrack.getPlaybackHeadPosition()`) is enforced for smooth playback.
+3. **DTS-HD & DTS:X Bitstream Passthrough & Multichannel LPCM Decoding Preference (`decode_dts_hd_to_pcm`)**:
+   * Internal Android TV audio HALs (MediaTek, Amlogic, Realtek) often cannot transmit IEC 61937 High Bit Rate (HBR) bursts (up to 24.5 Mbps) across the internal TV SoC bridge to HDMI eARC. Even when an eARC AVR advertises `ENCODING_DTS_HD` in EDID, opening `AudioTrack` with `ENCODING_DTS_HD` can lock the hardware playback clock (`getPlaybackHeadPosition() = 0`), freezing video rendering indefinitely while the buffer fills.
+   * User-facing toggle `decode_dts_hd_to_pcm` is provided in Audio Settings, defaulting to `false` (disabled) so native bitstream passthrough is attempted first.
+   * When enabled by the user: `Ac3TranscodingAudioSink.getFormatSupport` returns `SINK_FORMAT_UNSUPPORTED` and `MediaCodecAudioRenderer` returns `FORMAT_UNSUPPORTED_SUBTYPE` for `isDtsHdMime(...)` tracks. ExoPlayer automatically delegates DTS-HD to `FfmpegAudioRenderer` (`dca` decoder), decoding the lossless stream to pristine uncompressed multichannel LPCM (5.1/7.1) over eARC without hardware clock stalls, or transcoding to AC3 5.1 if the user enabled DTS-to-AC3. Standard DTS core (1.5 Mbps non-HBR) continues to pass through directly.
+   * Proactive stall watchdog and error recovery: If DTS-HD passthrough is attempted with the setting disabled and playback freezes (watchdog detects position frozen at 0 while buffer is filled >= 2s for 4s, or `onPlayerError` receives an `AudioTrack` or decoder failure), `PlaybackErrorDialog` displays a specialized message recommending the user enable LPCM decoding, offering an actionable button to enable the preference and resume playback seamlessly.
+4. **Tunneling & Audio Offload Prohibitions During Video Streaming**:
+   * Video tunneling is explicitly DISABLED (`setTunnelingEnabled(false)`). When tunneling (`FLAG_HW_AV_SYNC`) is active during bitstream passthrough, Android TV audio HALs fail to emit hardware AV sync clock ticks, freezing video rendering. Software AV sync clock tracking (`AudioTrack.getPlaybackHeadPosition()`) is enforced for smooth playback.
    * Audio offload is explicitly DISABLED (`AUDIO_OFFLOAD_MODE_DISABLED`). Offload mode introduces multi-second buffer bloat and excessive startup preroll, causing noticeable delays on Dolby Atmos (E-AC3 JOC).
    * TV playback startup buffer (`TV_BUFFER_FOR_PLAYBACK_MS`) is optimized to 2,000 ms (2.0 s) for stable playback onset, with `TV_BUFFER_AFTER_REBUFFER_MS` set to 3,000 ms (3.0 s) to provide an ample safety cushion against stutter upon buffer underruns.
    * Forward network streaming buffer in `DefaultLoadControl` is aggressively expanded for large heaps (96 MB and up to 120 seconds on TV, 64 MB and 60 seconds on Mobile) to maximize piece download absorption in partial torrent streams without memory pressure.
    * `DefaultAudioTrackBufferSizeProvider` caps passthrough buffer duration to 250 ms (`setPassthroughBufferDurationUs(250_000)`), preventing `AudioFlinger` memory allocation errors (`-12` ENOMEM) on 24.5 Mbps DTS-HD streams.
+5. **Dolby Developer Standards & Theatrical Audio Attributes Alignment**:
+   * **Dolby Official Developer Guidelines**:
+     * Android TV: [Enabling Dolby Atmos and Dolby Audio in Android TV media apps](https://professionalsupport.dolby.com/s/article/Enabling-Dolby-Atmos-and-Dolby-Audio-in-Android-TV-media-apps?language=en_US)
+     * Android Mobile: [Enabling Dolby Atmos in Android Mobile media apps](https://professionalsupport.dolby.com/s/article/Enabling-Dolby-Atmos-in-Android-Mobile-media-apps?language=en_US)
+   * **Movie AudioAttributes (`USAGE_MEDIA` + `CONTENT_TYPE_MOVIE`)**: ExoPlayer in `PlaybackService.kt` sets `.setAudioAttributes(AudioAttributes.Builder().setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).setUsage(C.USAGE_MEDIA).build(), true)`. This engages Dolby Atmos theatrical DSP rendering and Android 13+ `Spatializer` on mobile devices, signals movie content to HDMI AVR/soundbar sinks, and coordinates automatic audio focus handling.
+   * **Dolby Audio Format Taxonomy**:
+     * `AudioFormat.ENCODING_AC3`: Dolby Digital
+     * `AudioFormat.ENCODING_E_AC3`: Dolby Digital Plus
+     * `AudioFormat.ENCODING_E_AC3_JOC`: Dolby Atmos via Dolby Digital Plus (Joint Object Coding)
+     * `AudioFormat.ENCODING_AC4`: Dolby AC-4
+     * `AudioFormat.ENCODING_DOLBY_TRUEHD`: Dolby TrueHD
+   * In `DevicePlaybackCapabilities.kt`, streaming Atmos releases (E-AC-3 JOC) are properly checked against `ENCODING_E_AC3_JOC`, `ENCODING_E_AC3`, and `audio/eac3-joc` rather than demanding TrueHD hardware capabilities.
 
 ### 5.7 Video Playback & Google Cast Ecosystem
 * **Single Player Architecture (`LocalPlayerActivity`)**: Orchestrates playback across ExoPlayer (local) and Google Cast (`CastPlayer`).

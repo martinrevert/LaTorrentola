@@ -63,6 +63,26 @@ class Ac3TranscodingAudioSink(
         private const val AC3_SYNCFRAME_SIZE_48KHZ_BYTES = 2560 // 1536 * 640000 / (48000 * 8)
         private const val AC3_BUFFER_CAPACITY = 65536 // 64 KB direct buffer for encoded AC3 frames
         private const val PCM_DIRECT_BUFFER_CAPACITY = 65536
+
+        /**
+         * Returns true if [mime] corresponds to High Bit Rate (HBR) DTS-HD (Master Audio / High Resolution / DTS:X).
+         * Android TV / Google TV Audio HALs cannot route IEC 61937 HBR bursts across the internal SoC bridge to eARC,
+         * causing the audio hardware clock to freeze and stopping video playback.
+         */
+        @Suppress("DEPRECATION")
+        fun isDtsHdMime(mime: String?): Boolean {
+            if (mime == null) return false
+            return mime.equals(MimeTypes.AUDIO_DTS_HD, ignoreCase = true) ||
+                    mime.equals(MimeTypes.AUDIO_DTS_EXPRESS, ignoreCase = true) ||
+                    mime.equals(MimeTypes.AUDIO_DTS_X, ignoreCase = true) ||
+                    mime.equals("audio/vnd.dts.hd", ignoreCase = true) ||
+                    mime.equals("audio/dts-hd", ignoreCase = true) ||
+                    mime.equals("audio/x-dts-hd", ignoreCase = true) ||
+                    mime.equals("audio/vnd.dts.lbr", ignoreCase = true) ||
+                    mime.equals("audio/dts-hd-ma", ignoreCase = true) ||
+                    mime.equals("audio/dts-hd-hra", ignoreCase = true) ||
+                    mime.equals("audio/vnd.dts.uhd", ignoreCase = true)
+        }
     }
 
     @Volatile
@@ -94,6 +114,18 @@ class Ac3TranscodingAudioSink(
     }
 
     override fun getFormatSupport(format: Format): @AudioSink.SinkFormatSupport Int {
+        // When the user has enabled decodeDtsHdToPcm, disallow direct passthrough for DTS-HD (Master Audio, High Resolution, DTS:X).
+        // Android TV / Google TV Audio HALs cannot route IEC 61937 High Bit Rate (HBR) bursts (up to 24.5 Mbps)
+        // across the TV SoC internal bridge to the HDMI eARC transmitter. Even when an eARC AVR advertises
+        // ENCODING_DTS_HD in its HDMI EDID, writing DTS-HD bursts to AudioTrack halts the hardware playback clock
+        // (playback head position stays at 0), permanently stalling video rendering and freezing playback.
+        // When enabled, declaring DTS-HD unsupported for direct sink bitstream bypass forces ExoPlayer to route
+        // DTS-HD to FfmpegAudioRenderer, which decodes the lossless stream to pristine multichannel LPCM (or transcodes
+        // to AC3 5.1 if convertDtsToAc3 is enabled), playing smoothly with zero stalls.
+        if (preferenceManager.getDecodeDtsHdToPcm() && isDtsHdFormat(format)) {
+            return AudioSink.SINK_FORMAT_UNSUPPORTED
+        }
+
         // When surround -> AC3 transcoding is applicable, instruct FfmpegAudioRenderer and
         // MediaCodecAudioRenderer to prefer 16-bit integer PCM over 32-bit float PCM.
         if (format.sampleMimeType == MimeTypes.AUDIO_RAW &&
@@ -103,9 +135,9 @@ class Ac3TranscodingAudioSink(
             (
                 (preferenceManager.getConvertAac51ToAc3() && (currentSourceFormat == null || isAacFormat(currentSourceFormat))) ||
                 (preferenceManager.getConvertEac3ToAc3() && isEac3Format(currentSourceFormat) &&
-                    (currentSourceFormat == null || delegate.getFormatSupport(currentSourceFormat!!) != AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY)) ||
+                    (currentSourceFormat == null || getFormatSupport(currentSourceFormat!!) != AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY)) ||
                 (preferenceManager.getConvertDtsToAc3() && isDtsFormat(currentSourceFormat) &&
-                    (currentSourceFormat == null || delegate.getFormatSupport(currentSourceFormat!!) != AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY))
+                    (currentSourceFormat == null || getFormatSupport(currentSourceFormat!!) != AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY))
             )
         ) {
             return AudioSink.SINK_FORMAT_SUPPORTED_WITH_TRANSCODING
@@ -405,13 +437,13 @@ class Ac3TranscodingAudioSink(
             isEac3Format(src) -> {
                 preferenceManager.getConvertEac3ToAc3() &&
                     src != null &&
-                    delegate.getFormatSupport(src) != AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+                    getFormatSupport(src) != AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
             }
             // Case C: DTS (Core / DTS-HD / DTS:X) when receiver lacks direct DTS playback
             isDtsFormat(src) -> {
                 preferenceManager.getConvertDtsToAc3() &&
                     src != null &&
-                    delegate.getFormatSupport(src) != AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+                    getFormatSupport(src) != AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
             }
             else -> false
         }
@@ -438,17 +470,20 @@ class Ac3TranscodingAudioSink(
         return mime.equals(MimeTypes.AUDIO_E_AC3, ignoreCase = true) ||
                 mime.equals(MimeTypes.AUDIO_E_AC3_JOC, ignoreCase = true) ||
                 mime.equals("audio/e-ac3", ignoreCase = true) ||
-                mime.equals("audio/eac3", ignoreCase = true)
+                mime.equals("audio/eac3", ignoreCase = true) ||
+                mime.equals("audio/eac3-joc", ignoreCase = true)
+    }
+
+    private fun isDtsHdFormat(format: Format?): Boolean {
+        return isDtsHdMime(format?.sampleMimeType)
     }
 
     private fun isDtsFormat(format: Format?): Boolean {
         val mime = format?.sampleMimeType ?: return false
         return mime.equals(MimeTypes.AUDIO_DTS, ignoreCase = true) ||
-                mime.equals(MimeTypes.AUDIO_DTS_HD, ignoreCase = true) ||
-                mime.equals(MimeTypes.AUDIO_DTS_EXPRESS, ignoreCase = true) ||
-                mime.equals(MimeTypes.AUDIO_DTS_X, ignoreCase = true) ||
                 mime.equals("audio/vnd.dts", ignoreCase = true) ||
-                mime.equals("audio/vnd.dts.hd", ignoreCase = true) ||
-                mime.equals("audio/x-dts", ignoreCase = true)
+                mime.equals("audio/dts", ignoreCase = true) ||
+                mime.equals("audio/x-dts", ignoreCase = true) ||
+                isDtsHdMime(mime)
     }
 }

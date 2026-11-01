@@ -214,6 +214,7 @@ import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.service.PlaybackService
 import com.martinrevert.latorrentola.service.TorrentDownloadService
 import com.martinrevert.latorrentola.service.VerifiedTorrentHttpServer
+import com.martinrevert.latorrentola.service.streaming.Ac3TranscodingAudioSink
 import com.martinrevert.latorrentola.ui.components.DeleteTorrentDownloadsDialog
 import com.martinrevert.latorrentola.ui.components.InsufficientStorageDialog
 import com.martinrevert.latorrentola.ui.components.NextEpisodeTorrentDialog
@@ -413,6 +414,7 @@ class LocalPlayerActivity : FragmentActivity() {
     private var subtitleStartupCheckStarted = false
 
     private var progressTickerJob: Job? = null
+    private var dtsHdStallWatchdogJob: Job? = null
     private var castSessionManagerListener: SessionManagerListener<CastSession>? = null
     private var remoteMediaClientCallback: RemoteMediaClient.Callback? = null
     private var isCastConnecting by mutableStateOf(false)
@@ -945,6 +947,21 @@ class LocalPlayerActivity : FragmentActivity() {
                                 {
                                     playbackDecodingError = null
                                     showAudioOptions()
+                                }
+                            } else null,
+                            onEnableDtsHdLpcm = if (decodingError.isDtsHdError) {
+                                {
+                                    playbackDecodingError = null
+                                    preferenceManager.setDecodeDtsHdToPcm(true)
+                                    mediaController?.let { controller ->
+                                        val currentPos = controller.currentPosition.coerceAtLeast(0L)
+                                        val currentItem = controller.currentMediaItem
+                                        if (currentItem != null) {
+                                            controller.setMediaItem(currentItem, currentPos)
+                                            controller.prepare()
+                                            controller.playWhenReady = true
+                                        }
+                                    }
                                 }
                             } else null,
                             themeMode = themeMode
@@ -1480,7 +1497,9 @@ class LocalPlayerActivity : FragmentActivity() {
 
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_READY) {
-                            playbackDecodingError = null
+                            if (playbackDecodingError?.isDtsHdError != true) {
+                                playbackDecodingError = null
+                            }
                         } else if (state == Player.STATE_ENDED) {
                             saveCurrentProgress(controller)
                         }
@@ -1751,7 +1770,9 @@ class LocalPlayerActivity : FragmentActivity() {
 
                 override fun onPlaybackStateChanged(state: Int) {
                     if (state == Player.STATE_READY) {
-                        playbackDecodingError = null
+                        if (playbackDecodingError?.isDtsHdError != true) {
+                            playbackDecodingError = null
+                        }
                         prepareSubtitleTrackIfNeeded(controller.currentTracks)
                     }
                 }
@@ -2925,6 +2946,71 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
             }
         }
+        startDtsHdStallWatchdog(player)
+    }
+
+    private fun startDtsHdStallWatchdog(player: Player) {
+        dtsHdStallWatchdogJob?.cancel()
+        dtsHdStallWatchdogJob = lifecycleScope.launch {
+            var consecutiveStallTicks = 0
+            var lastPosition = -1L
+
+            while (isActive) {
+                delay(1000.milliseconds)
+                if (player.deviceInfo.playbackType != DeviceInfo.PLAYBACK_TYPE_LOCAL ||
+                    preferenceManager.getDecodeDtsHdToPcm() ||
+                    playbackDecodingError != null
+                ) {
+                    consecutiveStallTicks = 0
+                    continue
+                }
+
+                val isDtsHd = isCurrentAudioTrackDtsHd(player)
+                if (!isDtsHd) {
+                    consecutiveStallTicks = 0
+                    continue
+                }
+
+                val bufferAheadMs = player.bufferedPosition - player.currentPosition
+                val isStalled = player.playWhenReady &&
+                    player.playbackState == Player.STATE_READY &&
+                    (bufferAheadMs > 2000L || player.bufferedPosition > 4000L) &&
+                    player.currentPosition == lastPosition
+
+                if (isStalled) {
+                    consecutiveStallTicks++
+                    if (consecutiveStallTicks >= 4) {
+                        AppLogger.w(TAG, "DTS-HD passthrough stall detected: playback head halted at ${player.currentPosition}ms with ${bufferAheadMs}ms buffered. Prompting user to enable LPCM decoding.")
+                        playbackDecodingError = PlaybackDecodingError(
+                            isAudioError = true,
+                            codecSummary = "DTS-HD",
+                            isDtsHdError = true
+                        )
+                        consecutiveStallTicks = 0
+                    }
+                } else {
+                    consecutiveStallTicks = 0
+                }
+                lastPosition = player.currentPosition
+            }
+        }
+    }
+
+    private fun isCurrentAudioTrackDtsHd(player: Player): Boolean {
+        val tracks = player.currentTracks
+        for (group in tracks.groups) {
+            if (group.type == C.TRACK_TYPE_AUDIO && group.isSelected) {
+                for (i in 0 until group.length) {
+                    if (group.isTrackSelected(i)) {
+                        val format = group.getTrackFormat(i)
+                        if (Ac3TranscodingAudioSink.isDtsHdMime(format.sampleMimeType)) {
+                            return true
+                        }
+                    }
+                }
+            }
+        }
+        return false
     }
 
     private fun setupCastSessionListener() {
@@ -3118,6 +3204,8 @@ class LocalPlayerActivity : FragmentActivity() {
         mediaController?.clearVideoSurface()
         progressTickerJob?.cancel()
         progressTickerJob = null
+        dtsHdStallWatchdogJob?.cancel()
+        dtsHdStallWatchdogJob = null
         castSessionManagerListener?.let { listener ->
             try {
                 val castContext = safeGetCastContext(this)
