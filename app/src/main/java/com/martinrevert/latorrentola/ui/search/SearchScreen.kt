@@ -91,6 +91,7 @@ import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.utils.TvSeriesProgressCalculator
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.glass.hazeGlass
@@ -1508,10 +1509,9 @@ private fun FavoriteItemsGrid(
                 }
             }
             val absoluteIndex = movies.size + seriesIndex
-            val progress = watchHistoryMap[item.id.toString()]
-                ?: watchHistoryMap[item.name.orEmpty()]
-                ?: watchHistoryMap.values.find { it.mediaId.startsWith("media_${item.id}_") }
-            val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
+            val progressPercent = remember(item, watchHistoryMap) {
+                TvSeriesProgressCalculator.calculateProgressPercent(item, watchHistoryMap)
+            }
             TvSeriesCard(
                 series = item,
                 genres = itemGenres,

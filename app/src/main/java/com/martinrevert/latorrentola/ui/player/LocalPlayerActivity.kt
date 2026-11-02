@@ -401,6 +401,9 @@ class LocalPlayerActivity : FragmentActivity() {
     private var nextEpisodeTriggered = false
 
     private var showNextEpisodeDialog by mutableStateOf(false)
+    private var surfaceRebindKey by mutableIntStateOf(0)
+    private var mediaControllerListener: Player.Listener? = null
+    private var playbackCompletionListener: Player.Listener? = null
     private var showDeletePromptDialog by mutableStateOf(false)
     private var insufficientStorageData by mutableStateOf<Pair<Long, Long>?>(null)
     private var playerBottomSheetState by mutableStateOf<PlayerBottomSheetState?>(null)
@@ -559,7 +562,6 @@ class LocalPlayerActivity : FragmentActivity() {
                             }
                         }
 
-                        var surfaceRebindKey by remember { mutableIntStateOf(0) }
                         val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
                         DisposableEffect(lifecycleOwner) {
                             val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
@@ -901,26 +903,22 @@ class LocalPlayerActivity : FragmentActivity() {
                                         onInsufficientStorage = { available, required ->
                                             insufficientStorageData = Pair(available, required)
                                         },
-                                        onDownloadStarted = {
-                                            lifecycleScope.launch {
-                                                userLibraryRepository.markEpisodeAsDownloaded(
-                                                    DownloadedEpisode(
-                                                        seriesId = targetSeriesId,
-                                                        seriesName = targetSeriesName,
-                                                        seasonNumber = targetSeason,
-                                                        episodeNumber = targetEpisode,
-                                                        episodeName = targetEpName,
-                                                        releaseTitle = torrent.title,
-                                                        quality = torrent.qualityGroup.name,
-                                                        hash = torrent.hash.ifBlank { "tv_${targetSeriesId}_s${targetSeason}_e${targetEpisode}" },
-                                                        magnetUrl = torrent.magnetUrl.orEmpty(),
-                                                        timestamp = System.currentTimeMillis()
-                                                    )
-                                                )
-                                            }
-                                        }
+                                        onDownloadStarted = {}
                                     )
                                     if (started) {
+                                        try {
+                                            mediaController?.stop()
+                                            mediaController?.clearMediaItems()
+                                            mediaController?.clearVideoSurface()
+                                            SubtitleServerRegistry.stopAll()
+                                        } catch (e: Exception) {
+                                            Log.w(TAG, "Error cleaning up player before buffering next episode: ${e.message}")
+                                        }
+                                    }
+                                    val isAlreadyReady = matchingDownload?.progressPercent == 100 ||
+                                        (matchingDownload?.mediaPath?.let { File(it) }?.takeIf { it.isFile && it.canRead() } != null) ||
+                                        (torrent.hash.isNotBlank() && TorrentDownloadService.getReadyPlayerIntent(torrent.hash) != null)
+                                    if (started && isAlreadyReady) {
                                         showNextEpisodeDialog = false
                                     }
                                 }
@@ -1002,6 +1000,7 @@ class LocalPlayerActivity : FragmentActivity() {
         setIntent(intent)
         showNextEpisodeDialog = false
         playbackDecodingError = null
+        surfaceRebindKey++
         handleIntent(intent)
         val controller = mediaController
         if (controller != null) {
@@ -1493,7 +1492,8 @@ class LocalPlayerActivity : FragmentActivity() {
                 prepareSubtitleTrackIfNeeded(controller.currentTracks)
                 setupPlaybackCompletionListener(controller)
 
-                controller.addListener(object : Player.Listener {
+                mediaControllerListener?.let { controller.removeListener(it) }
+                val pipListener = object : Player.Listener {
                     override fun onTracksChanged(tracks: Tracks) {
                         selectDefaultSubtitleIfNeeded(controller)
                         selectDefaultAudioTrackIfNeeded(controller)
@@ -1527,7 +1527,9 @@ class LocalPlayerActivity : FragmentActivity() {
                             }
                         }
                     }
-                })
+                }
+                mediaControllerListener = pipListener
+                controller.addListener(pipListener)
                 return@launch
             }
 
@@ -1551,9 +1553,11 @@ class LocalPlayerActivity : FragmentActivity() {
                 nextEpisodeTriggered = false
                 if (activeItem != null) {
                     saveCurrentProgress(controller)
-                    controller.stop()
-                    controller.clearMediaItems()
                 }
+                controller.stop()
+                controller.clearMediaItems()
+                controller.clearVideoSurface()
+                surfaceRebindKey++
             }
 
             var itemToConfigure = newItem ?: activeItem
@@ -1773,7 +1777,8 @@ class LocalPlayerActivity : FragmentActivity() {
 
             setupPlaybackCompletionListener(controller)
 
-            controller.addListener(object : Player.Listener {
+            mediaControllerListener?.let { controller.removeListener(it) }
+            val listener = object : Player.Listener {
                 override fun onTracksChanged(tracks: Tracks) {
                     selectDefaultSubtitleIfNeeded(controller)
                     selectDefaultAudioTrackIfNeeded(controller)
@@ -1837,7 +1842,9 @@ class LocalPlayerActivity : FragmentActivity() {
                         }
                     }
                 }
-            })
+            }
+            mediaControllerListener = listener
+            controller.addListener(listener)
 
             selectDefaultSubtitleIfNeeded(controller)
             selectDefaultAudioTrackIfNeeded(controller)
@@ -1860,7 +1867,8 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     private fun setupPlaybackCompletionListener(player: Player) {
-        player.addListener(object : Player.Listener {
+        playbackCompletionListener?.let { player.removeListener(it) }
+        val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY && player.isPlaying) {
                     nextEpisodeTriggered = false
@@ -1869,7 +1877,9 @@ class LocalPlayerActivity : FragmentActivity() {
                     handlePlaybackEnded()
                 }
             }
-        })
+        }
+        playbackCompletionListener = listener
+        player.addListener(listener)
     }
 
     private fun selectDefaultSubtitleIfNeeded(controller: Player) {
@@ -2023,7 +2033,14 @@ class LocalPlayerActivity : FragmentActivity() {
                     )
 
                     if (result == TorrentLaunchResult.Started) {
-                        showNextEpisodeDialog = false
+                        try {
+                            mediaController?.stop()
+                            mediaController?.clearMediaItems()
+                            mediaController?.clearVideoSurface()
+                            SubtitleServerRegistry.stopAll()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Error cleaning up player for auto-play: ${e.message}")
+                        }
                     } else if (result is TorrentLaunchResult.InsufficientStorage) {
                         showNextEpisodeDialog = false
                         insufficientStorageData = Pair(result.availableBytes, result.requiredBytes)
@@ -3270,6 +3287,10 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     override fun onDestroy() {
+        mediaControllerListener?.let { mediaController?.removeListener(it) }
+        mediaControllerListener = null
+        playbackCompletionListener?.let { mediaController?.removeListener(it) }
+        playbackCompletionListener = null
         isPlayerForeground = false
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         mediaController?.clearVideoSurface()

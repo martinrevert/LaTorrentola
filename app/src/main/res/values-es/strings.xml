@@ -15,6 +15,7 @@
     <string name="play_desc">Reproducir</string>
     <string name="watch_trailer">Ver Trailer</string>
     <string name="close_trailer">Cerrar Trailer</string>
+    <string name="close">Cerrar</string>
     <string name="cast_desc">Transmitir a pantalla</string>
     <string name="downloaded_desc">Descargado</string>
     <string name="search_desc">Buscar</string>

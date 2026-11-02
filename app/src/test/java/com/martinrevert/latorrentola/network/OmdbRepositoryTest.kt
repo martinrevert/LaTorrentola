@@ -17,7 +17,7 @@ class OmdbRepositoryTest {
 
     @Before
     fun setUp() {
-        repository = OmdbRepository(omdbService)
+        repository = OmdbRepository(omdbService) { "fake_api_key" }
     }
 
     @Test

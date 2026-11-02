@@ -14,9 +14,13 @@ import kotlinx.coroutines.withContext
  * @property omdbService Retrofit service querying OMDb endpoints.
  */
 @Singleton
-class OmdbRepository @Inject constructor(
-    private val omdbService: OmdbService
+class OmdbRepository(
+    private val omdbService: OmdbService,
+    private val apiKeyProvider: () -> String
 ) {
+    @Inject
+    constructor(omdbService: OmdbService) : this(omdbService, { BuildConfig.OMDB_API_KEY })
+
     private val ratingsCache = ConcurrentHashMap<String, MovieRatings>()
 
     /**
@@ -33,7 +37,7 @@ class OmdbRepository @Inject constructor(
 
         ratingsCache[formattedId]?.let { return@withContext it }
 
-        val apiKey = BuildConfig.OMDB_API_KEY
+        val apiKey = apiKeyProvider()
         if (apiKey.isBlank()) return@withContext null
 
         try {

@@ -92,6 +92,7 @@ import com.martinrevert.latorrentola.ui.home.TvGenreSort
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.utils.TvSeriesProgressCalculator
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dagger.hilt.android.EntryPointAccessors
 import java.util.Locale
@@ -419,14 +420,9 @@ fun TvSeriesGrid(
             val itemGenres = remember(item.genreIds, genreNames) {
                 item.genreIds.orEmpty().mapNotNull(genreNames::get)
             }
-            val progress = remember(item.id, item.name, watchHistoryMap) {
-                watchHistoryMap[item.id.toString()]
-                    ?: watchHistoryMap[item.name.orEmpty()]
-                    ?: watchHistoryMap.values
-                        .filter { it.mediaId.startsWith("media_${item.id}_") }
-                        .maxByOrNull { it.timestamp }
+            val progressPercent = remember(item, watchHistoryMap) {
+                TvSeriesProgressCalculator.calculateProgressPercent(item, watchHistoryMap)
             }
-            val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
 
             TvSeriesCard(
                 series = item,

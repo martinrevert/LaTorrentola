@@ -1,5 +1,6 @@
 package com.martinrevert.latorrentola.ui.detail
 
+import androidx.annotation.VisibleForTesting
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
@@ -220,6 +221,8 @@ class TvEpisodeDetailViewModel @Inject constructor(
      *
      * @param torrent EZTV torrent release selected by user.
      */
+    @Deprecated("Retained for test compatibility; download marking on start is prohibited to prevent premature completion")
+    @VisibleForTesting
     fun markEpisodeAsDownloaded(torrent: EztvTorrent) {
         val episode = currentEpisode ?: return
         viewModelScope.launch {
@@ -249,6 +252,8 @@ class TvEpisodeDetailViewModel @Inject constructor(
      *
      * @param release Unified torrent release selected by user.
      */
+    @Deprecated("Retained for test compatibility; download marking on start is prohibited to prevent premature completion")
+    @VisibleForTesting
     fun markEpisodeAsDownloaded(release: TorrentRelease) {
         val episode = currentEpisode ?: return
         viewModelScope.launch {

@@ -37,6 +37,7 @@ Whether on your phone's touchscreen, your tablet, a foldable device, or comforta
 * **Extensive TV Catalog**: Browse currently airing shows, popular series, and all-time top-rated television.
 * **Cinematic Immersive Experience**: Dynamic full-bleed backdrop headers with transparent title logos and directional scrims for both Android TV and handheld devices.
 * **Intuitive Season & Episode Navigation**: Pick seasons and episodes with localized titles, air dates, synopsis overviews, and full D-pad remote accessibility on episode hero banners.
+* **True Overall Series Progress**: TV series posters across Home, Favorites, and Search display an accurate overall percentage bar computed across all seasons and episodes, eliminating deceptive 100% completion bars from a single played episode.
 * **Smart Next-Episode Detection**: Finished an episode? The app immediately evaluates whether the next episode is ready to stream, still awaiting broadcast, or if the season has concluded.
 * **Multi-Release Scraping**: Automatically aggregates the best available torrent releases sorted by peer seed counts for maximum download bandwidth.
 
@@ -48,11 +49,12 @@ Whether on your phone's touchscreen, your tablet, a foldable device, or comforta
 
 ### 4. ⚡ Instant Playback & Torrent Management
 Choose the torrent handling mode in **Settings** that fits your personal workflow:
-1. **Direct In-App Playback (Streaming)**: Tap any video quality badge and the built-in media player begins streaming within seconds using our verified piece pipeline. Reaching over 95% of playback automatically marks the episode or movie as completed, updating season counters and recording it in your downloaded history.
+1. **Direct In-App Playback (Streaming)**: Tap any video quality badge and the built-in media player begins streaming within seconds using our verified piece pipeline. Reaching over 95% of playback automatically marks the episode or movie as completed, updating season counters and recording it in your downloaded history. Starting playback never prematurely marks an episode or season as completed.
 2. **Cast to Smart TV / Chromecast**: Stream the torrent directly to your Google Cast or Android TV receiver on your local Wi-Fi. Over 95% progress automatically marks the item as completed.
 3. **External Client Handoff**: Prefer your external torrent app (Flud, LibreTorrent, uTorrent, or Synology DS get)? The app will hand off the magnet link automatically and immediately mark the item as downloaded and 100% completed in your library, keeping your watched history fully synchronized.
 * **Integrated Download Manager**: Monitor active transfers in the background, pause, resume, check speeds and peer counts, or clean up completed files.
 * **Cost-Efficient Cloud Sync**: Playback progress is recorded every 10 seconds in the fast, local Room database without incurring cloud write bills, syncing snapshots to Firebase Firestore only when playback is paused, stopped, finished, or the player is closed.
+* **Seamless Next-Episode Transitions**: When selecting the next episode or using Auto-Play, the choice dialog stays open showing live liquid buffering progress until 100% ready, with a pinned Close button for easy dismissal. Previous video surfaces and hardware decoders are cleanly released, completely eliminating video stalls or black screens on Android.
 * **Smart Next-Episode Progression**: Filtered multi-stream scraping prevents season pack confusion or re-downloading previously watched episodes when progressing through a series.
 
 ### 5. 🏠 Connect Your Home Server (NAS, PC, SMB & NFS)

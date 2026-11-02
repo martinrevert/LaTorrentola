@@ -21,7 +21,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -60,7 +64,6 @@ import com.martinrevert.latorrentola.service.TorrentDownloadService
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.TorrentCardActionHandler
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
-import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import kotlin.time.Duration.Companion.milliseconds
@@ -110,6 +113,7 @@ fun NextEpisodeTorrentDialog(
     }
     val firstItemFocusRequester = remember { FocusRequester() }
     val closeButtonFocusRequester = remember { FocusRequester() }
+    val bottomButtonFocusRequester = remember { FocusRequester() }
     var releaseToDelete by remember { mutableStateOf<TorrentRelease?>(null) }
 
     val effectiveReleasesByQuality = remember(releases, releasesByQuality) {
@@ -172,62 +176,115 @@ fun NextEpisodeTorrentDialog(
                             .fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        // Header section
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            if (effectiveSeriesName.isNotBlank()) {
-                                Text(
-                                    text = effectiveSeriesName,
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
+                        // Header section with pinned, permanently visible close button
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                if (effectiveSeriesName.isNotBlank()) {
+                                    Text(
+                                        text = effectiveSeriesName,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
 
-                            val headerTitle = when (evaluation?.state) {
-                                SeriesContinuationState.SERIES_ENDED ->
-                                    stringResource(R.string.series_status_ended_title)
-                                SeriesContinuationState.SEASON_COMPLETE_SERIES_CONTINUES ->
-                                    stringResource(R.string.series_status_returning_title)
-                                else -> {
-                                    val sNum = evaluation?.nextSeasonNumber?.takeIf { it > 0 } ?: seasonNumber
-                                    val eNum = evaluation?.nextEpisodeNumber?.takeIf { it > 0 } ?: episodeNumber
-                                    val epTitle = evaluation?.nextEpisodeName?.takeIf { it.isNotBlank() } ?: episodeName
-                                    if (sNum > 0 && eNum > 0) {
-                                        if (epTitle.isNotBlank()) {
-                                            "%s S%02dE%02d · %s".format(
-                                                stringResource(R.string.next_episode_dialog_title),
-                                                sNum,
-                                                eNum,
-                                                epTitle
-                                            )
+                                val headerTitle = when (evaluation?.state) {
+                                    SeriesContinuationState.SERIES_ENDED ->
+                                        stringResource(R.string.series_status_ended_title)
+                                    SeriesContinuationState.SEASON_COMPLETE_SERIES_CONTINUES ->
+                                        stringResource(R.string.series_status_returning_title)
+                                    else -> {
+                                        val sNum = evaluation?.nextSeasonNumber?.takeIf { it > 0 } ?: seasonNumber
+                                        val eNum = evaluation?.nextEpisodeNumber?.takeIf { it > 0 } ?: episodeNumber
+                                        val epTitle = evaluation?.nextEpisodeName?.takeIf { it.isNotBlank() } ?: episodeName
+                                        if (sNum > 0 && eNum > 0) {
+                                            if (epTitle.isNotBlank()) {
+                                                "%s S%02dE%02d · %s".format(
+                                                    stringResource(R.string.next_episode_dialog_title),
+                                                    sNum,
+                                                    eNum,
+                                                    epTitle
+                                                )
+                                            } else {
+                                                "%s S%02dE%02d".format(
+                                                    stringResource(R.string.next_episode_dialog_title),
+                                                    sNum,
+                                                    eNum
+                                                )
+                                            }
                                         } else {
-                                            "%s S%02dE%02d".format(
-                                                stringResource(R.string.next_episode_dialog_title),
-                                                sNum,
-                                                eNum
-                                            )
+                                            stringResource(R.string.next_episode_dialog_title)
                                         }
-                                    } else {
-                                        stringResource(R.string.next_episode_dialog_title)
                                     }
+                                }
+
+                                Text(
+                                    text = headerTitle,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface
+                                )
+
+                                if (!isStatusOnlyMode) {
+                                    Spacer(Modifier.height(2.dp))
+
+                                    Text(
+                                        text = stringResource(R.string.tv_available_torrents),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
 
-                            Text(
-                                text = headerTitle,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface
-                            )
-
-                            if (!isStatusOnlyMode) {
-                                Spacer(Modifier.height(2.dp))
-
-                                Text(
-                                    text = stringResource(R.string.tv_available_torrents),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            if (isTv) {
+                                TvSurface(
+                                    onClick = onDismiss,
+                                    shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small),
+                                    colors = ClickableSurfaceDefaults.colors(
+                                        containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant,
+                                        focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.primary,
+                                        contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                                        focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onPrimary
+                                    ),
+                                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+                                    modifier = Modifier
+                                        .padding(start = 8.dp)
+                                        .size(36.dp)
+                                        .focusRequester(closeButtonFocusRequester)
+                                        .focusProperties {
+                                            down = if (hasReleases) firstItemFocusRequester else bottomButtonFocusRequester
+                                        }
+                                ) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = stringResource(R.string.close),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            } else {
+                                IconButton(
+                                    onClick = onDismiss,
+                                    modifier = Modifier
+                                        .padding(start = 8.dp)
+                                        .size(36.dp)
+                                        .focusRequester(closeButtonFocusRequester)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = stringResource(R.string.close),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
                             }
                         }
 
@@ -356,7 +413,7 @@ fun NextEpisodeTorrentDialog(
                                                         .then(
                                                             if (isTv) {
                                                                 Modifier.focusProperties {
-                                                                    if (isLast) down = closeButtonFocusRequester
+                                                                    if (isLast) down = bottomButtonFocusRequester
                                                                     if (isFirst) up = closeButtonFocusRequester
                                                                 }
                                                             } else {
@@ -390,30 +447,49 @@ fun NextEpisodeTorrentDialog(
                             horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            TextButton(
-                                onClick = onDismiss,
-                                modifier = Modifier
-                                    .focusRequester(closeButtonFocusRequester)
-                                    .then(
-                                        if (isTv && hasReleases) {
-                                            Modifier.focusProperties {
-                                                up = FocusRequester.Default
-                                            }
-                                        } else {
-                                            Modifier
+                            val buttonText = if (isStatusOnlyMode) {
+                                stringResource(R.string.series_status_understood)
+                            } else {
+                                stringResource(R.string.close)
+                            }
+
+                            if (isTv) {
+                                TvSurface(
+                                    onClick = onDismiss,
+                                    shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small),
+                                    colors = ClickableSurfaceDefaults.colors(
+                                        containerColor = androidx.tv.material3.MaterialTheme.colorScheme.surfaceVariant,
+                                        focusedContainerColor = androidx.tv.material3.MaterialTheme.colorScheme.primary,
+                                        contentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                                        focusedContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onPrimary
+                                    ),
+                                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+                                    modifier = Modifier
+                                        .focusRequester(bottomButtonFocusRequester)
+                                        .focusProperties {
+                                            up = if (hasReleases) (lastRelease?.let { FocusRequester.Default } ?: firstItemFocusRequester) else closeButtonFocusRequester
                                         }
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = buttonText,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                                     )
-                                    .focusHighlight(shape = MaterialTheme.shapes.small)
-                            ) {
-                                Text(
-                                    text = if (isStatusOnlyMode) {
-                                        stringResource(R.string.series_status_understood)
-                                    } else {
-                                        stringResource(android.R.string.cancel)
-                                    },
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = if (isTv) androidx.tv.material3.MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary
-                                )
+                                }
+                            } else {
+                                TextButton(
+                                    onClick = onDismiss,
+                                    modifier = Modifier.focusRequester(bottomButtonFocusRequester)
+                                ) {
+                                    Text(
+                                        text = buttonText,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
                     }

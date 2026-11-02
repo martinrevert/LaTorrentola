@@ -37,6 +37,7 @@ Ya sea en la pantalla táctil de tu teléfono, en tu tablet, en un dispositivo p
 * **Catálogo Completo**: Explora series en emisión, las más populares y las mejor valoradas del momento.
 * **Experiencia Cinematográfica Inmersiva**: Cabeceras dinámicas con pósteres/fondos a pantalla completa, logotipos transparentes y degradados optimizados para móviles, tablets y Android TV.
 * **Navegación Intuitiva**: Elige la temporada y el episodio que deseas ver con sus títulos, fechas de estreno, resúmenes y accesibilidad completa con mando a distancia D-pad.
+* **Avance Real y Proporcional en Series**: Los pósteres de series en Inicio, Favoritos y Búsquedas muestran una barra roja con el porcentaje real consumido de toda la serie sumando todas sus temporadas y capítulos, evitando barras al 100% por haber visto un único episodio.
 * **Detección Automática de Próximo Episodio**: Al terminar un capítulo, la app sabe si el siguiente está listo para reproducir, si aún no se ha emitido o si la temporada ha finalizado.
 * **Versiones y Fuentes Múltiples**: Encuentra automáticamente las mejores versiones disponibles ordenadas por número de personas compartiendo (*seeders*) para garantizar la máxima velocidad.
 
@@ -48,11 +49,12 @@ Ya sea en la pantalla táctil de tu teléfono, en tu tablet, en un dispositivo p
 
 ### 4. ⚡ Reproducción Inmediata y Descargas de Torrents
 Elige en los **Ajustes** de la app el modo que mejor se adapte a tu manera de ver contenido:
-1. **Reproducción Directa en la App (Streaming)**: Pulsa sobre la calidad deseada y la app comenzará a reproducir el vídeo en segundos gracias a su motor de verificación de fragmentos. Superar el 95% de reproducción marca automáticamente el episodio o película como completado, actualizando los contadores de temporada y registrándolo en tu historial de descargas.
+1. **Reproducción Directa en la App (Streaming)**: Pulsa sobre la calidad deseada y la app comenzará a reproducir el vídeo en segundos gracias a su motor de verificación de fragmentos. Superar el 95% de reproducción marca automáticamente el episodio o película como completado, actualizando los contadores de temporada y registrándolo en tu historial de descargas. Iniciar la reproducción nunca marca de forma anticipada el episodio o la temporada como completados.
 2. **Enviar a Chromecast / Smart TV**: Transmite la película directamente a tu televisor compatible con Google Cast o Android TV. Al superar el 95%, queda marcado como completado en tu biblioteca.
 3. **Cliente Externo**: Si prefieres gestionar la descarga con una app externa (como Flud, LibreTorrent, uTorrent o Synology DS get), la app enviará el enlace magnet automáticamente y registrará de inmediato el contenido como descargado y 100% completado en tu historial local y en la nube.
 * **Gestor de Descargas Integrado**: Consulta el progreso de las descargas en segundo plano, la velocidad de transferencia, pausa, reanuda o borra archivos cuando lo necesites.
 * **Sincronización Eficiente en la Nube**: El avance se guarda cada 10 segundos en la base de datos local Room a máxima velocidad y sin coste de escrituras en la nube, enviando una instantánea a Firebase Firestore únicamente al pausar, detener, finalizar o salir del reproductor.
+* **Transiciones Impecables al Siguiente Episodio**: Al elegir el siguiente capítulo o con Auto-Play, el diálogo permanece activo mostrando la tarjeta con el avance de búfer hasta llegar al 100%, con un botón de cierre fijado arriba para cancelar fácilmente. Los decodificadores y superficies de vídeo anteriores se liberan de inmediato, eliminando pantallas negras y congelamientos en Android.
 * **Progresión Inteligente al Siguiente Episodio**: Filtrado estricto que descarta paquetes de temporadas completas y capítulos erróneos o ya vistos, garantizando que el diálogo de siguiente episodio descargue exactamente el capítulo consecutivo correcto.
 
 ### 5. 🏠 Conexión con tu Servidor Doméstico (NAS, PC, SMB y NFS)

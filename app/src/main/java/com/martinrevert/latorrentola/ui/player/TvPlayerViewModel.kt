@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
-import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.network.NextEpisodeEvaluation
 import com.martinrevert.latorrentola.network.SeriesContinuationState
 import com.martinrevert.latorrentola.network.TmdbRepository
@@ -253,24 +252,7 @@ class TvPlayerViewModel @Inject constructor(
                 requiredSizeBytes = sizeBytes
             )
 
-            if (result == TorrentLaunchResult.Started) {
-                userLibraryRepository.markEpisodeAsDownloaded(
-                    DownloadedEpisode(
-                        seriesId = seriesId,
-                        seriesName = seriesName,
-                        seasonNumber = seasonNumber,
-                        episodeNumber = episodeNumber,
-                        episodeName = episodeName,
-                        releaseTitle = release.title,
-                        quality = release.qualityGroup.name,
-                        hash = release.hash.ifBlank {
-                            "tv_${seriesId}_s${seasonNumber}_e${episodeNumber}"
-                        },
-                        magnetUrl = magnetUrl,
-                        timestamp = System.currentTimeMillis()
-                    )
-                )
-            } else {
+            if (result != TorrentLaunchResult.Started) {
                 _error.value = "Failed to start download: $result"
             }
             result

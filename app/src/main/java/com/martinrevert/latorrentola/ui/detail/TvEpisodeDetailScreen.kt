@@ -259,9 +259,6 @@ fun TvEpisodeDetailScreen(
                                 nextEpisodeInfo = nextEpisodeInfo,
                                 onInsufficientStorage = { available, required ->
                                     insufficientStorageState.value = Pair(available, required)
-                                },
-                                onDownloadStarted = {
-                                    viewModel.markEpisodeAsDownloaded(release)
                                 }
                             )
                         },
@@ -304,7 +301,7 @@ fun TvEpisodeDetailScreen(
                                     )
                                 ) {
                                     TorrentLaunchResult.Started -> {
-                                        viewModel.markEpisodeAsDownloaded(torrent)
+                                        // Launch started
                                     }
                                     is TorrentLaunchResult.InsufficientStorage -> {
                                         insufficientStorageState.value = Pair(result.availableBytes, result.requiredBytes)
