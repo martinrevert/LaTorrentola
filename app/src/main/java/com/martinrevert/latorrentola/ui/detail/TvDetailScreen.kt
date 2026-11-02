@@ -50,8 +50,6 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -77,6 +75,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -433,7 +432,10 @@ private fun TvSeriesDetailTvContent(
     var isRevealed by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         isRevealed = true
-        firstActionFocusRequester.requestFocus()
+        try {
+            withFrameNanos { }
+            backButtonFocusRequester.requestFocus()
+        } catch (_: Exception) {}
     }
 
     val posterScale by animateFloatAsState(
@@ -658,29 +660,29 @@ private fun TvSeriesDetailTvContent(
                                 onClick = onWatchTrailer,
                                 modifier = Modifier
                                     .focusRequester(firstActionFocusRequester)
-                                    .focusHighlight(shape = MaterialTheme.shapes.small)
                                     .focusProperties {
                                         up = backButtonFocusRequester
                                         down = if (cast.isNotEmpty()) firstCastFocusRequester else contentFocusRequester
                                     },
                                 colors = TvButtonDefaults.colors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                                    focusedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                    focusedContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    focusedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    focusedContentColor = MaterialTheme.colorScheme.onSecondaryContainer
                                 ),
                                 shape = TvButtonDefaults.shape(shape = MaterialTheme.shapes.small)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.PlayArrow,
                                     contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = stringResource(R.string.watch_trailer),
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -690,7 +692,6 @@ private fun TvSeriesDetailTvContent(
                             onClick = onFavoriteToggle,
                             modifier = Modifier
                                 .then(if (!hasTrailer) Modifier.focusRequester(firstActionFocusRequester) else Modifier)
-                                .focusHighlight(shape = MaterialTheme.shapes.small)
                                 .focusProperties {
                                     up = backButtonFocusRequester
                                     down = if (cast.isNotEmpty()) firstCastFocusRequester else contentFocusRequester
@@ -721,7 +722,6 @@ private fun TvSeriesDetailTvContent(
                         TvButton(
                             onClick = onShareClick,
                             modifier = Modifier
-                                .focusHighlight(shape = MaterialTheme.shapes.small)
                                 .focusProperties {
                                     up = backButtonFocusRequester
                                     down = if (cast.isNotEmpty()) firstCastFocusRequester else contentFocusRequester
@@ -1516,26 +1516,21 @@ private fun HandheldTvActionButtons(
         modifier = modifier.fillMaxWidth()
     ) {
         if (hasTrailer) {
-            Button(
+            FilledTonalButton(
                 onClick = onWatchTrailer,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ),
                 shape = MaterialTheme.shapes.small,
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                modifier = Modifier.weight(1f, fill = false)
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
                     contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = stringResource(R.string.watch_trailer),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold
+                    style = MaterialTheme.typography.labelMedium
                 )
             }
         }

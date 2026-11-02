@@ -1242,26 +1242,21 @@ private fun HandheldActionButtons(
         modifier = modifier.fillMaxWidth()
     ) {
         if (hasTrailer) {
-            Button(
+            FilledTonalButton(
                 onClick = onWatchTrailer,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ),
                 shape = MaterialTheme.shapes.small,
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                modifier = Modifier.weight(1f, fill = false)
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
                     contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = stringResource(R.string.watch_trailer),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold
+                    style = MaterialTheme.typography.labelMedium
                 )
             }
         }
@@ -1380,13 +1375,17 @@ private fun TvMovieDetailContent(
     modifier: Modifier = Modifier
 ) {
     var showTrailerDialog by remember { mutableStateOf(false) }
+    val backButtonFocusRequester = remember { FocusRequester() }
     val firstActionFocusRequester = remember { FocusRequester() }
     val hasTrailer = !movie.ytTrailerCode.isNullOrEmpty()
 
     var isRevealed by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         isRevealed = true
-        firstActionFocusRequester.requestFocus()
+        try {
+            withFrameNanos { }
+            backButtonFocusRequester.requestFocus()
+        } catch (_: Exception) {}
     }
 
     val posterScale by animateFloatAsState(
@@ -1495,7 +1494,12 @@ private fun TvMovieDetailContent(
             ) {
                 IconButton(
                     onClick = onBackClick,
-                    modifier = Modifier.focusHighlight(shape = CircleShape)
+                    modifier = Modifier
+                        .focusRequester(backButtonFocusRequester)
+                        .focusHighlight(shape = CircleShape)
+                        .focusProperties {
+                            down = firstActionFocusRequester
+                        }
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -1799,25 +1803,28 @@ private fun TvMovieDetailContent(
                                 onClick = { showTrailerDialog = true },
                                 modifier = Modifier
                                     .focusRequester(firstActionFocusRequester)
-                                    .focusHighlight(shape = MaterialTheme.shapes.small),
+                                    .focusProperties {
+                                        up = backButtonFocusRequester
+                                    },
                                 colors = TvButtonDefaults.colors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                                    focusedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                    focusedContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    focusedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    focusedContentColor = MaterialTheme.colorScheme.onSecondaryContainer
                                 ),
                                 shape = TvButtonDefaults.shape(shape = MaterialTheme.shapes.small)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.PlayArrow,
                                     contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = stringResource(R.string.watch_trailer),
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -1827,7 +1834,9 @@ private fun TvMovieDetailContent(
                             onClick = onFavoriteToggle,
                             modifier = Modifier
                                 .then(if (!hasTrailer) Modifier.focusRequester(firstActionFocusRequester) else Modifier)
-                                .focusHighlight(shape = MaterialTheme.shapes.small),
+                                .focusProperties {
+                                    up = backButtonFocusRequester
+                                },
                             colors = TvButtonDefaults.colors(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
                                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1853,7 +1862,9 @@ private fun TvMovieDetailContent(
                         // Share Button
                         TvButton(
                             onClick = onShareClick,
-                            modifier = Modifier.focusHighlight(shape = MaterialTheme.shapes.small),
+                            modifier = Modifier.focusProperties {
+                                up = backButtonFocusRequester
+                            },
                             colors = TvButtonDefaults.colors(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
                                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant,

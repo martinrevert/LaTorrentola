@@ -4,9 +4,9 @@ package com.martinrevert.latorrentola.ui.detail
 
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
-import com.martinrevert.latorrentola.ui.components.adaptiveLongClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -51,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -139,6 +141,15 @@ fun TvEpisodeDetailScreen(
     val firstTorrentFocusRequester = remember { FocusRequester() }
     val insufficientStorageState = remember { mutableStateOf<Pair<Long, Long>?>(null) }
 
+    LaunchedEffect(isTv) {
+        if (isTv) {
+            try {
+                withFrameNanos { }
+                backButtonFocusRequester.requestFocus()
+            } catch (_: Exception) {}
+        }
+    }
+
     LaunchedEffect(seriesId, seasonNumber, episodeNumber) {
         viewModel.loadEpisode(
             seriesId = seriesId,
@@ -173,6 +184,13 @@ fun TvEpisodeDetailScreen(
                                 .padding(16.dp)
                                 .size(42.dp)
                                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+                                .then(
+                                    if (isTv) {
+                                        Modifier
+                                            .focusRequester(backButtonFocusRequester)
+                                            .focusHighlight(shape = CircleShape)
+                                    } else Modifier
+                                )
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -354,6 +372,7 @@ fun TvEpisodeDetailScreen(
  * Renders the episode still photo hero banner, episode metadata, and responsive grid
  * of available torrent releases.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun EpisodeDetailContent(
     seriesName: String,
@@ -380,31 +399,34 @@ private fun EpisodeDetailContent(
     val isWideScreen = configuration.screenWidthDp >= 600
     val stillUrl = episode.fullStillUrl ?: posterUrl
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val bannerFocusRequester = remember { FocusRequester() }
+    val heroHeight = if (isTv) 340.dp else if (isWideScreen) 300.dp else 240.dp
 
-    Column(
+    LaunchedEffect(Unit) {
+        if (isTv) {
+            try {
+                withFrameNanos { }
+                backButtonFocusRequester.requestFocus()
+            } catch (_: Exception) {}
+        }
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
-            .focusGroup()
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = navBarHeight + 24.dp)
     ) {
-        // 1. Edge-to-Edge Episode Still Hero Banner
+        // 1. Edge-to-Edge Episode Still Hero Banner (Fixed in background)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (isWideScreen || isTv) 320.dp else 240.dp)
-                .focusRequester(bannerFocusRequester)
-                .focusProperties {
-                    up = backButtonFocusRequester
-                    if (firstTorrentFocusRequester != null) {
-                        down = firstTorrentFocusRequester
-                    }
-                }
-                .adaptiveLongClickable(
-                    onClick = {},
-                    onLongClick = onHeaderLongClick
+                .height(heroHeight)
+                .then(
+                    if (!isTv && onHeaderLongClick != null) {
+                        Modifier.combinedClickable(
+                            onClick = {},
+                            onLongClick = onHeaderLongClick
+                        )
+                    } else Modifier
                 )
         ) {
             if (!stillUrl.isNullOrBlank()) {
@@ -437,11 +459,28 @@ private fun EpisodeDetailContent(
                     )
             )
 
+            // Horizontal gradient scrim on TV and wide screens
+            if (isTv || isWideScreen) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.60f)
+                        .fillMaxHeight()
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.70f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+            }
+
             // Bottom gradient scrim fading to solid background
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(130.dp)
+                    .height(140.dp)
                     .align(Alignment.BottomCenter)
                     .background(
                         Brush.verticalGradient(
@@ -454,27 +493,6 @@ private fun EpisodeDetailContent(
                     )
             )
 
-            // Floating Circular Back Button
-            IconButton(
-                onClick = onBackClick,
-                modifier = Modifier
-                    .statusBarsPadding()
-                    .padding(if (isTv) 24.dp else 16.dp)
-                    .size(42.dp)
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
-                    .focusRequester(backButtonFocusRequester)
-                    .focusHighlight(shape = CircleShape)
-                    .focusProperties {
-                        down = bannerFocusRequester
-                    }
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.back_desc),
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
             // Industry-standard Red Streaming Watch Progress Bar
             WatchProgressBar(
                 progressPercent = progressPercent,
@@ -484,6 +502,16 @@ private fun EpisodeDetailContent(
                     .align(Alignment.BottomCenter)
             )
         }
+
+        // 2. Scrollable Content Layer
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .focusGroup()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = navBarHeight + 24.dp)
+        ) {
+            Spacer(modifier = Modifier.height(heroHeight - 48.dp))
 
         // 2. Episode Information Header
         Column(
@@ -662,7 +690,7 @@ private fun EpisodeDetailContent(
                                         modifier = if (isFirst && firstTorrentFocusRequester != null) {
                                             Modifier
                                                 .focusRequester(firstTorrentFocusRequester)
-                                                .focusProperties { up = bannerFocusRequester }
+                                                .focusProperties { up = backButtonFocusRequester }
                                         } else Modifier
                                     )
                                 }
@@ -688,13 +716,37 @@ private fun EpisodeDetailContent(
                             modifier = if (index == 0 && firstTorrentFocusRequester != null) {
                                 Modifier
                                     .focusRequester(firstTorrentFocusRequester)
-                                    .focusProperties { up = bannerFocusRequester }
+                                    .focusProperties { up = backButtonFocusRequester }
                             } else Modifier
                         )
                     }
                 }
             }
         }
+    }
+
+    // 3. Floating Circular Back Button
+    IconButton(
+        onClick = onBackClick,
+        modifier = Modifier
+            .statusBarsPadding()
+            .padding(if (isTv) 24.dp else 16.dp)
+            .size(42.dp)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+            .focusRequester(backButtonFocusRequester)
+            .focusHighlight(shape = CircleShape)
+            .focusProperties {
+                if (firstTorrentFocusRequester != null) {
+                    down = firstTorrentFocusRequester
+                }
+            }
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+            contentDescription = stringResource(R.string.back_desc),
+            tint = MaterialTheme.colorScheme.onSurface
+        )
+    }
     }
 }
 
