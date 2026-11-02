@@ -133,7 +133,7 @@ Elige en los **Ajustes** de la app el modo que mejor se adapte a tu manera de ve
 
 ¿Eres desarrollador, ingeniero de software o te apasiona la arquitectura técnica de Android?
 
-Toda la documentación técnica profunda sobre la arquitectura Clean, patrones MVVM/MVI, Jetpack Compose, pipeline de streaming `libtorrent4j`, transcodificación de audio surround `Ac3TranscodingAudioSink`, integración JNI con `libnfs`, sincronización reactiva Room/Firestore, reglas de R8/ProGuard y diagramas de secuencia Mermaid detallados se encuentra en el documento:
+Toda la documentación técnica profunda sobre la arquitectura Clean, patrones MVVM/MVI, Jetpack Compose, pipeline de streaming `libtorrent4j`, transcodificación de audio surround `Ac3TranscodingAudioSink`, integración JNI con `libnfs`, sincronización reactiva Room/Firestore, reglas de R8/ProGuard, submódulos de Agent Skills (`.agents/skills` y `.agents/firebase-skills`) y diagramas de secuencia Mermaid detallados se encuentra en el documento:
 
 👉 **[Consulta la Guía de Arquitectura Técnica (ARCHITECTURE.md)](ARCHITECTURE.md)** 👈
 

@@ -300,7 +300,20 @@ chmod +x ./gradlew
 ./gradlew testDebugUnitTest
 ```
 
-### 3.3 Testing Architecture
+### 3.3 Git Submodules & Agent Skills Architecture
+The repository uses Git Submodules to manage native external libraries and AI Agent Skills:
+* **Native C/C++ Submodules**:
+  * `app/src/main/cpp/libnfs`: High-performance userspace NFS client library.
+  * `app/src/main/cpp/ffmpeg`: FFmpeg audio decoding pipeline.
+* **Agent Skills Submodules ([Agent Skills Standard](https://agentskills.io/))**:
+  * `.agents/skills` (`https://github.com/android/skills.git`): Official Android development skills (Compose TV, Navigation 3, Media3, Adaptive, Security, R8, LiteRT).
+  * `.agents/firebase-skills` (`https://github.com/firebase/agent-skills.git`): Official Firebase agent skills (Auth, Firestore, Security Rules, Crashlytics, Analytics, Remote Config, AI Logic).
+* **Cross-IDE Directory Junctions**:
+  * Windows Junction: `.android-studio\skills` ➔ `.agents\skills`
+  * Windows Junction: `.agents\skills\firebase` ➔ `.agents\firebase-skills\skills`
+  * This structure exposes all skills recursively to both Android Studio (`.android-studio/skills`) and Agent frameworks (Antigravity, Cursor, Claude Code, Gemini CLI at `.agents/skills`).
+
+### 3.4 Testing Architecture
 * **Unit Tests (`app/src/test/`)**: Mirror the application package structure. Powered by **JUnit4**, **MockK**, **Turbine** (for Kotlin Flow state verification), and **Google Truth**.
 * **Zero APK Building Mandate for AI Agents**: In development and CI environments, running `testDebugUnitTest` is the mandatory verification step to confirm zero regressions across ViewModels, Repositories, and Utility classes.
 

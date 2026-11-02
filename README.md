@@ -133,7 +133,7 @@ Have a personal movie collection stored on your computer or home server? La Torr
 
 Are you a software engineer, Android developer, or interested in the technical inner workings of the app?
 
-All technical specifications regarding Clean Architecture, MVI/MVVM patterns, Jetpack Compose, the `libtorrent4j` streaming pipeline, real-time surround audio transcoding (`Ac3TranscodingAudioSink`), native JNI `libnfs` integration, reactive Room/Firestore sync, R8/ProGuard shrinking rules, and complete Mermaid sequence diagrams are detailed in:
+All technical specifications regarding Clean Architecture, MVI/MVVM patterns, Jetpack Compose, the `libtorrent4j` streaming pipeline, real-time surround audio transcoding (`Ac3TranscodingAudioSink`), native JNI `libnfs` integration, reactive Room/Firestore sync, R8/ProGuard shrinking rules, AI Agent Skills (`.agents/skills` & `.agents/firebase-skills`), and complete Mermaid sequence diagrams are detailed in:
 
 👉 **[Read the Technical Architecture Guide (ARCHITECTURE.md)](ARCHITECTURE.md)** 👈
 

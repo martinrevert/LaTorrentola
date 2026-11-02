@@ -27,20 +27,64 @@
 ---
 
 ## 🎯 3. SKILL ACTIVATION TRIGGERS (MANDATORY)
-**Official Skills Submodule (`https://github.com/android/skills.git`)**:
-- Skills are managed via Git Submodule at `.agents/skills` (compatible with Antigravity IDE and Android Studio) and linked via junction at `.android-studio/skills`.
-- **On a new development machine**: Run `git submodule update --init --recursive` (and on Windows `mklink /J .android-studio\skills .agents\skills` if `.android-studio/skills` junction is missing).
-- **To pull upstream skill updates**: Run `git submodule update --remote --merge .agents/skills`.
 
+**Official Skills Submodules**:
+This repository integrates two official Agent Skills submodules following the open [Agent Skills](https://agentskills.io/) standard:
+1. **Android Skills Submodule (`https://github.com/android/skills.git`)**:
+   - Location: `.agents/skills`
+   - Covers official Android architecture, Compose TV, Navigation 3, Media3, Adaptive layouts, CameraX, Wear OS, LiteRT, R8 optimization, and Android Intent/Permissions security.
+2. **Firebase Agent Skills Submodule (`https://github.com/firebase/agent-skills.git`)**:
+   - Location: `.agents/firebase-skills`
+   - Covers Firebase Authentication, Cloud Firestore data modeling & queries, Firestore security rules authoring & auditing, Firebase Crashlytics, Analytics, Remote Config, Firebase AI Logic (Gemini API), and CLI setup.
+
+**IDE & Agent Skills Integration (`.agents/skills` and `.android-studio/skills`)**:
+- Skills are managed via Git Submodules at `.agents/skills` and `.agents/firebase-skills`.
+- To ensure full compatibility across all environments (Android Studio Quail/Agent Mode, Antigravity IDE, Claude Code, Cursor, Codex, and Gemini CLI):
+  - `.android-studio/skills` links to `.agents/skills` via junction (Windows) or symlink (Linux/macOS).
+  - `.agents/skills/firebase` links to `.agents/firebase-skills/skills` via junction (Windows) or symlink (Linux/macOS).
+  - This guarantees that both Android platform skills AND Firebase skills are recursively discovered and immediately visible in both `.android-studio/skills/**/SKILL.md` and `.agents/skills/**/SKILL.md`.
+
+**New Development Machine Setup**:
+- **Windows (PowerShell / Command Prompt)**:
+  ```powershell
+  git submodule update --init --recursive
+  if (!(Test-Path .android-studio\skills)) { cmd /c "mklink /J .android-studio\skills .agents\skills" }
+  if (!(Test-Path .agents\skills\firebase)) { cmd /c "mklink /J .agents\skills\firebase .agents\firebase-skills\skills" }
+  ```
+- **Linux / macOS (POSIX Bash)**:
+  ```bash
+  git submodule update --init --recursive
+  mkdir -p .android-studio
+  [ -e .android-studio/skills ] || ln -s ../.agents/skills .android-studio/skills
+  [ -e .agents/skills/firebase ] || ln -s ../firebase-skills/skills .agents/skills/firebase
+  ```
+- **Pulling Upstream Skill Updates**:
+  ```bash
+  git submodule update --remote --merge .agents/skills
+  git submodule update --remote --merge .agents/firebase-skills
+  ```
+
+**MANDATORY DOMAIN TRIGGER MATRIX**:
 **IF** your task involves any of the following domains, **THEN** you MUST load the corresponding Android Studio / Antigravity Skill via the `read_file` tool on the skill's path before writing code:
 
 - `isTvDevice() == true`, `androidx.tv`, or D-pad Focus -> **LOAD:** `leanback-to-compose-tv-migration`
 - `LocalPlayerActivity`, `ExoPlayer`, Chromecast -> **LOAD:** `media3-cast-integration`
 - `AppNavigation.kt`, Deep Links, TypeSafe Routes -> **LOAD:** `navigation-3`
 - Responsive UI (Phone/Tablet/Foldable), System Bars -> **LOAD:** `adaptive` AND `edge-to-edge`
-- `AuthRepository`, Firestore, FCM -> **LOAD:** `firebase-basics` AND `firebase-auth-basics`
+- `AuthRepository`, Google Sign-In, Firebase Auth -> **LOAD:** `firebase-auth-basics` AND `firebase-basics`
+- Firestore database, Cloud Sync, Room-Firestore bridge -> **LOAD:** `firebase-firestore` AND `firebase-basics`
+- Firestore security rules, validation -> **LOAD:** `firestore-rules-creation` AND `firebase-security-rules-auditor`
+- Crashlytics, Crash Reporting -> **LOAD:** `firebase-crashlytics`
+- Analytics -> **LOAD:** `firebase-analytics`
+- Remote Config -> **LOAD:** `firebase-remote-config-basics`
+- Firebase AI Logic / Gemini on-device / Cloud -> **LOAD:** `firebase-ai-logic-basics`
 - Magnet links (`Intent.ACTION_VIEW`) -> **LOAD:** `android-intent-security`
 - ProGuard, R8, Shrinking, Build Optimization, Keep Rules -> **LOAD:** `performance/r8-analyzer`
+- Testing setup, harnesses -> **LOAD:** `testing-setup`
+- Camera / CameraX -> **LOAD:** `camerax`
+- Wear OS -> **LOAD:** `wear-compose-m3`, `wear-widgets`
+- LiteRT / On-device ML -> **LOAD:** `litert-runtime`, `litert-lm`
+- ML Kit GenAI Agent / Prompt API -> **LOAD:** `ml-kit-genai-prompt-api`, `mlkit-agent-api`
 
 ---
 

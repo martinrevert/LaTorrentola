@@ -41,6 +41,7 @@ captures/
 # AI Agent Skills & IDE Artifacts
 /.agents/*
 !/.agents/skills
+!/.agents/firebase-skills
 .android-studio/
 .artifacts/
 
