@@ -84,6 +84,13 @@ object PlayerIntentUtils {
             if (episodeNumber > 0) {
                 putInt(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, episodeNumber)
             }
+            val nextEpisodeInfo = intent.getStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO)
+            if (!nextEpisodeInfo.isNullOrEmpty()) {
+                putStringArrayList(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
+            }
+            if (!posterUrl.isNullOrBlank()) {
+                putString(LocalPlayerActivity.EXTRA_POSTER_URL, posterUrl)
+            }
             if (!mimeType.isNullOrBlank()) {
                 putString(LocalPlayerActivity.EXTRA_MIME_TYPE, mimeType)
             }

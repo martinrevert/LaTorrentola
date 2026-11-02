@@ -85,6 +85,7 @@ class TvPlayerViewModel @Inject constructor(
         _error.value = null
         _nextEpisodeReleases.value = emptyList()
         _nextEpisodeEvaluation.value = null
+        _nextEpisodeData.value = null
         return try {
             val evaluation = tvEpisodeReleasesRepository.evaluateNextEpisode(
                 seriesId = seriesId,

@@ -48,10 +48,12 @@ Ya sea en la pantalla táctil de tu teléfono, en tu tablet, en un dispositivo p
 
 ### 4. ⚡ Reproducción Inmediata y Descargas de Torrents
 Elige en los **Ajustes** de la app el modo que mejor se adapte a tu manera de ver contenido:
-1. **Reproducción Directa en la App (Streaming)**: Pulsa sobre la calidad deseada y la app comenzará a reproducir el vídeo en segundos gracias a su motor de verificación de fragmentos. ¡Sin esperas!
-2. **Enviar a Chromecast / Smart TV**: Transmite la película directamente a tu televisor compatible con Google Cast o Android TV.
-3. **Cliente Externo**: Si prefieres gestionar la descarga con una app externa (como Flud, LibreTorrent, uTorrent o Synology DS get), la app enviará el enlace magnet automáticamente.
+1. **Reproducción Directa en la App (Streaming)**: Pulsa sobre la calidad deseada y la app comenzará a reproducir el vídeo en segundos gracias a su motor de verificación de fragmentos. Superar el 95% de reproducción marca automáticamente el episodio o película como completado, actualizando los contadores de temporada y registrándolo en tu historial de descargas.
+2. **Enviar a Chromecast / Smart TV**: Transmite la película directamente a tu televisor compatible con Google Cast o Android TV. Al superar el 95%, queda marcado como completado en tu biblioteca.
+3. **Cliente Externo**: Si prefieres gestionar la descarga con una app externa (como Flud, LibreTorrent, uTorrent o Synology DS get), la app enviará el enlace magnet automáticamente y registrará de inmediato el contenido como descargado y 100% completado en tu historial local y en la nube.
 * **Gestor de Descargas Integrado**: Consulta el progreso de las descargas en segundo plano, la velocidad de transferencia, pausa, reanuda o borra archivos cuando lo necesites.
+* **Sincronización Eficiente en la Nube**: El avance se guarda cada 10 segundos en la base de datos local Room a máxima velocidad y sin coste de escrituras en la nube, enviando una instantánea a Firebase Firestore únicamente al pausar, detener, finalizar o salir del reproductor.
+* **Progresión Inteligente al Siguiente Episodio**: Filtrado estricto que descarta paquetes de temporadas completas y capítulos erróneos o ya vistos, garantizando que el diálogo de siguiente episodio descargue exactamente el capítulo consecutivo correcto.
 
 ### 5. 🏠 Conexión con tu Servidor Doméstico (NAS, PC, SMB y NFS)
 ¿Tienes una colección de películas en tu ordenador o servidor casero? La Torrentola se conecta directamente:

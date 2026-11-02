@@ -98,4 +98,20 @@ class TorrentioMetadataParserTest {
         assertEquals("Opus 5.1", TorrentioMetadataParser.extractAudioCodec("Inception.2010.OPUS.5.1.mkv"))
         assertEquals("FLAC", TorrentioMetadataParser.extractAudioCodec("Movie.1080p.FLAC.mkv"))
     }
+
+    @Test
+    fun matchesEpisode_validatesTargetSeasonAndEpisodeCorrectly() {
+        // Matches exact S01E02
+        assertTrue(TorrentioMetadataParser.matchesEpisode("Show.S01E02.1080p.mkv", null, 1, 2))
+        assertTrue(TorrentioMetadataParser.matchesEpisode(null, "Show.S01E02.1080p.mkv", 1, 2))
+        assertTrue(TorrentioMetadataParser.matchesEpisode("Show.1x02.720p.mkv", null, 1, 2))
+
+        // Rejects mismatching episodes (e.g. S01E01 when querying for S01E02)
+        assertFalse(TorrentioMetadataParser.matchesEpisode("Show.S01E01.1080p.mkv", null, 1, 2))
+        assertFalse(TorrentioMetadataParser.matchesEpisode("Show.1x01.720p.mkv", null, 1, 2))
+        assertFalse(TorrentioMetadataParser.matchesEpisode("Show.S02E02.1080p.mkv", null, 1, 2))
+
+        // Fallback for title without explicit season/episode pattern
+        assertTrue(TorrentioMetadataParser.matchesEpisode("Clean.Stream.Title", null, 1, 2))
+    }
 }

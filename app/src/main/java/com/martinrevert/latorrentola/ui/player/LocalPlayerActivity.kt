@@ -422,6 +422,8 @@ class LocalPlayerActivity : FragmentActivity() {
     private var castErrorMessage by mutableStateOf<String?>(null)
     private var playbackDecodingError by mutableStateOf<PlaybackDecodingError?>(null)
 
+    private val completedMediaIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
     private var pendingMediaUri: Uri? = null
     private var pendingMediaItem: MediaItem? = null
     private var posterUrl by mutableStateOf<String?>(null)
@@ -850,9 +852,17 @@ class LocalPlayerActivity : FragmentActivity() {
 
                         val targetSeriesId = nextData?.seriesId?.takeIf { it > 0 } ?: nextEpisodeSeriesId.takeIf { it > 0 } ?: currentSeriesId
                         val targetSeriesName = nextData?.seriesName?.takeIf { it.isNotBlank() } ?: nextEpisodeSeriesName.takeIf { it.isNotBlank() } ?: mediaTitle
-                        val targetSeason = nextData?.seasonNumber?.takeIf { it > 0 } ?: nextEpisodeSeasonNumber
-                        val targetEpisode = nextData?.episodeNumber?.takeIf { it > 0 } ?: nextEpisodeEpisodeNumber
-                        val targetEpName = nextData?.episodeName?.takeIf { it.isNotBlank() } ?: nextEpisodeEpisodeName
+                        val targetSeason = nextData?.seasonNumber?.takeIf { it > 0 }
+                            ?: evaluation?.nextSeasonNumber?.takeIf { it > 0 }
+                            ?: nextEpisodeSeasonNumber.takeIf { it > 0 }
+                            ?: currentSeasonNumber
+                        val targetEpisode = nextData?.episodeNumber?.takeIf { it > 0 }
+                            ?: evaluation?.nextEpisodeNumber?.takeIf { it > 0 }
+                            ?: nextEpisodeEpisodeNumber.takeIf { it > 0 }
+                            ?: (currentEpisodeNumber + 1)
+                        val targetEpName = nextData?.episodeName?.takeIf { it.isNotBlank() }
+                            ?: evaluation?.nextEpisodeName?.takeIf { it.isNotBlank() }
+                            ?: nextEpisodeEpisodeName
 
                         NextEpisodeTorrentDialog(
                             seriesName = targetSeriesName,
@@ -1267,6 +1277,10 @@ class LocalPlayerActivity : FragmentActivity() {
                 if (currentEpisodeNumber > 0) {
                     putInt(EXTRA_EPISODE_NUMBER, currentEpisodeNumber)
                 }
+                val nextEpInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
+                if (!nextEpInfo.isNullOrEmpty()) {
+                    putStringArrayList(EXTRA_NEXT_EPISODE_INFO, nextEpInfo)
+                }
                 val inferredMime = intent.getStringExtra(EXTRA_MIME_TYPE) ?: file?.mediaMimeType()
                 if (!inferredMime.isNullOrBlank()) {
                     putString(EXTRA_MIME_TYPE, inferredMime)
@@ -1597,6 +1611,11 @@ class LocalPlayerActivity : FragmentActivity() {
                         }
                         if (resolved.episodeNumber > 0) {
                             putInt(EXTRA_EPISODE_NUMBER, resolved.episodeNumber)
+                        }
+                        val nextEpInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
+                            ?: itemToConfigure.mediaMetadata.extras?.getStringArrayList(EXTRA_NEXT_EPISODE_INFO)
+                        if (!nextEpInfo.isNullOrEmpty()) {
+                            putStringArrayList(EXTRA_NEXT_EPISODE_INFO, nextEpInfo)
                         }
                         val inferredMime = intent.getStringExtra(EXTRA_MIME_TYPE)
                             ?: localFile?.mediaMimeType()
@@ -2940,9 +2959,9 @@ class LocalPlayerActivity : FragmentActivity() {
             while (isActive) {
                 delay(10.seconds)
                 if (player.isPlaying) {
-                    saveCurrentProgress(player)
+                    saveCurrentProgress(player, syncRemote = false)
                     safeGetCastContext(this@LocalPlayerActivity)?.sessionManager?.currentCastSession?.let { castSession ->
-                        saveCastSessionProgress(castSession)
+                        saveCastSessionProgress(castSession, syncRemote = false)
                     }
                 }
             }
@@ -3104,7 +3123,43 @@ class LocalPlayerActivity : FragmentActivity() {
         remoteMediaClientCallback = null
     }
 
-    private fun saveCurrentProgress(player: Player?) {
+    private fun markItemCompletedIfNeeded(mediaId: String, title: String, isEpisode: Boolean) {
+        if (!completedMediaIds.add(mediaId)) return
+        lifecycleScope.launch {
+            try {
+                if (isEpisode) {
+                    val epParsed = MediaIdHelper.parseCanonicalEpisode(mediaId)
+                    val sId = currentSeriesId.takeIf { it > 0 } ?: epParsed?.first ?: 0
+                    val sNum = currentSeasonNumber.takeIf { it > 0 } ?: epParsed?.second ?: 0
+                    val eNum = currentEpisodeNumber.takeIf { it > 0 } ?: epParsed?.third ?: 0
+                    if (sId > 0 && sNum > 0 && eNum > 0) {
+                        userLibraryRepository.markEpisodeAsCompleted(
+                            seriesId = sId,
+                            seasonNumber = sNum,
+                            episodeNumber = eNum,
+                            episodeTitle = title,
+                            seriesName = nextEpisodeSeriesName.ifBlank { "" },
+                            stillPath = posterUrl
+                        )
+                    }
+                } else {
+                    val mId = currentMovieId.takeIf { it > 0 } ?: mediaId.toIntOrNull() ?: 0
+                    if (mId > 0) {
+                        userLibraryRepository.markMovieAsCompleted(
+                            movieId = mId,
+                            movieTitle = title,
+                            posterUrl = posterUrl
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.w(TAG, "Error marking item completed on >95% progress: ${e.message}")
+            }
+        }
+    }
+
+    private fun saveCurrentProgress(player: Player?, syncRemote: Boolean = true) {
         val p = player ?: return
         val pos = p.currentPosition
         val dur = p.duration
@@ -3123,6 +3178,12 @@ class LocalPlayerActivity : FragmentActivity() {
         val isNearlyFinished = pos >= (dur * 0.95f).toLong()
         val finalPos = if (isNearlyFinished) dur else pos
 
+        if (isNearlyFinished) {
+            markItemCompletedIfNeeded(mediaId, title, isEpisode)
+        } else if (pos < (dur * 0.5f)) {
+            completedMediaIds.remove(mediaId)
+        }
+
         val progress = PlaybackProgress(
             mediaId = mediaId,
             title = title.ifBlank { "Media Item" },
@@ -3134,15 +3195,15 @@ class LocalPlayerActivity : FragmentActivity() {
 
         lifecycleScope.launch {
             try {
-                userLibraryRepository.savePlaybackProgress(progress)
-                Log.i(TAG, "Saved progress: $finalPos / $dur ms for $mediaId (completed=${progress.isCompleted})")
+                userLibraryRepository.savePlaybackProgress(progress, syncRemote = syncRemote)
+                Log.i(TAG, "Saved progress: $finalPos / $dur ms for $mediaId (completed=${progress.isCompleted}, syncRemote=$syncRemote)")
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving playback progress", e)
             }
         }
     }
 
-    private fun saveCastSessionProgress(session: CastSession) {
+    private fun saveCastSessionProgress(session: CastSession, syncRemote: Boolean = true) {
         val rmc = session.remoteMediaClient ?: return
         val pos = rmc.approximateStreamPosition
         val dur = rmc.streamDuration
@@ -3160,6 +3221,12 @@ class LocalPlayerActivity : FragmentActivity() {
         val isNearlyFinished = pos >= (dur * 0.95f).toLong()
         val finalPos = if (isNearlyFinished) dur else pos
 
+        if (isNearlyFinished) {
+            markItemCompletedIfNeeded(mediaId, title, isEpisode)
+        } else if (pos < (dur * 0.5f)) {
+            completedMediaIds.remove(mediaId)
+        }
+
         val progress = PlaybackProgress(
             mediaId = mediaId,
             title = title.ifBlank { "Media Item" },
@@ -3171,8 +3238,8 @@ class LocalPlayerActivity : FragmentActivity() {
 
         lifecycleScope.launch {
             try {
-                userLibraryRepository.savePlaybackProgress(progress)
-                Log.i(TAG, "Saved Cast progress: $finalPos / $dur ms for $mediaId (completed=${progress.isCompleted})")
+                userLibraryRepository.savePlaybackProgress(progress, syncRemote = syncRemote)
+                Log.i(TAG, "Saved Cast progress: $finalPos / $dur ms for $mediaId (completed=${progress.isCompleted}, syncRemote=$syncRemote)")
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving Cast playback progress", e)
             }

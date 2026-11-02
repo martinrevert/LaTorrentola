@@ -442,8 +442,13 @@ class UserLibraryRepository @Inject constructor(
         awaitClose { subscription.remove() }
     }
 
-    /** Saves or updates watch history playback progress locally in Room and in Firestore when signed in. */
-    suspend fun savePlaybackProgress(progress: PlaybackProgress) {
+    /**
+     * Saves or updates watch history playback progress.
+     * Always writes to the local Room database.
+     * Remote Firestore write is only performed when [syncRemote] is true (e.g. on pause, stop, player exit, or completion),
+     * preventing recurring network write bills during active 10-second playback ticks.
+     */
+    suspend fun savePlaybackProgress(progress: PlaybackProgress, syncRemote: Boolean = true) {
         try {
             watchHistoryDao.upsert(
                 WatchHistoryEntity(
@@ -459,6 +464,8 @@ class UserLibraryRepository @Inject constructor(
             if (e is CancellationException) throw e
             AppLogger.e("UserLibraryRepository", "Error saving watch history locally: ${e.message}", e)
         }
+
+        if (!syncRemote) return
 
         val uid = userId ?: return
         try {
@@ -822,9 +829,14 @@ class UserLibraryRepository @Inject constructor(
     }
 
     /** Marks a movie as 100% completed and downloaded in both Room and Firestore. */
-    suspend fun markMovieAsCompleted(movie: Movie) {
-        val title = movie.title.orEmpty()
-        val mediaId = MediaIdHelper.forMovie(movie.id, title = title)
+    suspend fun markMovieAsCompleted(
+        movieId: Int,
+        movieTitle: String,
+        posterUrl: String? = null,
+        movie: Movie? = null
+    ) {
+        val title = movieTitle.ifBlank { movie?.title.orEmpty() }
+        val mediaId = MediaIdHelper.forMovie(movieId, title = title)
         val progress = PlaybackProgress(
             mediaId = mediaId,
             title = title,
@@ -833,25 +845,39 @@ class UserLibraryRepository @Inject constructor(
             timestamp = System.currentTimeMillis(),
             isEpisode = false
         )
-        savePlaybackProgress(progress)
+        savePlaybackProgress(progress, syncRemote = true)
 
         val downloadedMovie = DownloadedMovie(
-            movieId = movie.id,
+            movieId = movieId,
             movieTitle = title,
-            quality = movie.torrents?.firstOrNull()?.quality ?: "HD",
-            hash = movie.id.toString(),
+            quality = movie?.torrents?.firstOrNull()?.quality ?: "HD",
+            hash = movieId.toString(),
             timestamp = System.currentTimeMillis(),
-            movie = movie
+            movie = movie ?: Movie(id = movieId, title = title, mediumCoverImage = posterUrl)
         )
         markAsDownloaded(downloadedMovie)
     }
 
+    /** Marks a movie as 100% completed and downloaded in both Room and Firestore. */
+    suspend fun markMovieAsCompleted(movie: Movie) {
+        markMovieAsCompleted(
+            movieId = movie.id,
+            movieTitle = movie.title.orEmpty(),
+            posterUrl = movie.mediumCoverImage,
+            movie = movie
+        )
+    }
+
+    /** Clears watch progress and downloads for a movie in both Room and Firestore. */
+    suspend fun markMovieAsUncompleted(movieId: Int, movieTitle: String? = null) {
+        val mediaId = MediaIdHelper.forMovie(movieId, title = movieTitle)
+        deletePlaybackProgress(mediaId)
+        removeMovieDownloads(movieId)
+    }
+
     /** Clears watch progress and downloads for a movie in both Room and Firestore. */
     suspend fun markMovieAsUncompleted(movie: Movie) {
-        val title = movie.title.orEmpty()
-        val mediaId = MediaIdHelper.forMovie(movie.id, title = title)
-        deletePlaybackProgress(mediaId)
-        removeMovieDownloads(movie.id)
+        markMovieAsUncompleted(movie.id, movie.title)
     }
 
     /** Deletes download records for a specific movie in Firestore and Room. */

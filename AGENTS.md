@@ -311,6 +311,29 @@ To preserve maximum runtime performance, fast startup time, minimal APK/AAB size
 6. **Java Toolchain Pinning in `gradle.properties`**:
    - Preserve `org.gradle.java.installations.auto-detect=false` and `paths` pointing to Android Studio JBR to prevent AGP `JdkImageTransform` from picking up broken external JDKs during system module assembly.
 
+### 📼 Watch Progress, Media Completion Authority, Firestore Cost Optimization & Next Episode Navigation Mandate (STRICT)
+To eliminate runaway cloud billing, prevent broken season completion counters, and ensure seamless next-episode progression:
+1. **Firestore Cost Optimization & Room Single Source of Truth (SSOT)**:
+   - **The 10-Second Write Storm Trap**: Writing to Firestore every 10 seconds during playback produces ~720 to 1,440 write operations per movie and triggers continuous Firestore snapshot listener read echoes on all active devices, generating catastrophic cloud costs.
+   - **PROHIBITION: NEVER write to Firestore on periodic 10-second playback ticks.**
+   - Periodic playback progress tickers in [`LocalPlayerActivity.kt`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/ui/player/LocalPlayerActivity.kt) and [`PlaybackService.kt`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/service/PlaybackService.kt) MUST write solely to the local Room database (`userLibraryRepository.savePlaybackProgress(progress, syncRemote = false)`).
+   - Syncing snapshots to Firestore (`syncRemote = true`) is STRICTLY RESTRICTED to definitive state transitions:
+     - Player paused (`onPlayWhenReadyChanged(playWhenReady = false)`).
+     - Player playback finished/ended (`onPlaybackStateChanged(STATE_ENDED)`).
+     - Activity/Service lifecycle teardown (`onPause()`, `onStop()`, `onDestroy()`).
+     - Google Cast session paused, ending, or ended.
+     - Definitive completion marks (>95% threshold or manual toggle).
+2. **Media Completion Contracts (External Client vs Internal Playback)**:
+   - **External Client Contract (`TorrentHandlingMode.EXTERNAL_CLIENT`)**: Handing off a magnet to an external torrent client cannot be tracked during playback. Therefore, in [`TorrentLaunchHelper.launch`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/utils/TorrentLaunchHelper.kt), opening the external client MUST immediately record a completed download (`DownloadedEpisode` / `DownloadedMovie`) and mark the item as 100% completed in both Room and Firestore.
+   - **Internal Playback Contract (ExoPlayer & CastPlayer)**: Surpassing 95% playback (`positionMs >= (durationMs * 0.95f).toLong()`) in [`LocalPlayerActivity.kt`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/ui/player/LocalPlayerActivity.kt) or [`PlaybackService.kt`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/service/PlaybackService.kt) MUST save completed `PlaybackProgress` (1000L/1000L) AND record `DownloadedEpisode` / `DownloadedMovie` via `markEpisodeAsCompleted` / `markMovieAsCompleted`.
+   - **Season Completion Badges (`TvDetailScreen.kt`)**: Season completed/partial status chips MUST evaluate both `seriesDownloads` AND `watchHistoryMap` entries (`progress.isCompleted || progress.progressPercent >= 95`) using `MediaIdHelper.parseCanonicalEpisode(mediaId)`.
+3. **Next Episode Progression & Multi-Stream Filtering**:
+   - **Torrentio Release Pollution Trap**: Torrentio stream endpoints return all streams mapped to a series IMDb identifier, which may include whole-season packs or releases from previous/other episodes.
+   - **PROHIBITION: NEVER serve Torrentio series streams without strict episode verification.**
+   - In [`TorrentioRepository.kt`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/network/TorrentioRepository.kt), all candidate streams MUST pass `!TorrentioMetadataParser.isSeasonPack(...)` AND `TorrentioMetadataParser.matchesEpisode(...)`.
+   - In [`TorrentCardActionHandler.kt`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/utils/TorrentCardActionHandler.kt), `nextEpisodeInfo` MUST be forwarded in `launchIntent`, `readyIntent`, and `serviceIntent` for all card play actions.
+   - In [`TvPlayerViewModel.kt`](file:///c:/Users/marti/StudioProjects/LaTorrentola/app/src/main/java/com/martinrevert/latorrentola/ui/player/TvPlayerViewModel.kt), `_nextEpisodeData.value = null` MUST be reset at the start of `evaluateNextEpisode` to prevent dialogs from rendering stale episode targets.
+
 ### Previews
 - Every UI Component MUST include `@Preview` functions covering: Light Mode, Dark Mode, Mobile form-factor, and TV form-factor (using appropriate theme wrappers).
 
@@ -330,5 +353,6 @@ Before marking a task complete, verify:
 10. [ ] If modifying player controls or Cast handoff, did I avoid speculative `!isPlaying` flips, bind to `RemoteMediaClient`, and ensure zero bottom sheet flashing on Cast start?
 11. [ ] If modifying audio rendering or player streaming config, did I preserve `EXTENSION_RENDERER_MODE_ON` (never `_PREFER`), keep direct passthrough ahead of FFmpeg, retain surround transcoding guardrails (`getFormatSupport == SINK_FORMAT_SUPPORTED_DIRECTLY`), ensure Tunneling and Audio Offload remain DISABLED to prevent video stalls and Atmos startup delays, keep TV playback buffer at 2,000ms, and maintain rebuffer cushion at 3,000ms?
 12. [ ] If modifying proguard-rules.pro, models, or dependencies, did I avoid blanket package wildcards ({ *; }), verify library consumer rules, and ensure R8 optimizations/inlining remain unhindered?
-13. [ ] Did I update `README.md`, `README.es.md`, and `ARCHITECTURE.md` on the fly to reflect all new features, settings, or architectural components?
-14. [ ] If resolving a bug, regression, or edge-case failure, did I automatically document a new mandatory directive in `AGENTS.md` and add its corresponding checklist item to prevent future regressions?
+13. [ ] Did I ensure 10-second playback tickers write ONLY to Room (`syncRemote = false`), syncing to Firestore only on pause, stop, player exit, or completion, while ensuring external client downloads mark 100% completion in Room & Firestore immediately and >95% internal playback records completed download entities?
+14. [ ] Did I update `README.md`, `README.es.md`, and `ARCHITECTURE.md` on the fly to reflect all new features, settings, or architectural components?
+15. [ ] If resolving a bug, regression, or edge-case failure, did I automatically document a new mandatory directive in `AGENTS.md` and add its corresponding checklist item to prevent future regressions?

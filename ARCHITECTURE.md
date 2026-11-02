@@ -413,13 +413,20 @@ To ensure optimal audio fidelity and prevent silent stereo downmixes:
 * **Direct State Authority (`RemoteCastCanvas`)**: Listens to `RemoteMediaClient.Callback.onStatusUpdated()` as the single source of truth during Cast sessions, polling at 250 ms intervals for automatic self-healing.
 * **Clean Cast Transition**: Device selection sheets dismiss immediately without artificial delays to eliminate UI flickering.
 
-### 5.8 Canonical Watch History & Cross-Source Resume
-To guarantee seamless watch history parity across Torrents, Local files, and Network Storage (SMB/NFS):
+### 5.8 Canonical Watch History, Cost-Optimized Sync & Completion Authority
+To guarantee seamless watch history parity and minimal cloud consumption across Torrents, Local files, and Network Storage (SMB/NFS):
 * **Canonical Movie IDs**: Must always be numeric TMDB/YTS IDs (e.g. `"12230"`), NEVER raw infoHashes or filenames.
 * **Canonical TV Episode IDs**: Must follow the format `"media_${seriesId}_s${season}_e${episode}"`.
 * **Inverse Metadata Resolution (`MediaMetadataResolver`)**: Filenames from NAS or local storage are regex-cleaned and queried against TMDB/YTS asynchronously before saving watch history.
-* **Single Source of Truth**: Room (`WatchHistoryDao`) is written to immediately for instant UI updates, followed by background Firestore synchronization.
-* **Manual Watch Progress**: Long-press on cards triggers `WatchProgressOptionDialog` to mark items as completed (100% progress + download record in Firestore) or uncompleted.
+* **Single Source of Truth & Zero Ticker Firestore Writes**:
+  * Local Room database (`WatchHistoryDao`) is the immediate single source of truth, updated on every 10-second ticker tick during active playback (`userLibraryRepository.savePlaybackProgress(progress, syncRemote = false)`).
+  * Remote writes to Cloud Firestore (`users/{uid}/watch_history`) with `syncRemote = true` are strictly dispatched only on state transitions: pause, stop, player exit (`onPause`, `onStop`, `onDestroy`, `PlaybackService.onDestroy`), Cast session detachment, or completion (>95% threshold or manual toggle). This reduces Firestore writes by >99% and avoids read amplification loops.
+* **Completion Authority Contracts**:
+  * **External Client (`TorrentHandlingMode.EXTERNAL_CLIENT`)**: Because playback cannot be monitored externally, handing off a torrent to an external app immediately writes a 100% completed `PlaybackProgress` and persists a `DownloadedEpisode` or `DownloadedMovie` in Room and Firestore.
+  * **Internal Playback (ExoPlayer & CastPlayer)**: Surpassing 95% of total media duration (`positionMs >= (durationMs * 0.95f).toLong()`) automatically registers the item as completed and writes the corresponding `DownloadedEpisode` or `DownloadedMovie`.
+  * **Season Consumption Badges (`TvDetailScreen`)**: Season completion badges evaluate the union of `seriesDownloads` and `watchHistoryMap` entries (`progress.isCompleted || progress.progressPercent >= 95`), correctly reporting completed vs. partial seasons on both Android TV and handheld devices.
+* **Next Episode Multi-Stream Validation**:
+  * Candidate streams from Torrentio are strictly validated via `TorrentioMetadataParser.matchesEpisode` and `isSeasonPack` to ensure multi-season packs and mismatched or previous episodes are excluded, guaranteeing that the next episode dialog always downloads the correct succeeding chapter.
 
 ### 5.9 Cloud Library, FCM & Google Identity
 * **Google Credential Manager**: Modern, one-tap identity retrieval passing ID Tokens to Firebase Auth.

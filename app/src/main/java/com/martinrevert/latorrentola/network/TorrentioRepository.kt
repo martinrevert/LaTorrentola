@@ -76,6 +76,8 @@ class TorrentioRepository @Inject constructor(
                 .filter { !TorrentioMetadataParser.isEztvStream(it) }
                 // 2. Discard full season packs; the app strictly works with single episodes
                 .filter { !TorrentioMetadataParser.isSeasonPack(it.title, it.behaviorHints?.filename) }
+                // 3. Ensure the stream actually matches the requested season and episode (prevents offering wrong or previous episodes)
+                .filter { TorrentioMetadataParser.matchesEpisode(it.title, it.behaviorHints?.filename, seasonNumber, episodeNumber) }
                 .map { stream -> mapStreamToRelease(stream) }
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error fetching Torrentio series streams for $seriesParam: ${e.message}", e)

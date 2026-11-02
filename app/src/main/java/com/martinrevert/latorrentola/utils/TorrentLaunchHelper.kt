@@ -7,8 +7,24 @@ import android.net.Uri
 import android.os.StatFs
 import androidx.core.content.ContextCompat
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
+import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.service.TorrentDownloadService
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.net.URLEncoder
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface TorrentLaunchHelperEntryPoint {
+    fun getUserLibraryRepository(): UserLibraryRepository
+}
 
 /** Starts a torrent using the selected handling mode without exposing partial files. */
 object TorrentLaunchHelper {
@@ -160,7 +176,8 @@ object TorrentLaunchHelper {
         episodeNumber: Int = 0,
         movieId: Int = 0,
         posterUrl: String? = null,
-        requiredSizeBytes: Long? = null
+        requiredSizeBytes: Long? = null,
+        userLibraryRepository: UserLibraryRepository? = null
     ): TorrentLaunchResult {
         @Suppress("DEPRECATION")
         if (mode == TorrentHandlingMode.LOCAL_PLAYBACK || mode == TorrentHandlingMode.CHROMECAST) {
@@ -178,8 +195,55 @@ object TorrentLaunchHelper {
         }
         return when (mode) {
             TorrentHandlingMode.EXTERNAL_CLIENT ->
-                if (openExternal(context, magnetUri)) TorrentLaunchResult.Started
-                else TorrentLaunchResult.NoExternalClient
+                if (openExternal(context, magnetUri)) {
+                    val repo = userLibraryRepository ?: runCatching {
+                        EntryPointAccessors.fromApplication(
+                            context.applicationContext,
+                            TorrentLaunchHelperEntryPoint::class.java
+                        ).getUserLibraryRepository()
+                    }.getOrNull()
+
+                    val resolvedSeriesId = seriesId.takeIf { it > 0 }
+                        ?: nextEpisodeInfo?.getOrNull(0)?.toIntOrNull()?.takeIf { it > 0 } ?: 0
+                    val resolvedSeriesName = nextEpisodeInfo?.getOrNull(1)?.takeIf { it.isNotBlank() }.orEmpty()
+
+                    CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                        try {
+                            if (resolvedSeriesId > 0 && seasonNumber > 0 && episodeNumber > 0) {
+                                repo?.markEpisodeAsCompleted(
+                                    seriesId = resolvedSeriesId,
+                                    seasonNumber = seasonNumber,
+                                    episodeNumber = episodeNumber,
+                                    episodeTitle = title,
+                                    seriesName = resolvedSeriesName,
+                                    stillPath = posterUrl
+                                )
+                            } else if (movieId > 0) {
+                                repo?.markMovieAsCompleted(
+                                    movieId = movieId,
+                                    movieTitle = title,
+                                    posterUrl = posterUrl
+                                )
+                            } else {
+                                val (detectedS, detectedE) = MediaMetadataResolver.extractSeasonAndEpisode(title)
+                                if (resolvedSeriesId > 0 && detectedS > 0 && detectedE > 0) {
+                                    repo?.markEpisodeAsCompleted(
+                                        seriesId = resolvedSeriesId,
+                                        seasonNumber = detectedS,
+                                        episodeNumber = detectedE,
+                                        episodeTitle = title,
+                                        seriesName = resolvedSeriesName,
+                                        stillPath = posterUrl
+                                    )
+                                }
+                            }
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                            AppLogger.e("TorrentLaunchHelper", "Error marking external download as completed: ${e.message}", e)
+                        }
+                    }
+                    TorrentLaunchResult.Started
+                } else TorrentLaunchResult.NoExternalClient
             TorrentHandlingMode.LOCAL_PLAYBACK,
             @Suppress("DEPRECATION") TorrentHandlingMode.CHROMECAST -> {
                 downloadLocally(context, magnetUri, title, false, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId, posterUrl)

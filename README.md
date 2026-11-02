@@ -48,10 +48,12 @@ Whether on your phone's touchscreen, your tablet, a foldable device, or comforta
 
 ### 4. ⚡ Instant Playback & Torrent Management
 Choose the torrent handling mode in **Settings** that fits your personal workflow:
-1. **Direct In-App Playback (Streaming)**: Tap any video quality badge and the built-in media player begins streaming within seconds using our verified piece pipeline. Zero waiting!
-2. **Cast to Smart TV / Chromecast**: Stream the torrent directly to your Google Cast or Android TV receiver on your local Wi-Fi.
-3. **External Client Handoff**: Prefer your external torrent app (Flud, LibreTorrent, uTorrent, or Synology DS get)? The app will hand off the magnet link automatically.
+1. **Direct In-App Playback (Streaming)**: Tap any video quality badge and the built-in media player begins streaming within seconds using our verified piece pipeline. Reaching over 95% of playback automatically marks the episode or movie as completed, updating season counters and recording it in your downloaded history.
+2. **Cast to Smart TV / Chromecast**: Stream the torrent directly to your Google Cast or Android TV receiver on your local Wi-Fi. Over 95% progress automatically marks the item as completed.
+3. **External Client Handoff**: Prefer your external torrent app (Flud, LibreTorrent, uTorrent, or Synology DS get)? The app will hand off the magnet link automatically and immediately mark the item as downloaded and 100% completed in your library, keeping your watched history fully synchronized.
 * **Integrated Download Manager**: Monitor active transfers in the background, pause, resume, check speeds and peer counts, or clean up completed files.
+* **Cost-Efficient Cloud Sync**: Playback progress is recorded every 10 seconds in the fast, local Room database without incurring cloud write bills, syncing snapshots to Firebase Firestore only when playback is paused, stopped, finished, or the player is closed.
+* **Smart Next-Episode Progression**: Filtered multi-stream scraping prevents season pack confusion or re-downloading previously watched episodes when progressing through a series.
 
 ### 5. 🏠 Connect Your Home Server (NAS, PC, SMB & NFS)
 Have a personal movie collection stored on your computer or home server? La Torrentola connects directly:

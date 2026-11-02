@@ -108,6 +108,7 @@ import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface as TvSurface
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeason
@@ -811,10 +812,22 @@ private fun TvSeriesDetailTvContent(
                             R.string.tv_season_number,
                             season.seasonNumber
                         )
-                        val downloadedCount = seriesDownloads
-                            .filter { it.seasonNumber == season.seasonNumber }
-                            .distinctBy { it.episodeNumber }
-                            .size
+                        val completedEpisodeNumbers = remember(seriesDownloads, watchHistoryMap, season.seasonNumber, series.id) {
+                            val numbers = seriesDownloads
+                                .filter { it.seasonNumber == season.seasonNumber }
+                                .map { it.episodeNumber }
+                                .toMutableSet()
+                            watchHistoryMap.forEach { (mediaId, progress) ->
+                                if (progress.isCompleted || progress.progressPercent >= 95) {
+                                    val parsed = MediaIdHelper.parseCanonicalEpisode(mediaId)
+                                    if (parsed != null && parsed.first == series.id && parsed.second == season.seasonNumber) {
+                                        numbers.add(parsed.third)
+                                    }
+                                }
+                            }
+                            numbers
+                        }
+                        val downloadedCount = completedEpisodeNumbers.size
                         val totalCount = if (
                             seasonState is TvSeasonUiState.Success &&
                             seasonState.season.seasonNumber == season.seasonNumber
@@ -1303,10 +1316,22 @@ private fun HandheldTvSeriesDetailContent(
                             R.string.tv_season_number,
                             season.seasonNumber
                         )
-                        val downloadedCount = seriesDownloads
-                            .filter { it.seasonNumber == season.seasonNumber }
-                            .distinctBy { it.episodeNumber }
-                            .size
+                        val completedEpisodeNumbers = remember(seriesDownloads, watchHistoryMap, season.seasonNumber, series.id) {
+                            val numbers = seriesDownloads
+                                .filter { it.seasonNumber == season.seasonNumber }
+                                .map { it.episodeNumber }
+                                .toMutableSet()
+                            watchHistoryMap.forEach { (mediaId, progress) ->
+                                if (progress.isCompleted || progress.progressPercent >= 95) {
+                                    val parsed = MediaIdHelper.parseCanonicalEpisode(mediaId)
+                                    if (parsed != null && parsed.first == series.id && parsed.second == season.seasonNumber) {
+                                        numbers.add(parsed.third)
+                                    }
+                                }
+                            }
+                            numbers
+                        }
+                        val downloadedCount = completedEpisodeNumbers.size
                         val totalCount = if (
                             seasonState is TvSeasonUiState.Success &&
                             seasonState.season.seasonNumber == season.seasonNumber

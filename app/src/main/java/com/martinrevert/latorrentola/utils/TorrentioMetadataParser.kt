@@ -22,6 +22,13 @@ object TorrentioMetadataParser {
         RegexOption.IGNORE_CASE
     )
 
+    private val SE_PATTERN = Regex("""\b[sS](\d{1,2})[\s._-]*[eE](\d{1,2})\b""")
+    private val X_PATTERN = Regex("""\b(\d{1,2})x(\d{1,2})\b""", RegexOption.IGNORE_CASE)
+    private val WORD_PATTERN = Regex(
+        """(?:season|temporada)\s*(\d{1,2})\D+(?:episode|capitulo|capítulo|ep)\s*(\d{1,2})\b""",
+        RegexOption.IGNORE_CASE
+    )
+
     /**
      * Determines whether a torrent represents an entire season or multi-episode collection.
      * The app strictly works with single episode releases to prevent multi-gigabyte pack downloads.
@@ -30,6 +37,54 @@ object TorrentioMetadataParser {
         val combined = "${title.orEmpty()} ${filename.orEmpty()}"
         if (combined.isBlank()) return false
         return SEASON_PACK_REGEX.containsMatchIn(combined)
+    }
+
+    /**
+     * Verifies whether a stream's title or filename matches the requested [targetSeason] and [targetEpisode].
+     * If the release title or filename explicitly specifies a season/episode that differs from the target,
+     * it is rejected to avoid offering/downloading the wrong or previously watched episode.
+     */
+    fun matchesEpisode(
+        title: String?,
+        filename: String? = null,
+        targetSeason: Int,
+        targetEpisode: Int
+    ): Boolean {
+        if (targetSeason <= 0 || targetEpisode <= 0) return true
+        val combined = "${title.orEmpty()} ${filename.orEmpty()}".trim()
+        if (combined.isBlank()) return true
+
+        // 1. SxxExx or Sxx.Exx pattern
+        val seMatches = SE_PATTERN.findAll(combined).toList()
+        if (seMatches.isNotEmpty()) {
+            return seMatches.any { match ->
+                val s = match.groupValues[1].toIntOrNull()
+                val e = match.groupValues[2].toIntOrNull()
+                s == targetSeason && e == targetEpisode
+            }
+        }
+
+        // 2. 1x02 pattern
+        val xMatches = X_PATTERN.findAll(combined).toList()
+        if (xMatches.isNotEmpty()) {
+            return xMatches.any { match ->
+                val s = match.groupValues[1].toIntOrNull()
+                val e = match.groupValues[2].toIntOrNull()
+                s == targetSeason && e == targetEpisode
+            }
+        }
+
+        // 3. Explicit "Season X Episode Y" or "Temporada X Capitulo Y"
+        val wordMatches = WORD_PATTERN.findAll(combined).toList()
+        if (wordMatches.isNotEmpty()) {
+            return wordMatches.any { match ->
+                val s = match.groupValues[1].toIntOrNull()
+                val e = match.groupValues[2].toIntOrNull()
+                s == targetSeason && e == targetEpisode
+            }
+        }
+
+        return true
     }
 
     /**

@@ -6,6 +6,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.martinrevert.latorrentola.database.WatchHistoryDao
 import com.martinrevert.latorrentola.database.WatchHistoryEntity
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
 import io.mockk.clearMocks
 import io.mockk.coEvery
@@ -77,6 +78,31 @@ class UserLibraryRepositoryTest {
     }
 
     @Test
+    fun `savePlaybackProgress with syncRemote false should only write to room without calling firestore`() = runTest {
+        val progress = PlaybackProgress(
+            mediaId = "200",
+            title = "Movie 200",
+            positionMs = 50000L,
+            durationMs = 100000L,
+            timestamp = 3000L,
+            isEpisode = false
+        )
+
+        repository.savePlaybackProgress(progress, syncRemote = false)
+
+        io.mockk.coVerify(exactly = 1) {
+            watchHistoryDao.upsert(
+                match { entity ->
+                    entity.mediaId == "200" && entity.positionMs == 50000L
+                }
+            )
+        }
+        io.mockk.verify(exactly = 0) {
+            firestore.collection(any())
+        }
+    }
+
+    @Test
     fun `markMovieAsCompleted should save completed progress to room`() = runTest {
         val movie = com.martinrevert.latorrentola.model.YTS.Movie(id = 500, title = "Test Movie")
         repository.markMovieAsCompleted(movie)
@@ -86,6 +112,23 @@ class UserLibraryRepositoryTest {
                 match { entity ->
                     entity.mediaId == "500" &&
                             entity.title == "Test Movie" &&
+                            entity.positionMs == 1000L &&
+                            entity.durationMs == 1000L &&
+                            !entity.isEpisode
+                }
+            )
+        }
+    }
+
+    @Test
+    fun `markMovieAsCompleted with id and title should save completed progress to room`() = runTest {
+        repository.markMovieAsCompleted(movieId = 600, movieTitle = "Test Movie 600", posterUrl = null)
+
+        io.mockk.coVerify {
+            watchHistoryDao.upsert(
+                match { entity ->
+                    entity.mediaId == "600" &&
+                            entity.title == "Test Movie 600" &&
                             entity.positionMs == 1000L &&
                             entity.durationMs == 1000L &&
                             !entity.isEpisode

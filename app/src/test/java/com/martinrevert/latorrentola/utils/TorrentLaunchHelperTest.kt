@@ -108,4 +108,111 @@ class TorrentLaunchHelperTest {
 
         assertThat(result).isEqualTo(TorrentLaunchResult.Started)
     }
+
+    @Test
+    fun `launch with EXTERNAL_CLIENT should mark episode as completed on repository`() {
+        val context = mockk<Context>(relaxed = true)
+        val repo = mockk<com.martinrevert.latorrentola.network.UserLibraryRepository>(relaxed = true)
+
+        val result = TorrentLaunchHelper.launch(
+            context = context,
+            mode = TorrentHandlingMode.EXTERNAL_CLIENT,
+            magnetUri = "magnet:?xt=urn:btih:abc123def456",
+            title = "Series S01E01 Title",
+            seriesId = 10,
+            seasonNumber = 1,
+            episodeNumber = 1,
+            userLibraryRepository = repo
+        )
+
+        assertThat(result).isEqualTo(TorrentLaunchResult.Started)
+        io.mockk.coVerify(timeout = 2000) {
+            repo.markEpisodeAsCompleted(
+                seriesId = 10,
+                seasonNumber = 1,
+                episodeNumber = 1,
+                episodeTitle = "Series S01E01 Title",
+                seriesName = "",
+                stillPath = null
+            )
+        }
+    }
+
+    @Test
+    fun `launch with EXTERNAL_CLIENT should extract seriesName from nextEpisodeInfo when available`() {
+        val context = mockk<Context>(relaxed = true)
+        val repo = mockk<com.martinrevert.latorrentola.network.UserLibraryRepository>(relaxed = true)
+
+        val nextEpInfo = arrayListOf("10", "Breaking Bad", "1", "1", "Pilot")
+        val result = TorrentLaunchHelper.launch(
+            context = context,
+            mode = TorrentHandlingMode.EXTERNAL_CLIENT,
+            magnetUri = "magnet:?xt=urn:btih:abc123def456",
+            title = "Episode 1",
+            seriesId = 10,
+            seasonNumber = 1,
+            episodeNumber = 1,
+            nextEpisodeInfo = nextEpInfo,
+            userLibraryRepository = repo
+        )
+
+        assertThat(result).isEqualTo(TorrentLaunchResult.Started)
+        io.mockk.coVerify(timeout = 2000) {
+            repo.markEpisodeAsCompleted(
+                seriesId = 10,
+                seasonNumber = 1,
+                episodeNumber = 1,
+                episodeTitle = "Episode 1",
+                seriesName = "Breaking Bad",
+                stillPath = null
+            )
+        }
+    }
+
+    @Test
+    fun `launch with EXTERNAL_CLIENT should not mark episode completed when seriesId is 0`() {
+        val context = mockk<Context>(relaxed = true)
+        val repo = mockk<com.martinrevert.latorrentola.network.UserLibraryRepository>(relaxed = true)
+
+        val result = TorrentLaunchHelper.launch(
+            context = context,
+            mode = TorrentHandlingMode.EXTERNAL_CLIENT,
+            magnetUri = "magnet:?xt=urn:btih:abc123def456",
+            title = "Show.S02E05.720p.HDTV",
+            seriesId = 0,
+            seasonNumber = 0,
+            episodeNumber = 0,
+            movieId = 0,
+            userLibraryRepository = repo
+        )
+
+        assertThat(result).isEqualTo(TorrentLaunchResult.Started)
+        io.mockk.coVerify(exactly = 0) {
+            repo.markEpisodeAsCompleted(any(), any(), any(), any(), any(), any())
+        }
+    }
+
+    @Test
+    fun `launch with EXTERNAL_CLIENT should mark movie as completed on repository`() {
+        val context = mockk<Context>(relaxed = true)
+        val repo = mockk<com.martinrevert.latorrentola.network.UserLibraryRepository>(relaxed = true)
+
+        val result = TorrentLaunchHelper.launch(
+            context = context,
+            mode = TorrentHandlingMode.EXTERNAL_CLIENT,
+            magnetUri = "magnet:?xt=urn:btih:abc123def456",
+            title = "Inception",
+            movieId = 550,
+            userLibraryRepository = repo
+        )
+
+        assertThat(result).isEqualTo(TorrentLaunchResult.Started)
+        io.mockk.coVerify(timeout = 2000) {
+            repo.markMovieAsCompleted(
+                movieId = 550,
+                movieTitle = "Inception",
+                posterUrl = null
+            )
+        }
+    }
 }

@@ -287,12 +287,14 @@ object TorrentCardActionHandler {
                                 if (seasonNumber > 0) putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, seasonNumber)
                                 if (episodeNumber > 0) putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, episodeNumber)
                                 if (movieId > 0) putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, movieId)
+                                if (nextEpisodeInfo != null) putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
                             context.startActivity(launchIntent)
                         }
                     } else if (readyIntent != null) {
                         val launchIntent = Intent(readyIntent).apply {
+                            if (nextEpisodeInfo != null) putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         }
                         context.startActivity(launchIntent)
@@ -306,6 +308,7 @@ object TorrentCardActionHandler {
                             if (seasonNumber > 0) putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, seasonNumber)
                             if (episodeNumber > 0) putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, episodeNumber)
                             if (movieId > 0) putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, movieId)
+                            if (nextEpisodeInfo != null) putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         }
                         context.startActivity(launchIntent)
@@ -319,6 +322,7 @@ object TorrentCardActionHandler {
                             if (episodeNumber > 0) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, episodeNumber)
                             if (movieId > 0) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, movieId)
                             if (!posterUrl.isNullOrBlank()) putExtra(TorrentDownloadService.EXTRA_POSTER_URL, posterUrl)
+                            if (nextEpisodeInfo != null) putStringArrayListExtra(TorrentDownloadService.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
                         }
                         context.startService(serviceIntent)
                     }
@@ -326,6 +330,7 @@ object TorrentCardActionHandler {
                     if (isCurrentPlayerItem) {
                         mediaController?.play()
                     } else if (readyIntent != null) {
+                        if (nextEpisodeInfo != null) readyIntent.putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
                         val mediaItem = PlayerIntentUtils.buildMediaItem(readyIntent)
                         mediaController?.setMediaItem(mediaItem)
                         mediaController?.prepare()
@@ -345,6 +350,7 @@ object TorrentCardActionHandler {
                             if (episodeNumber > 0) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, episodeNumber)
                             if (movieId > 0) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, movieId)
                             if (!posterUrl.isNullOrBlank()) putExtra(TorrentDownloadService.EXTRA_POSTER_URL, posterUrl)
+                            if (nextEpisodeInfo != null) putStringArrayListExtra(TorrentDownloadService.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
                         }
                         context.startService(serviceIntent)
                     }

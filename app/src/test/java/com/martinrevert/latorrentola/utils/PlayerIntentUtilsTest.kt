@@ -43,7 +43,7 @@ class PlayerIntentUtilsTest {
 
     @Test
     fun `buildMediaItem from movie Intent generates canonical movie mediaId and metadata`() {
-        val intent = mockk<Intent>()
+        val intent = mockk<Intent>(relaxed = true)
         every { intent.getStringExtra(LocalPlayerActivity.EXTRA_STREAM_URL) } returns "http://127.0.0.1:8080/movie.mp4"
         every { intent.getStringExtra(LocalPlayerActivity.EXTRA_FILE_PATH) } returns null
         every { intent.getBooleanExtra(LocalPlayerActivity.EXTRA_PARTIAL_TORRENT_STREAM, false) } returns false
@@ -67,7 +67,7 @@ class PlayerIntentUtilsTest {
 
     @Test
     fun `buildMediaItem from episode Intent generates canonical episode mediaId and extras`() {
-        val intent = mockk<Intent>()
+        val intent = mockk<Intent>(relaxed = true)
         every { intent.getStringExtra(LocalPlayerActivity.EXTRA_STREAM_URL) } returns "http://127.0.0.1:8080/ep1.mkv"
         every { intent.getStringExtra(LocalPlayerActivity.EXTRA_FILE_PATH) } returns null
         every { intent.getBooleanExtra(LocalPlayerActivity.EXTRA_PARTIAL_TORRENT_STREAM, false) } returns true
@@ -86,6 +86,23 @@ class PlayerIntentUtilsTest {
         assertEquals("media_111803_s1_e1", mediaItem.mediaId)
         assertEquals("Severance S01E01", mediaItem.mediaMetadata.title?.toString())
         assertEquals("video/x-matroska", mediaItem.localConfiguration?.mimeType)
+        assertNotNull(mediaItem.mediaMetadata.extras)
+    }
+
+    @Test
+    fun `buildMediaItem from episode Intent forwards EXTRA_NEXT_EPISODE_INFO to extras`() {
+        val nextEpisodeList = arrayListOf("111803", "Severance", "1", "2", "Half Loop")
+        val intent = mockk<Intent>(relaxed = true)
+        every { intent.getStringExtra(LocalPlayerActivity.EXTRA_STREAM_URL) } returns "http://127.0.0.1:8080/ep1.mkv"
+        every { intent.getStringExtra(LocalPlayerActivity.EXTRA_TITLE) } returns "Severance S01E01"
+        every { intent.getIntExtra(LocalPlayerActivity.EXTRA_SERIES_ID, 0) } returns 111803
+        every { intent.getIntExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, 0) } returns 1
+        every { intent.getIntExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, 0) } returns 1
+        every { intent.getStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO) } returns nextEpisodeList
+
+        val mediaItem = PlayerIntentUtils.buildMediaItem(intent)
+
+        io.mockk.verify { intent.getStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO) }
         assertNotNull(mediaItem.mediaMetadata.extras)
     }
 

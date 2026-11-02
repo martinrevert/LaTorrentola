@@ -25,6 +25,8 @@ import com.google.android.gms.cast.framework.CastContext
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.service.streaming.PlayerStreamingConfig
+import com.martinrevert.latorrentola.ui.player.LocalPlayerActivity
+import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dagger.hilt.android.AndroidEntryPoint
@@ -51,6 +53,8 @@ class PlaybackService : MediaSessionService() {
     private var localPlayer: ExoPlayer? = null
     private var remotePlayer: CastPlayer? = null
     private var lastCastPositionMs: Long = 0L
+
+    private val completedMediaIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
     private var progressReportingJob: Job? = null
@@ -516,13 +520,13 @@ class PlaybackService : MediaSessionService() {
             proxyPlayer.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     if (!isPlaying) {
-                        saveCurrentProgress(proxyPlayer)
+                        saveCurrentProgress(proxyPlayer, syncRemote = true)
                     }
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
-                        saveCurrentProgress(proxyPlayer)
+                        saveCurrentProgress(proxyPlayer, syncRemote = true)
                     }
                 }
 
@@ -677,13 +681,52 @@ class PlaybackService : MediaSessionService() {
             while (true) {
                 delay(10.seconds)
                 if (player.isPlaying) {
-                    saveCurrentProgress(player)
+                    saveCurrentProgress(player, syncRemote = false)
                 }
             }
         }
     }
 
-    private fun saveCurrentProgress(player: Player?) {
+    private fun markItemCompletedIfNeeded(mediaId: String, title: String, isEpisode: Boolean, extras: android.os.Bundle?) {
+        if (!completedMediaIds.add(mediaId)) return
+        val epParsed = MediaIdHelper.parseCanonicalEpisode(mediaId)
+        val sId = extras?.getInt("extra_series_id", 0)?.takeIf { it > 0 } ?: epParsed?.first ?: 0
+        val sNum = extras?.getInt("extra_season_number", 0)?.takeIf { it > 0 } ?: epParsed?.second ?: 0
+        val eNum = extras?.getInt("extra_episode_number", 0)?.takeIf { it > 0 } ?: epParsed?.third ?: 0
+        val poster = extras?.getString("extra_poster_url")
+        val nextEpisodeInfo = extras?.getStringArrayList(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO)
+        val seriesName = nextEpisodeInfo?.getOrNull(1)?.takeIf { it.isNotBlank() }
+            ?: extras?.getString("extra_series_name").orEmpty()
+
+        serviceScope.launch {
+            try {
+                if (isEpisode && sId > 0 && sNum > 0 && eNum > 0) {
+                    userLibraryRepository.markEpisodeAsCompleted(
+                        seriesId = sId,
+                        seasonNumber = sNum,
+                        episodeNumber = eNum,
+                        episodeTitle = title,
+                        seriesName = seriesName,
+                        stillPath = poster
+                    )
+                } else if (!isEpisode) {
+                    val mId = extras?.getInt("extra_movie_id", 0)?.takeIf { it > 0 } ?: mediaId.toIntOrNull() ?: 0
+                    if (mId > 0) {
+                        userLibraryRepository.markMovieAsCompleted(
+                            movieId = mId,
+                            movieTitle = title,
+                            posterUrl = poster
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                AppLogger.w(TAG, "Error marking completed in PlaybackService on >95%: ${e.message}")
+            }
+        }
+    }
+
+    private fun saveCurrentProgress(player: Player?, syncRemote: Boolean = true) {
         val p = player ?: return
         val pos = p.currentPosition
         val dur = p.duration
@@ -704,6 +747,12 @@ class PlaybackService : MediaSessionService() {
         val isNearlyFinished = pos >= (dur * 0.95f).toLong()
         val finalPos = if (isNearlyFinished) dur else pos
 
+        if (isNearlyFinished) {
+            markItemCompletedIfNeeded(mediaId, title, isEpisode, extras)
+        } else if (pos < (dur * 0.5f)) {
+            completedMediaIds.remove(mediaId)
+        }
+
         val progress = PlaybackProgress(
             mediaId = mediaId,
             title = title,
@@ -715,7 +764,7 @@ class PlaybackService : MediaSessionService() {
 
         serviceScope.launch {
             try {
-                userLibraryRepository.savePlaybackProgress(progress)
+                userLibraryRepository.savePlaybackProgress(progress, syncRemote = syncRemote)
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Error saving playback progress", e)
             }
@@ -735,6 +784,12 @@ class PlaybackService : MediaSessionService() {
         val isNearlyFinished = pos >= (dur * 0.95f).toLong()
         val finalPos = if (isNearlyFinished) dur else pos
 
+        if (isNearlyFinished) {
+            markItemCompletedIfNeeded(mediaId, title, isEpisode, extras)
+        } else if (pos < (dur * 0.5f)) {
+            completedMediaIds.remove(mediaId)
+        }
+
         val progress = PlaybackProgress(
             mediaId = mediaId,
             title = title,
@@ -746,7 +801,7 @@ class PlaybackService : MediaSessionService() {
 
         serviceScope.launch {
             try {
-                userLibraryRepository.savePlaybackProgress(progress)
+                userLibraryRepository.savePlaybackProgress(progress, syncRemote = true)
                 Log.i(TAG, "Explicitly saved progress: $finalPos / $dur ms for $mediaId")
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Error explicitly saving playback progress", e)
