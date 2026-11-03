@@ -7,6 +7,9 @@ object Constants {
     /** Base URL for the YTS movie API. */
     const val YTS_BASE_URL = "https://movies-api.accel.li/api/v2/"
 
+    /** Alternative Base URL for the YTS movie API. */
+    const val YTS_BASE_URL_ALTERNATIVE = "https://yts.gg/api/v2/"
+
     /** Base URL for the app's Firebase Cloud Messaging backend. */
     const val FCM_BASE_URL = "https://fcm.martinrevert.com.ar/"
 
