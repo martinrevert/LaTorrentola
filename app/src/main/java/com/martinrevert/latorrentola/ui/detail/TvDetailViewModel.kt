@@ -155,7 +155,12 @@ class TvDetailViewModel @Inject constructor(
                     series.videos?.getBestTrailerKey()?.let { _trailerKey.value = it }
                 }
                 val imdbId = tmdbRepository.getTvImdbId(seriesId)
-                _uiState.value = TvDetailUiState.Success(series, imdbId)
+                val seriesWithImdb = if (!imdbId.isNullOrBlank() && series.imdbId.isNullOrBlank()) {
+                    series.copy(imdbId = imdbId)
+                } else {
+                    series
+                }
+                _uiState.value = TvDetailUiState.Success(seriesWithImdb, imdbId)
                 val seasons = series.seasons.orEmpty()
                 val initialSeason = seasons
                     .filter { it.seasonNumber > 0 }

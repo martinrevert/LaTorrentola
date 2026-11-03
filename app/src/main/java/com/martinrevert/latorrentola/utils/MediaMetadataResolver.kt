@@ -37,6 +37,15 @@ class MediaMetadataResolver @Inject constructor(
     private val ytsRepository: YtsRepository,
     private val torrentDownloadDao: TorrentDownloadDao
 ) {
+    /** Resolves the canonical IMDb ID for a movie by its TMDB [movieId]. */
+    suspend fun getMovieImdbId(movieId: Int): String? = try {
+        tmdbRepository.getMovieImdbId(movieId)
+    } catch (_: Exception) { null }
+
+    /** Resolves the canonical IMDb ID for a TV series by its TMDB [seriesId]. */
+    suspend fun getTvImdbId(seriesId: Int): String? = try {
+        tmdbRepository.getTvImdbId(seriesId)
+    } catch (_: Exception) { null }
     companion object {
         private const val TAG = "MediaMetadataResolver"
 
@@ -270,21 +279,18 @@ class MediaMetadataResolver @Inject constructor(
                 Log.w(TAG, "YTS movie search failed for '$primaryCleanTitle': ${e.message}")
             }
 
-            // Fallback to TMDB movie search if YTS has no match
-            if (movieId <= 0) {
+            // Fallback to TMDB movie IMDb ID lookup if movieId is known or was matched
+            if (movieImdbId.isNullOrBlank() && movieId > 0) {
                 try {
-                    val tmdbSearch = tmdbRepository.searchTvSeries(primaryCleanTitle).results?.firstOrNull()
-                    // If no movie catalog found, keep safe normalized fallback
+                    val resolved = tmdbRepository.getMovieImdbId(movieId)
+                    if (!resolved.isNullOrBlank()) {
+                        movieImdbId = resolved
+                    }
                 } catch (_: Exception) {}
             }
         }
 
-        val finalMediaId = if (movieId > 0) {
-            MediaIdHelper.forMovie(movieImdbId, movieId, primaryCleanTitle)
-        } else {
-            // Clean fallback: sanitized title without file extensions or hashes
-            primaryCleanTitle.ifBlank { "unknown_movie" }
-        }
+        val finalMediaId = MediaIdHelper.forMovie(movieImdbId, movieId, primaryCleanTitle)
 
         return CanonicalMediaInfo(
             mediaId = finalMediaId,

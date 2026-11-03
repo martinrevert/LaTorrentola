@@ -240,16 +240,18 @@ class TvPlayerViewModel @Inject constructor(
                 ?: TorrentLaunchHelper.buildMagnetUri(release.hash, displayTitle)
 
             val sizeBytes = release.sizeBytes
+            val seriesImdbId = try { tmdbRepository.getTvImdbId(seriesId) } catch (_: Exception) { null }
             val result = TorrentLaunchHelper.launch(
-                context,
-                preferenceManager.getTorrentHandlingMode(),
-                magnetUrl,
-                displayTitle,
-                nextEpisodeInfo,
+                context = context,
+                mode = preferenceManager.getTorrentHandlingMode(),
+                magnetUri = magnetUrl,
+                title = displayTitle,
+                nextEpisodeInfo = nextEpisodeInfo,
                 seriesId = seriesId,
                 seasonNumber = seasonNumber,
                 episodeNumber = episodeNumber,
-                requiredSizeBytes = sizeBytes
+                requiredSizeBytes = sizeBytes,
+                imdbId = seriesImdbId
             )
 
             if (result != TorrentLaunchResult.Started) {

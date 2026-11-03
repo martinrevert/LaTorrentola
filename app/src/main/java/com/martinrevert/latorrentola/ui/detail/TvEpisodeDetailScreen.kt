@@ -263,6 +263,7 @@ fun TvEpisodeDetailScreen(
                                 episodeNumber = state.episode.episodeNumber,
                                 posterUrl = state.posterUrl,
                                 nextEpisodeInfo = nextEpisodeInfo,
+                                imdbId = state.imdbId,
                                 onInsufficientStorage = { available, required ->
                                     insufficientStorageState.value = Pair(available, required)
                                 }
@@ -303,7 +304,8 @@ fun TvEpisodeDetailScreen(
                                         seasonNumber = state.episode.seasonNumber,
                                         episodeNumber = state.episode.episodeNumber,
                                         posterUrl = state.posterUrl,
-                                        requiredSizeBytes = sizeBytes
+                                        requiredSizeBytes = sizeBytes,
+                                        imdbId = state.imdbId
                                     )
                                 ) {
                                     TorrentLaunchResult.Started -> {

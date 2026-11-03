@@ -319,6 +319,7 @@ private fun MovieDetailScreenContent(
                             torrentHandlingMode = torrentHandlingMode,
                             movieId = uiState.movie.id,
                             posterUrl = moviePoster,
+                            imdbId = uiState.movie.imdbCode,
                             onInsufficientStorage = { available, required ->
                                 insufficientStorageState.value = Pair(available, required)
                             },
@@ -406,6 +407,7 @@ private fun MovieDetailScreenContent(
                             torrentHandlingMode = torrentHandlingMode,
                             movieId = uiState.movie.id,
                             posterUrl = moviePoster,
+                            imdbId = uiState.movie.imdbCode,
                             onInsufficientStorage = { available, required ->
                                 insufficientStorageState.value = Pair(available, required)
                             },
@@ -2592,7 +2594,7 @@ fun TorrentItem(
                 val magnetUri = TorrentLaunchHelper.buildMagnetUri(hash, title)
                 val moviePoster = movie.mediumCoverImage ?: movie.largeCoverImage
                 val sizeBytes = torrent.sizeBytes?.toLongOrNull()
-                when (val result = TorrentLaunchHelper.launch(context, handlingMode, magnetUri, title, movieId = movie.id, posterUrl = moviePoster, requiredSizeBytes = sizeBytes)) {
+                when (val result = TorrentLaunchHelper.launch(context, handlingMode, magnetUri, title, movieId = movie.id, posterUrl = moviePoster, requiredSizeBytes = sizeBytes, imdbId = movie.imdbCode)) {
                     TorrentLaunchResult.Started -> {
                         onTorrentClick(torrent)
                     }

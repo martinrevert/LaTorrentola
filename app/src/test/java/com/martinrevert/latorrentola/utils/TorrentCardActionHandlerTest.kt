@@ -194,7 +194,8 @@ class TorrentCardActionHandlerTest {
                     episodeNumber = any(),
                     movieId = any(),
                     posterUrl = any(),
-                    requiredSizeBytes = any()
+                    requiredSizeBytes = any(),
+                    imdbId = any()
                 )
             } returns TorrentLaunchResult.Started
 
@@ -238,7 +239,8 @@ class TorrentCardActionHandlerTest {
                     episodeNumber = any(),
                     movieId = any(),
                     posterUrl = any(),
-                    requiredSizeBytes = any()
+                    requiredSizeBytes = any(),
+                    imdbId = any()
                 )
             } returns TorrentLaunchResult.InsufficientStorage(requiredBytes = 2000L, availableBytes = 500L)
 
@@ -291,7 +293,8 @@ class TorrentCardActionHandlerTest {
                     episodeNumber = any(),
                     movieId = any(),
                     posterUrl = any(),
-                    requiredSizeBytes = any()
+                    requiredSizeBytes = any(),
+                    imdbId = any()
                 )
             } returns TorrentLaunchResult.Started
 

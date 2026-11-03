@@ -43,7 +43,7 @@ interface WatchHistoryDao {
     suspend fun upsert(item: WatchHistoryEntity)
 
     /** Returns all watch history records for a specific user. */
-    @Query("SELECT * FROM watch_history WHERE userId = :userId")
+    @Query("SELECT * FROM watch_history WHERE userId = :userId ORDER BY timestamp DESC")
     suspend fun getAll(userId: String): List<WatchHistoryEntity>
 
     /** Returns all watch history records across profiles. */

@@ -190,14 +190,13 @@ When triggering a download/play action, read `TorrentHandlingMode` and execute:
 ### 🎬 Canonical Watch History, Room & Firestore IMDb ID Standard (USER MANDATE - ZERO REGRESSION)
 To guarantee vendor independence (preventing vendor lock-in to TMDB or YTS) and seamless interoperability between Torrents, Network Storage (NAS / SMB / NFS / USB), and Local Playback, the storage format in Room and Firestore adheres to global industry-standard IMDb identifiers, with 100% transparent backwards compatibility and zero data loss:
 1. **Canonical ID Definitions (MANDATORY)**:
-   - **Movies**: `mediaId` (and document ID in Firestore) MUST ALWAYS be the canonical IMDb ID (e.g. `"tt0111161"` for The Shawshank Redemption).
+   - **Movies**: `mediaId` (and document ID in Firestore) MUST ALWAYS be the canonical IMDb ID (e.g. `"tt0111161"` for The Shawshank Redemption). Only canonical IMDb IDs are permitted (no `tmdb_` fallbacks).
      - **Relational Integrity**: Retain the numeric `movieId` internally across entities and models for relational consistency with existing catalog APIs.
-     - **Deterministic Fallback**: If an IMDb ID is genuinely unlisted or unresolved, deterministic `"tmdb_${movieId}"` format is used. Legacy numeric IDs or filenames are automatically migrated to canonical IMDb format and purged.
-     - **PROHIBITION**: NEVER save raw 40-character torrent infoHashes or raw file names as movie `mediaId`.
+     - **PROHIBITION**: NEVER save raw 40-character torrent infoHashes, raw file names, or fallback TMDB IDs as movie `mediaId`.
    - **TV Series Episodes**: `mediaId` MUST ALWAYS adhere to the canonical mnemonic:
-     `"${imdbId}_s${seasonNumber}_e${episodeNumber}"` (e.g. `"tt0944947_s1_e2"`), where `imdbId` is the series IMDb ID, and `seasonNumber` and `episodeNumber` are positive integers.
+     `"${imdbId}_s${seasonNumber}_e${episodeNumber}"` (e.g. `"tt0944947_s1_e2"`), where `imdbId` is the series IMDb ID, and `seasonNumber` and `episodeNumber` are positive integers. Only canonical IMDb IDs are permitted (no `tmdb_` fallbacks).
      - **Relational Integrity**: Retain `seriesId` (TMDB series ID) internally across all models, DTOs, and entity columns for relational navigation.
-     - **Deterministic Fallback**: If an IMDb ID is genuinely unlisted, the deterministic `"tmdb_${seriesId}_s${season}_e${episode}"` format is used. Legacy composite keys (`"media_${seriesId}_s${season}_e${episode}"` and `"tv_${seriesId}_s${season}_e${episode}"`) are automatically migrated upon access/sync and purged without data loss, eliminating redundant multi-key candidate queries.
+     - Legacy composite keys (`"media_${seriesId}_s${season}_e${episode}"` and `"tv_${seriesId}_s${season}_e${episode}"`) are automatically migrated upon access/sync and purged without data loss, eliminating redundant multi-key candidate queries.
 2. **Room Database v14 & Zero Data Loss Dual Lookups**:
    - `AppDatabase` v14 introduces `MIGRATION_13_14` adding `imdbId TEXT NOT NULL DEFAULT ''` across `favorites_movies`, `favorites_tv`, `downloaded_movies`, and `downloaded_episodes`.
    - DAO queries perform dual-key lookups (`WHERE (movieId = :id OR imdbId = :imdb)`) so existing user favorites and downloads are preserved with zero data loss.

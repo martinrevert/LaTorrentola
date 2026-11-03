@@ -901,6 +901,7 @@ class LocalPlayerActivity : FragmentActivity() {
                                         seasonNumber = targetSeason,
                                         episodeNumber = targetEpisode,
                                         nextEpisodeInfo = nextEpInfo,
+                                        imdbId = currentImdbId,
                                         onInsufficientStorage = { available, required ->
                                             insufficientStorageData = Pair(available, required)
                                         },
@@ -1245,6 +1246,62 @@ class LocalPlayerActivity : FragmentActivity() {
             }
 
             val isEpisode = currentSeriesId > 0 || (currentSeasonNumber > 0 && currentEpisodeNumber > 0)
+            if (currentImdbId.isNullOrBlank() && (currentSeriesId > 0 || currentMovieId > 0)) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        val resolved = if (currentSeriesId > 0) {
+                            tmdbRepository.getTvImdbId(currentSeriesId)
+                        } else {
+                            tmdbRepository.getMovieImdbId(currentMovieId)
+                        }
+                        val norm = MediaIdHelper.normalizeImdbId(resolved)
+                        if (!norm.isNullOrBlank()) {
+                            withContext(Dispatchers.Main) {
+                                currentImdbId = norm
+                                intent.putExtra(EXTRA_IMDB_ID, norm)
+                                val updatedMediaId = if (isEpisode) {
+                                    MediaIdHelper.forEpisode(
+                                        imdbId = norm,
+                                        seriesId = currentSeriesId,
+                                        seasonNumber = currentSeasonNumber,
+                                        episodeNumber = currentEpisodeNumber,
+                                        title = mediaTitle
+                                    )
+                                } else {
+                                    MediaIdHelper.forMovie(
+                                        imdbId = norm,
+                                        movieId = currentMovieId,
+                                        title = mediaTitle
+                                    )
+                                }
+                                currentMediaItem?.let { item ->
+                                    val updatedExtras = (item.mediaMetadata.extras ?: Bundle()).apply {
+                                        putString(EXTRA_IMDB_ID, norm)
+                                    }
+                                    val updatedMetadata = item.mediaMetadata.buildUpon()
+                                        .setExtras(updatedExtras)
+                                        .build()
+                                    val updatedItem = item.buildUpon()
+                                        .setMediaId(updatedMediaId)
+                                        .setMediaMetadata(updatedMetadata)
+                                        .build()
+                                    currentMediaItem = updatedItem
+                                    pendingMediaItem = updatedItem
+                                    mediaController?.let { controller ->
+                                        if (controller.currentMediaItem?.mediaId == item.mediaId) {
+                                            controller.replaceMediaItem(controller.currentMediaItemIndex, updatedItem)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                        Log.w(TAG, "Asynchronous IMDb ID resolution failed: ${e.message}")
+                    }
+                }
+            }
+
             val mediaId = if (isEpisode) {
                 MediaIdHelper.forEpisode(
                     imdbId = currentImdbId,

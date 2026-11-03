@@ -12,11 +12,10 @@ import org.junit.Test
 class MediaIdHelperTest {
 
     @Test
-    fun `forMovie generates deterministic tmdb string when movieId is valid without imdbId`() {
+    fun `forMovie generates movie string when movieId is valid without imdbId`() {
         val mediaId = MediaIdHelper.forMovie(movieId = 12230)
-        assertEquals("tmdb_12230", mediaId)
-        assertTrue(MediaIdHelper.isCanonical(mediaId))
-        assertTrue(MediaIdHelper.isCanonicalMovieId(mediaId))
+        assertEquals("movie_12230", mediaId)
+        assertFalse(MediaIdHelper.isCanonical(mediaId))
     }
 
     @Test
@@ -27,7 +26,7 @@ class MediaIdHelperTest {
             infoHash = fakeHash,
             title = "Inception"
         )
-        assertEquals("tmdb_12230", mediaId)
+        assertEquals("Inception", mediaId)
         assertFalse(mediaId.contains(fakeHash))
     }
 
@@ -44,18 +43,6 @@ class MediaIdHelperTest {
     }
 
     @Test
-    fun `forEpisode generates deterministic tmdb mediaId when imdbId is not yet resolved`() {
-        val mediaId = MediaIdHelper.forEpisode(
-            seriesId = 111803,
-            seasonNumber = 1,
-            episodeNumber = 1
-        )
-        assertEquals("tmdb_111803_s1_e1", mediaId)
-        assertTrue(MediaIdHelper.isCanonical(mediaId))
-        assertTrue(MediaIdHelper.isCanonicalEpisodeId(mediaId))
-    }
-
-    @Test
     fun `forEpisode never uses infoHash`() {
         val fakeHash = "092ea1d9309572ad7caf0868c3a94217dad15769"
         val mediaId = MediaIdHelper.forEpisode(
@@ -65,7 +52,7 @@ class MediaIdHelperTest {
             infoHash = fakeHash,
             title = "Severance S02E05"
         )
-        assertEquals("tmdb_111803_s2_e5", mediaId)
+        assertEquals("Severance_s2_e5", mediaId)
         assertFalse(mediaId.contains(fakeHash))
     }
 
@@ -79,12 +66,12 @@ class MediaIdHelperTest {
     }
 
     @Test
-    fun `isCanonical validates both movie IDs and episode IDs`() {
+    fun `isCanonical validates canonical IMDb movie IDs and episode IDs only`() {
         assertTrue(MediaIdHelper.isCanonical("tt0111161"))
         assertTrue(MediaIdHelper.isCanonical("tt11280740_s1_e1"))
-        assertTrue(MediaIdHelper.isCanonical("tmdb_12230"))
-        assertTrue(MediaIdHelper.isCanonical("tmdb_111803_s1_e1"))
 
+        assertFalse(MediaIdHelper.isCanonical("tmdb_12230"))
+        assertFalse(MediaIdHelper.isCanonical("tmdb_111803_s1_e1"))
         assertFalse(MediaIdHelper.isCanonical("media_111803_s1_e1"))
         assertFalse(MediaIdHelper.isCanonical("media_99_s10_e24"))
         assertFalse(MediaIdHelper.isCanonical("12230"))

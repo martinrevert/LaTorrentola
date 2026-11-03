@@ -327,6 +327,7 @@ class UserLibraryRepository @Inject constructor(
     /** Saves or replaces [movie] in the user's favorites in Room and Firestore. */
     suspend fun addFavorite(movie: Movie) {
         val uid = currentUserId
+        // Room-first: persist locally immediately for instant UI response
         try {
             favoriteDao?.upsertMovie(FavoriteMovieEntity.from(uid, movie))
         } catch (e: Exception) {
@@ -334,15 +335,39 @@ class UserLibraryRepository @Inject constructor(
             AppLogger.e("UserLibraryRepository", "Error saving favorite movie locally: ${e.message}", e)
         }
 
+        var normalizedImdb = MediaIdHelper.normalizeImdbId(movie.imdbCode)
+        if (normalizedImdb.isNullOrBlank() && movie.id > 0) {
+            try {
+                normalizedImdb = mediaMetadataResolver?.get()?.getMovieImdbId(movie.id)
+                    ?.let { MediaIdHelper.normalizeImdbId(it) }
+            } catch (_: Exception) {}
+        }
+        if (normalizedImdb.isNullOrBlank() && !movie.title.isNullOrBlank()) {
+            try {
+                normalizedImdb = mediaMetadataResolver?.get()?.resolve(movie.title, existingMovieId = movie.id)?.imdbId
+                    ?.let { MediaIdHelper.normalizeImdbId(it) }
+            } catch (_: Exception) {}
+        }
+        val finalMovie = if (!normalizedImdb.isNullOrBlank() && movie.imdbCode != normalizedImdb) {
+            val updated = movie.copy(imdbCode = normalizedImdb)
+            try {
+                favoriteDao?.upsertMovie(FavoriteMovieEntity.from(uid, updated))
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+            updated
+        } else {
+            movie
+        }
+
         val remoteUid = userId ?: return
-        val normalizedImdb = MediaIdHelper.normalizeImdbId(movie.imdbCode)
         val targetDocId = normalizedImdb?.takeIf { it.isNotBlank() } ?: movie.id.toString()
         try {
             firestore.collection("users")
                 .document(remoteUid)
                 .collection("favorites")
                 .document(targetDocId)
-                .set(movie)
+                .set(finalMovie)
                 .await()
 
             try {
@@ -471,6 +496,7 @@ class UserLibraryRepository @Inject constructor(
     /** Saves or replaces [series] in the user's TV favorites in Room and Firestore. */
     suspend fun addFavoriteTvSeries(series: TmdbTvSummary) {
         val uid = currentUserId
+        // Room-first: persist locally immediately for instant UI response
         try {
             favoriteDao?.upsertTvSeries(FavoriteTvSeriesEntity.from(uid, series))
         } catch (e: Exception) {
@@ -478,10 +504,34 @@ class UserLibraryRepository @Inject constructor(
             AppLogger.e("UserLibraryRepository", "Error saving TV favorite locally: ${e.message}", e)
         }
 
+        var normalizedImdb = series.effectiveImdbId
+        if (normalizedImdb.isNullOrBlank() && series.id > 0) {
+            try {
+                normalizedImdb = mediaMetadataResolver?.get()?.getTvImdbId(series.id)
+                    ?.let { MediaIdHelper.normalizeImdbId(it) }
+            } catch (_: Exception) {}
+        }
+        if (normalizedImdb.isNullOrBlank() && !series.name.isNullOrBlank()) {
+            try {
+                normalizedImdb = mediaMetadataResolver?.get()?.resolve(series.name, existingSeriesId = series.id)?.imdbId
+                    ?.let { MediaIdHelper.normalizeImdbId(it) }
+            } catch (_: Exception) {}
+        }
+        val finalSeries = if (!normalizedImdb.isNullOrBlank() && series.effectiveImdbId != normalizedImdb) {
+            val updated = series.copy(imdbId = normalizedImdb)
+            try {
+                favoriteDao?.upsertTvSeries(FavoriteTvSeriesEntity.from(uid, updated))
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+            updated
+        } else {
+            series
+        }
+
         val remoteUid = userId ?: return
-        val favorite = FavoriteTvSeries.from(series)
-        val normalizedImdb = series.effectiveImdbId
-        val targetDocId = normalizedImdb?.takeIf { it.isNotBlank() } ?: "tv_${series.id}"
+        val favorite = FavoriteTvSeries.from(finalSeries)
+        val targetDocId = normalizedImdb?.takeIf { it.isNotBlank() } ?: "tv_${finalSeries.id}"
         try {
             firestore.collection("users")
                 .document(remoteUid)
@@ -758,8 +808,12 @@ class UserLibraryRepository @Inject constructor(
     private fun parsePlaybackProgress(doc: com.google.firebase.firestore.DocumentSnapshot): PlaybackProgress? {
         if (!doc.exists()) return null
         val parsed = doc.toObject(PlaybackProgress::class.java) ?: PlaybackProgress()
-        val finalMediaId = parsed.mediaId.ifBlank {
-            doc.getString("mediaId") ?: doc.getString("media_id") ?: doc.id
+        val finalMediaId = if (MediaIdHelper.isCanonical(doc.id)) {
+            doc.id
+        } else {
+            parsed.mediaId.ifBlank {
+                doc.getString("mediaId") ?: doc.getString("media_id") ?: doc.id
+            }
         }
         if (finalMediaId.isBlank()) return null
 
@@ -773,7 +827,7 @@ class UserLibraryRepository @Inject constructor(
             if (parsed.durationMs > 0L) parsed.durationMs else (doc.getLong("durationMs") ?: doc.getLong("duration_ms")
             ?: 0L)
         val finalTs =
-            if (parsed.timestamp > 0L) parsed.timestamp else (doc.getLong("timestamp") ?: System.currentTimeMillis())
+            if (parsed.timestamp > 0L) parsed.timestamp else (doc.getLong("timestamp") ?: doc.getLong("updatedAt") ?: System.currentTimeMillis())
         val finalIsEpisode = parsed.isEpisode ||
                 (doc.getBoolean("isEpisode") ?: doc.getBoolean("is_episode") ?: false) ||
                 finalMediaId.startsWith("media_") ||
@@ -844,37 +898,6 @@ class UserLibraryRepository @Inject constructor(
                 isEpisode = localEntity.isEpisode
             )
         }
-
-        // Remote Firestore fallback: Query remote Firestore by candidate IDs
-        val remoteUid = userId ?: return null
-        for (candidate in candidateIds) {
-            try {
-                val doc = firestore.collection("users")
-                    .document(remoteUid)
-                    .collection("watch_history")
-                    .document(candidate)
-                    .get()
-                    .await()
-                val remoteProgress = parsePlaybackProgress(doc)
-                if (remoteProgress != null) {
-                    watchHistoryDao.upsert(
-                        WatchHistoryEntity(
-                            userId = remoteUid,
-                            mediaId = remoteProgress.mediaId,
-                            title = remoteProgress.title,
-                            positionMs = remoteProgress.positionMs,
-                            durationMs = remoteProgress.durationMs,
-                            timestamp = remoteProgress.timestamp,
-                            isEpisode = remoteProgress.isEpisode
-                        )
-                    )
-                    return remoteProgress
-                }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                AppLogger.w("UserLibraryRepository", "Error fetching remote watch history for '$candidate': ${e.message}")
-            }
-        }
         return null
     }
 
@@ -914,6 +937,92 @@ class UserLibraryRepository @Inject constructor(
             if (e is CancellationException) throw e
             Log.w("UserLibraryRepository", "Error during local watch history migration: ${e.message}")
         }
+
+        val remoteUid = userId
+        if (remoteUid != null) {
+            try {
+                val remoteDocs = firestore.collection("users")
+                    .document(remoteUid)
+                    .collection("watch_history")
+                    .get()
+                    .await()
+                for (doc in remoteDocs.documents) {
+                    val progress = parsePlaybackProgress(doc)
+                    if (progress != null) {
+                        val docIsCanonical = MediaIdHelper.isCanonical(doc.id)
+                        val progressIsCanonical = MediaIdHelper.isCanonical(progress.mediaId)
+
+                        if (docIsCanonical && progressIsCanonical && doc.id == progress.mediaId) {
+                            val local = watchHistoryDao.get(uid, doc.id)
+                            if (local == null || progress.timestamp > local.timestamp) {
+                                watchHistoryDao.upsert(
+                                    WatchHistoryEntity(
+                                        userId = uid,
+                                        mediaId = progress.mediaId,
+                                        title = progress.title,
+                                        positionMs = progress.positionMs,
+                                        durationMs = progress.durationMs,
+                                        timestamp = progress.timestamp,
+                                        isEpisode = progress.isEpisode
+                                    )
+                                )
+                            }
+                            continue
+                        }
+
+                        val canonicalDocId = if (docIsCanonical) {
+                            doc.id
+                        } else if (progressIsCanonical) {
+                            progress.mediaId
+                        } else {
+                            null
+                        }
+
+                        if (canonicalDocId != null) {
+                            val canonicalProgress = progress.copy(mediaId = canonicalDocId)
+                            val local = watchHistoryDao.get(uid, canonicalDocId)
+                            if (local == null || canonicalProgress.timestamp > local.timestamp) {
+                                watchHistoryDao.upsert(
+                                    WatchHistoryEntity(
+                                        userId = uid,
+                                        mediaId = canonicalProgress.mediaId,
+                                        title = canonicalProgress.title,
+                                        positionMs = canonicalProgress.positionMs,
+                                        durationMs = canonicalProgress.durationMs,
+                                        timestamp = canonicalProgress.timestamp,
+                                        isEpisode = canonicalProgress.isEpisode
+                                    )
+                                )
+                            }
+                            if (doc.id != canonicalDocId) {
+                                firestore.collection("users")
+                                    .document(remoteUid)
+                                    .collection("watch_history")
+                                    .document(canonicalDocId)
+                                    .set(canonicalProgress, SetOptions.merge())
+                                    .await()
+                                try { doc.reference.delete().await() } catch (_: Exception) {}
+                            }
+                            if (progress.mediaId != canonicalDocId) {
+                                deletePlaybackProgress(progress.mediaId)
+                            }
+                        } else {
+                            migrateSingleItem(
+                                item = progress,
+                                resolver = resolver,
+                                uid = uid,
+                                rawDocId = doc.id
+                            )
+                        }
+                    } else {
+                        try { doc.reference.delete().await() } catch (_: Exception) {}
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.w("UserLibraryRepository", "Error during remote watch history migration: ${e.message}")
+            }
+        }
     }
 
     private suspend fun migrateSingleItem(
@@ -923,18 +1032,51 @@ class UserLibraryRepository @Inject constructor(
         rawDocId: String? = null
     ) {
         val oldId = rawDocId ?: item.mediaId
+        if (MediaIdHelper.isCanonical(oldId)) {
+            return
+        }
         try {
             var canonicalId: String? = null
             var resolvedTitle: String = item.title
             var isEpisode: Boolean = item.isEpisode
 
             val episodeComponents = MediaIdHelper.parseCanonicalEpisode(oldId)
-            if (episodeComponents != null || item.isEpisode || (oldId.contains("_s") && oldId.contains("_e"))) {
+            val (detectedS, detectedE) = MediaMetadataResolver.extractSeasonAndEpisode(oldId, item.title)
+            val isLikelyEpisode = episodeComponents != null ||
+                item.isEpisode ||
+                (oldId.contains("_s", ignoreCase = true) && oldId.contains("_e", ignoreCase = true)) ||
+                (detectedS > 0 && detectedE > 0)
+
+            if (isLikelyEpisode) {
                 isEpisode = true
-                val sNum = episodeComponents?.second ?: 1
-                val eNum = episodeComponents?.third ?: 1
-                var seriesId = episodeComponents?.first ?: 0
+                val sNum = when {
+                    episodeComponents != null && episodeComponents.second > 0 -> episodeComponents.second
+                    detectedS > 0 -> detectedS
+                    else -> 1
+                }
+                val eNum = when {
+                    episodeComponents != null && episodeComponents.third > 0 -> episodeComponents.third
+                    detectedE > 0 -> detectedE
+                    else -> 1
+                }
+                var seriesId = when {
+                    episodeComponents != null && episodeComponents.first > 0 -> episodeComponents.first
+                    else -> {
+                        val match = Regex("""^(?:tmdb|tv|media)?_?(\d+)_s""", RegexOption.IGNORE_CASE).find(oldId)
+                        match?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                    }
+                }
                 var imdbId = episodeComponents?.imdbId
+
+                // Direct TMDB API lookup if seriesId > 0
+                if (imdbId.isNullOrBlank() && seriesId > 0) {
+                    try {
+                        val remote = resolver.getTvImdbId(seriesId)
+                        if (!remote.isNullOrBlank()) {
+                            imdbId = remote
+                        }
+                    } catch (_: Exception) {}
+                }
 
                 if (imdbId.isNullOrBlank() && seriesId > 0) {
                     val fav = favoriteDao?.getFavoriteTvSeries(currentUserId)?.firstOrNull { it.seriesId == seriesId }
@@ -944,7 +1086,7 @@ class UserLibraryRepository @Inject constructor(
                 }
 
                 if (imdbId.isNullOrBlank()) {
-                    val resolved = resolver.resolve(rawTitle = item.title.ifBlank { oldId })
+                    val resolved = resolver.resolve(rawTitle = item.title.ifBlank { oldId }, existingSeriesId = seriesId, existingSeasonNumber = sNum, existingEpisodeNumber = eNum)
                     if (!resolved.imdbId.isNullOrBlank()) {
                         imdbId = resolved.imdbId
                     }
@@ -956,28 +1098,45 @@ class UserLibraryRepository @Inject constructor(
                     }
                 }
 
-                canonicalId = MediaIdHelper.forEpisode(imdbId, seriesId, sNum, eNum, resolvedTitle)
+                val normImdb = MediaIdHelper.normalizeImdbId(imdbId)
+                if (normImdb != null) {
+                    canonicalId = "${normImdb}_s${sNum}_e${eNum}"
+                }
             } else if (MediaIdHelper.isInfoHash(oldId)) {
                 val resolved = resolver.resolve(rawTitle = item.title.ifBlank { oldId })
                 if (MediaIdHelper.isCanonical(resolved.mediaId) && resolved.mediaId != oldId) {
                     canonicalId = resolved.mediaId
                     resolvedTitle = resolved.title.ifBlank { item.title }
                     isEpisode = resolved.isEpisode
-                } else {
-                    Log.w("UserLibraryRepository", "Could not resolve infoHash document '$oldId' to canonical ID; retaining to prevent data loss")
-                    return
                 }
             } else {
                 isEpisode = false
-                val movieId = oldId.removePrefix("media_").removePrefix("tmdb_").toIntOrNull() ?: 0
+                val movieId = when {
+                    oldId.all { it.isDigit() } -> oldId.toIntOrNull() ?: 0
+                    oldId.startsWith("tmdb_", ignoreCase = true) -> oldId.removePrefix("tmdb_").removePrefix("TMDB_").toIntOrNull() ?: 0
+                    oldId.startsWith("media_", ignoreCase = true) -> oldId.removePrefix("media_").removePrefix("MEDIA_").toIntOrNull() ?: 0
+                    oldId.startsWith("movie_", ignoreCase = true) -> oldId.removePrefix("movie_").removePrefix("MOVIE_").toIntOrNull() ?: 0
+                    else -> 0
+                }
                 var imdbId: String? = null
+
+                // Direct TMDB API lookup if movieId > 0
                 if (movieId > 0) {
+                    try {
+                        val remote = resolver.getMovieImdbId(movieId)
+                        if (!remote.isNullOrBlank()) {
+                            imdbId = remote
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                if (imdbId.isNullOrBlank() && movieId > 0) {
                     val fav = favoriteDao?.getFavoriteMovies(currentUserId)?.firstOrNull { it.movieId == movieId }
                     imdbId = fav?.imdbId?.takeIf(String::isNotBlank)
                         ?: downloadRecordDao?.getDownloadedMovies(currentUserId)?.firstOrNull { it.movieId == movieId }?.imdbId?.takeIf(String::isNotBlank)
                 }
                 if (imdbId.isNullOrBlank()) {
-                    val resolved = resolver.resolve(rawTitle = item.title.ifBlank { oldId })
+                    val resolved = resolver.resolve(rawTitle = item.title.ifBlank { oldId }, existingMovieId = movieId)
                     if (!resolved.imdbId.isNullOrBlank()) {
                         imdbId = resolved.imdbId
                     }
@@ -985,7 +1144,10 @@ class UserLibraryRepository @Inject constructor(
                         resolvedTitle = resolved.title
                     }
                 }
-                canonicalId = MediaIdHelper.forMovie(imdbId, movieId, resolvedTitle)
+                val normImdb = MediaIdHelper.normalizeImdbId(imdbId)
+                if (normImdb != null) {
+                    canonicalId = normImdb
+                }
             }
 
             if (canonicalId != null && canonicalId != oldId && MediaIdHelper.isCanonical(canonicalId)) {
@@ -996,7 +1158,12 @@ class UserLibraryRepository @Inject constructor(
                 )
                 savePlaybackProgress(migratedProgress)
                 deletePlaybackProgress(oldId)
+                if (rawDocId != null && rawDocId != item.mediaId) {
+                    deletePlaybackProgress(item.mediaId)
+                }
                 Log.i("UserLibraryRepository", "Successfully migrated legacy watch history '$oldId' -> '$canonicalId'")
+            } else {
+                Log.w("UserLibraryRepository", "Retained unresolvable legacy watch history '$oldId'")
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -1018,13 +1185,16 @@ class UserLibraryRepository @Inject constructor(
         try {
             val localMovies = downloadRecordDao?.getDownloadedMovies(uid).orEmpty()
             for (movieRecord in localMovies) {
+                if (MediaIdHelper.isCanonicalMovieId(movieRecord.imdbId)) {
+                    continue
+                }
                 var imdbId = movieRecord.imdbId.takeIf(String::isNotBlank)
                 if (imdbId.isNullOrBlank() && movieRecord.movieId > 0) {
                     imdbId = favoriteDao?.getFavoriteMovies(uid)?.firstOrNull { it.movieId == movieRecord.movieId }?.imdbId?.takeIf(String::isNotBlank)
                         ?: watchHistoryDao.get(uid, "tmdb_${movieRecord.movieId}")?.mediaId?.takeIf { it.startsWith("tt") }
                 }
                 if (imdbId.isNullOrBlank() && resolver != null && movieRecord.movieTitle.isNotBlank()) {
-                    val resolved = resolver.resolve(movieRecord.movieTitle)
+                    val resolved = resolver.resolve(movieRecord.movieTitle, existingMovieId = movieRecord.movieId)
                     if (!resolved.imdbId.isNullOrBlank()) {
                         imdbId = resolved.imdbId
                     }
@@ -1045,13 +1215,24 @@ class UserLibraryRepository @Inject constructor(
                             .set(dlModel)
                             .await()
 
-                        // Delete legacy doc if stored under raw infohash or numeric movieId
+                        // Delete legacy doc if stored under raw infohash, numeric movieId, or tmdb_ prefix
                         if (movieRecord.hash.isNotBlank() && movieRecord.hash != canonicalDocId) {
                             try {
                                 firestore.collection("users")
                                     .document(remoteUid)
                                     .collection("downloads")
                                     .document(movieRecord.hash)
+                                    .delete()
+                                    .await()
+                            } catch (_: Exception) {}
+                        }
+                        val tmdbKey = "tmdb_${movieRecord.movieId}"
+                        if (tmdbKey != canonicalDocId) {
+                            try {
+                                firestore.collection("users")
+                                    .document(remoteUid)
+                                    .collection("downloads")
+                                    .document(tmdbKey)
                                     .delete()
                                     .await()
                             } catch (_: Exception) {}
@@ -1078,13 +1259,16 @@ class UserLibraryRepository @Inject constructor(
         try {
             val localEpisodes = downloadRecordDao?.getDownloadedEpisodes(uid).orEmpty()
             for (epRecord in localEpisodes) {
+                if (MediaIdHelper.normalizeImdbId(epRecord.imdbId) != null) {
+                    continue
+                }
                 var imdbId = epRecord.imdbId.takeIf(String::isNotBlank)
                 if (imdbId.isNullOrBlank() && epRecord.seriesId > 0) {
                     imdbId = favoriteDao?.getFavoriteTvSeries(uid)?.firstOrNull { it.seriesId == epRecord.seriesId }?.imdbId?.takeIf(String::isNotBlank)
                         ?: torrentDownloadDao?.getAll()?.firstOrNull { it.seriesId == epRecord.seriesId }?.imdbId?.takeIf(String::isNotBlank)
                 }
                 if (imdbId.isNullOrBlank() && resolver != null && epRecord.seriesName.isNotBlank()) {
-                    val resolved = resolver.resolve(epRecord.seriesName)
+                    val resolved = resolver.resolve(epRecord.seriesName, existingSeriesId = epRecord.seriesId, existingSeasonNumber = epRecord.seasonNumber, existingEpisodeNumber = epRecord.episodeNumber)
                     if (!resolved.imdbId.isNullOrBlank()) {
                         imdbId = resolved.imdbId
                     }
@@ -1098,6 +1282,7 @@ class UserLibraryRepository @Inject constructor(
                 )
                 val effectiveImdb = MediaIdHelper.normalizeImdbId(imdbId).orEmpty()
                 val legacyTvKey = "tv_${epRecord.seriesId}_s${epRecord.seasonNumber}_e${epRecord.episodeNumber}"
+                val tmdbKey = "tmdb_${epRecord.seriesId}_s${epRecord.seasonNumber}_e${epRecord.episodeNumber}"
                 val needsUpdate = epRecord.imdbId != effectiveImdb
 
                 if (needsUpdate || (remoteUid != null && epRecord.hash != canonicalDocId)) {
@@ -1123,6 +1308,16 @@ class UserLibraryRepository @Inject constructor(
                                     .await()
                             } catch (_: Exception) {}
                         }
+                        if (tmdbKey != canonicalDocId) {
+                            try {
+                                firestore.collection("users")
+                                    .document(remoteUid)
+                                    .collection("tv_downloads")
+                                    .document(tmdbKey)
+                                    .delete()
+                                    .await()
+                            } catch (_: Exception) {}
+                        }
                         if (epRecord.hash.isNotBlank() && epRecord.hash != canonicalDocId && epRecord.hash != legacyTvKey) {
                             try {
                                 firestore.collection("users")
@@ -1139,6 +1334,267 @@ class UserLibraryRepository @Inject constructor(
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             AppLogger.w("UserLibraryRepository", "Error during TV episode downloads migration: ${e.message}")
+        }
+    }
+
+    /**
+     * Scans Room and Firestore for any legacy or non-canonical favorite items (movies and TV series),
+     * resolves their canonical IMDb identifiers, updates Room, and stores them under canonical IMDb document IDs
+     * in Firestore while deleting legacy numeric/tv_ keys.
+     */
+    suspend fun cleanupAndMigrateFavorites() {
+        val uid = currentUserId
+        val remoteUid = userId
+        val resolver = mediaMetadataResolver?.get() ?: return
+
+        // 1. Migrate Remote Firestore Favorites
+        if (remoteUid != null) {
+            try {
+                val favSnapshot = firestore.collection("users")
+                    .document(remoteUid)
+                    .collection("favorites")
+                    .get()
+                    .await()
+
+                for (doc in favSnapshot.documents) {
+                    val isTv = isTvDocument(doc)
+                    val isCanonical = MediaIdHelper.isCanonicalMovieId(doc.id)
+
+                    if (isTv) {
+                        if (isCanonical) {
+                            val seriesId = (doc.get("id") as? Number)?.toInt() ?: 0
+                            val rawImdb = doc.getString("imdbId") ?: doc.getString("imdb_id")
+                            val normImdb = MediaIdHelper.normalizeImdbId(rawImdb) ?: doc.id
+                            val name = doc.getString("name").orEmpty()
+                            favoriteDao?.upsertTvSeries(
+                                FavoriteTvSeriesEntity(
+                                    userId = uid,
+                                    seriesId = seriesId,
+                                    imdbId = normImdb,
+                                    name = name,
+                                    posterPath = doc.getString("posterPath"),
+                                    firstAirDate = doc.getString("firstAirDate"),
+                                    voteAverage = (doc.get("voteAverage") as? Number)?.toDouble(),
+                                    genreIds = (doc.get("genreIds") as? List<*>).orEmpty().mapNotNull { (it as? Number)?.toInt() }.joinToString(","),
+                                    numberOfSeasons = (doc.get("numberOfSeasons") as? Number)?.toInt(),
+                                    numberOfEpisodes = (doc.get("numberOfEpisodes") as? Number)?.toInt(),
+                                    updatedAt = doc.getLong("updatedAt") ?: System.currentTimeMillis()
+                                )
+                            )
+                            continue
+                        }
+                        val seriesId = (doc.get("id") as? Number)?.toInt() ?: 0
+                        val rawImdb = doc.getString("imdbId") ?: doc.getString("imdb_id")
+                        var normImdb = MediaIdHelper.normalizeImdbId(rawImdb)
+                        val name = doc.getString("name").orEmpty()
+
+                        if (normImdb.isNullOrBlank() && seriesId > 0) {
+                            try {
+                                normImdb = resolver.getTvImdbId(seriesId)?.let { MediaIdHelper.normalizeImdbId(it) }
+                            } catch (_: Exception) {}
+                        }
+                        if (normImdb.isNullOrBlank() && name.isNotBlank()) {
+                            try {
+                                normImdb = resolver.resolve(name, existingSeriesId = seriesId).imdbId?.let { MediaIdHelper.normalizeImdbId(it) }
+                            } catch (_: Exception) {}
+                        }
+
+                        if (!normImdb.isNullOrBlank()) {
+                            val data = mapOf(
+                                "id" to seriesId,
+                                "imdbId" to normImdb,
+                                "name" to name,
+                                "posterPath" to doc.getString("posterPath"),
+                                "firstAirDate" to doc.getString("firstAirDate"),
+                                "voteAverage" to (doc.get("voteAverage") as? Number)?.toDouble(),
+                                "genreIds" to (doc.get("genreIds") as? List<*>).orEmpty().mapNotNull { (it as? Number)?.toInt() },
+                                "numberOfSeasons" to (doc.get("numberOfSeasons") as? Number)?.toInt(),
+                                "numberOfEpisodes" to (doc.get("numberOfEpisodes") as? Number)?.toInt(),
+                                "updatedAt" to (doc.getLong("updatedAt") ?: System.currentTimeMillis())
+                            )
+                            firestore.collection("users")
+                                .document(remoteUid)
+                                .collection("favorites")
+                                .document(normImdb)
+                                .set(data)
+                                .await()
+
+                            favoriteDao?.upsertTvSeries(
+                                FavoriteTvSeriesEntity(
+                                    userId = uid,
+                                    seriesId = seriesId,
+                                    imdbId = normImdb,
+                                    name = name,
+                                    posterPath = doc.getString("posterPath"),
+                                    firstAirDate = doc.getString("firstAirDate"),
+                                    voteAverage = (doc.get("voteAverage") as? Number)?.toDouble(),
+                                    genreIds = (doc.get("genreIds") as? List<*>).orEmpty().mapNotNull { (it as? Number)?.toInt() }.joinToString(","),
+                                    numberOfSeasons = (doc.get("numberOfSeasons") as? Number)?.toInt(),
+                                    numberOfEpisodes = (doc.get("numberOfEpisodes") as? Number)?.toInt(),
+                                    updatedAt = doc.getLong("updatedAt") ?: System.currentTimeMillis()
+                                )
+                            )
+
+                            if (doc.id != normImdb) {
+                                try { doc.reference.delete().await() } catch (_: Exception) {}
+                            }
+                            if (seriesId > 0 && "tv_$seriesId" != normImdb) {
+                                try {
+                                    firestore.collection("users")
+                                        .document(remoteUid)
+                                        .collection("favorites")
+                                        .document("tv_$seriesId")
+                                        .delete()
+                                        .await()
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    } else {
+                        // Movie favorite document
+                        if (isCanonical) {
+                            val movie = doc.toObject(Movie::class.java)
+                            if (movie != null) {
+                                val normImdb = MediaIdHelper.normalizeImdbId(movie.imdbCode) ?: doc.id
+                                val updatedMovie = movie.copy(imdbCode = normImdb)
+                                favoriteDao?.upsertMovie(FavoriteMovieEntity.from(uid, updatedMovie))
+                            }
+                            continue
+                        }
+                        val movie = doc.toObject(Movie::class.java)
+                        val movieId = movie?.id ?: (doc.get("id") as? Number)?.toInt() ?: doc.id.toIntOrNull() ?: 0
+                        val rawImdb = movie?.imdbCode ?: doc.getString("imdbCode") ?: doc.getString("imdb_code")
+                        var normImdb = MediaIdHelper.normalizeImdbId(rawImdb)
+                        val title = movie?.title ?: doc.getString("title").orEmpty()
+
+                        if (normImdb.isNullOrBlank() && movieId > 0) {
+                            try {
+                                normImdb = resolver.getMovieImdbId(movieId)?.let { MediaIdHelper.normalizeImdbId(it) }
+                            } catch (_: Exception) {}
+                        }
+                        if (normImdb.isNullOrBlank() && title.isNotBlank()) {
+                            try {
+                                normImdb = resolver.resolve(title, existingMovieId = movieId).imdbId?.let { MediaIdHelper.normalizeImdbId(it) }
+                            } catch (_: Exception) {}
+                        }
+
+                        if (!normImdb.isNullOrBlank()) {
+                            val updatedMovie = (movie ?: Movie(id = movieId, title = title)).copy(imdbCode = normImdb)
+                            firestore.collection("users")
+                                .document(remoteUid)
+                                .collection("favorites")
+                                .document(normImdb)
+                                .set(updatedMovie)
+                                .await()
+
+                            favoriteDao?.upsertMovie(FavoriteMovieEntity.from(uid, updatedMovie))
+
+                            if (doc.id != normImdb) {
+                                try { doc.reference.delete().await() } catch (_: Exception) {}
+                            }
+                            if (movieId > 0 && movieId.toString() != normImdb) {
+                                try {
+                                    firestore.collection("users")
+                                        .document(remoteUid)
+                                        .collection("favorites")
+                                        .document(movieId.toString())
+                                        .delete()
+                                        .await()
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                AppLogger.w("UserLibraryRepository", "Error during remote favorites migration: ${e.message}")
+            }
+        }
+
+        // 2. Scan and backfill local Room favorites lacking canonical IMDb IDs
+        try {
+            val localMovies = favoriteDao?.getFavoriteMovies(uid).orEmpty()
+            for (movieEntity in localMovies) {
+                if (MediaIdHelper.isCanonicalMovieId(movieEntity.imdbId)) {
+                    continue
+                }
+                if (movieEntity.imdbId.isBlank() && movieEntity.movieId > 0) {
+                    val resolved = try {
+                        resolver.getMovieImdbId(movieEntity.movieId)?.let { MediaIdHelper.normalizeImdbId(it) }
+                    } catch (_: Exception) { null }
+                    if (!resolved.isNullOrBlank()) {
+                        val updated = movieEntity.copy(imdbId = resolved)
+                        favoriteDao?.upsertMovie(updated)
+                        if (remoteUid != null) {
+                            firestore.collection("users")
+                                .document(remoteUid)
+                                .collection("favorites")
+                                .document(resolved)
+                                .set(updated.toMovie())
+                                .await()
+                            if (movieEntity.movieId.toString() != resolved) {
+                                try {
+                                    firestore.collection("users")
+                                        .document(remoteUid)
+                                        .collection("favorites")
+                                        .document(movieEntity.movieId.toString())
+                                        .delete()
+                                        .await()
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            val localTv = favoriteDao?.getFavoriteTvSeries(uid).orEmpty()
+            for (tvEntity in localTv) {
+                if (MediaIdHelper.isCanonicalMovieId(tvEntity.imdbId)) {
+                    continue
+                }
+                if (tvEntity.imdbId.isBlank() && tvEntity.seriesId > 0) {
+                    val resolved = try {
+                        resolver.getTvImdbId(tvEntity.seriesId)?.let { MediaIdHelper.normalizeImdbId(it) }
+                    } catch (_: Exception) { null }
+                    if (!resolved.isNullOrBlank()) {
+                        val updated = tvEntity.copy(imdbId = resolved)
+                        favoriteDao?.upsertTvSeries(updated)
+                        if (remoteUid != null) {
+                            val data = mapOf(
+                                "id" to tvEntity.seriesId,
+                                "imdbId" to resolved,
+                                "name" to tvEntity.name,
+                                "posterPath" to tvEntity.posterPath,
+                                "firstAirDate" to tvEntity.firstAirDate,
+                                "voteAverage" to tvEntity.voteAverage,
+                                "genreIds" to tvEntity.genreIds.split(",").mapNotNull { it.trim().toIntOrNull() },
+                                "numberOfSeasons" to tvEntity.numberOfSeasons,
+                                "numberOfEpisodes" to tvEntity.numberOfEpisodes,
+                                "updatedAt" to tvEntity.updatedAt
+                            )
+                            firestore.collection("users")
+                                .document(remoteUid)
+                                .collection("favorites")
+                                .document(resolved)
+                                .set(data)
+                                .await()
+                            val legacyKey = "tv_${tvEntity.seriesId}"
+                            if (legacyKey != resolved) {
+                                try {
+                                    firestore.collection("users")
+                                        .document(remoteUid)
+                                        .collection("favorites")
+                                        .document(legacyKey)
+                                        .delete()
+                                        .await()
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            AppLogger.w("UserLibraryRepository", "Error during local favorites migration: ${e.message}")
         }
     }
 
@@ -1204,7 +1660,17 @@ class UserLibraryRepository @Inject constructor(
         imdbId: String? = null
     ) {
         val title = movieTitle.ifBlank { movie?.title.orEmpty() }
-        val effectiveImdb = MediaIdHelper.normalizeImdbId(imdbId ?: movie?.imdbCode)
+        var effectiveImdb = MediaIdHelper.normalizeImdbId(imdbId ?: movie?.imdbCode)
+        if (effectiveImdb.isNullOrBlank() && movieId > 0) {
+            try {
+                effectiveImdb = mediaMetadataResolver?.get()?.getMovieImdbId(movieId)?.let { MediaIdHelper.normalizeImdbId(it) }
+            } catch (_: Exception) {}
+        }
+        if (effectiveImdb.isNullOrBlank() && title.isNotBlank()) {
+            try {
+                effectiveImdb = mediaMetadataResolver?.get()?.resolve(title, existingMovieId = movieId)?.imdbId?.let { MediaIdHelper.normalizeImdbId(it) }
+            } catch (_: Exception) {}
+        }
         val mediaId = MediaIdHelper.forMovie(effectiveImdb, movieId, title)
         val progress = PlaybackProgress(
             mediaId = mediaId,
@@ -1322,7 +1788,17 @@ class UserLibraryRepository @Inject constructor(
         stillPath: String? = null,
         imdbId: String? = null
     ) {
-        val effectiveImdb = MediaIdHelper.normalizeImdbId(imdbId)
+        var effectiveImdb = MediaIdHelper.normalizeImdbId(imdbId)
+        if (effectiveImdb.isNullOrBlank() && seriesId > 0) {
+            try {
+                effectiveImdb = mediaMetadataResolver?.get()?.getTvImdbId(seriesId)?.let { MediaIdHelper.normalizeImdbId(it) }
+            } catch (_: Exception) {}
+        }
+        if (effectiveImdb.isNullOrBlank() && seriesName.isNotBlank()) {
+            try {
+                effectiveImdb = mediaMetadataResolver?.get()?.resolve(seriesName, existingSeriesId = seriesId)?.imdbId?.let { MediaIdHelper.normalizeImdbId(it) }
+            } catch (_: Exception) {}
+        }
         val mediaId = MediaIdHelper.forEpisode(effectiveImdb, seriesId, seasonNumber, episodeNumber, seriesName)
         val title = if (seriesName.isNotBlank()) {
             "$seriesName - S${seasonNumber}E${episodeNumber} - $episodeTitle"
@@ -1606,9 +2082,23 @@ class UserLibraryRepository @Inject constructor(
                 }
             }
 
-            // Ensure any legacy local or remote items are migrated to canonical IMDb format and synced back to Firestore
-            cleanupAndMigrateWatchHistory()
-            cleanupAndMigrateDownloads()
+            // Migration to canonical IMDb identifiers is executed only once per user account
+            val migrationTimestamp = metadataDao.getLastSyncTimestamp(uid, "canonical_migration_v1") ?: 0L
+            val migrationCompleted = migrationTimestamp > 0L
+
+            if (!migrationCompleted || forceFull) {
+                cleanupAndMigrateWatchHistory()
+                cleanupAndMigrateDownloads()
+                cleanupAndMigrateFavorites()
+                metadataDao.setLastSyncTimestamp(
+                    SyncMetadataEntity(
+                        userId = uid,
+                        collectionKey = "canonical_migration_v1",
+                        lastSyncTimestamp = now
+                    )
+                )
+                Log.i("UserLibraryRepository", "Completed one-time canonical migration for $uid")
+            }
 
             // 5. Sync Remote Settings (One-time fetch of settings/config)
             try {

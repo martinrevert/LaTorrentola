@@ -85,6 +85,10 @@ class TorrentDownloadService : Service() {
     @Inject
     lateinit var publicTrackersRepository: PublicTrackersRepository
 
+    /** TMDB repository for external metadata lookups. */
+    @Inject
+    lateinit var tmdbRepository: com.martinrevert.latorrentola.network.TmdbRepository
+
     /** Background work scope owned by this service instance. */
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -495,6 +499,15 @@ class TorrentDownloadService : Service() {
             val existing = existingRecord ?: torrentDownloadDao.get(infoHash)
             if (rawImdbId.isNullOrBlank()) {
                 rawImdbId = existing?.imdbId
+            }
+            if (rawImdbId.isNullOrBlank()) {
+                if (seriesId > 0) {
+                    val resolved = try { tmdbRepository.getTvImdbId(seriesId) } catch (_: Exception) { null }
+                    if (!resolved.isNullOrBlank()) rawImdbId = resolved
+                } else if (movieId > 0) {
+                    val resolved = try { tmdbRepository.getMovieImdbId(movieId) } catch (_: Exception) { null }
+                    if (!resolved.isNullOrBlank()) rawImdbId = resolved
+                }
             }
             val effectiveImdbId = MediaIdHelper.normalizeImdbId(rawImdbId)
             val completedFile = existing

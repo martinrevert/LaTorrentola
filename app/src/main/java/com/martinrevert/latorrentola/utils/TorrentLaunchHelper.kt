@@ -113,7 +113,8 @@ object TorrentLaunchHelper {
         seasonNumber: Int = 0,
         episodeNumber: Int = 0,
         movieId: Int = 0,
-        posterUrl: String? = null
+        posterUrl: String? = null,
+        imdbId: String? = null
     ) {
         val hash = TorrentDownloadService.parseHexInfoHash(magnetUri)
         if (!hash.isNullOrBlank()) {
@@ -139,6 +140,9 @@ object TorrentLaunchHelper {
             putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, seasonNumber)
             putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, episodeNumber)
             putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, movieId)
+            if (!imdbId.isNullOrBlank()) {
+                putExtra(TorrentDownloadService.EXTRA_IMDB_ID, imdbId)
+            }
             if (!posterUrl.isNullOrBlank()) {
                 putExtra(TorrentDownloadService.EXTRA_POSTER_URL, posterUrl)
             }
@@ -163,6 +167,8 @@ object TorrentLaunchHelper {
      * @param movieId Movie ID.
      * @param posterUrl Optional cover poster URL for the movie or series.
      * @param requiredSizeBytes Optional size in bytes of the torrent release.
+     * @param userLibraryRepository Optional repository to mark external downloads.
+     * @param imdbId Canonical IMDb identifier.
      * @return Result describing whether the request started or why it was rejected.
      */
     fun launch(
@@ -177,7 +183,8 @@ object TorrentLaunchHelper {
         movieId: Int = 0,
         posterUrl: String? = null,
         requiredSizeBytes: Long? = null,
-        userLibraryRepository: UserLibraryRepository? = null
+        userLibraryRepository: UserLibraryRepository? = null,
+        imdbId: String? = null
     ): TorrentLaunchResult {
         @Suppress("DEPRECATION")
         if (mode == TorrentHandlingMode.LOCAL_PLAYBACK || mode == TorrentHandlingMode.CHROMECAST) {
@@ -246,7 +253,19 @@ object TorrentLaunchHelper {
                 } else TorrentLaunchResult.NoExternalClient
             TorrentHandlingMode.LOCAL_PLAYBACK,
             @Suppress("DEPRECATION") TorrentHandlingMode.CHROMECAST -> {
-                downloadLocally(context, magnetUri, title, false, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId, posterUrl)
+                downloadLocally(
+                    context = context,
+                    magnetUri = magnetUri,
+                    title = title,
+                    castWhenReady = false,
+                    nextEpisodeInfo = nextEpisodeInfo,
+                    seriesId = seriesId,
+                    seasonNumber = seasonNumber,
+                    episodeNumber = episodeNumber,
+                    movieId = movieId,
+                    posterUrl = posterUrl,
+                    imdbId = imdbId
+                )
                 TorrentLaunchResult.Started
             }
         }
