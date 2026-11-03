@@ -45,15 +45,22 @@ object NetworkModule {
             .build()
     }
 
-    /** Creates a Retrofit instance for the YTS API. */
+    /** Creates a Retrofit instance for the YTS API with automatic alternative base URL fallback. */
     @Provides
     @Singleton
     @YtsRetrofit
-    fun provideRetrofit(okHttpClient: OkHttpClient): Retrofit {
+    fun provideRetrofit(
+        loggingInterceptor: HttpLoggingInterceptor,
+        fallbackInterceptor: com.martinrevert.latorrentola.network.YtsFallbackInterceptor
+    ): Retrofit {
+        val ytsClient = OkHttpClient.Builder()
+            .addInterceptor(fallbackInterceptor)
+            .addInterceptor(loggingInterceptor)
+            .build()
         return Retrofit.Builder()
             .baseUrl(Constants.YTS_BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
-            .client(okHttpClient)
+            .client(ytsClient)
             .build()
     }
 
