@@ -40,10 +40,13 @@ object TvSeriesProgressCalculator {
                 ?: 0
         }
 
-        val todayIso = LocalDate.now().toString()
+        val today = LocalDate.now()
+        val todayIso = today.toString()
+        val currentYear = today.year
         val lastAiredSeason = series.lastEpisodeToAir?.seasonNumber
         val lastAiredEpisode = series.lastEpisodeToAir?.episodeNumber
         val nextAiredSeason = series.nextEpisodeToAir?.seasonNumber
+        val nextAiredEpisode = series.nextEpisodeToAir?.episodeNumber
         val hasAnyAirDate = seasons.any { !it.airDate.isNullOrBlank() }
 
         var totalAvailable = 0
@@ -52,21 +55,31 @@ object TvSeriesProgressCalculator {
             val epCount = season.episodeCount ?: 0
             if (epCount <= 0) continue
 
-            // If air date is in the future, season hasn't aired and has no torrents
-            val airDate = season.airDate
-            if (!airDate.isNullOrBlank() && airDate > todayIso) {
+            val rawAirDate = season.airDate?.trim()
+
+            // 1. Check if season premiere airDate is in the future or an unannounced upcoming year
+            val isAiredByLastEpisode = lastAiredSeason != null && sNum <= lastAiredSeason
+            val isFutureAirDate = when {
+                rawAirDate.isNullOrBlank() -> false
+                rawAirDate.length == 4 -> {
+                    val year = rawAirDate.toIntOrNull() ?: 0
+                    !isAiredByLastEpisode && (year > currentYear || (year == currentYear && (nextAiredSeason != null && sNum >= nextAiredSeason || (lastAiredSeason != null && sNum > lastAiredSeason) || ((series.isSeriesContinuing || series.inProduction == true) && lastAiredSeason == null))))
+                }
+                rawAirDate.length == 7 -> "$rawAirDate-01" > todayIso
+                else -> rawAirDate > todayIso
+            }
+            if (isFutureAirDate) {
                 continue
             }
 
-            // For seasons beyond season 1 with missing air date when other seasons have air dates,
-            // or when series is actively continuing/in production, it has not aired yet.
-            if (sNum > 1 && airDate.isNullOrBlank()) {
-                if (hasAnyAirDate || series.isSeriesContinuing || series.inProduction == true || lastAiredSeason != null) {
+            // 2. For seasons beyond season 1 with missing air dates
+            if (sNum > 1 && rawAirDate.isNullOrBlank()) {
+                if (hasAnyAirDate || series.isSeriesContinuing || series.inProduction == true || lastAiredSeason != null || nextAiredSeason != null) {
                     continue
                 }
             }
 
-            // If TMDB provides lastEpisodeToAir, seasons after that haven't aired
+            // 3. If TMDB provides lastEpisodeToAir with a regular season (seasonNumber > 0)
             if (lastAiredSeason != null && lastAiredSeason > 0) {
                 if (sNum > lastAiredSeason) {
                     continue
@@ -77,9 +90,22 @@ object TvSeriesProgressCalculator {
                 }
             }
 
-            // If TMDB provides nextEpisodeToAir, seasons strictly after next episode haven't aired
-            if (nextAiredSeason != null && nextAiredSeason > 0 && sNum > nextAiredSeason) {
-                continue
+            // 4. If TMDB provides nextEpisodeToAir:
+            // - Any season strictly after nextAiredSeason has not aired.
+            // - The season of nextAiredSeason itself has not aired if episode <= 1 (season premiere upcoming),
+            //   or only episodes prior to nextAiredEpisode have aired.
+            if (nextAiredSeason != null && nextAiredSeason > 0) {
+                if (sNum > nextAiredSeason) {
+                    continue
+                }
+                if (sNum == nextAiredSeason) {
+                    if (nextAiredEpisode == null || nextAiredEpisode <= 1) {
+                        continue
+                    } else {
+                        totalAvailable += minOf(epCount, nextAiredEpisode - 1)
+                        continue
+                    }
+                }
             }
 
             totalAvailable += epCount

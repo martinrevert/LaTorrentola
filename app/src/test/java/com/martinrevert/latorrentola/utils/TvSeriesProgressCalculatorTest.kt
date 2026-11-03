@@ -1,8 +1,10 @@
 package com.martinrevert.latorrentola.utils
 
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeason
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -340,5 +342,239 @@ class TvSeriesProgressCalculatorTest {
         assertEquals(false, TvSeriesProgressCalculator.isSeriesWatched(series, history))
         assertEquals(true, TvSeriesProgressCalculator.isSeriesInProgress(series, history))
         assertEquals(false, TvSeriesProgressCalculator.isSeriesUnwatched(series, history))
+    }
+
+    @Test
+    fun `series with unconsumed Season 0 specials, 4 completed seasons, and upcoming Season 5 is marked WATCHED`() {
+        val series = TmdbTvSummary(
+            id = 800,
+            name = "Epic Show",
+            numberOfEpisodes = 48,
+            numberOfSeasons = 5,
+            status = "Returning Series",
+            inProduction = true,
+            nextEpisodeToAir = TmdbTvEpisode(
+                id = 9991,
+                seasonNumber = 5,
+                episodeNumber = 1,
+                airDate = "2026-12-01"
+            ),
+            seasons = listOf(
+                TmdbTvSeason(id = 80, seasonNumber = 0, episodeCount = 6, airDate = "2019-01-01"), // S0 Specials unconsumed
+                TmdbTvSeason(id = 81, seasonNumber = 1, episodeCount = 10, airDate = "2019-06-01"),
+                TmdbTvSeason(id = 82, seasonNumber = 2, episodeCount = 10, airDate = "2020-06-01"),
+                TmdbTvSeason(id = 83, seasonNumber = 3, episodeCount = 10, airDate = "2021-06-01"),
+                TmdbTvSeason(id = 84, seasonNumber = 4, episodeCount = 10, airDate = "2022-06-01"),
+                TmdbTvSeason(id = 85, seasonNumber = 5, episodeCount = 8, airDate = "2026-12-01") // Upcoming season
+            )
+        )
+
+        // User watched all 40 episodes of seasons 1 through 4 (and did not watch S0 specials)
+        val history = mutableMapOf<String, PlaybackProgress>()
+        for (s in 1..4) {
+            for (e in 1..10) {
+                val mediaId = MediaIdHelper.forEpisode(800, s, e)
+                history[mediaId] = PlaybackProgress(
+                    mediaId = mediaId,
+                    title = "Epic Show S0${s}E%02d".format(e),
+                    positionMs = 2000L,
+                    durationMs = 2000L,
+                    isEpisode = true
+                )
+            }
+        }
+
+        val progress = TvSeriesProgressCalculator.calculateProgressPercent(series, history)
+        assertEquals(100, progress)
+        assertEquals(true, TvSeriesProgressCalculator.isSeriesWatched(series, history))
+        assertEquals(false, TvSeriesProgressCalculator.isSeriesInProgress(series, history))
+        assertEquals(false, TvSeriesProgressCalculator.isSeriesUnwatched(series, history))
+    }
+
+    @Test
+    fun `series with Season 0 specials, 4 completed seasons, and upcoming Season 5 with year-only air date is marked WATCHED`() {
+        val series = TmdbTvSummary(
+            id = 801,
+            name = "Epic Show 2",
+            numberOfEpisodes = 48,
+            numberOfSeasons = 5,
+            status = "Returning Series",
+            inProduction = true,
+            lastEpisodeToAir = TmdbTvEpisode(
+                id = 9990,
+                seasonNumber = 0, // A special was the most recent episode to air!
+                episodeNumber = 1,
+                airDate = "2024-12-01"
+            ),
+            seasons = listOf(
+                TmdbTvSeason(id = 80, seasonNumber = 0, episodeCount = 3, airDate = "2024-12-01"),
+                TmdbTvSeason(id = 81, seasonNumber = 1, episodeCount = 10, airDate = "2020-01-01"),
+                TmdbTvSeason(id = 82, seasonNumber = 2, episodeCount = 10, airDate = "2021-01-01"),
+                TmdbTvSeason(id = 83, seasonNumber = 3, episodeCount = 10, airDate = "2022-01-01"),
+                TmdbTvSeason(id = 84, seasonNumber = 4, episodeCount = 10, airDate = "2023-01-01"),
+                TmdbTvSeason(id = 85, seasonNumber = 5, episodeCount = 8, airDate = "2026") // Year-only release window
+            )
+        )
+
+        val history = mutableMapOf<String, PlaybackProgress>()
+        for (s in 1..4) {
+            for (e in 1..10) {
+                val mediaId = MediaIdHelper.forEpisode(801, s, e)
+                history[mediaId] = PlaybackProgress(
+                    mediaId = mediaId,
+                    title = "Epic Show 2 S0${s}E%02d".format(e),
+                    positionMs = 2000L,
+                    durationMs = 2000L,
+                    isEpisode = true
+                )
+            }
+        }
+
+        val progress = TvSeriesProgressCalculator.calculateProgressPercent(series, history)
+        assertEquals(100, progress)
+        assertEquals(true, TvSeriesProgressCalculator.isSeriesWatched(series, history))
+        assertEquals(false, TvSeriesProgressCalculator.isSeriesInProgress(series, history))
+    }
+
+    @Test
+    fun `calculateProgressPercent does not drop past regular seasons with year-only air dates`() {
+        val series = TmdbTvSummary(
+            id = 850,
+            name = "Classic Anime",
+            numberOfEpisodes = 24,
+            numberOfSeasons = 2,
+            seasons = listOf(
+                TmdbTvSeason(id = 1, seasonNumber = 1, episodeCount = 12, airDate = "2020"),
+                TmdbTvSeason(id = 2, seasonNumber = 2, episodeCount = 12, airDate = "2021")
+            )
+        )
+        // User watched all 12 episodes of Season 1
+        val history = (1..12).associate { ep ->
+            val id = MediaIdHelper.forEpisode(850, 1, ep)
+            id to PlaybackProgress(
+                mediaId = id,
+                title = "Ep $ep",
+                positionMs = 1000L,
+                durationMs = 1000L,
+                isEpisode = true
+            )
+        }
+
+        // Available episodes must be 24 (12 + 12), not 12
+        val progress = TvSeriesProgressCalculator.calculateProgressPercent(series, history)
+        assertEquals(50, progress)
+        assertEquals(false, TvSeriesProgressCalculator.isSeriesWatched(series, history))
+        assertEquals(true, TvSeriesProgressCalculator.isSeriesInProgress(series, history))
+    }
+
+    @Test
+    fun `calculateProgressPercent retains latest regular season when last episode to air is Season 0 special`() {
+        val series = TmdbTvSummary(
+            id = 851,
+            name = "Sherlock Style",
+            numberOfEpisodes = 6,
+            numberOfSeasons = 2,
+            status = "Returning Series",
+            inProduction = true,
+            lastEpisodeToAir = TmdbTvEpisode(
+                id = 9992,
+                seasonNumber = 0, // Special aired after S2
+                episodeNumber = 1,
+                airDate = "2024-12-25"
+            ),
+            seasons = listOf(
+                TmdbTvSeason(id = 10, seasonNumber = 0, episodeCount = 1, airDate = "2024-12-25"),
+                TmdbTvSeason(id = 11, seasonNumber = 1, episodeCount = 3, airDate = "2020-01-01"),
+                TmdbTvSeason(id = 12, seasonNumber = 2, episodeCount = 3, airDate = "2022-01-01")
+            )
+        )
+
+        // User watched only Season 1 (3 episodes out of 6 regular episodes)
+        val history = (1..3).associate { ep ->
+            val id = MediaIdHelper.forEpisode(851, 1, ep)
+            id to PlaybackProgress(
+                mediaId = id,
+                title = "Ep $ep",
+                positionMs = 1000L,
+                durationMs = 1000L,
+                isEpisode = true
+            )
+        }
+
+        // Season 2 must NOT be dropped, so progress must be 50%, not 100%
+        val progress = TvSeriesProgressCalculator.calculateProgressPercent(series, history)
+        assertEquals(50, progress)
+        assertEquals(false, TvSeriesProgressCalculator.isSeriesWatched(series, history))
+        assertEquals(true, TvSeriesProgressCalculator.isSeriesInProgress(series, history))
+    }
+
+    @Test
+    fun `calculateProgressPercent includes current-year season when lastEpisodeToAir confirms it has aired`() {
+        val series = TmdbTvSummary(
+            id = 852,
+            name = "Airing Hit Show",
+            numberOfEpisodes = 20,
+            numberOfSeasons = 2,
+            status = "Returning Series",
+            inProduction = true,
+            lastEpisodeToAir = TmdbTvEpisode(
+                id = 9993,
+                seasonNumber = 2,
+                episodeNumber = 10,
+                airDate = "2026-06-01"
+            ),
+            seasons = listOf(
+                TmdbTvSeason(id = 21, seasonNumber = 1, episodeCount = 10, airDate = "2024-01-01"),
+                TmdbTvSeason(id = 22, seasonNumber = 2, episodeCount = 10, airDate = "2026") // Year-only current year
+            )
+        )
+
+        // User watched only Season 1
+        val history = (1..10).associate { ep ->
+            val id = MediaIdHelper.forEpisode(852, 1, ep)
+            id to PlaybackProgress(
+                mediaId = id,
+                title = "Ep $ep",
+                positionMs = 1000L,
+                durationMs = 1000L,
+                isEpisode = true
+            )
+        }
+
+        // Season 2 has aired, so available episodes is 20, progress is 50%
+        val progress = TvSeriesProgressCalculator.calculateProgressPercent(series, history)
+        assertEquals(50, progress)
+        assertEquals(false, TvSeriesProgressCalculator.isSeriesWatched(series, history))
+    }
+
+    @Test
+    fun `calculateProgressPercent treats month-precision air date as aired once premiere month begins`() {
+        val currentMonthIso = LocalDate.now().toString().take(7) // e.g. "2026-11"
+        val series = TmdbTvSummary(
+            id = 853,
+            name = "Monthly Premiere Show",
+            numberOfEpisodes = 10,
+            numberOfSeasons = 1,
+            seasons = listOf(
+                TmdbTvSeason(id = 31, seasonNumber = 1, episodeCount = 10, airDate = currentMonthIso)
+            )
+        )
+
+        // User watched 5 episodes of Season 1
+        val history = (1..5).associate { ep ->
+            val id = MediaIdHelper.forEpisode(853, 1, ep)
+            id to PlaybackProgress(
+                mediaId = id,
+                title = "Ep $ep",
+                positionMs = 1000L,
+                durationMs = 1000L,
+                isEpisode = true
+            )
+        }
+
+        // Season premiered in current month, so available episodes is 10, progress is 50%
+        val progress = TvSeriesProgressCalculator.calculateProgressPercent(series, history)
+        assertEquals(50, progress)
+        assertEquals(true, TvSeriesProgressCalculator.isSeriesInProgress(series, history))
     }
 }
