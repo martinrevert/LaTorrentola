@@ -453,6 +453,99 @@ class UserLibraryRepositoryTest {
             downloadRecordDao.deleteMoviesByMovieId(any(), any())
         }
     }
+
+    @Test
+    fun `markAsDownloaded stores movie download in Room and Firestore under canonical IMDb ID`() = runTest {
+        val downloadRecordDao: com.martinrevert.latorrentola.database.DownloadRecordDao = mockk(relaxed = true)
+        val mockUser = mockk<com.google.firebase.auth.FirebaseUser>()
+        every { mockUser.uid } returns "user_123"
+        every { auth.currentUser } returns mockUser
+
+        val usersCol = mockk<com.google.firebase.firestore.CollectionReference>(relaxed = true)
+        val userDoc = mockk<com.google.firebase.firestore.DocumentReference>(relaxed = true)
+        val downloadsCol = mockk<com.google.firebase.firestore.CollectionReference>(relaxed = true)
+        val docRef = mockk<com.google.firebase.firestore.DocumentReference>(relaxed = true)
+        val completedTask = com.google.android.gms.tasks.Tasks.forResult<Void>(null)
+
+        every { firestore.collection("users") } returns usersCol
+        every { usersCol.document("user_123") } returns userDoc
+        every { userDoc.collection("downloads") } returns downloadsCol
+        every { downloadsCol.document(any()) } returns docRef
+        every { docRef.set(any()) } returns completedTask
+        every { docRef.delete() } returns completedTask
+
+        val repo = UserLibraryRepository(
+            firestore = firestore,
+            auth = auth,
+            watchHistoryDao = watchHistoryDao,
+            downloadRecordDao = downloadRecordDao
+        )
+
+        val download = com.martinrevert.latorrentola.model.user.DownloadedMovie(
+            movieId = 278,
+            imdbId = "tt0111161",
+            movieTitle = "The Shawshank Redemption",
+            hash = "sample_torrent_hash_12345"
+        )
+        repo.markAsDownloaded(download)
+
+        io.mockk.coVerify {
+            downloadRecordDao.upsertMovie(
+                match { it.imdbId == "tt0111161" && it.movieId == 278 }
+            )
+        }
+        io.mockk.verify {
+            downloadsCol.document("tt0111161")
+        }
+    }
+
+    @Test
+    fun `markEpisodeAsDownloaded stores TV episode in Room and Firestore under canonical IMDb ID`() = runTest {
+        val downloadRecordDao: com.martinrevert.latorrentola.database.DownloadRecordDao = mockk(relaxed = true)
+        val mockUser = mockk<com.google.firebase.auth.FirebaseUser>()
+        every { mockUser.uid } returns "user_123"
+        every { auth.currentUser } returns mockUser
+
+        val usersCol = mockk<com.google.firebase.firestore.CollectionReference>(relaxed = true)
+        val userDoc = mockk<com.google.firebase.firestore.DocumentReference>(relaxed = true)
+        val tvDownloadsCol = mockk<com.google.firebase.firestore.CollectionReference>(relaxed = true)
+        val docRef = mockk<com.google.firebase.firestore.DocumentReference>(relaxed = true)
+        val completedTask = com.google.android.gms.tasks.Tasks.forResult<Void>(null)
+
+        every { firestore.collection("users") } returns usersCol
+        every { usersCol.document("user_123") } returns userDoc
+        every { userDoc.collection("tv_downloads") } returns tvDownloadsCol
+        every { tvDownloadsCol.document(any()) } returns docRef
+        every { docRef.set(any()) } returns completedTask
+        every { docRef.delete() } returns completedTask
+
+        val repo = UserLibraryRepository(
+            firestore = firestore,
+            auth = auth,
+            watchHistoryDao = watchHistoryDao,
+            downloadRecordDao = downloadRecordDao
+        )
+
+        val download = com.martinrevert.latorrentola.model.user.DownloadedEpisode(
+            seriesId = 1399,
+            imdbId = "tt0944947",
+            seriesName = "Game of Thrones",
+            seasonNumber = 1,
+            episodeNumber = 1,
+            hash = "sample_ep_hash_5678"
+        )
+        repo.markEpisodeAsDownloaded(download)
+
+        io.mockk.coVerify {
+            downloadRecordDao.upsertEpisode(
+                match { it.imdbId == "tt0944947" && it.seriesId == 1399 && it.seasonNumber == 1 && it.episodeNumber == 1 }
+            )
+        }
+        io.mockk.verify {
+            tvDownloadsCol.document("tt0944947_s1_e1")
+        }
+    }
 }
+
 
 

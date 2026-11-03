@@ -90,6 +90,7 @@ import com.martinrevert.latorrentola.ui.components.tvGridRowDpadNavigation
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.GenreTranslation
+import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TvSeriesProgressCalculator
 import com.martinrevert.latorrentola.utils.isTvDevice
@@ -1469,7 +1470,7 @@ private fun FavoriteItemsGrid(
             key = { _, it -> "movie_${it.id}" },
             contentType = { _, _ -> "movie" }
         ) { index, movie ->
-            val progress = watchHistoryMap[movie.id.toString()] ?: watchHistoryMap[movie.title]
+            val progress = MediaIdHelper.findMovieProgress(movie, watchHistoryMap)
             val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
             MovieItem(
                 movie = movie,

@@ -22,8 +22,23 @@ object TvSeriesProgressCalculator {
         watchHistoryMap: Map<String, PlaybackProgress>
     ): Int? {
         val seriesId = series.id
-        val imdbId = series.effectiveImdbId
-        if ((seriesId <= 0 && imdbId.isNullOrBlank()) || watchHistoryMap.isEmpty()) return null
+        var imdbId = series.effectiveImdbId
+        val seriesName = series.name?.trim().orEmpty()
+
+        // Infer missing IMDb ID from watchHistoryMap if episode titles match series name
+        if (imdbId.isNullOrBlank() && seriesName.isNotBlank() && watchHistoryMap.isNotEmpty()) {
+            for ((_, progress) in watchHistoryMap) {
+                if (progress.isEpisode && progress.title.startsWith(seriesName, ignoreCase = true)) {
+                    val candidate = MediaIdHelper.parseCanonicalEpisode(progress.mediaId)?.imdbId
+                    if (!candidate.isNullOrBlank()) {
+                        imdbId = candidate
+                        break
+                    }
+                }
+            }
+        }
+
+        if ((seriesId <= 0 && imdbId.isNullOrBlank() && seriesName.isBlank()) || watchHistoryMap.isEmpty()) return null
 
         val imdbPrefix = imdbId?.let { "${it}_s" }
         val tmdbPrefix = if (seriesId > 0) "tmdb_${seriesId}_s" else null
@@ -32,11 +47,13 @@ object TvSeriesProgressCalculator {
         watchHistoryMap.forEach { (mediaId, progress) ->
             val parsed = MediaIdHelper.parseCanonicalEpisode(mediaId)
             val matchesSeries = if (parsed != null) {
-                parsed.matchesSeries(seriesId, imdbId)
+                parsed.matchesSeries(seriesId, imdbId) ||
+                    (seriesName.isNotBlank() && progress.title.startsWith(seriesName, ignoreCase = true))
             } else {
                 (imdbPrefix != null && mediaId.startsWith(imdbPrefix)) ||
                     (tmdbPrefix != null && mediaId.startsWith(tmdbPrefix)) ||
-                    (seriesId > 0 && mediaId.contains("_${seriesId}_s"))
+                    (seriesId > 0 && mediaId.contains("_${seriesId}_s")) ||
+                    (seriesName.isNotBlank() && progress.title.startsWith(seriesName, ignoreCase = true))
             }
 
             if (matchesSeries) {

@@ -1,5 +1,8 @@
 package com.martinrevert.latorrentola.utils
 
+import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
+
 /**
  * Parsed components of an episode media identifier.
  *
@@ -230,5 +233,102 @@ object MediaIdHelper {
             return EpisodeComponents(first = seriesId, second = season, third = episode, seriesIdentifier = seriesId.toString())
         }
         return null
+    }
+
+    /**
+     * Attempts to find playback progress for [movie] in [watchHistoryMap] by evaluating canonical IMDb ID,
+     * TMDB ID ("tmdb_{id}"), legacy numeric ID, legacy "media_{id}", and movie title.
+     */
+    fun findMovieProgress(
+        movie: Movie,
+        watchHistoryMap: Map<String, PlaybackProgress>
+    ): PlaybackProgress? {
+        if (watchHistoryMap.isEmpty()) return null
+
+        // 1. Check canonical IMDb ID
+        val normImdb = normalizeImdbId(movie.imdbCode)
+        if (normImdb != null) {
+            watchHistoryMap[normImdb]?.takeUnless { it.isEpisode }?.let { return it }
+        }
+
+        // 2. Check TMDB deterministic ID, numeric ID, and legacy media_ prefix
+        if (movie.id > 0) {
+            watchHistoryMap["tmdb_${movie.id}"]?.takeUnless { it.isEpisode }?.let { return it }
+            watchHistoryMap[movie.id.toString()]?.takeUnless { it.isEpisode }?.let { return it }
+            watchHistoryMap["media_${movie.id}"]?.takeUnless { it.isEpisode }?.let { return it }
+        }
+
+        // 3. Check exact title and trimmed lowercase title
+        val title = movie.title
+        if (!title.isNullOrBlank()) {
+            watchHistoryMap[title]?.takeUnless { it.isEpisode }?.let { return it }
+            watchHistoryMap[title.trim().lowercase()]?.takeUnless { it.isEpisode }?.let { return it }
+        }
+
+        return null
+    }
+
+    /**
+     * Backward-compatible overload for finding movie progress by fields.
+     */
+    fun findMovieProgress(
+        movieId: Int,
+        imdbCode: String?,
+        title: String?,
+        watchHistoryMap: Map<String, PlaybackProgress>
+    ): PlaybackProgress? {
+        val dummy = Movie(
+            id = movieId,
+            imdbCode = imdbCode,
+            title = title
+        )
+        return findMovieProgress(dummy, watchHistoryMap)
+    }
+
+    /**
+     * Builds a comprehensive lookup map from a list of [PlaybackProgress] items,
+     * keying each entry by its primary [PlaybackProgress.mediaId] as well as canonical and legacy aliases.
+     */
+    fun buildWatchHistoryMap(
+        list: List<PlaybackProgress>
+    ): Map<String, PlaybackProgress> {
+        val map = HashMap<String, PlaybackProgress>(list.size * 3)
+        for (item in list) {
+            map[item.mediaId] = item
+            val normalizedId = normalizeImdbId(item.mediaId)
+            if (normalizedId != null) {
+                map.putIfAbsent(normalizedId, item)
+            }
+            if (!item.isEpisode && item.title.isNotBlank()) {
+                map.putIfAbsent(item.title, item)
+                map.putIfAbsent(item.title.trim().lowercase(), item)
+            }
+            val ep = parseCanonicalEpisode(item.mediaId)
+            if (ep != null) {
+                if (ep.first > 0) {
+                    map.putIfAbsent("tmdb_${ep.first}_s${ep.second}_e${ep.third}", item)
+                    map.putIfAbsent("tv_${ep.first}_s${ep.second}_e${ep.third}", item)
+                    map.putIfAbsent("media_${ep.first}_s${ep.second}_e${ep.third}", item)
+                }
+                if (!ep.imdbId.isNullOrBlank()) {
+                    map.putIfAbsent("${ep.imdbId}_s${ep.second}_e${ep.third}", item)
+                }
+            } else if (isCanonicalMovieId(item.mediaId)) {
+                val movieId = item.mediaId.removePrefix("tmdb_").removePrefix("media_").toIntOrNull()
+                if (movieId != null && movieId > 0) {
+                    map.putIfAbsent("tmdb_$movieId", item)
+                    map.putIfAbsent(movieId.toString(), item)
+                    map.putIfAbsent("media_$movieId", item)
+                }
+            } else {
+                val numId = item.mediaId.removePrefix("media_").removePrefix("tmdb_").toIntOrNull()
+                if (numId != null && numId > 0) {
+                    map.putIfAbsent("tmdb_$numId", item)
+                    map.putIfAbsent(numId.toString(), item)
+                    map.putIfAbsent("media_$numId", item)
+                }
+            }
+        }
+        return map
     }
 }

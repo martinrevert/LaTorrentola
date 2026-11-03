@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
+import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.utils.isTvDevice
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -106,7 +107,7 @@ fun MovieList(
             contentType = { _, _ -> "movie" }
         ) { index, movie ->
             val isTarget = movie.id == effectiveFocusId
-            val progress = watchHistoryMap[movie.id.toString()] ?: watchHistoryMap[movie.title]
+            val progress = MediaIdHelper.findMovieProgress(movie, watchHistoryMap)
             val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
             MovieItem(
                 movie = movie,

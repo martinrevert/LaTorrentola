@@ -63,7 +63,7 @@ class TvDetailViewModel @Inject constructor(
 
     /** User's in-progress watch history items mapped by media ID. */
     val watchHistoryMap: StateFlow<Map<String, PlaybackProgress>> = userLibraryRepository.getWatchHistory()
-        .map { list -> list.associateBy { it.mediaId } }
+        .map { list -> com.martinrevert.latorrentola.utils.MediaIdHelper.buildWatchHistoryMap(list) }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),

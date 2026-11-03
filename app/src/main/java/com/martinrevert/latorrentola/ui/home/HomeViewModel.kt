@@ -12,6 +12,7 @@ import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.utils.AppLogger
+import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.utils.MovieFilter
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.UiText
@@ -100,7 +101,7 @@ class HomeViewModel @Inject constructor(
 
     /** User's in-progress watch history items mapped by media identifier or title. */
     val watchHistoryMap: StateFlow<Map<String, PlaybackProgress>> = userLibraryRepository.getWatchHistory()
-        .map { list -> list.associateBy { it.mediaId } }
+        .map { list -> MediaIdHelper.buildWatchHistoryMap(list) }
         .catch { emit(emptyMap()) }
         .stateIn(
             scope = viewModelScope,

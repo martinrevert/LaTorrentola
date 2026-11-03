@@ -177,7 +177,7 @@ class SearchViewModel @Inject constructor(
 
     /** User's in-progress watch history items mapped by media identifier or title. */
     val watchHistoryMap: StateFlow<Map<String, PlaybackProgress>> = watchHistoryFlow
-        .map { list -> list.associateBy { it.mediaId } }
+        .map { list -> MediaIdHelper.buildWatchHistoryMap(list) }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -992,7 +992,7 @@ class SearchViewModel @Inject constructor(
                 _selectedFavoritesFilter,
                 seriesDetailsCacheFlow
             ) { favorites, series, watchHistory, filter, detailsCache ->
-                val watchMap = watchHistory.associateBy { it.mediaId }
+                val watchMap = MediaIdHelper.buildWatchHistoryMap(watchHistory)
 
                 val missingSeriesIds = series.filter {
                     (it.numberOfEpisodes == null || it.numberOfEpisodes == 0) &&
@@ -1101,17 +1101,17 @@ class SearchViewModel @Inject constructor(
     }
 
     private fun isMovieWatched(m: Movie, watchMap: Map<String, PlaybackProgress>): Boolean {
-        val progress = watchMap[m.id.toString()] ?: watchMap[m.title]
+        val progress = MediaIdHelper.findMovieProgress(m, watchMap)
         return progress != null && (progress.isCompleted || progress.progressPercent >= 95)
     }
 
     private fun isMovieInProgress(m: Movie, watchMap: Map<String, PlaybackProgress>): Boolean {
-        val progress = watchMap[m.id.toString()] ?: watchMap[m.title]
+        val progress = MediaIdHelper.findMovieProgress(m, watchMap)
         return progress != null && !progress.isCompleted && progress.progressPercent > 0 && progress.progressPercent < 95
     }
 
     private fun isMovieUnwatched(m: Movie, watchMap: Map<String, PlaybackProgress>): Boolean {
-        val progress = watchMap[m.id.toString()] ?: watchMap[m.title]
+        val progress = MediaIdHelper.findMovieProgress(m, watchMap)
         val percent = progress?.let { if (it.isCompleted) 100 else it.progressPercent } ?: 0
         return percent == 0
     }
@@ -1121,15 +1121,29 @@ class SearchViewModel @Inject constructor(
         watchHistory: List<PlaybackProgress>
     ): List<PlaybackProgress> {
         val seriesId = s.id
-        val imdbId = s.effectiveImdbId
+        var imdbId = s.effectiveImdbId
+        val seriesName = s.name?.trim().orEmpty()
+        if (imdbId.isNullOrBlank() && seriesName.isNotBlank()) {
+            for (item in watchHistory) {
+                if (item.isEpisode && item.title.startsWith(seriesName, ignoreCase = true)) {
+                    val candidate = MediaIdHelper.parseCanonicalEpisode(item.mediaId)?.imdbId
+                    if (!candidate.isNullOrBlank()) {
+                        imdbId = candidate
+                        break
+                    }
+                }
+            }
+        }
         return watchHistory.filter { item ->
             val parsed = MediaIdHelper.parseCanonicalEpisode(item.mediaId)
             if (parsed != null) {
-                parsed.matchesSeries(seriesId, imdbId)
+                parsed.matchesSeries(seriesId, imdbId) ||
+                    (seriesName.isNotBlank() && item.title.startsWith(seriesName, ignoreCase = true))
             } else {
                 val seriesIdStr = seriesId.toString()
                 (seriesId > 0 && (item.mediaId.startsWith("tmdb_${seriesIdStr}_s") || item.mediaId.contains("_${seriesIdStr}_s"))) ||
-                    (!imdbId.isNullOrBlank() && item.mediaId.startsWith("${imdbId}_s"))
+                    (!imdbId.isNullOrBlank() && item.mediaId.startsWith("${imdbId}_s")) ||
+                    (seriesName.isNotBlank() && item.title.startsWith(seriesName, ignoreCase = true))
             }
         }
     }

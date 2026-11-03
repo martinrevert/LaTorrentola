@@ -1,5 +1,7 @@
 package com.martinrevert.latorrentola.utils
 
+import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -157,5 +159,118 @@ class MediaIdHelperTest {
         assertEquals(4, parsedLegacy.third)
         assertTrue(parsedLegacy.matchesSeries(seriesId = 1399, targetImdbId = null))
         assertFalse(parsedLegacy.matchesSeries(seriesId = 5555, targetImdbId = null))
+    }
+
+    @Test
+    fun `findMovieProgress resolves progress via canonical IMDb ID, TMDB ID, numeric ID, and title`() {
+        val progressImdb = PlaybackProgress(
+            mediaId = "tt0111161",
+            title = "The Shawshank Redemption",
+            positionMs = 5000L,
+            durationMs = 10000L
+        )
+        val progressTmdb = PlaybackProgress(
+            mediaId = "tmdb_550",
+            title = "Fight Club",
+            positionMs = 3000L,
+            durationMs = 9000L
+        )
+        val map = mapOf(
+            "tt0111161" to progressImdb,
+            "tmdb_550" to progressTmdb
+        )
+
+        // Movie with IMDb code matches canonical entry
+        val movie1 = Movie(id = 278, imdbCode = "tt0111161", title = "The Shawshank Redemption")
+        val found1 = MediaIdHelper.findMovieProgress(movie1, map)
+        assertNotNull(found1)
+        assertEquals("tt0111161", found1?.mediaId)
+
+        // Movie with only TMDB ID matches tmdb_ entry
+        val movie2 = Movie(id = 550, imdbCode = null, title = "Fight Club")
+        val found2 = MediaIdHelper.findMovieProgress(movie2, map)
+        assertNotNull(found2)
+        assertEquals("tmdb_550", found2?.mediaId)
+    }
+
+    @Test
+    fun `buildWatchHistoryMap creates dual-key lookup entries for movies and episodes`() {
+        val progressEpisode = PlaybackProgress(
+            mediaId = "tt0944947_s1_e1",
+            title = "Game of Thrones - S01E01 - Winter Is Coming",
+            positionMs = 1000L,
+            durationMs = 2000L,
+            isEpisode = true
+        )
+        val progressMovie = PlaybackProgress(
+            mediaId = "tt0111161",
+            title = "The Shawshank Redemption",
+            positionMs = 5000L,
+            durationMs = 10000L,
+            isEpisode = false
+        )
+
+        val map = MediaIdHelper.buildWatchHistoryMap(listOf(progressEpisode, progressMovie))
+
+        // Direct canonical lookup
+        assertTrue(map.containsKey("tt0944947_s1_e1"))
+        assertTrue(map.containsKey("tt0111161"))
+
+        // Movie title lookups
+        assertTrue(map.containsKey("The Shawshank Redemption"))
+        assertTrue(map.containsKey("the shawshank redemption"))
+        // Episode titles should not be indexed in flat title map to prevent collisions with movies
+        assertFalse(map.containsKey("Game of Thrones - S01E01 - Winter Is Coming"))
+    }
+
+    @Test
+    fun `findMovieProgress ignores episode records with identical titles`() {
+        val progressEpisode = PlaybackProgress(
+            mediaId = "tt0944947_s1_e1",
+            title = "Pilot",
+            positionMs = 1000L,
+            durationMs = 2000L,
+            isEpisode = true
+        )
+        val mapWithEpisode = mapOf("Pilot" to progressEpisode)
+        val movie = Movie(
+            id = 9999,
+            imdbCode = null,
+            title = "Pilot"
+        )
+        assertNull(MediaIdHelper.findMovieProgress(movie, mapWithEpisode))
+    }
+
+    @Test
+    fun `buildWatchHistoryMap indexes normalized IMDb ID for case-insensitive resolution`() {
+        val progressMovie = PlaybackProgress(
+            mediaId = "TT0111161",
+            title = "The Shawshank Redemption",
+            positionMs = 5000L,
+            durationMs = 10000L,
+            isEpisode = false
+        )
+        val map = MediaIdHelper.buildWatchHistoryMap(listOf(progressMovie))
+
+        // Normalized lowercase lookup
+        assertTrue(map.containsKey("tt0111161"))
+        val movie = Movie(id = 278, imdbCode = "tt0111161", title = "The Shawshank Redemption")
+        val found = MediaIdHelper.findMovieProgress(movie, map)
+        assertNotNull(found)
+        assertEquals("TT0111161", found?.mediaId)
+    }
+
+    @Test
+    fun `findMovieProgress returns null for unwatched movie`() {
+        val progressMovie = PlaybackProgress(
+            mediaId = "tt0111161",
+            title = "The Shawshank Redemption",
+            positionMs = 5000L,
+            durationMs = 10000L,
+            isEpisode = false
+        )
+        val map = MediaIdHelper.buildWatchHistoryMap(listOf(progressMovie))
+        val unwatched = Movie(id = 99999, imdbCode = "tt9999999", title = "Unwatched Movie")
+        assertNull(MediaIdHelper.findMovieProgress(unwatched, map))
     }
 }
