@@ -706,8 +706,8 @@ private fun SearchScreenContent(
                                         onMovieLongClick = onLongClick,
                                         onMovieFocusRestored = onFocusRestored,
                                         onTvFocusRestored = onTvFocusRestored,
-                                        onMovieFocus = onMovieFocus,
-                                        onSeriesFocus = onSeriesFocus,
+                                        onMovieFocus = null,
+                                        onSeriesFocus = null,
                                         contentPadding = PaddingValues(16.dp),
                                         modifier = Modifier.focusRequester(resultsFocusRequester)
                                     )
@@ -935,8 +935,8 @@ private fun SearchScreenContent(
                                     onMovieLongClick = onLongClick,
                                     onMovieFocusRestored = onFocusRestored,
                                     onTvFocusRestored = onTvFocusRestored,
-                                    onMovieFocus = onMovieFocus,
-                                    onSeriesFocus = onSeriesFocus,
+                                    onMovieFocus = null,
+                                    onSeriesFocus = null,
                                     contentPadding = searchContentPadding
                                 )
                             } else MovieList(
@@ -1455,6 +1455,25 @@ private fun FavoriteItemsGrid(
     val coroutineScope = rememberCoroutineScope()
     val totalGridItems = movies.size + series.size
 
+    val movieProgressMap = remember(movies, watchHistoryMap) {
+        if (watchHistoryMap.isEmpty()) emptyMap<Int, Int?>()
+        else {
+            movies.associate { movie ->
+                val progress = MediaIdHelper.findMovieProgress(movie, watchHistoryMap)
+                movie.id to progress?.let { if (it.isCompleted) 100 else it.progressPercent }
+            }
+        }
+    }
+
+    val seriesProgressPercentMap = remember(series, watchHistoryMap) {
+        if (watchHistoryMap.isEmpty()) emptyMap<Int, Int?>()
+        else {
+            series.associate { item ->
+                item.id to TvSeriesProgressCalculator.calculateProgressPercent(item, watchHistoryMap)
+            }
+        }
+    }
+
     LazyVerticalGrid(
         columns = columns,
         state = state,
@@ -1470,8 +1489,7 @@ private fun FavoriteItemsGrid(
             key = { _, it -> "movie_${it.id}" },
             contentType = { _, _ -> "movie" }
         ) { index, movie ->
-            val progress = MediaIdHelper.findMovieProgress(movie, watchHistoryMap)
-            val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
+            val progressPercent = movieProgressMap[movie.id]
             MovieItem(
                 movie = movie,
                 modifier = Modifier.tvGridRowDpadNavigation(
@@ -1510,9 +1528,7 @@ private fun FavoriteItemsGrid(
                 }
             }
             val absoluteIndex = movies.size + seriesIndex
-            val progressPercent = remember(item, watchHistoryMap) {
-                TvSeriesProgressCalculator.calculateProgressPercent(item, watchHistoryMap)
-            }
+            val progressPercent = seriesProgressPercentMap[item.id]
             TvSeriesCard(
                 series = item,
                 genres = itemGenres,

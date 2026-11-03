@@ -81,6 +81,7 @@ object MediaIdHelper {
         val normalizedImdb = normalizeImdbId(imdbId)
         return when {
             normalizedImdb != null -> normalizedImdb
+            movieId > 0 -> "tmdb_$movieId"
             !title.isNullOrBlank() -> {
                 val cleaned = title.replace(
                     Regex("""\.(mp4|mkv|avi|mov|wmv|webm|ts|m4v)$""", RegexOption.IGNORE_CASE),
@@ -88,7 +89,6 @@ object MediaIdHelper {
                 ).trim()
                 cleaned.ifBlank { "unknown_movie" }
             }
-            movieId > 0 -> "movie_$movieId"
             else -> "unknown_movie"
         }
     }
@@ -120,9 +120,11 @@ object MediaIdHelper {
     ): String {
         val normalizedImdb = normalizeImdbId(imdbId)
         return when {
-            normalizedImdb != null && seasonNumber > 0 && episodeNumber > 0 ->
+            normalizedImdb != null && seasonNumber >= 0 && episodeNumber > 0 ->
                 "${normalizedImdb}_s${seasonNumber}_e${episodeNumber}"
-            seasonNumber > 0 && episodeNumber > 0 && !title.isNullOrBlank() -> {
+            seriesId > 0 && seasonNumber >= 0 && episodeNumber > 0 ->
+                "tmdb_${seriesId}_s${seasonNumber}_e${episodeNumber}"
+            seasonNumber >= 0 && episodeNumber > 0 && !title.isNullOrBlank() -> {
                 val clean = MediaMetadataResolver.extractCleanSearchTitles(title).firstOrNull() ?: title.trim()
                 "${clean}_s${seasonNumber}_e${episodeNumber}"
             }
@@ -173,7 +175,7 @@ object MediaIdHelper {
         if (imdbMatch != null) {
             val season = imdbMatch.groupValues[2].toIntOrNull() ?: return false
             val episode = imdbMatch.groupValues[3].toIntOrNull() ?: return false
-            return season > 0 && episode > 0
+            return season >= 0 && episode > 0
         }
         return false
     }
@@ -204,7 +206,7 @@ object MediaIdHelper {
             val imdbId = imdbMatch.groupValues[1]
             val season = imdbMatch.groupValues[2].toIntOrNull() ?: return null
             val episode = imdbMatch.groupValues[3].toIntOrNull() ?: return null
-            if (season <= 0 || episode <= 0) return null
+            if (season < 0 || episode <= 0) return null
             return EpisodeComponents(first = 0, second = season, third = episode, seriesIdentifier = imdbId)
         }
         val tmdbMatch = DETERMINISTIC_FALLBACK_EPISODE_REGEX.matchEntire(mediaId)
@@ -212,7 +214,7 @@ object MediaIdHelper {
             val seriesId = tmdbMatch.groupValues[1].toIntOrNull() ?: return null
             val season = tmdbMatch.groupValues[2].toIntOrNull() ?: return null
             val episode = tmdbMatch.groupValues[3].toIntOrNull() ?: return null
-            if (seriesId <= 0 || season <= 0 || episode <= 0) return null
+            if (seriesId <= 0 || season < 0 || episode <= 0) return null
             return EpisodeComponents(first = seriesId, second = season, third = episode, seriesIdentifier = seriesId.toString())
         }
         val legacyMatch = LEGACY_EPISODE_REGEX.matchEntire(mediaId)
@@ -220,7 +222,7 @@ object MediaIdHelper {
             val seriesId = legacyMatch.groupValues[1].toIntOrNull() ?: return null
             val season = legacyMatch.groupValues[2].toIntOrNull() ?: return null
             val episode = legacyMatch.groupValues[3].toIntOrNull() ?: return null
-            if (seriesId <= 0 || season <= 0 || episode <= 0) return null
+            if (seriesId <= 0 || season < 0 || episode <= 0) return null
             return EpisodeComponents(first = seriesId, second = season, third = episode, seriesIdentifier = seriesId.toString())
         }
         return null

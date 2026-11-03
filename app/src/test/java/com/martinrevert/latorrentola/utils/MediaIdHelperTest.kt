@@ -12,9 +12,9 @@ import org.junit.Test
 class MediaIdHelperTest {
 
     @Test
-    fun `forMovie generates movie string when movieId is valid without imdbId`() {
+    fun `forMovie generates deterministic tmdb string when movieId is valid without imdbId`() {
         val mediaId = MediaIdHelper.forMovie(movieId = 12230)
-        assertEquals("movie_12230", mediaId)
+        assertEquals("tmdb_12230", mediaId)
         assertFalse(MediaIdHelper.isCanonical(mediaId))
     }
 
@@ -26,7 +26,7 @@ class MediaIdHelperTest {
             infoHash = fakeHash,
             title = "Inception"
         )
-        assertEquals("Inception", mediaId)
+        assertEquals("tmdb_12230", mediaId)
         assertFalse(mediaId.contains(fakeHash))
     }
 
@@ -52,7 +52,7 @@ class MediaIdHelperTest {
             infoHash = fakeHash,
             title = "Severance S02E05"
         )
-        assertEquals("Severance_s2_e5", mediaId)
+        assertEquals("tmdb_111803_s2_e5", mediaId)
         assertFalse(mediaId.contains(fakeHash))
     }
 
@@ -259,5 +259,40 @@ class MediaIdHelperTest {
         val map = MediaIdHelper.buildWatchHistoryMap(listOf(progressMovie))
         val unwatched = Movie(id = 99999, imdbCode = "tt9999999", title = "Unwatched Movie")
         assertNull(MediaIdHelper.findMovieProgress(unwatched, map))
+    }
+
+    @Test
+    fun `forEpisode handles Season 0 specials canonically`() {
+        val canonicalId = MediaIdHelper.forEpisode(
+            imdbId = "tt0944947",
+            seriesId = 1399,
+            seasonNumber = 0,
+            episodeNumber = 1,
+            title = "Game of Thrones Special"
+        )
+        assertEquals("tt0944947_s0_e1", canonicalId)
+        assertTrue(MediaIdHelper.isCanonical(canonicalId))
+        assertTrue(MediaIdHelper.isCanonicalEpisodeId(canonicalId))
+
+        val parsed = MediaIdHelper.parseCanonicalEpisode(canonicalId)
+        assertNotNull(parsed)
+        assertEquals(0, parsed?.second)
+        assertEquals(1, parsed?.third)
+        assertEquals("tt0944947", parsed?.imdbId)
+    }
+
+    @Test
+    fun `parseCanonicalEpisode parses legacy and fallback Season 0 specials`() {
+        val parsedTmdb = MediaIdHelper.parseCanonicalEpisode("tmdb_1399_s0_e2")
+        assertNotNull(parsedTmdb)
+        assertEquals(1399, parsedTmdb?.first)
+        assertEquals(0, parsedTmdb?.second)
+        assertEquals(2, parsedTmdb?.third)
+
+        val parsedLegacy = MediaIdHelper.parseCanonicalEpisode("tv_1399_s0_e3")
+        assertNotNull(parsedLegacy)
+        assertEquals(1399, parsedLegacy?.first)
+        assertEquals(0, parsedLegacy?.second)
+        assertEquals(3, parsedLegacy?.third)
     }
 }

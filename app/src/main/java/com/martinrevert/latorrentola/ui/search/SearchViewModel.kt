@@ -18,6 +18,7 @@ import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.utils.MovieFilter
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.utils.TvSeriesProgressCalculator
 import com.martinrevert.latorrentola.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -235,6 +236,7 @@ class SearchViewModel @Inject constructor(
      * Updates the focused movie for the TV immersive layout and fetches its TMDB backdrop and logo.
      */
     fun onMovieFocused(movie: Movie) {
+        if (isShowingFavorites) return
         if (_focusedMovie.value?.id == movie.id) return
         _focusedMovie.value = movie
         _focusedSeries.value = null
@@ -280,6 +282,7 @@ class SearchViewModel @Inject constructor(
      * Updates the focused TV series for the immersive layout and fetches its transparent TMDB logo.
      */
     fun onSeriesFocused(series: TmdbTvSummary) {
+        if (isShowingFavorites) return
         if (_focusedSeries.value?.id == series.id) return
         _focusedSeries.value = series
         _focusedMovie.value = null
@@ -971,6 +974,7 @@ class SearchViewModel @Inject constructor(
     fun showFavorites(force: Boolean = false) {
         if (!force && isShowingFavorites && (favoritesJob?.isActive == true || _uiState.value is SearchUiState.Success)) return
 
+        if (force) attemptedSeriesDetailIds.clear()
         isShowingFavorites = true
         isShowingDownloads = false
         isShowingNew = false
@@ -988,14 +992,14 @@ class SearchViewModel @Inject constructor(
             combine(
                 ytsRepository.getFavoriteMovies(),
                 userLibraryRepository.getFavoriteTvSeries(),
-                watchHistoryFlow,
+                userLibraryRepository.getWatchHistory(),
                 _selectedFavoritesFilter,
                 seriesDetailsCacheFlow
             ) { favorites, series, watchHistory, filter, detailsCache ->
                 val watchMap = MediaIdHelper.buildWatchHistoryMap(watchHistory)
 
                 val missingSeriesIds = series.filter {
-                    (it.numberOfEpisodes == null || it.numberOfEpisodes == 0) &&
+                    it.seasons.isNullOrEmpty() &&
                         !detailsCache.containsKey(it.id) &&
                         !attemptedSeriesDetailIds.contains(it.id)
                 }.map { it.id }
@@ -1007,9 +1011,12 @@ class SearchViewModel @Inject constructor(
                         missingSeriesIds.forEach { seriesId ->
                             try {
                                 val details = tmdbRepository.getTvDetails(seriesId)
-                                fetched[seriesId] = details
+                                if (details.id == seriesId) {
+                                    fetched[seriesId] = details
+                                }
                             } catch (e: Exception) {
                                 if (e is CancellationException) throw e
+                                attemptedSeriesDetailIds.remove(seriesId)
                             }
                         }
                         if (fetched.isNotEmpty()) {
@@ -1022,8 +1029,14 @@ class SearchViewModel @Inject constructor(
                     val cached = detailsCache[s.id]
                     if (cached != null) {
                         s.copy(
+                            seasons = cached.seasons?.takeIf { it.isNotEmpty() } ?: s.seasons,
+                            lastEpisodeToAir = cached.lastEpisodeToAir ?: s.lastEpisodeToAir,
+                            nextEpisodeToAir = cached.nextEpisodeToAir ?: s.nextEpisodeToAir,
                             numberOfSeasons = cached.numberOfSeasons?.takeIf { it > 0 } ?: s.numberOfSeasons,
-                            numberOfEpisodes = cached.numberOfEpisodes?.takeIf { it > 0 } ?: s.numberOfEpisodes
+                            numberOfEpisodes = cached.numberOfEpisodes?.takeIf { it > 0 } ?: s.numberOfEpisodes,
+                            status = cached.status?.takeIf { it.isNotBlank() } ?: s.status,
+                            inProduction = cached.inProduction ?: s.inProduction,
+                            imdbId = s.effectiveImdbId ?: cached.effectiveImdbId
                         )
                     } else s
                 }
@@ -1034,35 +1047,23 @@ class SearchViewModel @Inject constructor(
                     FavoritesFilter.TV_SERIES -> emptyList<Movie>() to enrichedSeries
                     FavoritesFilter.WATCHED -> {
                         favorites.filter { isMovieWatched(it, watchMap) } to enrichedSeries.filter {
-                            isTvSeriesWatched(
-                                it,
-                                watchHistory,
-                                detailsCache
-                            )
+                            TvSeriesProgressCalculator.isSeriesWatched(it, watchMap)
                         }
                     }
 
                     FavoritesFilter.UNWATCHED -> {
                         favorites.filter {
-                            isMovieUnwatched(
-                                it,
-                                watchMap
-                            )
-                        } to enrichedSeries.filter { isTvSeriesUnwatched(it, watchHistory) }
+                            isMovieUnwatched(it, watchMap)
+                        } to enrichedSeries.filter {
+                            TvSeriesProgressCalculator.isSeriesUnwatched(it, watchMap)
+                        }
                     }
 
                     FavoritesFilter.IN_PROGRESS -> {
                         favorites.filter {
-                            isMovieInProgress(
-                                it,
-                                watchMap
-                            )
+                            isMovieInProgress(it, watchMap)
                         } to enrichedSeries.filter {
-                            isTvSeriesInProgress(
-                                it,
-                                watchHistory,
-                                detailsCache
-                            )
+                            TvSeriesProgressCalculator.isSeriesInProgress(it, watchMap)
                         }
                     }
                 }
@@ -1114,89 +1115,6 @@ class SearchViewModel @Inject constructor(
         val progress = MediaIdHelper.findMovieProgress(m, watchMap)
         val percent = progress?.let { if (it.isCompleted) 100 else it.progressPercent } ?: 0
         return percent == 0
-    }
-
-    private fun getSeriesEpisodeProgresses(
-        s: TmdbTvSummary,
-        watchHistory: List<PlaybackProgress>
-    ): List<PlaybackProgress> {
-        val seriesId = s.id
-        var imdbId = s.effectiveImdbId
-        val seriesName = s.name?.trim().orEmpty()
-        if (imdbId.isNullOrBlank() && seriesName.isNotBlank()) {
-            for (item in watchHistory) {
-                if (item.isEpisode && item.title.startsWith(seriesName, ignoreCase = true)) {
-                    val candidate = MediaIdHelper.parseCanonicalEpisode(item.mediaId)?.imdbId
-                    if (!candidate.isNullOrBlank()) {
-                        imdbId = candidate
-                        break
-                    }
-                }
-            }
-        }
-        return watchHistory.filter { item ->
-            val parsed = MediaIdHelper.parseCanonicalEpisode(item.mediaId)
-            if (parsed != null) {
-                parsed.matchesSeries(seriesId, imdbId) ||
-                    (seriesName.isNotBlank() && item.title.startsWith(seriesName, ignoreCase = true))
-            } else {
-                val seriesIdStr = seriesId.toString()
-                (seriesId > 0 && (item.mediaId.startsWith("tmdb_${seriesIdStr}_s") || item.mediaId.contains("_${seriesIdStr}_s"))) ||
-                    (!imdbId.isNullOrBlank() && item.mediaId.startsWith("${imdbId}_s")) ||
-                    (seriesName.isNotBlank() && item.title.startsWith(seriesName, ignoreCase = true))
-            }
-        }
-    }
-
-    private fun isTvSeriesInProgress(
-        s: TmdbTvSummary,
-        watchHistory: List<PlaybackProgress>,
-        detailsCache: Map<Int, TmdbTvSummary>
-    ): Boolean {
-        val episodeProgresses = getSeriesEpisodeProgresses(s, watchHistory)
-        val hasStartedEpisode = episodeProgresses.any {
-            val pct = if (it.isCompleted) 100 else it.progressPercent
-            pct > 0 || it.positionMs > 0
-        }
-        if (!hasStartedEpisode) return false
-
-        val fullSeries = detailsCache[s.id] ?: s
-        val totalEpisodes = fullSeries.numberOfEpisodes
-
-        if (totalEpisodes == null || totalEpisodes <= 0) {
-            return true
-        }
-
-        val completedCount = episodeProgresses.count { it.isCompleted || it.progressPercent >= 95 }
-        return completedCount < totalEpisodes
-    }
-
-    private fun isTvSeriesWatched(
-        s: TmdbTvSummary,
-        watchHistory: List<PlaybackProgress>,
-        detailsCache: Map<Int, TmdbTvSummary>
-    ): Boolean {
-        val episodeProgresses = getSeriesEpisodeProgresses(s, watchHistory)
-        if (episodeProgresses.isEmpty()) return false
-
-        val fullSeries = detailsCache[s.id] ?: s
-        val totalEpisodes = fullSeries.numberOfEpisodes
-
-        if (totalEpisodes == null || totalEpisodes <= 0) {
-            return false
-        }
-
-        val completedCount = episodeProgresses.count { it.isCompleted || it.progressPercent >= 95 }
-        return completedCount >= totalEpisodes
-    }
-
-    private fun isTvSeriesUnwatched(s: TmdbTvSummary, watchHistory: List<PlaybackProgress>): Boolean {
-        val episodeProgresses = getSeriesEpisodeProgresses(s, watchHistory)
-        if (episodeProgresses.isEmpty()) return true
-        return episodeProgresses.none {
-            val pct = if (it.isCompleted) 100 else it.progressPercent
-            pct > 0 || it.positionMs > 0
-        }
     }
 
     /** Observes downloads and fetches missing movie metadata as needed. */

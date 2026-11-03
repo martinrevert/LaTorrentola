@@ -3574,7 +3574,7 @@ class LocalPlayerActivity : FragmentActivity() {
                 if (sMatch != null) {
                     val season = sMatch.groupValues[1].toIntOrNull() ?: 0
                     val episode = sMatch.groupValues[2].toIntOrNull() ?: 0
-                    if (season > 0 && episode > 0) {
+                    if (season >= 0 && episode > 0) {
                         return Pair(season, episode)
                     }
                 }

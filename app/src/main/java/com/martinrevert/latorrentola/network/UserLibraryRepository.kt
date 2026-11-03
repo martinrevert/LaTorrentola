@@ -1045,13 +1045,13 @@ class UserLibraryRepository @Inject constructor(
             val isLikelyEpisode = episodeComponents != null ||
                 item.isEpisode ||
                 (oldId.contains("_s", ignoreCase = true) && oldId.contains("_e", ignoreCase = true)) ||
-                (detectedS > 0 && detectedE > 0)
+                (detectedS >= 0 && detectedE > 0)
 
             if (isLikelyEpisode) {
                 isEpisode = true
                 val sNum = when {
-                    episodeComponents != null && episodeComponents.second > 0 -> episodeComponents.second
-                    detectedS > 0 -> detectedS
+                    episodeComponents != null && episodeComponents.second >= 0 -> episodeComponents.second
+                    detectedS >= 0 && detectedE > 0 -> detectedS
                     else -> 1
                 }
                 val eNum = when {
@@ -1162,6 +1162,12 @@ class UserLibraryRepository @Inject constructor(
                     deletePlaybackProgress(item.mediaId)
                 }
                 Log.i("UserLibraryRepository", "Successfully migrated legacy watch history '$oldId' -> '$canonicalId'")
+            } else if (MediaIdHelper.isInfoHash(oldId) && item.title.isBlank()) {
+                deletePlaybackProgress(oldId)
+                if (rawDocId != null && rawDocId != item.mediaId) {
+                    deletePlaybackProgress(item.mediaId)
+                }
+                Log.i("UserLibraryRepository", "Purged orphan unresolvable infoHash '$oldId'")
             } else {
                 Log.w("UserLibraryRepository", "Retained unresolvable legacy watch history '$oldId'")
             }
@@ -1857,18 +1863,18 @@ class UserLibraryRepository @Inject constructor(
         imdbId: String? = null
     ) {
         val effectiveImdb = MediaIdHelper.normalizeImdbId(imdbId).orEmpty()
-        if (seriesId <= 0 && effectiveImdb.isBlank() && (seasonNumber <= 0 || episodeNumber <= 0)) return
+        if (seriesId <= 0 && effectiveImdb.isBlank() && (seasonNumber < 0 || episodeNumber <= 0)) return
         val uid = currentUserId
         val canonicalDocId = MediaIdHelper.forEpisode(effectiveImdb, seriesId, seasonNumber, episodeNumber)
         try {
             downloadRecordDao?.deleteEpisodeByHash(uid, canonicalDocId)
-            if (seriesId > 0 && seasonNumber > 0 && episodeNumber > 0) {
+            if (seriesId > 0 && seasonNumber >= 0 && episodeNumber > 0) {
                 downloadRecordDao?.deleteEpisode(uid, seriesId, seasonNumber, episodeNumber)
             }
-            if (effectiveImdb.isNotBlank() && seasonNumber > 0 && episodeNumber > 0) {
+            if (effectiveImdb.isNotBlank() && seasonNumber >= 0 && episodeNumber > 0) {
                 downloadRecordDao?.deleteEpisodeByAnyId(uid, seriesId, effectiveImdb, seasonNumber, episodeNumber)
             }
-            if (seriesId > 0 && seasonNumber > 0 && episodeNumber > 0) {
+            if (seriesId > 0 && seasonNumber >= 0 && episodeNumber > 0) {
                 torrentDownloadDao?.deleteForEpisode(seriesId, seasonNumber, episodeNumber)
             }
         } catch (e: Exception) {

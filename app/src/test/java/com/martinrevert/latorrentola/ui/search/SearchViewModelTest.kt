@@ -7,15 +7,18 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
 import com.martinrevert.latorrentola.model.TMDB.TmdbCreditsResponse
 import com.martinrevert.latorrentola.model.TMDB.TmdbPersonResult
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvPage
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeason
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.YTS.Data
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.MovieDetails
 import com.martinrevert.latorrentola.model.YTS.Torrent
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
+import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.utils.UiText
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -529,5 +532,135 @@ class SearchViewModelTest {
 
         assertThat(viewModel.focusedMovieLogo.value).isEqualTo("https://image.tmdb.org/t/p/w500/series_logo.png")
         assertThat(viewModel.isFocusedMovieLogoLoading.value).isFalse()
+    }
+
+    @Test
+    fun `focus callbacks do not mutate state while in Favorites`() = runTest {
+        val movie = Movie(id = 50, title = "Fav Movie")
+        every { repository.getFavoriteMovies() } returns flowOf(listOf(movie))
+        viewModel.showFavorites()
+
+        viewModel.onMovieFocused(movie)
+        assertThat(viewModel.focusedMovie.value).isNull()
+
+        val series = TmdbTvSummary(id = 100, name = "Fav Series")
+        viewModel.onSeriesFocused(series)
+        assertThat(viewModel.focusedSeries.value).isNull()
+    }
+
+    @Test
+    fun `showFavorites with WATCHED filter marks series with completed Season 1 as watched when Season 2 is upcoming`() = runTest {
+        val series = TmdbTvSummary(
+            id = 200,
+            name = "Test Series",
+            numberOfEpisodes = 20,
+            seasons = listOf(
+                TmdbTvSeason(id = 1, seasonNumber = 1, episodeCount = 10, airDate = "2024-01-01"),
+                TmdbTvSeason(id = 2, seasonNumber = 2, episodeCount = 10, airDate = "2030-01-01")
+            )
+        )
+        val watchHistory = (1..10).map { ep ->
+            PlaybackProgress(
+                mediaId = MediaIdHelper.forEpisode(200, 1, ep),
+                title = "Test Series - S01E0$ep",
+                positionMs = 1000L,
+                durationMs = 1000L,
+                isEpisode = true
+            )
+        }
+
+        every { repository.getFavoriteMovies() } returns flowOf(emptyList())
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(series))
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(watchHistory)
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager)
+        vm.showFavorites()
+        vm.setFavoritesFilter(FavoritesFilter.WATCHED)
+
+        val state = vm.uiState.value as SearchUiState.Success
+        assertThat(state.favoriteSeries).containsExactly(series)
+    }
+
+    @Test
+    fun `unreleased series with future premiere is classified as UNWATCHED even if related movie exists in watch history`() = runTest {
+        val series = TmdbTvSummary(
+            id = 300,
+            name = "Superman",
+            numberOfEpisodes = 1,
+            seasons = listOf(
+                TmdbTvSeason(id = 1, seasonNumber = 1, episodeCount = 1, airDate = "2030-01-01")
+            )
+        )
+        val movieHistory = listOf(
+            PlaybackProgress(
+                mediaId = "tt0348150",
+                title = "Superman Returns",
+                positionMs = 1000L,
+                durationMs = 1000L,
+                isEpisode = false
+            )
+        )
+
+        every { repository.getFavoriteMovies() } returns flowOf(emptyList())
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(series))
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(movieHistory)
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager)
+        vm.showFavorites()
+        vm.setFavoritesFilter(FavoritesFilter.UNWATCHED)
+
+        val state = vm.uiState.value as SearchUiState.Success
+        assertThat(state.favoriteSeries).containsExactly(series)
+
+        vm.setFavoritesFilter(FavoritesFilter.WATCHED)
+        assertThat((vm.uiState.value as? SearchUiState.Success)?.favoriteSeries.orEmpty()).isEmpty()
+    }
+
+    @Test
+    fun `showFavorites enriches Room series missing seasons and marks WATCHED when Season 2 has null airDate`() = runTest {
+        // Series from Room without seasons (typical FavoriteTvSeriesEntity)
+        val roomSeries = TmdbTvSummary(
+            id = 400,
+            name = "Severance",
+            numberOfEpisodes = 18,
+            seasons = null
+        )
+        // Full TMDB details with Season 1 aired and Season 2 unannounced
+        val tmdbDetails = TmdbTvSummary(
+            id = 400,
+            name = "Severance",
+            numberOfEpisodes = 18,
+            seasons = listOf(
+                TmdbTvSeason(id = 1, seasonNumber = 1, episodeCount = 9, airDate = "2022-02-18"),
+                TmdbTvSeason(id = 2, seasonNumber = 2, episodeCount = 9, airDate = null)
+            )
+        )
+        val watchHistory = (1..9).map { ep ->
+            PlaybackProgress(
+                mediaId = MediaIdHelper.forEpisode(400, 1, ep),
+                title = "Severance - S01E0$ep",
+                positionMs = 1000L,
+                durationMs = 1000L,
+                isEpisode = true
+            )
+        }
+
+        every { repository.getFavoriteMovies() } returns flowOf(emptyList())
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(roomSeries))
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(watchHistory)
+        coEvery { tmdbRepository.getTvDetails(400) } returns tmdbDetails
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager)
+        vm.setFavoritesFilter(FavoritesFilter.WATCHED)
+        vm.showFavorites()
+        testScheduler.advanceUntilIdle()
+
+        val watchedState = vm.uiState.value as SearchUiState.Success
+        assertThat(watchedState.favoriteSeries.map { it.id }).containsExactly(400)
+
+        // Must NOT appear in IN_PROGRESS
+        vm.setFavoritesFilter(FavoritesFilter.IN_PROGRESS)
+        testScheduler.advanceUntilIdle()
+        assertThat((vm.uiState.value as? SearchUiState.Success)?.favoriteSeries.orEmpty()).isEmpty()
     }
 }

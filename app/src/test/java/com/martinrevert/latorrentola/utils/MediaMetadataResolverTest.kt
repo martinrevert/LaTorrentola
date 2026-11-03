@@ -39,6 +39,8 @@ class MediaMetadataResolverTest {
         assertEquals(Pair(1, 1), MediaMetadataResolver.extractSeasonAndEpisode("Severance.S01E01.1080p.mkv"))
         assertEquals(Pair(2, 4), MediaMetadataResolver.extractSeasonAndEpisode("Breaking.Bad.2x04.mkv"))
         assertEquals(Pair(3, 12), MediaMetadataResolver.extractSeasonAndEpisode("Show.Name.s3.e12.WEB-DL"))
+        assertEquals(Pair(0, 1), MediaMetadataResolver.extractSeasonAndEpisode("Show.S00E01.Special.1080p.mkv"))
+        assertEquals(Pair(0, 2), MediaMetadataResolver.extractSeasonAndEpisode("Show.0x02.Special.mkv"))
         assertEquals(Pair(0, 0), MediaMetadataResolver.extractSeasonAndEpisode("Gladiator.2000.1080p.mkv"))
     }
 
@@ -104,7 +106,7 @@ class MediaMetadataResolverTest {
         assertEquals(1, result.seasonNumber)
         assertEquals(1, result.episodeNumber)
         assertTrue(result.isEpisode)
-        assertTrue(MediaIdHelper.isCanonical(result.mediaId))
+        assertFalse(MediaIdHelper.isCanonical(result.mediaId))
     }
 
     @Test
@@ -143,6 +145,6 @@ class MediaMetadataResolverTest {
         )
         assertEquals("tmdb_9988", result.mediaId)
         assertEquals(9988, result.movieId)
-        assertTrue(MediaIdHelper.isCanonical(result.mediaId))
+        assertFalse(MediaIdHelper.isCanonical(result.mediaId))
     }
 }

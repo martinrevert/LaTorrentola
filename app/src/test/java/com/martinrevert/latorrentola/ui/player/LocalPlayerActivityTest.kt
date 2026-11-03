@@ -56,6 +56,10 @@ class LocalPlayerActivityTest {
         val (s3, e3) = LocalPlayerActivity.extractSeasonAndEpisode("Inception.2010.1080p.BluRay.mp4")
         assertThat(s3).isEqualTo(0)
         assertThat(e3).isEqualTo(0)
+
+        val (s4, e4) = LocalPlayerActivity.extractSeasonAndEpisode("Special.S00E01.mkv")
+        assertThat(s4).isEqualTo(0)
+        assertThat(e4).isEqualTo(1)
     }
 
     @Test

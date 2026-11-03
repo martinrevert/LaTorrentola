@@ -62,7 +62,7 @@ class MediaMetadataResolver @Inject constructor(
                 if (sMatch != null) {
                     val season = sMatch.groupValues[1].toIntOrNull() ?: 0
                     val episode = sMatch.groupValues[2].toIntOrNull() ?: 0
-                    if (season > 0 && episode > 0) {
+                    if (season >= 0 && episode > 0) {
                         return Pair(season, episode)
                     }
                 }
@@ -189,9 +189,9 @@ class MediaMetadataResolver @Inject constructor(
         }
 
         // 2. Detect season and episode numbers via regex if not provided
-        if (seasonNumber <= 0 || episodeNumber <= 0) {
+        if (episodeNumber <= 0) {
             val (detectedSeason, detectedEpisode) = extractSeasonAndEpisode(rawTitle, filePath, streamUrl)
-            if (detectedSeason > 0 && detectedEpisode > 0) {
+            if (detectedSeason >= 0 && detectedEpisode > 0) {
                 seasonNumber = detectedSeason
                 episodeNumber = detectedEpisode
             }
@@ -202,7 +202,7 @@ class MediaMetadataResolver @Inject constructor(
         val detectedYear = extractYear(rawTitle) ?: extractYear(filePath)
 
         // 3. Handle TV Episode resolution
-        val isEpisode = seasonNumber > 0 && episodeNumber > 0
+        val isEpisode = (seasonNumber >= 0 && episodeNumber > 0) || (seriesId > 0 && episodeNumber > 0)
         if (isEpisode) {
             if (seriesId <= 0 && primaryCleanTitle.isNotBlank()) {
                 try {
