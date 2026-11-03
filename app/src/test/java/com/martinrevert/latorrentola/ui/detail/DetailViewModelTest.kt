@@ -286,4 +286,27 @@ class DetailViewModelTest {
         assertThat(success.logoUrl).isEqualTo(expectedLogoUrl)
         assertThat(success.isLogoLoading).isFalse()
     }
+
+    @Test
+    fun `retry should re-execute last load action when setMovieById fails`() = runTest {
+        val movie = Movie(id = 1, title = "Inception")
+        coEvery { repository.isFavorite(any()) } returns false
+        var shouldFail = true
+        coEvery { repository.getMovieFullDetails(any()) } answers {
+            if (shouldFail) {
+                shouldFail = false
+                throw RuntimeException("Network error")
+            } else {
+                MovieDetails(data = Data(movie = movie))
+            }
+        }
+
+        viewModel.setMovieById(1)
+        assertThat(viewModel.uiState.value).isInstanceOf(DetailUiState.Error::class.java)
+
+        viewModel.retry()
+        assertThat(viewModel.uiState.value).isInstanceOf(DetailUiState.Success::class.java)
+        val success = viewModel.uiState.value as DetailUiState.Success
+        assertThat(success.movie.title).isEqualTo("Inception")
+    }
 }

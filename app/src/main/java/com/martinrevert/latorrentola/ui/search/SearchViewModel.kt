@@ -1223,6 +1223,7 @@ class SearchViewModel @Inject constructor(
                 val recentIds = ytsRepository.getRecentMovieIds()
                 val excludedLangs = preferenceManager.getFilteredLanguages()
                 val moviesMap = mutableMapOf<Int, Movie>()
+                var lastFetchError: Throwable? = null
 
                 /** Rebuilds the displayed recent-release results from fetched summaries. */
                 fun updateState() {
@@ -1241,15 +1242,7 @@ class SearchViewModel @Inject constructor(
                         }
                     }
 
-                    if (allResults.isEmpty()) {
-                        if (recentIds.isEmpty()) {
-                            _uiState.value = SearchUiState.Empty
-                        } else if (moviesMap.size == recentIds.distinct().size) {
-                            _uiState.value = SearchUiState.Empty
-                        } else {
-                            _uiState.value = SearchUiState.Loading
-                        }
-                    } else {
+                    if (allResults.isNotEmpty()) {
                         _uiState.value = SearchUiState.Success(allResults.toList(), isNew = true)
                         if (_focusedMovie.value == null && allResults.isNotEmpty()) {
                             onMovieFocused(allResults.first())
@@ -1274,11 +1267,22 @@ class SearchViewModel @Inject constructor(
                                     }
                                 } catch (e: Exception) {
                                     if (e is CancellationException) throw e
+                                    lastFetchError = e
                                 }
                             }
                         }.joinAll()
                     }
                     updateState()
+                }
+
+                if (allResults.isEmpty()) {
+                    if (moviesMap.isEmpty() && lastFetchError != null) {
+                        val errorMessage = lastFetchError.localizedMessage?.takeIf { it.isNotBlank() }
+                            ?: "Web API error"
+                        _uiState.value = SearchUiState.Error(UiText.DynamicString(errorMessage))
+                    } else {
+                        _uiState.value = SearchUiState.Empty
+                    }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
@@ -1334,6 +1338,19 @@ class SearchViewModel @Inject constructor(
                 userLibraryRepository.removeFavoriteTvSeries(series)
             }
             clearSelection()
+        }
+    }
+
+    /** Retries the active query, genre, collection, or catalog load. */
+    fun retry() {
+        when {
+            isShowingFavorites -> showFavorites(force = true)
+            isShowingDownloads -> if (_isTvMode.value) showDownloadedTvSeries(force = true) else showDownloadedMovies(force = true)
+            isShowingNew -> if (_isTvMode.value) showNewTvSeries(force = true) else showNewMovies(force = true)
+            _isActorMode.value -> lastActorQuery?.let { searchActors(it, force = true) }
+            _isTvMode.value -> lastQuery?.let { searchTvSeries(it, force = true) } ?: loadMoreTvSeries()
+            lastQuery != null || lastGenre != null -> resetAndLoad()
+            else -> resetAndLoad()
         }
     }
 

@@ -73,6 +73,7 @@ import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.Abs
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.options.IFramePlayerOptions
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.ui.components.ApiErrorView
 import androidx.media3.session.MediaController
 import com.martinrevert.latorrentola.model.torrent.TorrentDownload
 import com.martinrevert.latorrentola.service.TorrentBufferState
@@ -224,7 +225,8 @@ fun MovieDetailScreen(
             } else {
                 viewModel.fetchAndOpenMovieByTmdbId(credit.id, credit.displayTitle)
             }
-        }
+        },
+        onRetry = { viewModel.retry() }
     )
 }
 
@@ -259,7 +261,8 @@ private fun MovieDetailScreenContent(
     onAddLanguageToFilter: (String) -> Unit,
     onCastClick: (String) -> Unit,
     onDismissActorSheet: () -> Unit,
-    onActorCreditClick: (TmdbCastCredit) -> Unit
+    onActorCreditClick: (TmdbCastCredit) -> Unit,
+    onRetry: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val hazeState = rememberHazeState()
@@ -273,13 +276,12 @@ private fun MovieDetailScreenContent(
                 MovieDetailPlaceholder(contentPadding = PaddingValues(top = 48.dp, start = 48.dp, end = 48.dp))
             }
             is DetailUiState.Error -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surface),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = uiState.message.asString(), color = MaterialTheme.colorScheme.error)
+                Box(modifier = Modifier.fillMaxSize()) {
+                    ApiErrorView(
+                        error = uiState.message,
+                        onRetry = onRetry,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
             }
             is DetailUiState.Success -> {
@@ -429,8 +431,12 @@ private fun MovieDetailScreenContent(
                 )
             }
             is DetailUiState.Error -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(text = uiState.message.asString())
+                Box(modifier = Modifier.fillMaxSize()) {
+                    ApiErrorView(
+                        error = uiState.message,
+                        onRetry = onRetry,
+                        modifier = Modifier.fillMaxSize()
+                    )
                     IconButton(
                         onClick = onBackClick,
                         modifier = Modifier

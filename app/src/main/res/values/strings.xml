@@ -444,4 +444,8 @@
     <string name="biometric_auth_failed">Authentication failed</string>
     <string name="delete_profile_confirmation">Delete %1$s from this device?</string>
     <string name="delete">Delete</string>
+
+    <!-- Web API Error Ezekiel Quote -->
+    <string name="api_error_title">Ezekiel 25:17</string>
+    <string name="api_error_the_lord_quote">The path of the righteous user is beset by unexpected errors. Blessed is the developer who is already debugging this digital valley of death. Please retry in a few minutes. And you will know my name is in the Log when my exception strikes your console!</string>
 </resources>

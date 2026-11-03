@@ -150,7 +150,7 @@ class TvGenreResultsViewModel @Inject constructor(
     }
 
     /** Cancels the previous query and reloads page one with the current filters. */
-    private fun refresh() {
+    fun refresh() {
         val selectedGenre = genreId ?: return
         requestJob?.cancel()
         requestGeneration++

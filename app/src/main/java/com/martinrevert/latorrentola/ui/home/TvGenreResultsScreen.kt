@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -25,7 +27,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -33,6 +34,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.ui.components.ApiErrorView
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
 import com.martinrevert.latorrentola.ui.components.TvGenreSortChips
 import com.martinrevert.latorrentola.ui.components.TvSeriesGrid
@@ -101,26 +103,28 @@ fun TvGenreResultsScreen(
                 .padding(padding),
             verticalArrangement = Arrangement.Top
         ) {
-            Column {
-                Text(
-                    text = stringResource(R.string.tv_sort_by),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 16.dp, top = 8.dp)
-                )
-                TvGenreSortChips(
-                    selectedSort = selectedSort,
-                    descending = descending,
-                    onSortClick = { sort ->
-                        viewModel.setSort(sort)
-                        coroutineScope.launch { gridState.scrollToItem(0) }
-                    },
-                    onDirectionClick = {
-                        viewModel.toggleDirection()
-                        coroutineScope.launch { gridState.scrollToItem(0) }
-                    },
-                    firstFocusRequester = sortFocusRequester
-                )
+            if (uiState !is TvGenreResultsUiState.Error) {
+                Column {
+                    Text(
+                        text = stringResource(R.string.tv_sort_by),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 16.dp, top = 8.dp)
+                    )
+                    TvGenreSortChips(
+                        selectedSort = selectedSort,
+                        descending = descending,
+                        onSortClick = { sort ->
+                            viewModel.setSort(sort)
+                            coroutineScope.launch { gridState.scrollToItem(0) }
+                        },
+                        onDirectionClick = {
+                            viewModel.toggleDirection()
+                            coroutineScope.launch { gridState.scrollToItem(0) }
+                        },
+                        firstFocusRequester = sortFocusRequester
+                    )
+                }
             }
             genreCatalogError?.let {
                 Text(
@@ -130,7 +134,12 @@ fun TvGenreResultsScreen(
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
             }
-            Box(modifier = Modifier.weight(1f)) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
                 when (val state = uiState) {
                     TvGenreResultsUiState.Loading -> MovieListPlaceholder(
                         contentPadding = PaddingValues(16.dp)
@@ -151,14 +160,11 @@ fun TvGenreResultsScreen(
                         contentPadding = PaddingValues(16.dp)
                     )
 
-                    is TvGenreResultsUiState.Error -> Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(state.message.asString(), color = MaterialTheme.colorScheme.error)
-                    }
+                    is TvGenreResultsUiState.Error -> ApiErrorView(
+                        error = state.message,
+                        onRetry = { viewModel.refresh() },
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
             }
         }

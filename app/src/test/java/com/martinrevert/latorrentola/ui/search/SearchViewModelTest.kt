@@ -15,6 +15,7 @@ import com.martinrevert.latorrentola.model.YTS.MovieDetails
 import com.martinrevert.latorrentola.model.YTS.Torrent
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.network.TmdbRepository
+import com.martinrevert.latorrentola.network.TmdbTvFeed
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
@@ -662,5 +663,79 @@ class SearchViewModelTest {
         vm.setFavoritesFilter(FavoritesFilter.IN_PROGRESS)
         testScheduler.advanceUntilIdle()
         assertThat((vm.uiState.value as? SearchUiState.Success)?.favoriteSeries.orEmpty()).isEmpty()
+    }
+
+    @Test
+    fun `retry should re-execute movie search when search fails`() = runTest {
+        coEvery { repository.searchMovies("matrix", 1, null) } throws RuntimeException("Network down")
+        viewModel.search("matrix")
+        assertThat(viewModel.uiState.value).isInstanceOf(SearchUiState.Error::class.java)
+
+        val matrixMovie = Movie(id = 10, title = "The Matrix")
+        coEvery { repository.searchMovies("matrix", 1, null) } returns
+            MovieDetails(data = Data(movies = listOf(matrixMovie)))
+
+        viewModel.retry()
+        testScheduler.advanceUntilIdle()
+
+        val success = viewModel.uiState.value as SearchUiState.Success
+        assertThat(success.movies).containsExactly(matrixMovie)
+    }
+
+    @Test
+    fun `retry should re-execute favorites when isShowingFavorites is true even if tvMode is active`() = runTest {
+        every { repository.getFavoriteMovies() } returns flowOf(emptyList())
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(emptyList())
+
+        viewModel.setTvMode(true)
+        viewModel.showFavorites()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.retry()
+        testScheduler.advanceUntilIdle()
+
+        coVerify(atLeast = 2) { repository.getFavoriteMovies() }
+    }
+
+    @Test
+    fun `retry should delegate to showDownloadedTvSeries when in downloads mode and tvMode is active`() = runTest {
+        every { userLibraryRepository.getDownloadedEpisodes() } returns flowOf(emptyList())
+
+        viewModel.setTvMode(true)
+        viewModel.showDownloadedTvSeries()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.retry()
+        testScheduler.advanceUntilIdle()
+
+        coVerify(atLeast = 2) { userLibraryRepository.getDownloadedEpisodes() }
+    }
+
+    @Test
+    fun `retry should delegate to showNewTvSeries when in new mode and tvMode is active`() = runTest {
+        coEvery { tmdbRepository.getHomeTvFeed(TmdbTvFeed.POPULAR, any()) } returns TmdbTvPage(page = 1, results = emptyList(), totalPages = 1)
+
+        viewModel.setTvMode(true)
+        viewModel.showNewTvSeries()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.retry()
+        testScheduler.advanceUntilIdle()
+
+        coVerify(atLeast = 2) { tmdbRepository.getHomeTvFeed(TmdbTvFeed.POPULAR, any()) }
+    }
+
+    @Test
+    fun `showNewMovies should emit Error when YTS summary fetching fails for all recent IDs`() = runTest {
+        coEvery { repository.getRecentMovieIds() } returns listOf(101, 102)
+        coEvery { repository.getMovieSummary(any()) } throws RuntimeException("HTTP 521: Web server is down")
+
+        viewModel.showNewMovies()
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertThat(state).isInstanceOf(SearchUiState.Error::class.java)
+        val errorState = state as SearchUiState.Error
+        assertThat((errorState.message as UiText.DynamicString).value).contains("HTTP 521")
     }
 }

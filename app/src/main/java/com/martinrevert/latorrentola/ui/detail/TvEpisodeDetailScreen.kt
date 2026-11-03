@@ -81,6 +81,7 @@ import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
 import com.martinrevert.latorrentola.service.TorrentBufferState
 import com.martinrevert.latorrentola.service.TorrentDownloadService
+import com.martinrevert.latorrentola.ui.components.ApiErrorView
 import com.martinrevert.latorrentola.ui.components.DeleteTorrentDownloadsDialog
 import com.martinrevert.latorrentola.ui.components.EpisodeTorrentShimmerCard
 import com.martinrevert.latorrentola.ui.components.InsufficientStorageDialog
@@ -206,10 +207,34 @@ fun TvEpisodeDetailScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.surface)
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
                 ) {
-                    Text(state.message, color = MaterialTheme.colorScheme.error)
+                    ApiErrorView(
+                        errorMessage = state.message,
+                        onRetry = {
+                            viewModel.loadEpisode(
+                                seriesId = seriesId,
+                                seasonNumber = seasonNumber,
+                                episodeNumber = episodeNumber,
+                                seriesName = seriesName,
+                                episodeJson = episodeJson
+                            )
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    IconButton(
+                        onClick = onBackClick,
+                        modifier = Modifier
+                            .statusBarsPadding()
+                            .padding(16.dp)
+                            .size(42.dp)
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back_desc),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
 
                 is TvEpisodeDetailUiState.Success -> {

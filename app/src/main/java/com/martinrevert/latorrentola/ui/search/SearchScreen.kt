@@ -75,6 +75,7 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.ui.components.ActorDetailBottomSheet
 import com.martinrevert.latorrentola.ui.components.AdaptiveChip
+import com.martinrevert.latorrentola.ui.components.ApiErrorView
 import com.martinrevert.latorrentola.ui.components.FavoritesChips
 import com.martinrevert.latorrentola.ui.components.FilmographyMetadata
 import com.martinrevert.latorrentola.ui.components.MovieItem
@@ -287,6 +288,7 @@ fun SearchScreen(
         onFocusRestored = { viewModel.clearLastClickedMovieId() },
         onTvFocusRestored = { viewModel.clearLastClickedSeriesId() },
         onActorCreditFocusRestored = { viewModel.clearLastClickedCreditKey() },
+        onRetry = { viewModel.retry() },
         themeMode = effectiveThemeMode
     )
 
@@ -358,6 +360,7 @@ private fun SearchScreenContent(
     onFocusRestored: () -> Unit,
     onTvFocusRestored: () -> Unit = {},
     onActorCreditFocusRestored: () -> Unit = {},
+    onRetry: () -> Unit = {},
     themeMode: Int? = null
 ) {
     val focusManager = LocalFocusManager.current
@@ -533,14 +536,16 @@ private fun SearchScreenContent(
                         )
                     },
                     chips = {
-                        QualityChips(
-                            options = qualityOptions,
-                            selectedQuality = selectedQuality ?: "All",
-                            onQualityClick = onQualityClick,
-                            modifier = Modifier
-                                .focusRequester(qualityChipsFocusRequester)
-                                .focusProperties { down = resultsFocusRequester }
-                        )
+                        if (uiState !is SearchUiState.Error) {
+                            QualityChips(
+                                options = qualityOptions,
+                                selectedQuality = selectedQuality ?: "All",
+                                onQualityClick = onQualityClick,
+                                modifier = Modifier
+                                    .focusRequester(qualityChipsFocusRequester)
+                                    .focusProperties { down = resultsFocusRequester }
+                            )
+                        }
                     }
                 ) {
                     when (uiState) {
@@ -569,9 +574,11 @@ private fun SearchScreenContent(
                         is SearchUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(text = stringResource(R.string.no_results))
                         }
-                        is SearchUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(text = uiState.message.asString())
-                        }
+                        is SearchUiState.Error -> ApiErrorView(
+                            error = uiState.message,
+                            onRetry = onRetry,
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
                 }
             } else {
@@ -634,9 +641,11 @@ private fun SearchScreenContent(
                                 SearchActorUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     Text(text = stringResource(R.string.no_results))
                                 }
-                                is SearchActorUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text(text = actorUiState.message.asString())
-                                }
+                                is SearchActorUiState.Error -> ApiErrorView(
+                                    error = actorUiState.message,
+                                    onRetry = onRetry,
+                                    modifier = Modifier.fillMaxSize()
+                                )
                                 is SearchActorUiState.Success -> {
                                     when {
                                         actorUiState.isLoadingCredits -> MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
@@ -678,9 +687,11 @@ private fun SearchScreenContent(
                                 is SearchTvUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     Text(text = stringResource(R.string.no_results))
                                 }
-                                is SearchTvUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text(text = tvUiState.message.asString())
-                                }
+                                is SearchTvUiState.Error -> ApiErrorView(
+                                    error = tvUiState.message,
+                                    onRetry = onRetry,
+                                    modifier = Modifier.fillMaxSize()
+                                )
                             }
                         }
                         else -> {
@@ -732,9 +743,11 @@ private fun SearchScreenContent(
                                 is SearchUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     Text(text = stringResource(R.string.no_results))
                                 }
-                                is SearchUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text(text = uiState.message.asString())
-                                }
+                                is SearchUiState.Error -> ApiErrorView(
+                                    error = uiState.message,
+                                    onRetry = onRetry,
+                                    modifier = Modifier.fillMaxSize()
+                                )
                             }
                         }
                     }
@@ -784,11 +797,13 @@ private fun SearchScreenContent(
                     )
                 },
                 chips = {
-                    QualityChips(
-                        options = qualityOptions,
-                        selectedQuality = selectedQuality ?: "All",
-                        onQualityClick = onQualityClick
-                    )
+                    if (uiState !is SearchUiState.Error) {
+                        QualityChips(
+                            options = qualityOptions,
+                            selectedQuality = selectedQuality ?: "All",
+                            onQualityClick = onQualityClick
+                        )
+                    }
                 }
             ) {
                 when (uiState) {
@@ -832,12 +847,11 @@ private fun SearchScreenContent(
                     ) {
                         Text(text = stringResource(R.string.no_results))
                     }
-                    is SearchUiState.Error -> Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(text = uiState.message.asString())
-                    }
+                    is SearchUiState.Error -> ApiErrorView(
+                        error = uiState.message,
+                        onRetry = onRetry,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
             }
         } else {
@@ -865,9 +879,11 @@ private fun SearchScreenContent(
                             SearchActorUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(text = stringResource(R.string.no_results))
                             }
-                            is SearchActorUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(text = actorUiState.message.asString())
-                            }
+                            is SearchActorUiState.Error -> ApiErrorView(
+                                error = actorUiState.message,
+                                onRetry = onRetry,
+                                modifier = Modifier.fillMaxSize()
+                            )
                             is SearchActorUiState.Success -> {
                                 when {
                                     actorUiState.isLoadingCredits -> MovieListPlaceholder(contentPadding = searchContentPadding)
@@ -907,9 +923,11 @@ private fun SearchScreenContent(
                             is SearchTvUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(text = stringResource(R.string.no_results))
                             }
-                            is SearchTvUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(text = tvUiState.message.asString())
-                            }
+                            is SearchTvUiState.Error -> ApiErrorView(
+                                error = tvUiState.message,
+                                onRetry = onRetry,
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
                     }
                     else -> {
@@ -956,9 +974,11 @@ private fun SearchScreenContent(
                             is SearchUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(text = stringResource(R.string.no_results))
                             }
-                            is SearchUiState.Error -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(text = uiState.message.asString())
-                            }
+                            is SearchUiState.Error -> ApiErrorView(
+                                error = uiState.message,
+                                onRetry = onRetry,
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
                     }
                 }

@@ -117,6 +117,7 @@ import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.ui.components.ActorDetailBottomSheet
 import com.martinrevert.latorrentola.ui.components.AdaptiveChip
+import com.martinrevert.latorrentola.ui.components.ApiErrorView
 import com.martinrevert.latorrentola.ui.components.MovieDetailPlaceholder
 import com.martinrevert.latorrentola.ui.components.MovieLogoHeader
 import com.martinrevert.latorrentola.ui.components.WatchProgressBar
@@ -232,10 +233,26 @@ fun TvDetailScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.surface)
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
                 ) {
-                    Text(state.message, color = MaterialTheme.colorScheme.error)
+                    ApiErrorView(
+                        errorMessage = state.message,
+                        onRetry = { viewModel.load(seriesId) },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    IconButton(
+                        onClick = onBackClick,
+                        modifier = Modifier
+                            .statusBarsPadding()
+                            .padding(16.dp)
+                            .size(42.dp)
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back_desc),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             }
 
@@ -889,7 +906,14 @@ private fun TvSeriesDetailTvContent(
                     contentAlignment = Alignment.Center
                 ) { CircularProgressIndicator() }
 
-                is TvSeasonUiState.Error -> Text(seasonState.message, color = MaterialTheme.colorScheme.error)
+                is TvSeasonUiState.Error -> ApiErrorView(
+                    errorMessage = seasonState.message,
+                    fillMaxSize = false,
+                    onRetry = { series.seasons?.firstOrNull { it.seasonNumber == selectedSeasonNumber }?.let(onSeasonSelected) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                )
                 is TvSeasonUiState.Success -> {
                     val episodeList = seasonState.season.episodes.orEmpty()
                     if (episodeList.isEmpty()) {
@@ -1385,7 +1409,14 @@ private fun HandheldTvSeriesDetailContent(
                     contentAlignment = Alignment.Center
                 ) { CircularProgressIndicator() }
 
-                is TvSeasonUiState.Error -> Text(seasonState.message, color = MaterialTheme.colorScheme.error)
+                is TvSeasonUiState.Error -> ApiErrorView(
+                    errorMessage = seasonState.message,
+                    fillMaxSize = false,
+                    onRetry = { series.seasons?.firstOrNull { it.seasonNumber == selectedSeasonNumber }?.let(onSeasonSelected) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                )
                 is TvSeasonUiState.Success -> {
                     val episodeList = seasonState.season.episodes.orEmpty()
                     if (episodeList.isEmpty()) {

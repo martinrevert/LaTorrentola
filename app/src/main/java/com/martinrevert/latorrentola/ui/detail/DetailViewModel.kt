@@ -123,9 +123,16 @@ class DetailViewModel @Inject constructor(
 
     /** Current speech/summary job, canceled when another movie is selected. */
     private var voiceJob: Job? = null
+    private var lastLoadAction: (() -> Unit)? = null
+
+    /** Retries the last movie loading action. */
+    fun retry() {
+        lastLoadAction?.invoke()
+    }
 
     /** Shows [movie] immediately, then refreshes its details and records genre visits. */
     fun setMovie(movie: Movie) {
+        lastLoadAction = { setMovie(movie) }
         viewModelScope.launch {
             // Optimization: Show passed movie immediately to avoid blank loading screen
             val isFavorite = ytsRepository.isFavorite(movie.id)
@@ -256,12 +263,14 @@ class DetailViewModel @Inject constructor(
 
     /** Loads a movie by its YTS identifier and publishes loading, success, or error state. */
     fun setMovieById(movieId: Int) {
+        lastLoadAction = { setMovieById(movieId) }
         viewModelScope.launch {
             _uiState.value = DetailUiState.Loading
             try {
                 val isFavorite = ytsRepository.isFavorite(movieId)
                 val fullDetailsResponse = ytsRepository.getMovieFullDetails(movieId)
-                fullDetailsResponse.data?.movie?.let { movie ->
+                val movie = fullDetailsResponse.data?.movie
+                if (movie != null) {
                     var fullMovie = movie
                     val imdbId = fullMovie.imdbCode
                     var tmdbMovie: TmdbMovieResult? = null
@@ -334,7 +343,7 @@ class DetailViewModel @Inject constructor(
                     fullMovie.genres?.forEach { genre ->
                         ytsRepository.recordGenreVisit(genre)
                     }
-                } ?: run {
+                } else {
                     _uiState.value = DetailUiState.Error(UiText.StringResource(R.string.movie_not_found))
                 }
             } catch (e: Exception) {
@@ -346,6 +355,7 @@ class DetailViewModel @Inject constructor(
 
     /** Searches for [query] and opens the matching movie, or falls back to a TMDB TV series when unavailable. */
     fun setMovieByQuery(query: String) {
+        lastLoadAction = { setMovieByQuery(query) }
         viewModelScope.launch {
             _uiState.value = DetailUiState.Loading
             val cleanImdbId = extractImdbId(query)

@@ -23,8 +23,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -67,6 +65,7 @@ import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.TMDB.TmdbWatchProvider
+import com.martinrevert.latorrentola.ui.components.ApiErrorView
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
@@ -152,52 +151,13 @@ fun OttProvidersScreen(
                     }
                 }
                 is OttProvidersUiState.Error -> {
-                    Box(
+                    ApiErrorView(
+                        error = state.message,
+                        onRetry = { viewModel.loadProviders(isTvMode) },
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(innerPadding),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(24.dp)
-                        ) {
-                            Text(
-                                text = state.message.asString(context),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.error,
-                                textAlign = TextAlign.Center
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            if (isTv) {
-                                Surface(
-                                    onClick = { viewModel.loadProviders(isTvMode) },
-                                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
-                                    colors = ClickableSurfaceDefaults.colors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = MaterialTheme.colorScheme.onPrimary
-                                    ),
-                                    shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small)
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.retry),
-                                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
-                                    )
-                                }
-                            } else {
-                                Button(
-                                    onClick = { viewModel.loadProviders(isTvMode) },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                ) {
-                                    Text(text = stringResource(R.string.retry))
-                                }
-                            }
-                        }
-                    }
+                            .padding(innerPadding)
+                    )
                 }
                 is OttProvidersUiState.Success -> {
                     if (state.providers.isEmpty()) {

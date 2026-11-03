@@ -76,6 +76,7 @@ import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieSummary
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.ui.components.ApiErrorView
 import com.martinrevert.latorrentola.ui.components.HandheldMovieImmersiveContainer
 import com.martinrevert.latorrentola.ui.components.HandheldTvSeriesImmersiveContainer
 import com.martinrevert.latorrentola.ui.components.MovieListPlaceholder
@@ -245,40 +246,11 @@ fun OttCatalogScreen(
                             }
                         }
                         is OttCatalogUiState.Error -> {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(16.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center,
-                                    modifier = Modifier.padding(24.dp)
-                                ) {
-                                    Text(
-                                        text = state.message.asString(context),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.error,
-                                        textAlign = TextAlign.Center
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Surface(
-                                        onClick = { viewModel.refresh() },
-                                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
-                                        colors = ClickableSurfaceDefaults.colors(
-                                            containerColor = MaterialTheme.colorScheme.primary,
-                                            contentColor = MaterialTheme.colorScheme.onPrimary
-                                        ),
-                                        shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small)
-                                    ) {
-                                        Text(
-                                            text = stringResource(R.string.retry),
-                                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
-                                        )
-                                    }
-                                }
-                            }
+                            ApiErrorView(
+                                error = state.message,
+                                onRetry = { viewModel.refresh() },
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
                         else -> Unit
                     }
@@ -375,35 +347,11 @@ fun OttCatalogScreen(
                             }
                         }
                         is OttCatalogUiState.Error -> {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(16.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center,
-                                    modifier = Modifier.padding(24.dp)
-                                ) {
-                                    Text(
-                                        text = state.message.asString(context),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.error,
-                                        textAlign = TextAlign.Center
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Button(
-                                        onClick = { viewModel.refresh() },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.primary,
-                                            contentColor = MaterialTheme.colorScheme.onPrimary
-                                        )
-                                    ) {
-                                        Text(text = stringResource(R.string.retry))
-                                    }
-                                }
-                            }
+                            ApiErrorView(
+                                error = state.message,
+                                onRetry = { viewModel.refresh() },
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
                         else -> Unit
                     }
@@ -503,40 +451,11 @@ fun OttCatalogScreen(
                             }
                         }
                         is OttCatalogUiState.Error -> {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(16.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center,
-                                    modifier = Modifier.padding(24.dp)
-                                ) {
-                                    Text(
-                                        text = state.message.asString(context),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.error,
-                                        textAlign = TextAlign.Center
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Surface(
-                                        onClick = { viewModel.refresh() },
-                                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
-                                        colors = ClickableSurfaceDefaults.colors(
-                                            containerColor = MaterialTheme.colorScheme.primary,
-                                            contentColor = MaterialTheme.colorScheme.onPrimary
-                                        ),
-                                        shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.small)
-                                    ) {
-                                        Text(
-                                            text = stringResource(R.string.retry),
-                                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
-                                        )
-                                    }
-                                }
-                            }
+                            ApiErrorView(
+                                error = state.message,
+                                onRetry = { viewModel.refresh() },
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
                         else -> Unit
                     }
@@ -634,35 +553,11 @@ fun OttCatalogScreen(
                             }
                         }
                         is OttCatalogUiState.Error -> {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(16.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center,
-                                    modifier = Modifier.padding(24.dp)
-                                ) {
-                                    Text(
-                                        text = state.message.asString(context),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.error,
-                                        textAlign = TextAlign.Center
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Button(
-                                        onClick = { viewModel.refresh() },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.primary,
-                                            contentColor = MaterialTheme.colorScheme.onPrimary
-                                        )
-                                    ) {
-                                        Text(text = stringResource(R.string.retry))
-                                    }
-                                }
-                            }
+                            ApiErrorView(
+                                error = state.message,
+                                onRetry = { viewModel.refresh() },
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
                         else -> Unit
                     }

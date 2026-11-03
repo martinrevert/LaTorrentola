@@ -442,4 +442,8 @@
     <string name="biometric_auth_failed">No se pudo autenticar</string>
     <string name="delete_profile_confirmation">¿Eliminar a %1$s de este dispositivo?</string>
     <string name="delete">Eliminar</string>
+
+    <!-- Web API Error Ezekiel Quote -->
+    <string name="api_error_title">Ezequiel 25:17</string>
+    <string name="api_error_the_lord_quote">El camino del usuario justo está cruzado por errores inesperados. Bendito sea el desarrollador que ya está depurando este valle de la muerte digital. Por favor, reintente en unos minutos. ¡Y sabrás que mi nombre está en el Log cuando caiga mi excepción sobre tu consola!</string>
 </resources>
