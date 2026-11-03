@@ -4,7 +4,7 @@ import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreSettings
-import com.google.firebase.firestore.MemoryCacheSettings
+import com.google.firebase.firestore.PersistentCacheSettings
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -21,18 +21,18 @@ object AuthModule {
     @Singleton
     fun provideFirebaseAuth(): FirebaseAuth = FirebaseAuth.getInstance()
 
-    /** Provides the default Firebase Firestore instance configured with in-memory persistence. */
+    /** Provides the default Firebase Firestore instance configured with persistent local disk cache. */
     @Provides
     @Singleton
     fun provideFirebaseFirestore(): FirebaseFirestore {
         val firestore = FirebaseFirestore.getInstance()
         try {
             val settings = FirebaseFirestoreSettings.Builder()
-                .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build())
+                .setLocalCacheSettings(PersistentCacheSettings.newBuilder().build())
                 .build()
             firestore.firestoreSettings = settings
         } catch (e: Exception) {
-            Log.w("AuthModule", "Unable to apply memory cache settings to Firestore: ${e.message}")
+            Log.w("AuthModule", "Unable to apply persistent cache settings to Firestore: ${e.message}")
         }
         return firestore
     }

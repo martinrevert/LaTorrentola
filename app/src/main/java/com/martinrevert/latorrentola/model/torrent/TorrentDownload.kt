@@ -30,6 +30,8 @@ data class TorrentDownload(
     val episodeNumber: Int? = null,
     /** Optional Movie ID for this download. */
     val movieId: Int? = null,
+    /** Optional canonical IMDb identifier for movies (e.g. "tt0111161") or series (e.g. "tt0944947"). */
+    val imdbId: String? = null,
     /** Dynamic number of connected seeds. */
     val numSeeds: Int = 0,
     /** Dynamic number of connected peers. */

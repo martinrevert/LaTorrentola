@@ -39,11 +39,13 @@ object PlayerIntentUtils {
         val seasonNumber = intent.getIntExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, 0)
         val episodeNumber = intent.getIntExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, 0)
         val movieId = intent.getIntExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, 0)
+        val imdbId = intent.getStringExtra(LocalPlayerActivity.EXTRA_IMDB_ID)
         val mimeType = intent.getStringExtra(LocalPlayerActivity.EXTRA_MIME_TYPE) ?: file?.mediaMimeType()
 
-        val isEpisode = seriesId > 0
+        val isEpisode = seriesId > 0 || (seasonNumber > 0 && episodeNumber > 0)
         val mediaId = if (isEpisode) {
             MediaIdHelper.forEpisode(
+                imdbId = imdbId,
                 seriesId = seriesId,
                 seasonNumber = seasonNumber,
                 episodeNumber = episodeNumber,
@@ -51,6 +53,7 @@ object PlayerIntentUtils {
             )
         } else {
             MediaIdHelper.forMovie(
+                imdbId = imdbId,
                 movieId = movieId,
                 title = title
             )
@@ -83,6 +86,9 @@ object PlayerIntentUtils {
             }
             if (episodeNumber > 0) {
                 putInt(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, episodeNumber)
+            }
+            if (!imdbId.isNullOrBlank()) {
+                putString(LocalPlayerActivity.EXTRA_IMDB_ID, imdbId)
             }
             val nextEpisodeInfo = intent.getStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO)
             if (!nextEpisodeInfo.isNullOrEmpty()) {
@@ -122,6 +128,7 @@ object PlayerIntentUtils {
 
         val mediaId = if (isEpisode) {
             MediaIdHelper.forEpisode(
+                imdbId = download.imdbId,
                 seriesId = download.seriesId ?: 0,
                 seasonNumber = effSeason,
                 episodeNumber = effEpisode,
@@ -129,6 +136,7 @@ object PlayerIntentUtils {
             )
         } else {
             MediaIdHelper.forMovie(
+                imdbId = download.imdbId,
                 movieId = download.movieId ?: 0,
                 title = download.title
             )
@@ -151,6 +159,9 @@ object PlayerIntentUtils {
             }
             if (effEpisode > 0) {
                 putInt(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, effEpisode)
+            }
+            if (!download.imdbId.isNullOrBlank()) {
+                putString(LocalPlayerActivity.EXTRA_IMDB_ID, download.imdbId)
             }
             if (!download.posterUrl.isNullOrBlank()) {
                 putString(LocalPlayerActivity.EXTRA_POSTER_URL, download.posterUrl)

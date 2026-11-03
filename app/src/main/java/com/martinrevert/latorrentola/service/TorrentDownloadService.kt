@@ -190,6 +190,7 @@ class TorrentDownloadService : Service() {
                                 seasonNumber = stored.seasonNumber ?: 0,
                                 episodeNumber = stored.episodeNumber ?: 0,
                                 movieId = stored.movieId ?: 0,
+                                imdbId = stored.imdbId,
                                 posterUrl = stored.posterUrl
                             )
                         )
@@ -244,6 +245,9 @@ class TorrentDownloadService : Service() {
                 }
                 if (intent.hasExtra(EXTRA_MOVIE_ID)) {
                     readyIntent.putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, intent.getIntExtra(EXTRA_MOVIE_ID, 0))
+                }
+                if (intent.hasExtra(EXTRA_IMDB_ID)) {
+                    readyIntent.putExtra(LocalPlayerActivity.EXTRA_IMDB_ID, intent.getStringExtra(EXTRA_IMDB_ID))
                 }
             }
             serviceScope.launch {
@@ -319,7 +323,8 @@ class TorrentDownloadService : Service() {
                                         seriesId = resumed.seriesId ?: 0,
                                         seasonNumber = resumed.seasonNumber ?: 0,
                                         episodeNumber = resumed.episodeNumber ?: 0,
-                                        movieId = resumed.movieId ?: 0
+                                        movieId = resumed.movieId ?: 0,
+                                        imdbId = resumed.imdbId
                                     )
                                 )
                             }
@@ -417,6 +422,7 @@ class TorrentDownloadService : Service() {
         var seasonNumber = intent.getIntExtra(EXTRA_SEASON_NUMBER, 0)
         var episodeNumber = intent.getIntExtra(EXTRA_EPISODE_NUMBER, 0)
         var movieId = intent.getIntExtra(EXTRA_MOVIE_ID, 0)
+        var rawImdbId = intent.getStringExtra(EXTRA_IMDB_ID)
         var posterUrl = intent.getStringExtra(EXTRA_POSTER_URL)
         val magnetUri = intent.getStringExtra(EXTRA_MAGNET_URI).orEmpty()
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank {
@@ -487,6 +493,10 @@ class TorrentDownloadService : Service() {
             }
             preemptActiveTransfersAndPlayback(infoHash, title)
             val existing = existingRecord ?: torrentDownloadDao.get(infoHash)
+            if (rawImdbId.isNullOrBlank()) {
+                rawImdbId = existing?.imdbId
+            }
+            val effectiveImdbId = MediaIdHelper.normalizeImdbId(rawImdbId)
             val completedFile = existing
                 ?.takeIf { it.state == STATE_COMPLETED }
                 ?.mediaPath
@@ -494,8 +504,10 @@ class TorrentDownloadService : Service() {
                 ?.takeIf { it.isFile && it.canRead() }
             val nextEpisodeInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
 
-            val mediaId = if (seriesId > 0) {
+            val isEpisode = seriesId > 0 || (seasonNumber > 0 && episodeNumber > 0)
+            val mediaId = if (isEpisode) {
                 MediaIdHelper.forEpisode(
+                    imdbId = effectiveImdbId,
                     seriesId = seriesId,
                     seasonNumber = seasonNumber,
                     episodeNumber = episodeNumber,
@@ -503,6 +515,7 @@ class TorrentDownloadService : Service() {
                 )
             } else {
                 MediaIdHelper.forMovie(
+                    imdbId = effectiveImdbId,
                     movieId = movieId,
                     title = title
                 )
@@ -526,7 +539,7 @@ class TorrentDownloadService : Service() {
                     )
                 )
                 val castWhenReady = intent.getBooleanExtra(EXTRA_CAST_WHEN_READY, false)
-                startCompletedPlayback(infoHash, title, completedFile, castWhenReady, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId, posterUrl)
+                startCompletedPlayback(infoHash, title, completedFile, castWhenReady, nextEpisodeInfo, seriesId, seasonNumber, episodeNumber, movieId, posterUrl, effectiveImdbId)
                 return@launch
             }
 
@@ -546,6 +559,7 @@ class TorrentDownloadService : Service() {
                         seasonNumber = seasonNumber,
                         episodeNumber = episodeNumber,
                         movieId = movieId,
+                        imdbId = effectiveImdbId,
                         posterUrl = posterUrl
                     )
                 )
@@ -577,6 +591,7 @@ class TorrentDownloadService : Service() {
                     seasonNumber = seasonNumber,
                     episodeNumber = episodeNumber,
                     movieId = movieId,
+                    imdbId = effectiveImdbId,
                     posterUrl = posterUrl
                 )
             )
@@ -593,6 +608,7 @@ class TorrentDownloadService : Service() {
                             seasonNumber = seasonNumber,
                             episodeNumber = episodeNumber,
                             movieId = movieId,
+                            imdbId = effectiveImdbId,
                             resumePositionMs = resumePos,
                             durationMs = dur,
                             posterUrl = posterUrl
@@ -667,7 +683,8 @@ class TorrentDownloadService : Service() {
         seasonNumber: Int = 0,
         episodeNumber: Int = 0,
         movieId: Int = 0,
-        posterUrl: String? = null
+        posterUrl: String? = null,
+        imdbId: String? = null
     ) {
         streamServers.remove(infoHash)?.stop()
 
@@ -697,6 +714,7 @@ class TorrentDownloadService : Service() {
             .putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, seasonNumber)
             .putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, episodeNumber)
             .putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, movieId)
+            .putExtra(LocalPlayerActivity.EXTRA_IMDB_ID, imdbId)
             .putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, posterUrl)
             .apply {
                 if (nextEpisodeInfo != null) {
@@ -777,6 +795,7 @@ class TorrentDownloadService : Service() {
 
             val mediaId = if ((stored.seriesId ?: 0) > 0) {
                 MediaIdHelper.forEpisode(
+                    imdbId = stored.imdbId,
                     seriesId = stored.seriesId ?: 0,
                     seasonNumber = stored.seasonNumber ?: 0,
                     episodeNumber = stored.episodeNumber ?: 0,
@@ -784,6 +803,7 @@ class TorrentDownloadService : Service() {
                 )
             } else {
                 MediaIdHelper.forMovie(
+                    imdbId = stored.imdbId,
                     movieId = stored.movieId ?: 0,
                     title = stored.title
                 )
@@ -804,6 +824,7 @@ class TorrentDownloadService : Service() {
                             seasonNumber = stored.seasonNumber ?: 0,
                             episodeNumber = stored.episodeNumber ?: 0,
                             movieId = stored.movieId ?: 0,
+                            imdbId = stored.imdbId,
                             resumePositionMs = resumePos,
                             durationMs = dur,
                             posterUrl = stored.posterUrl
@@ -1430,6 +1451,7 @@ class TorrentDownloadService : Service() {
                             .putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, request.seasonNumber)
                             .putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, request.episodeNumber)
                             .putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, request.movieId)
+                            .putExtra(LocalPlayerActivity.EXTRA_IMDB_ID, request.imdbId)
                             .putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, request.posterUrl)
                             .apply {
                                 if (request.nextEpisodeInfo != null) {
@@ -1673,6 +1695,7 @@ class TorrentDownloadService : Service() {
         val sNum = if (request.seasonNumber > 0) request.seasonNumber else existing?.seasonNumber
         val eNum = if (request.episodeNumber > 0) request.episodeNumber else existing?.episodeNumber
         val mId = if (request.movieId > 0) request.movieId else existing?.movieId
+        val imdb = request.imdbId ?: existing?.imdbId
         val poster = if (!request.posterUrl.isNullOrBlank()) request.posterUrl else existing?.posterUrl
 
         torrentDownloadDao.upsert(
@@ -1689,6 +1712,7 @@ class TorrentDownloadService : Service() {
                 seasonNumber = sNum,
                 episodeNumber = eNum,
                 movieId = mId,
+                imdbId = imdb,
                 numSeeds = numSeeds,
                 numPeers = numPeers,
                 posterUrl = poster
@@ -1744,6 +1768,7 @@ class TorrentDownloadService : Service() {
         val seasonNumber: Int = 0,
         val episodeNumber: Int = 0,
         val movieId: Int = 0,
+        val imdbId: String? = null,
         val resumePositionMs: Long = 0L,
         val durationMs: Long = 0L,
         val posterUrl: String? = null
@@ -1846,6 +1871,8 @@ class TorrentDownloadService : Service() {
         const val EXTRA_EPISODE_NUMBER = "torrent_episode_number"
         /** Movie ID extra. */
         const val EXTRA_MOVIE_ID = "torrent_movie_id"
+        /** Canonical IMDb ID extra (e.g. "tt0111161" or "tt0944947"). */
+        const val EXTRA_IMDB_ID = "torrent_imdb_id"
         /** Poster URL extra. */
         const val EXTRA_POSTER_URL = "torrent_poster_url"
         /** Next episode information passed along for quality selection upon completion. */

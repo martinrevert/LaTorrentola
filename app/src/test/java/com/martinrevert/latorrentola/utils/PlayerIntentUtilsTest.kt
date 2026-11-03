@@ -59,7 +59,7 @@ class PlayerIntentUtilsTest {
 
         val mediaItem = PlayerIntentUtils.buildMediaItem(intent)
 
-        assertEquals("12230", mediaItem.mediaId)
+        assertEquals("tmdb_12230", mediaItem.mediaId)
         assertEquals("Inception", mediaItem.mediaMetadata.title?.toString())
         assertEquals("video/mp4", mediaItem.localConfiguration?.mimeType)
         assertNotNull(mediaItem.mediaMetadata.extras)
@@ -83,7 +83,7 @@ class PlayerIntentUtilsTest {
 
         val mediaItem = PlayerIntentUtils.buildMediaItem(intent)
 
-        assertEquals("media_111803_s1_e1", mediaItem.mediaId)
+        assertEquals("tmdb_111803_s1_e1", mediaItem.mediaId)
         assertEquals("Severance S01E01", mediaItem.mediaMetadata.title?.toString())
         assertEquals("video/x-matroska", mediaItem.localConfiguration?.mimeType)
         assertNotNull(mediaItem.mediaMetadata.extras)
@@ -123,9 +123,50 @@ class PlayerIntentUtilsTest {
 
         val mediaItem = PlayerIntentUtils.buildMediaItem(download, file)
 
-        assertEquals("603", mediaItem.mediaId)
+        assertEquals("tmdb_603", mediaItem.mediaId)
         assertEquals("The Matrix (1999)", mediaItem.mediaMetadata.title?.toString())
         assertEquals("video/mp4", mediaItem.localConfiguration?.mimeType)
+        assertNotNull(mediaItem.mediaMetadata.extras)
+    }
+
+    @Test
+    fun `buildMediaItem from Intent with EXTRA_IMDB_ID forwards imdbId to extras and sets canonical mediaId`() {
+        val intent = mockk<Intent>(relaxed = true)
+        every { intent.getStringExtra(LocalPlayerActivity.EXTRA_STREAM_URL) } returns "http://127.0.0.1:8080/ep1.mkv"
+        every { intent.getStringExtra(LocalPlayerActivity.EXTRA_TITLE) } returns "Severance S01E01"
+        every { intent.getIntExtra(LocalPlayerActivity.EXTRA_SERIES_ID, 0) } returns 111803
+        every { intent.getIntExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, 0) } returns 1
+        every { intent.getIntExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, 0) } returns 1
+        every { intent.getStringExtra(LocalPlayerActivity.EXTRA_IMDB_ID) } returns "tt11280740"
+
+        val mediaItem = PlayerIntentUtils.buildMediaItem(intent)
+
+        assertEquals("tt11280740_s1_e1", mediaItem.mediaId)
+        assertNotNull(mediaItem.mediaMetadata.extras)
+        io.mockk.verify { intent.getStringExtra(LocalPlayerActivity.EXTRA_IMDB_ID) }
+    }
+
+    @Test
+    fun `buildMediaItem from TorrentDownload with imdbId forwards EXTRA_IMDB_ID to extras`() {
+        val download = TorrentDownload(
+            infoHash = "092ea1d9309572ad7caf0868c3a94217dad15769",
+            title = "Severance S01E01",
+            magnetUri = "magnet:?xt=urn:btih:092ea1d9309572ad7caf0868c3a94217dad15769",
+            state = "COMPLETED",
+            progressPercent = 100,
+            mediaPath = "/storage/downloads/severance.s01e01.mkv",
+            castWhenReady = false,
+            updatedAtMillis = System.currentTimeMillis(),
+            seriesId = 111803,
+            seasonNumber = 1,
+            episodeNumber = 1,
+            imdbId = "tt11280740"
+        )
+        val file = File("severance.s01e01.mkv")
+
+        val mediaItem = PlayerIntentUtils.buildMediaItem(download, file)
+
+        assertEquals("tt11280740_s1_e1", mediaItem.mediaId)
         assertNotNull(mediaItem.mediaMetadata.extras)
     }
 }

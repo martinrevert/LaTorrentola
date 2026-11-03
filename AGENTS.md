@@ -170,31 +170,50 @@ When triggering a download/play action, read `TorrentHandlingMode` and execute:
 - `LOCAL_PLAYBACK` or `CHROMECAST`: Start `TorrentDownloadService` -> Launch `LocalPlayerActivity`.
 - *Note:* If playing a partially downloaded torrent, you MUST use `VerifiedTorrentHttpServer`.
 
-### Data Sync Flow
-- **Watch History**: Write to Room DAO FIRST (Immediate UI update) -> Sync to Firestore in the background. Room is the Single Source of Truth.
+### Data Sync Flow & Firestore Cost Minimization (Room as SSOT)
+- **Room as the Primary Single Source of Truth (SSOT)**:
+  - All user library state (`favorites_movies`, `favorites_tv`, `downloaded_movies`, `downloaded_episodes`, `watch_history`) lives primarily in local Room tables.
+  - The UI and ViewModels MUST observe Room exclusively via reactive Kotlin Flows (`favoriteDao`, `downloadRecordDao`, `watchHistoryDao`).
+  - **PROHIBITION: NEVER attach real-time `addSnapshotListener` listeners to Firestore collections in ViewModels or UI screens during normal navigation.** Attaching continuous listeners burns through the Google Cloud Free Tier (50,000 reads/day) within hours.
+  - Firestore is strictly an asynchronous backup and cross-device sync layer (`syncFromCloud` bootstrap/delta sync and on-demand outbound writes).
+  - Firestore SDK MUST configure `PersistentCacheSettings` instead of in-memory caching to reuse disk-cached documents across cold boots.
+- **Multi-Account & Shared Device Data Isolation (OTT Pro Pattern)**:
+  - To support shared family devices (Android TV, Chromecast with Google TV, shared tablets), Room partitions library and watch history entries by `userId` (composite primary keys `[userId, id]` / `[userId, mediaId]`).
+  - The `saved_accounts` table remembers each authenticated Google account (`uid`, `displayName`, `email`, `photoUrl`, `lastActiveTimestamp`).
+  - **PROHIBITION: NEVER wipe or delete Room tables on logout.** When a user logs out or switches accounts, local data for all accounts MUST be preserved so returning to a profile displays its history and favorites instantly with zero network roundtrips.
+  - **PROHIBITION: NEVER run unpartitioned Room queries for user data.** All queries in DAOs observing or querying watch history and downloads (`observeAll`, `getAll`, `getLegacyItems`) MUST filter strictly by `userId`. Guest mode MUST query exclusively `userId = ''` to prevent cross-account history exposure.
+  - **Legacy Claiming Invariant**: When a user logs in from an unauthenticated/guest state, unassigned local records (`userId = ''`) MUST be claimed atomically (`claimUnassignedItems(userId)`) to prevent local pre-migration watch history from vanishing.
+  - **Android TV Dialog Focus Trap Mandate**: Confirmation and selection overlays on Android TV MUST ALWAYS be wrapped in `androidx.compose.ui.window.Dialog(onDismissRequest = ...)` instead of uncontained full-screen `Box` overlays so Compose's 2D D-pad focus dispatcher is captured and back navigation functions properly.
+- **Watch History**: Write to Room DAO FIRST (Immediate UI update) -> Sync to Firestore in the background.
 - **Cast Player History Sync**: Cast Player MUST follow the exact same history saving patterns as ExoPlayer: save every 10 seconds while playing, save immediately on pause, and save immediately upon session disconnect/stop/destroy using the remote position. When handoff back to ExoPlayer occurs, ExoPlayer MUST seek to this synchronized position so watch history is pure, uninterrupted, and all UI progress indicators match reality.
 
-### 🎬 Canonical Watch History Media ID & Cross-Source Parity Mandate (STRICT - ZERO REGRESSION)
-To ensure seamless interoperability between Torrents, Network Storage (NAS / SMB / NFS / USB), and Local Playback, the storage format of watch history in Room and Firestore MUST adhere strictly to the canonical definitions:
+### 🎬 Canonical Watch History, Room & Firestore IMDb ID Standard (USER MANDATE - ZERO REGRESSION)
+To guarantee vendor independence (preventing vendor lock-in to TMDB or YTS) and seamless interoperability between Torrents, Network Storage (NAS / SMB / NFS / USB), and Local Playback, the storage format in Room and Firestore adheres to global industry-standard IMDb identifiers, with 100% transparent backwards compatibility and zero data loss:
 1. **Canonical ID Definitions (MANDATORY)**:
-   - **Movies**: `mediaId` MUST ALWAYS be the canonical numeric string ID from TMDB/YTS catalog (e.g. `"12230"`).
-     - **PROHIBITION**: NEVER save 40-character torrent infoHashes (`092ea1d9309572ad7caf0868c3a94217dad15769`), raw file names (e.g. `Inception.2010.1080p.mkv`), or arbitrary raw strings as movie `mediaId`.
+   - **Movies**: `mediaId` (and document ID in Firestore) MUST ALWAYS be the canonical IMDb ID (e.g. `"tt0111161"` for The Shawshank Redemption).
+     - **Relational Integrity**: Retain the numeric `movieId` internally across entities and models for relational consistency with existing catalog APIs.
+     - **Deterministic Fallback**: If an IMDb ID is genuinely unlisted or unresolved, deterministic `"tmdb_${movieId}"` format is used. Legacy numeric IDs or filenames are automatically migrated to canonical IMDb format and purged.
+     - **PROHIBITION**: NEVER save raw 40-character torrent infoHashes or raw file names as movie `mediaId`.
    - **TV Series Episodes**: `mediaId` MUST ALWAYS adhere to the canonical mnemonic:
-     `"media_${seriesId}_s${seasonNumber}_e${episodeNumber}"` (e.g. `"media_111803_s1_e1"`), where `seriesId` is the canonical TMDB series ID, and `seasonNumber` and `episodeNumber` are positive integers.
-     - **PROHIBITION**: NEVER vary prefixes, use capital letters (`media_S1_E1`), or save raw episode file names.
-2. **Mandatory Inverse Resolution for External Media (NAS / USB / Local Files)**:
+     `"${imdbId}_s${seasonNumber}_e${episodeNumber}"` (e.g. `"tt0944947_s1_e2"`), where `imdbId` is the series IMDb ID, and `seasonNumber` and `episodeNumber` are positive integers.
+     - **Relational Integrity**: Retain `seriesId` (TMDB series ID) internally across all models, DTOs, and entity columns for relational navigation.
+     - **Deterministic Fallback**: If an IMDb ID is genuinely unlisted, the deterministic `"tmdb_${seriesId}_s${season}_e${episode}"` format is used. Legacy composite keys (`"media_${seriesId}_s${season}_e${episode}"` and `"tv_${seriesId}_s${season}_e${episode}"`) are automatically migrated upon access/sync and purged without data loss, eliminating redundant multi-key candidate queries.
+2. **Room Database v14 & Zero Data Loss Dual Lookups**:
+   - `AppDatabase` v14 introduces `MIGRATION_13_14` adding `imdbId TEXT NOT NULL DEFAULT ''` across `favorites_movies`, `favorites_tv`, `downloaded_movies`, and `downloaded_episodes`.
+   - DAO queries perform dual-key lookups (`WHERE (movieId = :id OR imdbId = :imdb)`) so existing user favorites and downloads are preserved with zero data loss.
+3. **Mandatory Inverse Resolution for External Media (NAS / USB / Local Files)**:
    - When media is played from network shares (SMB/NFS) or external storage, or when metadata IDs are absent from a torrent:
      - The filename and stream title MUST be parsed via `MediaMetadataResolver` using regex (`extractSeasonAndEpisode`) and release tag cleaning (`extractCleanSearchTitles`).
-     - **If Episode**: Asynchronously resolve `seriesId` via `tmdbRepository.searchTvSeries(cleanTitle)` before finalizing `mediaId`.
-     - **If Movie**: Asynchronously resolve `movieId` via `ytsRepository.searchMovies(cleanTitle, 1)` (fallback `tmdbRepository.searchMovies`) before finalizing `mediaId`.
+     - **If Episode**: Asynchronously resolve `seriesId` and `imdbId` via `tmdbRepository.searchTvSeries(cleanTitle)` before finalizing `mediaId`.
+     - **If Movie**: Asynchronously resolve `movieId` and `imdbCode` via `ytsRepository.searchMovies(cleanTitle, 1)` (fallback `tmdbRepository.searchMovies`) before finalizing `mediaId`.
      - This guarantees that watching a video on NAS saves progress to the exact same document as playing it via Torrent, enabling uninterrupted cross-source resume.
-3. **Decoupled Architecture & UI Components**:
+4. **Decoupled Architecture & UI Components**:
    - All watch progress bars in catalog and thumbnails MUST use the shared `@Composable WatchProgressBar(progressPercent = ...)`.
    - All player timeline scrubbers MUST use `@Composable WatchProgressSlider(value = ...)`.
    - Resolution logic MUST reside in `MediaMetadataResolver`, keeping Activities and UI screens completely decoupled.
-4. **Automatic Legacy Cleanup & Migration**:
-   - `UserLibraryRepository` MUST detect non-canonical records (hashes, titles, malformed strings) in Room and Firestore, resolve their canonical IDs from title/name, migrate progress to the canonical key, and purge the legacy records.
-5. **STRICT PROHIBITION FOR FUTURE AI AGENTS**:
+5. **Automatic Legacy Cleanup & Migration**:
+   - `UserLibraryRepository` MUST detect legacy records (numeric TMDB IDs, `media_X_sY_eZ`, or non-canonical strings) in Room and Firestore, migrate progress to the canonical IMDb key, and purge the legacy records.
+6. **STRICT PROHIBITION FOR FUTURE AI AGENTS**:
    - Future AI agents are **STRICTLY FORBIDDEN** from modifying, altering, or circumventing these storage keys, canonical formats, or reverse lookup mechanisms in Room, Firestore, `MediaIdHelper`, `MediaMetadataResolver`, `LocalPlayerActivity`, `TorrentDownloadService`, `PlaybackService`, and `UserLibraryRepository` under any circumstances unless explicitly requested and approved by the user.
 
 ### 🔖 Manual Watch Progress & Download Marking System (STRICT MANDATE)
@@ -406,3 +425,4 @@ Before marking a task complete, verify:
 16. [ ] Did I ensure that the Next Episode dialog remains open while buffering up to 100% (`STATE_READY`), provides a pinned Close button, and that transitioning episodes in `LocalPlayerActivity` clears previous media/surfaces and rebinds `PlayerSurface` via `surfaceRebindKey`?
 17. [ ] Did I update `README.md`, `README.es.md`, and `ARCHITECTURE.md` on the fly to reflect all new features, settings, or architectural components?
 18. [ ] If resolving a bug, regression, or edge-case failure, did I automatically document a new mandatory directive in `AGENTS.md` and add its corresponding checklist item to prevent future regressions?
+19. [ ] Did I ensure that the UI reads library and progress state exclusively from Room (0 continuous Firestore snapshot listeners), that Firestore uses `PersistentCacheSettings`, and that local Room data is partitioned by `userId` and preserved across logouts for shared devices?

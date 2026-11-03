@@ -461,6 +461,7 @@ class DetailViewModel @Inject constructor(
             userLibraryRepository.markAsDownloaded(
                 DownloadedMovie(
                     movieId = movie.id,
+                    imdbId = com.martinrevert.latorrentola.utils.MediaIdHelper.normalizeImdbId(movie.imdbCode),
                     movieTitle = movie.title ?: "",
                     quality = quality,
                     hash = torrentHash,

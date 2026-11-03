@@ -153,4 +153,26 @@ class AuthRepositoryTest {
         listenerSlot.captured.onAuthStateChanged(firebaseAuth)
         verify { crashlyticsManager.setUserId(null) }
     }
+
+    @Test
+    fun `touchAccount updates lastActiveTimestamp when account exists`() = runTest {
+        val savedAccountDao: com.martinrevert.latorrentola.database.SavedAccountDao = mockk(relaxed = true)
+        val repoWithDao = AuthRepository(firebaseAuth, context, credentialManager, crashlyticsManager, savedAccountDao)
+        val entity = com.martinrevert.latorrentola.database.SavedAccountEntity(uid = "uid1", displayName = "Martin", email = "m@test.com", lastActiveTimestamp = 1000L)
+        coEvery { savedAccountDao.get("uid1") } returns entity
+
+        repoWithDao.touchAccount("uid1")
+
+        coVerify { savedAccountDao.upsert(match { it.uid == "uid1" && it.lastActiveTimestamp > 1000L }) }
+    }
+
+    @Test
+    fun `deleteAccount delegates to savedAccountDao delete`() = runTest {
+        val savedAccountDao: com.martinrevert.latorrentola.database.SavedAccountDao = mockk(relaxed = true)
+        val repoWithDao = AuthRepository(firebaseAuth, context, credentialManager, crashlyticsManager, savedAccountDao)
+
+        repoWithDao.deleteAccount("uid1")
+
+        coVerify { savedAccountDao.delete("uid1") }
+    }
 }

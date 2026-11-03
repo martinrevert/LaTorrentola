@@ -59,6 +59,7 @@ class MediaMetadataResolverTest {
     fun `resolve for NAS movie inverse-resolves canonical movieId via YTS`() = runTest {
         val mockMovie = Movie(
             id = 12230,
+            imdbCode = "tt0172495",
             title = "Gladiator",
             year = 2000,
             largeCoverImage = "https://img.yts.mx/gladiator.jpg"
@@ -73,7 +74,7 @@ class MediaMetadataResolverTest {
             filePath = "/storage/nas/movies/Gladiator.2000.1080p.BluRay.x264.mkv"
         )
 
-        assertEquals("12230", result.mediaId)
+        assertEquals("tt0172495", result.mediaId)
         assertEquals(12230, result.movieId)
         assertFalse(result.isEpisode)
         assertTrue(MediaIdHelper.isCanonical(result.mediaId))
@@ -98,7 +99,7 @@ class MediaMetadataResolverTest {
             filePath = "/storage/nas/series/Severance/Season 1/Severance.S01E01.mkv"
         )
 
-        assertEquals("media_111803_s1_e1", result.mediaId)
+        assertEquals("tmdb_111803_s1_e1", result.mediaId)
         assertEquals(111803, result.seriesId)
         assertEquals(1, result.seasonNumber)
         assertEquals(1, result.episodeNumber)
@@ -107,12 +108,40 @@ class MediaMetadataResolverTest {
     }
 
     @Test
-    fun `resolve when movieId already provided returns canonical ID directly`() = runTest {
+    fun `resolve when movieId already provided queries YTS to populate IMDb ID`() = runTest {
+        val mockMovie = Movie(
+            id = 9988,
+            imdbCode = "tt1375666",
+            title = "Inception",
+            year = 2010
+        )
+        coEvery { ytsRepository.searchMovies(any(), any(), any()) } returns MovieDetails(
+            status = "ok",
+            data = Data(movies = listOf(mockMovie), movieCount = 1)
+        )
+
+        val result = resolver.resolve(
+            rawTitle = "Inception.2010.1080p.mkv",
+            existingMovieId = 9988
+        )
+        assertEquals("tt1375666", result.mediaId)
+        assertEquals(9988, result.movieId)
+        assertEquals("tt1375666", result.imdbId)
+        assertTrue(MediaIdHelper.isCanonical(result.mediaId))
+    }
+
+    @Test
+    fun `resolve when movieId already provided but YTS has no match returns deterministic TMDB ID`() = runTest {
+        coEvery { ytsRepository.searchMovies(any(), any(), any()) } returns MovieDetails(
+            status = "ok",
+            data = Data(movies = emptyList(), movieCount = 0)
+        )
+
         val result = resolver.resolve(
             rawTitle = "Some Movie",
             existingMovieId = 9988
         )
-        assertEquals("9988", result.mediaId)
+        assertEquals("tmdb_9988", result.mediaId)
         assertEquals(9988, result.movieId)
         assertTrue(MediaIdHelper.isCanonical(result.mediaId))
     }

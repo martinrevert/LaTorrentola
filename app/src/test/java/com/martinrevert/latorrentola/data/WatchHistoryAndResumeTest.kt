@@ -16,7 +16,11 @@ class WatchHistoryAndResumeTest {
 
         // Test Movie ID format
         val movieMediaId = MediaIdHelper.forMovie(movieId = movieId, infoHash = "hash123", title = "Inception")
-        assertThat(movieMediaId).isEqualTo("12345")
+        assertThat(movieMediaId).isEqualTo("tmdb_12345")
+
+        // Test movie with canonical IMDb ID
+        val imdbMovieMediaId = MediaIdHelper.forMovie(imdbId = "tt1375666", movieId = movieId, title = "Inception")
+        assertThat(imdbMovieMediaId).isEqualTo("tt1375666")
 
         // Test fallback for movie without movieId (infoHash is rejected per AGENTS.md, title is used as temporary fallback)
         val fallbackMovieMediaId = MediaIdHelper.forMovie(movieId = 0, infoHash = "hash123", title = "Inception")
@@ -30,7 +34,16 @@ class WatchHistoryAndResumeTest {
             infoHash = "hash456",
             title = "Episode 2"
         )
-        assertThat(episodeMediaId).isEqualTo("media_100_s1_e2")
+        assertThat(episodeMediaId).isEqualTo("tmdb_100_s1_e2")
+
+        // Test TV Episode with canonical IMDb ID
+        val imdbEpisodeMediaId = MediaIdHelper.forEpisode(
+            imdbId = "tt0944947",
+            seriesId = seriesId,
+            seasonNumber = seasonNumber,
+            episodeNumber = episodeNumber
+        )
+        assertThat(imdbEpisodeMediaId).isEqualTo("tt0944947_s1_e2")
     }
 
     @Test

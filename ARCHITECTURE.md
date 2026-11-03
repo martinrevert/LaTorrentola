@@ -428,9 +428,10 @@ To ensure optimal audio fidelity and prevent silent stereo downmixes:
 
 ### 5.8 Canonical Watch History, Cost-Optimized Sync & Completion Authority
 To guarantee seamless watch history parity and minimal cloud consumption across Torrents, Local files, and Network Storage (SMB/NFS):
-* **Canonical Movie IDs**: Must always be numeric TMDB/YTS IDs (e.g. `"12230"`), NEVER raw infoHashes or filenames.
-* **Canonical TV Episode IDs**: Must follow the format `"media_${seriesId}_s${season}_e${episode}"`.
-* **Inverse Metadata Resolution (`MediaMetadataResolver`)**: Filenames from NAS or local storage are regex-cleaned and queried against TMDB/YTS asynchronously before saving watch history.
+* **Canonical Movie IDs**: Standardized on global industry-standard IMDb IDs (e.g. `"tt0111161"` for The Shawshank Redemption). Backward-compatible with legacy numeric TMDB/YTS IDs via dual-lookup queries and automatic migration. Raw infoHashes or filenames are strictly prohibited.
+* **Canonical TV Episode IDs**: Standardized on the IMDb composite format `"${imdbId}_s${season}_e${episode}"` (e.g. `"tt0944947_s1_e2"`). Backward-compatible with legacy `"media_${seriesId}_s${season}_e${episode}"` via automatic candidate migration.
+* **Dual Lookups & Zero Data Loss**: In `AppDatabase` (v14) via `MIGRATION_13_14`, `FavoriteMovieEntity`, `FavoriteTvSeriesEntity`, `DownloadedMovieEntity`, and `DownloadedEpisodeEntity` retain relational numeric IDs (`movieId`, `seriesId`) and add `imdbId`. Room queries check both numeric ID and IMDb ID (`WHERE (movieId = :id OR imdbId = :imdb)`), ensuring no user favorites or progress are lost.
+* **Inverse Metadata Resolution (`MediaMetadataResolver`)**: Filenames from NAS or local storage are regex-cleaned and queried against TMDB/YTS asynchronously to resolve both numeric and IMDb IDs before saving watch history.
 * **Single Source of Truth & Zero Ticker Firestore Writes**:
   * Local Room database (`WatchHistoryDao`) is the immediate single source of truth, updated on every 10-second ticker tick during active playback (`userLibraryRepository.savePlaybackProgress(progress, syncRemote = false)`).
   * Remote writes to Cloud Firestore (`users/{uid}/watch_history`) with `syncRemote = true` are strictly dispatched only on state transitions: pause, stop, player exit (`onPause`, `onStop`, `onDestroy`, `PlaybackService.onDestroy`), Cast session detachment, or completion (>95% threshold or manual toggle). This reduces Firestore writes by >99% and avoids read amplification loops.
@@ -447,9 +448,24 @@ To guarantee seamless watch history parity and minimal cloud consumption across 
 * **Next Episode Multi-Stream Validation**:
   * Candidate streams from Torrentio are strictly validated via `TorrentioMetadataParser.matchesEpisode` and `isSeasonPack` to ensure multi-season packs and mismatched or previous episodes are excluded, guaranteeing that the next episode dialog always downloads the correct succeeding chapter.
 
-### 5.9 Cloud Library, FCM & Google Identity
-* **Google Credential Manager**: Modern, one-tap identity retrieval passing ID Tokens to Firebase Auth.
-* **Cloud Firestore Sync**: User collections (`users/{uid}/favorites`, `downloads`, `tv_downloads`, `preferences`) sync bidirectionally.
+### 5.9 Cloud Library, FCM & Google Identity (Room SSOT & Multi-Account Isolation)
+* **Room as Single Source of Truth (SSOT)**:
+  * In `AppDatabase` (v14), all user library state (favorites, downloads, watch history) lives in local Room tables (`favorites_movies`, `favorites_tv`, `downloaded_movies`, `downloaded_episodes`, `watch_history`).
+  * The UI and ViewModels observe Room exclusively via reactive Kotlin Flows. Zero real-time `addSnapshotListener` listeners are attached during normal navigation, reducing recurring Firestore read billing by >99.5% and keeping cloud consumption securely inside the Google Cloud Free Tier (50,000 reads/day).
+  * **Persistent Disk Cache**: Firestore SDK is initialized with `PersistentCacheSettings` instead of in-memory caching, retaining offline documents across process death and cold boots.
+* **Multi-Account & Shared Device Profile Isolation**:
+  * On shared devices (such as Android TV, Chromecast with Google TV, or shared family tablets), user data is isolated by `userId` (composite primary keys `[userId, id]` across all library tables).
+  * The `saved_accounts` table records each authenticated Google account (`uid`, `displayName`, `email`, `photoUrl`, `lastActiveTimestamp`), enabling OTT-style avatar profile switching ("Who is watching?") without clearing local device databases on logout.
+  * When a user logs out or switches accounts, Room preserves all accounts' local progress and favorites. Switching accounts instantly switches Room query scopes (`WHERE userId = :activeUid`) with zero network roundtrips.
+* **Disney+ Profile Selector & Passwordless Biometric Unlock**:
+  * `LoginScreen.kt` presents an OTT-style profile grid ("¿Quién anda ahí?") with circular user avatars, profile names, lock indicators, an Add Profile button (`+`), and an Edit Profiles management mode.
+  * On handheld devices, tapping an avatar invokes `BiometricAuthHelper.authenticate` (`androidx.biometric.BiometricPrompt` and `BiometricManager`) to unlock the profile via fingerprint, face, or device PIN/pattern passwordlessly. If the user cancels or biometric authentication fails, it seamlessly falls back to Google Sign-In via Credential Manager.
+  * On Android TV (`isTvDevice() == true`), avatars are navigated using standard D-pad spatial focus traversal, instantly activating the profile without biometric prompts.
+* **Controlled Cloud Synchronization**:
+  * **Bootstrap Sync**: When signing in on a new device, `syncFromCloud(forceFull = true)` performs a single one-shot batch read (`Source.SERVER`) and populates local Room tables.
+  * **Delta Sync**: Subsequent background synchronizations query only changes modified after `lastSyncTimestamp` (`whereGreaterThan("updatedAt", lastSync)`), throttled to at most once every 15 minutes.
+  * **Settings Sync**: Remote user settings (`settings/config`) are synchronized on login and saved on demand; individual ViewModels no longer attach duplicate real-time listeners.
+* **Google Credential Manager**: Modern, one-tap identity retrieval via `GetGoogleIdOption` passing ID Tokens directly to Firebase Auth.
 * **Push Notifications**: Managed by `MyFirebaseMessagingService` and `FcmRepository`, registering tokens with the app backend and enabling deep-linking into specific movie or series destinations.
 
 ### 5.10 Hardware Keystore & Security Model

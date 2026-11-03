@@ -430,4 +430,16 @@
     <string name="retry">Reintentar</string>
     <string name="network_error">Error de red</string>
     <string name="directed_by">Dirigida por %1$s</string>
+
+    <!-- Profile & Login OTT Selector -->
+    <string name="who_is_watching">¿Quién anda ahí?</string>
+    <string name="create_profile">Crear perfil</string>
+    <string name="edit_profiles">EDITAR PERFILES</string>
+    <string name="done_editing_profiles">LISTO</string>
+    <string name="continue_as_guest">Continuar como invitado</string>
+    <string name="biometric_prompt_title">Acceder al perfil</string>
+    <string name="biometric_prompt_subtitle">Confirma tu huella digital o bloqueo para continuar como %1$s</string>
+    <string name="biometric_auth_failed">No se pudo autenticar</string>
+    <string name="delete_profile_confirmation">¿Eliminar a %1$s de este dispositivo?</string>
+    <string name="delete">Eliminar</string>
 </resources>

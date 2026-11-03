@@ -690,32 +690,37 @@ class PlaybackService : MediaSessionService() {
     private fun markItemCompletedIfNeeded(mediaId: String, title: String, isEpisode: Boolean, extras: android.os.Bundle?) {
         if (!completedMediaIds.add(mediaId)) return
         val epParsed = MediaIdHelper.parseCanonicalEpisode(mediaId)
-        val sId = extras?.getInt("extra_series_id", 0)?.takeIf { it > 0 } ?: epParsed?.first ?: 0
-        val sNum = extras?.getInt("extra_season_number", 0)?.takeIf { it > 0 } ?: epParsed?.second ?: 0
-        val eNum = extras?.getInt("extra_episode_number", 0)?.takeIf { it > 0 } ?: epParsed?.third ?: 0
-        val poster = extras?.getString("extra_poster_url")
+        val rawImdb = extras?.getString(LocalPlayerActivity.EXTRA_IMDB_ID)?.takeIf { it.isNotBlank() }
+            ?: epParsed?.imdbId
+            ?: MediaIdHelper.normalizeImdbId(mediaId)
+        val sId = extras?.getInt(LocalPlayerActivity.EXTRA_SERIES_ID, 0)?.takeIf { it > 0 } ?: epParsed?.first ?: 0
+        val sNum = extras?.getInt(LocalPlayerActivity.EXTRA_SEASON_NUMBER, 0)?.takeIf { it > 0 } ?: epParsed?.second ?: 0
+        val eNum = extras?.getInt(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, 0)?.takeIf { it > 0 } ?: epParsed?.third ?: 0
+        val poster = extras?.getString(LocalPlayerActivity.EXTRA_POSTER_URL)
         val nextEpisodeInfo = extras?.getStringArrayList(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO)
         val seriesName = nextEpisodeInfo?.getOrNull(1)?.takeIf { it.isNotBlank() }
             ?: extras?.getString("extra_series_name").orEmpty()
 
         serviceScope.launch {
             try {
-                if (isEpisode && sId > 0 && sNum > 0 && eNum > 0) {
+                if (isEpisode && (sId > 0 || !rawImdb.isNullOrBlank()) && sNum > 0 && eNum > 0) {
                     userLibraryRepository.markEpisodeAsCompleted(
                         seriesId = sId,
                         seasonNumber = sNum,
                         episodeNumber = eNum,
                         episodeTitle = title,
                         seriesName = seriesName,
-                        stillPath = poster
+                        stillPath = poster,
+                        imdbId = rawImdb
                     )
                 } else if (!isEpisode) {
-                    val mId = extras?.getInt("extra_movie_id", 0)?.takeIf { it > 0 } ?: mediaId.toIntOrNull() ?: 0
-                    if (mId > 0) {
+                    val mId = extras?.getInt(LocalPlayerActivity.EXTRA_MOVIE_ID, 0)?.takeIf { it > 0 } ?: mediaId.toIntOrNull() ?: 0
+                    if (mId > 0 || !rawImdb.isNullOrBlank()) {
                         userLibraryRepository.markMovieAsCompleted(
                             movieId = mId,
                             movieTitle = title,
-                            posterUrl = poster
+                            posterUrl = poster,
+                            imdbId = rawImdb
                         )
                     }
                 }

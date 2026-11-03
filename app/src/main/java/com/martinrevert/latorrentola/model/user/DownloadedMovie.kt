@@ -18,6 +18,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class DownloadedMovie(
     val movieId: Int = 0,
+    val imdbId: String? = null,
     val movieTitle: String = "",
     val quality: String = "",
     val hash: String = "", // Unique identifier for the torrent version

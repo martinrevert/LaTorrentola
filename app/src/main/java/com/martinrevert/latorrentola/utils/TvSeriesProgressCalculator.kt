@@ -22,18 +22,21 @@ object TvSeriesProgressCalculator {
         watchHistoryMap: Map<String, PlaybackProgress>
     ): Int? {
         val seriesId = series.id
-        if (seriesId <= 0 || watchHistoryMap.isEmpty()) return null
+        val imdbId = series.effectiveImdbId
+        if ((seriesId <= 0 && imdbId.isNullOrBlank()) || watchHistoryMap.isEmpty()) return null
 
-        val seriesIdPrefix = "media_${seriesId}_s"
+        val imdbPrefix = imdbId?.let { "${it}_s" }
+        val tmdbPrefix = if (seriesId > 0) "tmdb_${seriesId}_s" else null
         val episodeEntries = mutableMapOf<Pair<Int, Int>, Float>()
 
         watchHistoryMap.forEach { (mediaId, progress) ->
             val parsed = MediaIdHelper.parseCanonicalEpisode(mediaId)
             val matchesSeries = if (parsed != null) {
-                parsed.first == seriesId
+                parsed.matchesSeries(seriesId, imdbId)
             } else {
-                mediaId.startsWith(seriesIdPrefix) ||
-                    (progress.isEpisode && mediaId.contains("_${seriesId}_s"))
+                (imdbPrefix != null && mediaId.startsWith(imdbPrefix)) ||
+                    (tmdbPrefix != null && mediaId.startsWith(tmdbPrefix)) ||
+                    (seriesId > 0 && mediaId.contains("_${seriesId}_s"))
             }
 
             if (matchesSeries) {

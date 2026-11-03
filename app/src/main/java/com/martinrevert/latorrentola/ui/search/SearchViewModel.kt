@@ -15,6 +15,7 @@ import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.TmdbTvFeed
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
+import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.utils.MovieFilter
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.UiText
@@ -1119,17 +1120,17 @@ class SearchViewModel @Inject constructor(
         s: TmdbTvSummary,
         watchHistory: List<PlaybackProgress>
     ): List<PlaybackProgress> {
-        val seriesIdStr = s.id.toString()
+        val seriesId = s.id
+        val imdbId = s.effectiveImdbId
         return watchHistory.filter { item ->
-            val isEpisodeMedia = item.isEpisode ||
-                    item.mediaId.startsWith("media_") ||
-                    (item.mediaId.contains("_s") && item.mediaId.contains("_e"))
-
-            if (!isEpisodeMedia) return@filter false
-
-            item.mediaId.startsWith("media_${seriesIdStr}_s") ||
-                    item.mediaId.contains("_${seriesIdStr}_s") ||
-                    item.mediaId.contains("_${seriesIdStr}_")
+            val parsed = MediaIdHelper.parseCanonicalEpisode(item.mediaId)
+            if (parsed != null) {
+                parsed.matchesSeries(seriesId, imdbId)
+            } else {
+                val seriesIdStr = seriesId.toString()
+                (seriesId > 0 && (item.mediaId.startsWith("tmdb_${seriesIdStr}_s") || item.mediaId.contains("_${seriesIdStr}_s"))) ||
+                    (!imdbId.isNullOrBlank() && item.mediaId.startsWith("${imdbId}_s"))
+            }
         }
     }
 

@@ -3,9 +3,13 @@ package com.martinrevert.latorrentola.di
 import android.content.Context
 import com.martinrevert.latorrentola.database.AppDatabase
 import com.martinrevert.latorrentola.database.DateDao
+import com.martinrevert.latorrentola.database.DownloadRecordDao
+import com.martinrevert.latorrentola.database.FavoriteDao
 import com.martinrevert.latorrentola.database.GenreDao
-import com.martinrevert.latorrentola.database.TvGenreDao
+import com.martinrevert.latorrentola.database.SavedAccountDao
+import com.martinrevert.latorrentola.database.SyncMetadataDao
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
+import com.martinrevert.latorrentola.database.TvGenreDao
 import com.martinrevert.latorrentola.database.WatchHistoryDao
 import dagger.Module
 import dagger.Provides
@@ -54,5 +58,29 @@ object DatabaseModule {
     @Provides
     fun provideWatchHistoryDao(appDatabase: AppDatabase): WatchHistoryDao {
         return appDatabase.watchHistoryDao()
+    }
+
+    /** Provides the saved accounts DAO for multi-account support. */
+    @Provides
+    fun provideSavedAccountDao(appDatabase: AppDatabase): SavedAccountDao {
+        return appDatabase.savedAccountDao()
+    }
+
+    /** Provides the user favorites DAO. */
+    @Provides
+    fun provideFavoriteDao(appDatabase: AppDatabase): FavoriteDao {
+        return appDatabase.favoriteDao()
+    }
+
+    /** Provides the download records DAO. */
+    @Provides
+    fun provideDownloadRecordDao(appDatabase: AppDatabase): DownloadRecordDao {
+        return appDatabase.downloadRecordDao()
+    }
+
+    /** Provides the cloud sync metadata DAO. */
+    @Provides
+    fun provideSyncMetadataDao(appDatabase: AppDatabase): SyncMetadataDao {
+        return appDatabase.syncMetadataDao()
     }
 }

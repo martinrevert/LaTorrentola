@@ -50,11 +50,13 @@ class WatchHistoryMigrationTest {
             timestamp = 5000L,
             isEpisode = false
         )
-        coEvery { watchHistoryDao.getAll() } returns listOf(badItem)
+        coEvery { watchHistoryDao.getLegacyItems(any()) } returns listOf(badItem)
+        coEvery { watchHistoryDao.getLegacyItems() } returns listOf(badItem)
         coEvery { resolver.resolve(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns CanonicalMediaInfo(
-            mediaId = "12230",
+            mediaId = "tt0172495",
             title = "Gladiator",
             movieId = 12230,
+            imdbId = "tt0172495",
             isEpisode = false
         )
 
@@ -63,12 +65,12 @@ class WatchHistoryMigrationTest {
         // Verifies new canonical record upserted
         coVerify {
             watchHistoryDao.upsert(match {
-                it.mediaId == "12230" && it.positionMs == 30000L
+                it.mediaId == "tt0172495" && it.positionMs == 30000L
             })
         }
         // Verifies legacy bad record deleted
         coVerify {
-            watchHistoryDao.delete("Gladiator.2000.1080p.mkv")
+            watchHistoryDao.delete("", "Gladiator.2000.1080p.mkv")
         }
     }
 
@@ -82,11 +84,13 @@ class WatchHistoryMigrationTest {
             timestamp = 6000L,
             isEpisode = true
         )
-        coEvery { watchHistoryDao.getAll() } returns listOf(badItem)
+        coEvery { watchHistoryDao.getLegacyItems(any()) } returns listOf(badItem)
+        coEvery { watchHistoryDao.getLegacyItems() } returns listOf(badItem)
         coEvery { resolver.resolve(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns CanonicalMediaInfo(
-            mediaId = "media_111803_s1_e1",
+            mediaId = "tt11280740_s1_e1",
             title = "Severance - S1E1",
             seriesId = 111803,
+            imdbId = "tt11280740",
             seasonNumber = 1,
             episodeNumber = 1,
             isEpisode = true
@@ -96,11 +100,11 @@ class WatchHistoryMigrationTest {
 
         coVerify {
             watchHistoryDao.upsert(match {
-                it.mediaId == "media_111803_s1_e1" && it.positionMs == 45000L
+                it.mediaId == "tt11280740_s1_e1" && it.positionMs == 45000L
             })
         }
         coVerify {
-            watchHistoryDao.delete("Severance.S01E01.mkv")
+            watchHistoryDao.delete("", "Severance.S01E01.mkv")
         }
     }
 
@@ -115,7 +119,8 @@ class WatchHistoryMigrationTest {
             timestamp = 2000L,
             isEpisode = false
         )
-        coEvery { watchHistoryDao.getAll() } returns listOf(badItem)
+        coEvery { watchHistoryDao.getLegacyItems(any()) } returns listOf(badItem)
+        coEvery { watchHistoryDao.getLegacyItems() } returns listOf(badItem)
         coEvery { resolver.resolve(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns CanonicalMediaInfo(
             mediaId = orphanHash,
             title = ""
@@ -125,7 +130,7 @@ class WatchHistoryMigrationTest {
 
         // Should purge the unresolvable hash document
         coVerify {
-            watchHistoryDao.delete(orphanHash)
+            watchHistoryDao.delete("", orphanHash)
         }
     }
 }

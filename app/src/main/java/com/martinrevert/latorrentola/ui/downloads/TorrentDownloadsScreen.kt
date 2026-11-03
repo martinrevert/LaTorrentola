@@ -4,6 +4,7 @@ package com.martinrevert.latorrentola.ui.downloads
 
 import android.content.ComponentName
 import android.content.Intent
+import com.martinrevert.latorrentola.utils.MediaIdHelper
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -265,8 +266,14 @@ fun TorrentDownloadsScreen(
                         val effSeason = download.seasonNumber ?: detectedS.takeIf { it > 0 }
                         val effEpisode = download.episodeNumber ?: detectedE.takeIf { it > 0 }
 
-                        val canonicalEpisodeId = if ((download.seriesId ?: 0) > 0 && (effSeason ?: 0) > 0 && (effEpisode ?: 0) > 0) {
-                            "media_${download.seriesId}_s${effSeason}_e${effEpisode}"
+                        val canonicalEpisodeId = if ((effSeason ?: 0) > 0 && (effEpisode ?: 0) > 0) {
+                            MediaIdHelper.forEpisode(
+                                imdbId = download.imdbId,
+                                seriesId = download.seriesId ?: 0,
+                                seasonNumber = effSeason ?: 0,
+                                episodeNumber = effEpisode ?: 0,
+                                title = download.title
+                            )
                         } else null
 
                         val hasMatchingEpisodeToken = effSeason != null && effEpisode != null &&

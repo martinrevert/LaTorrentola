@@ -1,31 +1,89 @@
 package com.martinrevert.latorrentola.utils
 
 /**
- * Utility object for generating and validating canonical, unique media identifiers (`mediaId`)
- * across Movies and TV Episodes for watch history tracking and Firestore documents.
+ * Parsed components of an episode media identifier.
  *
- * Mandated by AGENTS.md:
- * - Movies MUST be identified by their canonical catalog numeric string (e.g. `"12230"`).
- * - Episodes MUST be identified by the mnemonic `"media_{seriesId}_s{seasonNumber}_e{episodeNumber}"`.
- * - 40-character torrent SHA1 infoHashes or raw media paths MUST NEVER be used as media identifiers.
+ * Implements backward-compatible destructuring and properties:
+ * - [first]: Int seriesId if numeric, or 0 if IMDb identifier.
+ * - [second]: season number.
+ * - [third]: episode number.
+ * - [seriesIdentifier]: raw series identifier string (e.g. "tt0944947" or "111803").
+ * - [imdbId]: normalized IMDb identifier if series identifier starts with "tt", or null.
+ */
+data class EpisodeComponents(
+    val first: Int,
+    val second: Int,
+    val third: Int,
+    val seriesIdentifier: String = if (first > 0) first.toString() else ""
+) {
+    val seasonNumber: Int get() = second
+    val episodeNumber: Int get() = third
+    val imdbId: String? get() = if (seriesIdentifier.startsWith("tt", ignoreCase = true)) seriesIdentifier else null
+
+    /** Returns true if this episode matches the given TMDB series ID or IMDb ID. */
+    fun matchesSeries(seriesId: Int, targetImdbId: String? = null): Boolean {
+        if (seriesId > 0 && first == seriesId) return true
+        val normTarget = MediaIdHelper.normalizeImdbId(targetImdbId)
+        val normSelf = MediaIdHelper.normalizeImdbId(seriesIdentifier)
+        if (!normTarget.isNullOrBlank() && !normSelf.isNullOrBlank() && normTarget.equals(normSelf, ignoreCase = true)) {
+            return true
+        }
+        if (!targetImdbId.isNullOrBlank() && seriesIdentifier.equals(targetImdbId, ignoreCase = true)) return true
+        return false
+    }
+}
+
+/**
+ * Utility object for generating and validating canonical, unique media identifiers (`mediaId`)
+ * across Movies and TV Episodes for watch history tracking, favorites, downloads, and Firestore documents.
+ *
+ * Prioritizes global industry-standard IMDb identifiers (`tt...`) to ensure decoupling from
+ * proprietary catalog backends (TMDB/YTS) while supporting legacy formats transparently.
  */
 object MediaIdHelper {
 
-    private val CANONICAL_EPISODE_REGEX = Regex("""^media_(\d+)_s(\d+)_e(\d+)$""", RegexOption.IGNORE_CASE)
-    private val LEGACY_EPISODE_REGEX = Regex("""^media_.*_s(\d+)_e(\d+)$""", RegexOption.IGNORE_CASE)
+    private val CANONICAL_IMDB_MOVIE_REGEX = Regex("""^tt\d{5,10}$""", RegexOption.IGNORE_CASE)
+    private val CANONICAL_IMDB_EPISODE_REGEX = Regex("""^(tt\d{5,10})_s(\d+)_e(\d+)$""", RegexOption.IGNORE_CASE)
+    private val DETERMINISTIC_FALLBACK_MOVIE_REGEX = Regex("""^tmdb_(\d+)$""", RegexOption.IGNORE_CASE)
+    private val DETERMINISTIC_FALLBACK_EPISODE_REGEX = Regex("""^tmdb_(\d+)_s(\d+)_e(\d+)$""", RegexOption.IGNORE_CASE)
+    private val LEGACY_EPISODE_REGEX = Regex("""^(?:media|tv)_(\d+)_s(\d+)_e(\d+)$""", RegexOption.IGNORE_CASE)
     private val INFO_HASH_REGEX = Regex("""^[0-9a-fA-F]{40}$""")
 
     /**
-     * Generates a canonical [mediaId] for a movie.
-     * Uses [movieId] as a string if valid (> 0).
-     * Falls back to a sanitized [title] if [movieId] is not yet resolved.
-     * infoHash is explicitly ignored and rejected as a mediaId.
+     * Normalizes a raw IMDb identifier candidate into the standard "tt1234567" format.
      */
-    fun forMovie(movieId: Int, title: String? = null): String {
+    fun normalizeImdbId(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        val trimmed = raw.trim()
+        val digitsMatch = Regex("""^(?:tt)?(\d{5,10})$""", RegexOption.IGNORE_CASE).matchEntire(trimmed)
+        return if (digitsMatch != null) {
+            "tt${digitsMatch.groupValues[1]}"
+        } else if (trimmed.startsWith("tt", ignoreCase = true)) {
+            trimmed.lowercase()
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Generates a canonical [mediaId] for a movie.
+     * Prioritizes normalized IMDb ID (e.g. "tt0111161").
+     * Falls back to deterministic "tmdb_{movieId}" if valid (> 0), or a sanitized [title].
+     */
+    fun forMovie(
+        imdbId: String? = null,
+        movieId: Int = 0,
+        title: String? = null
+    ): String {
+        val normalizedImdb = normalizeImdbId(imdbId)
         return when {
-            movieId > 0 -> movieId.toString()
+            normalizedImdb != null -> normalizedImdb
+            movieId > 0 -> "tmdb_$movieId"
             !title.isNullOrBlank() -> {
-                val cleaned = title.replace(Regex("""\.(mp4|mkv|avi|mov|wmv|webm|ts|m4v)$""", RegexOption.IGNORE_CASE), "").trim()
+                val cleaned = title.replace(
+                    Regex("""\.(mp4|mkv|avi|mov|wmv|webm|ts|m4v)$""", RegexOption.IGNORE_CASE),
+                    ""
+                ).trim()
                 cleaned.ifBlank { "unknown_movie" }
             }
             else -> "unknown_movie"
@@ -33,15 +91,48 @@ object MediaIdHelper {
     }
 
     /**
+     * Backward-compatible overload for movie identifier without IMDb ID.
+     */
+    fun forMovie(movieId: Int, title: String? = null): String {
+        return forMovie(imdbId = null, movieId = movieId, title = title)
+    }
+
+    /**
      * Backward-compatible overload ignoring [infoHash].
      */
     fun forMovie(movieId: Int, infoHash: String?, title: String?): String {
-        return forMovie(movieId, title)
+        return forMovie(imdbId = null, movieId = movieId, title = title)
     }
 
     /**
      * Generates a canonical [mediaId] for a TV episode.
-     * Formats strictly as `media_{seriesId}_s{seasonNumber}_e{episodeNumber}` if valid (> 0).
+     * Prioritizes IMDb format strictly as `{imdbId}_s{seasonNumber}_e{episodeNumber}` (e.g. "tt0944947_s1_e2").
+     * Falls back to deterministic `tmdb_{seriesId}_s{seasonNumber}_e{episodeNumber}` if IMDb is not yet resolved.
+     */
+    fun forEpisode(
+        imdbId: String? = null,
+        seriesId: Int = 0,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        title: String? = null
+    ): String {
+        val normalizedImdb = normalizeImdbId(imdbId)
+        return when {
+            normalizedImdb != null && seasonNumber > 0 && episodeNumber > 0 ->
+                "${normalizedImdb}_s${seasonNumber}_e${episodeNumber}"
+            seriesId > 0 && seasonNumber > 0 && episodeNumber > 0 ->
+                "tmdb_${seriesId}_s${seasonNumber}_e${episodeNumber}"
+            seasonNumber > 0 && episodeNumber > 0 && !title.isNullOrBlank() -> {
+                val clean = MediaMetadataResolver.extractCleanSearchTitles(title).firstOrNull() ?: title.trim()
+                "tmdb_${clean}_s${seasonNumber}_e${episodeNumber}"
+            }
+            !title.isNullOrBlank() -> title.trim()
+            else -> "unknown_episode"
+        }
+    }
+
+    /**
+     * Backward-compatible overload for episode identifier without IMDb ID.
      */
     fun forEpisode(
         seriesId: Int,
@@ -49,16 +140,7 @@ object MediaIdHelper {
         episodeNumber: Int,
         title: String? = null
     ): String {
-        return when {
-            seriesId > 0 && seasonNumber > 0 && episodeNumber > 0 ->
-                "media_${seriesId}_s${seasonNumber}_e${episodeNumber}"
-            seasonNumber > 0 && episodeNumber > 0 && !title.isNullOrBlank() -> {
-                val clean = MediaMetadataResolver.extractCleanSearchTitles(title).firstOrNull() ?: title.trim()
-                "media_${clean}_s${seasonNumber}_e${episodeNumber}"
-            }
-            !title.isNullOrBlank() -> title.trim()
-            else -> "unknown_episode"
-        }
+        return forEpisode(imdbId = null, seriesId = seriesId, seasonNumber = seasonNumber, episodeNumber = episodeNumber, title = title)
     }
 
     /**
@@ -71,31 +153,39 @@ object MediaIdHelper {
         infoHash: String?,
         title: String?
     ): String {
-        return forEpisode(seriesId, seasonNumber, episodeNumber, title)
+        return forEpisode(imdbId = null, seriesId = seriesId, seasonNumber = seasonNumber, episodeNumber = episodeNumber, title = title)
     }
 
     /**
-     * Checks if [mediaId] is a canonical movie ID (strictly numeric string, e.g. "12230").
+     * Checks if [mediaId] is a canonical movie ID (IMDb "tt1234567" or deterministic "tmdb_{id}").
      */
     fun isCanonicalMovieId(mediaId: String): Boolean {
         if (mediaId.isBlank()) return false
-        return mediaId.all { it.isDigit() } && (mediaId.toLongOrNull() ?: 0L) > 0L
+        return CANONICAL_IMDB_MOVIE_REGEX.matches(mediaId) || DETERMINISTIC_FALLBACK_MOVIE_REGEX.matches(mediaId)
     }
 
     /**
-     * Checks if [mediaId] adheres strictly to the canonical episode pattern `media_{seriesId}_s{season}_e{episode}`.
+     * Checks if [mediaId] adheres to the canonical episode pattern (IMDb "{imdbId}_s{s}_e{e}" or deterministic "tmdb_{id}_s{s}_e{e}").
      */
     fun isCanonicalEpisodeId(mediaId: String): Boolean {
         if (mediaId.isBlank()) return false
-        val match = CANONICAL_EPISODE_REGEX.matchEntire(mediaId) ?: return false
-        val seriesId = match.groupValues[1].toIntOrNull() ?: return false
-        val season = match.groupValues[2].toIntOrNull() ?: return false
-        val episode = match.groupValues[3].toIntOrNull() ?: return false
-        return seriesId > 0 && season > 0 && episode > 0
+        val imdbMatch = CANONICAL_IMDB_EPISODE_REGEX.matchEntire(mediaId)
+        if (imdbMatch != null) {
+            val season = imdbMatch.groupValues[2].toIntOrNull() ?: return false
+            val episode = imdbMatch.groupValues[3].toIntOrNull() ?: return false
+            return season > 0 && episode > 0
+        }
+        val tmdbMatch = DETERMINISTIC_FALLBACK_EPISODE_REGEX.matchEntire(mediaId)
+        if (tmdbMatch != null) {
+            val season = tmdbMatch.groupValues[2].toIntOrNull() ?: return false
+            val episode = tmdbMatch.groupValues[3].toIntOrNull() ?: return false
+            return season > 0 && episode > 0
+        }
+        return false
     }
 
     /**
-     * Returns true if [mediaId] is strictly canonical (either numeric movie ID or canonical episode ID).
+     * Returns true if [mediaId] is strictly canonical (IMDb or deterministic tmdb fallback).
      */
     fun isCanonical(mediaId: String): Boolean {
         return isCanonicalMovieId(mediaId) || isCanonicalEpisodeId(mediaId)
@@ -110,14 +200,35 @@ object MediaIdHelper {
     }
 
     /**
-     * Parses seriesId, seasonNumber, and episodeNumber from a canonical episode [mediaId].
+     * Parses seriesIdentifier, seasonNumber, and episodeNumber from an episode [mediaId].
+     * Supports canonical IMDb ("tt11111111_s1_e2"), deterministic fallback ("tmdb_111803_s1_e2"),
+     * and legacy formats ("media_111803_s1_e2", "tv_111803_s1_e2") for migration.
      */
-    fun parseCanonicalEpisode(mediaId: String): Triple<Int, Int, Int>? {
-        val match = CANONICAL_EPISODE_REGEX.matchEntire(mediaId) ?: return null
-        val seriesId = match.groupValues[1].toIntOrNull() ?: return null
-        val season = match.groupValues[2].toIntOrNull() ?: return null
-        val episode = match.groupValues[3].toIntOrNull() ?: return null
-        if (seriesId <= 0 || season <= 0 || episode <= 0) return null
-        return Triple(seriesId, season, episode)
+    fun parseCanonicalEpisode(mediaId: String): EpisodeComponents? {
+        val imdbMatch = CANONICAL_IMDB_EPISODE_REGEX.matchEntire(mediaId)
+        if (imdbMatch != null) {
+            val imdbId = imdbMatch.groupValues[1]
+            val season = imdbMatch.groupValues[2].toIntOrNull() ?: return null
+            val episode = imdbMatch.groupValues[3].toIntOrNull() ?: return null
+            if (season <= 0 || episode <= 0) return null
+            return EpisodeComponents(first = 0, second = season, third = episode, seriesIdentifier = imdbId)
+        }
+        val tmdbMatch = DETERMINISTIC_FALLBACK_EPISODE_REGEX.matchEntire(mediaId)
+        if (tmdbMatch != null) {
+            val seriesId = tmdbMatch.groupValues[1].toIntOrNull() ?: return null
+            val season = tmdbMatch.groupValues[2].toIntOrNull() ?: return null
+            val episode = tmdbMatch.groupValues[3].toIntOrNull() ?: return null
+            if (seriesId <= 0 || season <= 0 || episode <= 0) return null
+            return EpisodeComponents(first = seriesId, second = season, third = episode, seriesIdentifier = seriesId.toString())
+        }
+        val legacyMatch = LEGACY_EPISODE_REGEX.matchEntire(mediaId)
+        if (legacyMatch != null) {
+            val seriesId = legacyMatch.groupValues[1].toIntOrNull() ?: return null
+            val season = legacyMatch.groupValues[2].toIntOrNull() ?: return null
+            val episode = legacyMatch.groupValues[3].toIntOrNull() ?: return null
+            if (seriesId <= 0 || season <= 0 || episode <= 0) return null
+            return EpisodeComponents(first = seriesId, second = season, third = episode, seriesIdentifier = seriesId.toString())
+        }
+        return null
     }
 }

@@ -359,7 +359,7 @@ class SearchViewModelTest {
             mediaId = "2", title = "Watched Movie", positionMs = 980000L, durationMs = 1000000L, isEpisode = false
         )
         val episodeProgress = com.martinrevert.latorrentola.model.user.PlaybackProgress(
-            mediaId = "media_10_s1_e1", title = "Episode 1", positionMs = 500000L, durationMs = 1000000L, isEpisode = true
+            mediaId = "tmdb_10_s1_e1", title = "Episode 1", positionMs = 500000L, durationMs = 1000000L, isEpisode = true
         )
 
         every { repository.getFavoriteMovies() } returns flowOf(listOf(inProgressMovie, watchedMovie))

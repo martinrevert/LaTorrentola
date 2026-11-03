@@ -23,7 +23,8 @@ data class CanonicalMediaInfo(
     val seasonNumber: Int = 0,
     val episodeNumber: Int = 0,
     val seriesName: String? = null,
-    val episodeName: String? = null
+    val episodeName: String? = null,
+    val imdbId: String? = null
 )
 
 /**
@@ -210,12 +211,17 @@ class MediaMetadataResolver @Inject constructor(
                 }
             }
 
-            val finalMediaId = if (seriesId > 0) {
-                MediaIdHelper.forEpisode(seriesId, seasonNumber, episodeNumber)
-            } else {
-                // Safe normalized fallback if TMDB lookup fails while offline (never infoHash)
-                "media_${normalizeTitle(primaryCleanTitle)}_s${seasonNumber}_e${episodeNumber}"
-            }
+            val seriesImdbId = if (seriesId > 0) {
+                try { tmdbRepository.getTvImdbId(seriesId) } catch (_: Exception) { null }
+            } else null
+
+            val finalMediaId = MediaIdHelper.forEpisode(
+                imdbId = seriesImdbId,
+                seriesId = seriesId,
+                seasonNumber = seasonNumber,
+                episodeNumber = episodeNumber,
+                title = primaryCleanTitle
+            )
 
             val finalDisplayTitle = when {
                 !seriesName.isNullOrBlank() -> "$seriesName - S${seasonNumber}E${episodeNumber}"
@@ -233,12 +239,14 @@ class MediaMetadataResolver @Inject constructor(
                 seasonNumber = seasonNumber,
                 episodeNumber = episodeNumber,
                 seriesName = seriesName,
-                episodeName = episodeName
+                episodeName = episodeName,
+                imdbId = seriesImdbId
             )
         }
 
         // 4. Handle Movie resolution
-        if (movieId <= 0 && primaryCleanTitle.isNotBlank()) {
+        var movieImdbId: String? = null
+        if (primaryCleanTitle.isNotBlank()) {
             try {
                 val ytsSearch = ytsRepository.searchMovies(primaryCleanTitle, 1)
                 val movies = ytsSearch.data?.movies.orEmpty()
@@ -249,7 +257,10 @@ class MediaMetadataResolver @Inject constructor(
                 }
 
                 if (matched != null && matched.id > 0) {
-                    movieId = matched.id
+                    if (movieId <= 0) {
+                        movieId = matched.id
+                    }
+                    movieImdbId = matched.imdbCode
                     if (posterUrl.isNullOrBlank()) {
                         posterUrl = matched.largeCoverImage ?: matched.mediumCoverImage
                     }
@@ -269,7 +280,7 @@ class MediaMetadataResolver @Inject constructor(
         }
 
         val finalMediaId = if (movieId > 0) {
-            MediaIdHelper.forMovie(movieId)
+            MediaIdHelper.forMovie(movieImdbId, movieId, primaryCleanTitle)
         } else {
             // Clean fallback: sanitized title without file extensions or hashes
             primaryCleanTitle.ifBlank { "unknown_movie" }
@@ -283,7 +294,8 @@ class MediaMetadataResolver @Inject constructor(
             movieId = movieId,
             seriesId = 0,
             seasonNumber = 0,
-            episodeNumber = 0
+            episodeNumber = 0,
+            imdbId = movieImdbId
         )
     }
 }

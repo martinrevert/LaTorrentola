@@ -195,8 +195,8 @@ class LocalPlayerActivityTest {
     fun `isAlreadyLoaded detects matching infoHash or canonical media id`() {
         val downloadHash = "abcdef1234567890abcdef1234567890abcdef12"
         val curInfoHash = "ABCDEF1234567890ABCDEF1234567890ABCDEF12"
-        val curMediaId = "media_123_s1_e2"
-        val canonicalEpisodeId = "media_123_s1_e2"
+        val curMediaId = "tt11280740_s1_e2"
+        val canonicalEpisodeId = "tt11280740_s1_e2"
 
         val matchesByHash = curInfoHash.isNotBlank() && curInfoHash.equals(downloadHash, ignoreCase = true)
         val matchesByCanonicalId = canonicalEpisodeId == curMediaId

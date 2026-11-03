@@ -22,6 +22,9 @@ data class FavoriteTvSeries(
     @SerializedName("id")
     @SerialName("id")
     val id: Int = 0,
+    @SerializedName("imdb_id")
+    @SerialName("imdb_id")
+    val imdbId: String? = null,
     @SerializedName("name")
     @SerialName("name")
     val name: String? = null,
@@ -47,6 +50,7 @@ data class FavoriteTvSeries(
     /** Converts stored metadata to the catalog model used by favorite cards. */
     fun toTmdbTvSummary(): TmdbTvSummary = TmdbTvSummary(
         id = id,
+        imdbId = imdbId,
         name = name,
         posterPath = posterPath,
         firstAirDate = firstAirDate,
@@ -60,6 +64,7 @@ data class FavoriteTvSeries(
         /** Creates a Firestore record from [series]. */
         fun from(series: TmdbTvSummary): FavoriteTvSeries = FavoriteTvSeries(
             id = series.id,
+            imdbId = series.effectiveImdbId,
             name = series.name,
             posterPath = series.posterPath,
             firstAirDate = series.firstAirDate,

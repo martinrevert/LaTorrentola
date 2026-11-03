@@ -82,7 +82,6 @@ class SettingsViewModel @Inject constructor(
             convertDtsToAc3 = preferenceManager.getConvertDtsToAc3(),
             decodeDtsHdToPcm = preferenceManager.getDecodeDtsHdToPcm()
         )
-        syncSettings()
         observeSettingsChanges()
     }
 
@@ -150,31 +149,6 @@ class SettingsViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(decodeDtsHdToPcm = enabled)
                 }
             }
-        }
-    }
-
-    /** Observes authenticated account settings and applies remote changes locally. */
-    private fun syncSettings() {
-        viewModelScope.launch {
-            authRepository.authStateFlow
-                .filterNotNull()
-                .flatMapLatest { user ->
-                    combine(
-                        userLibraryRepository.observeRemoteFilteredLanguages(user.uid),
-                        userLibraryRepository.observeRemoteMinimumRating(user.uid)
-                    ) { languages, rating -> languages to rating }
-                }
-                .collect { (remoteLanguages, remoteRating) ->
-                    if (remoteLanguages != null &&
-                        remoteLanguages != preferenceManager.getFilteredLanguages()
-                    ) {
-                        preferenceManager.setFilteredLanguages(remoteLanguages)
-                        _uiState.value = _uiState.value.copy(filteredLanguages = remoteLanguages)
-                    }
-                    if (remoteRating != preferenceManager.getMinimumRating()) {
-                        preferenceManager.setMinimumRating(remoteRating)
-                    }
-                }
         }
     }
 

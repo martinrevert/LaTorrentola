@@ -12,10 +12,22 @@ import com.martinrevert.latorrentola.model.stats.GenreStats
 import com.martinrevert.latorrentola.model.stats.TvGenreStats
 import com.martinrevert.latorrentola.model.torrent.TorrentDownload
 
-/** Room database for local visit dates, genre statistics, torrent downloads, and watch history. */
+/** Room database for local visit dates, genre statistics, torrent downloads, user library, and watch history. */
 @Database(
-    entities = [DateLastVisit::class, GenreStats::class, TvGenreStats::class, TorrentDownload::class, WatchHistoryEntity::class],
-    version = 12,
+    entities = [
+        DateLastVisit::class,
+        GenreStats::class,
+        TvGenreStats::class,
+        TorrentDownload::class,
+        WatchHistoryEntity::class,
+        SavedAccountEntity::class,
+        FavoriteMovieEntity::class,
+        FavoriteTvSeriesEntity::class,
+        DownloadedMovieEntity::class,
+        DownloadedEpisodeEntity::class,
+        SyncMetadataEntity::class
+    ],
+    version = 14,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -31,6 +43,14 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun torrentDownloadDao(): TorrentDownloadDao
     /** Provides database access to local watch history and playback progress. */
     abstract fun watchHistoryDao(): WatchHistoryDao
+    /** Provides database access to saved local account profiles. */
+    abstract fun savedAccountDao(): SavedAccountDao
+    /** Provides database access to user favorites. */
+    abstract fun favoriteDao(): FavoriteDao
+    /** Provides database access to user completed download markers. */
+    abstract fun downloadRecordDao(): DownloadRecordDao
+    /** Provides database access to cloud sync metadata. */
+    abstract fun syncMetadataDao(): SyncMetadataDao
 
     companion object {
         /** Lazily initialized process-wide database instance. */
@@ -56,11 +76,99 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_8_9,
                         MIGRATION_9_10,
                         MIGRATION_10_11,
-                        MIGRATION_11_12
+                        MIGRATION_11_12,
+                        MIGRATION_12_13,
+                        MIGRATION_13_14
                     )
                     .build()
                 INSTANCE = instance
                 instance
+            }
+        }
+
+        /** Adds canonical IMDb identifier columns to user favorites, downloads, and torrent jobs. */
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `favorites_movies` ADD COLUMN `imdbId` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `favorites_tv` ADD COLUMN `imdbId` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `downloaded_movies` ADD COLUMN `imdbId` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `downloaded_episodes` ADD COLUMN `imdbId` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `torrent_downloads` ADD COLUMN `imdbId` TEXT")
+            }
+        }
+
+        /** Adds multi-account saved accounts, isolated favorites, download records, sync metadata, and migrates watch history to composite primary key. */
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. Saved accounts for multi-account / OTT avatar profile switcher
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `saved_accounts` (" +
+                        "`uid` TEXT NOT NULL, `displayName` TEXT NOT NULL, `email` TEXT NOT NULL, " +
+                        "`photoUrl` TEXT, `lastActiveTimestamp` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`uid`))"
+                )
+
+                // 2. Favorite movies
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `favorites_movies` (" +
+                        "`userId` TEXT NOT NULL, `movieId` INTEGER NOT NULL, `title` TEXT NOT NULL, " +
+                        "`year` INTEGER NOT NULL, `rating` TEXT, `mediumCoverImage` TEXT, " +
+                        "`genres` TEXT NOT NULL, `movieJson` TEXT, `updatedAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`userId`, `movieId`))"
+                )
+
+                // 3. Favorite TV series
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `favorites_tv` (" +
+                        "`userId` TEXT NOT NULL, `seriesId` INTEGER NOT NULL, `name` TEXT NOT NULL, " +
+                        "`posterPath` TEXT, `firstAirDate` TEXT, `voteAverage` REAL, " +
+                        "`genreIds` TEXT NOT NULL, `numberOfSeasons` INTEGER, `numberOfEpisodes` INTEGER, " +
+                        "`updatedAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`userId`, `seriesId`))"
+                )
+
+                // 4. Downloaded movies
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `downloaded_movies` (" +
+                        "`userId` TEXT NOT NULL, `hash` TEXT NOT NULL, `movieId` INTEGER NOT NULL, " +
+                        "`movieTitle` TEXT NOT NULL, `quality` TEXT NOT NULL, " +
+                        "`timestamp` INTEGER NOT NULL, `movieJson` TEXT, " +
+                        "PRIMARY KEY(`userId`, `hash`))"
+                )
+
+                // 5. Downloaded episodes
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `downloaded_episodes` (" +
+                        "`userId` TEXT NOT NULL, `hash` TEXT NOT NULL, `seriesId` INTEGER NOT NULL, " +
+                        "`seriesName` TEXT NOT NULL, `seasonNumber` INTEGER NOT NULL, " +
+                        "`episodeNumber` INTEGER NOT NULL, `episodeName` TEXT NOT NULL, " +
+                        "`releaseTitle` TEXT NOT NULL, `quality` TEXT NOT NULL, " +
+                        "`magnetUrl` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `stillPath` TEXT, " +
+                        "PRIMARY KEY(`userId`, `hash`))"
+                )
+
+                // 6. Sync metadata
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `sync_metadata` (" +
+                        "`userId` TEXT NOT NULL, `collectionKey` TEXT NOT NULL, " +
+                        "`lastSyncTimestamp` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`userId`, `collectionKey`))"
+                )
+
+                // 7. Migrate watch_history to include userId and composite primary key (userId, mediaId)
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `watch_history_new` (" +
+                        "`userId` TEXT NOT NULL, `mediaId` TEXT NOT NULL, `title` TEXT NOT NULL, " +
+                        "`positionMs` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, " +
+                        "`timestamp` INTEGER NOT NULL, `isEpisode` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`userId`, `mediaId`))"
+                )
+                db.execSQL(
+                    "INSERT INTO `watch_history_new` (`userId`, `mediaId`, `title`, `positionMs`, `durationMs`, `timestamp`, `isEpisode`) " +
+                        "SELECT '', `mediaId`, `title`, `positionMs`, `durationMs`, `timestamp`, `isEpisode` FROM `watch_history`"
+                )
+                db.execSQL("DROP TABLE `watch_history`")
+                db.execSQL("ALTER TABLE `watch_history_new` RENAME TO `watch_history`")
             }
         }
 

@@ -391,6 +391,7 @@ class LocalPlayerActivity : FragmentActivity() {
     private var currentSeasonNumber by mutableIntStateOf(0)
     private var currentEpisodeNumber by mutableIntStateOf(0)
     private var currentMovieId by mutableIntStateOf(0)
+    private var currentImdbId by mutableStateOf<String?>(null)
 
     private var nextEpisodeSeriesId = 0
     private var nextEpisodeSeriesName = ""
@@ -1134,6 +1135,11 @@ class LocalPlayerActivity : FragmentActivity() {
         val mId = intent.getIntExtra(EXTRA_MOVIE_ID, 0)
             .takeIf { it > 0 } ?: intent.getIntExtra(TorrentDownloadService.EXTRA_MOVIE_ID, 0)
         if (mId > 0) currentMovieId = mId
+        val rawImdb = intent.getStringExtra(EXTRA_IMDB_ID)
+            ?: intent.getStringExtra(TorrentDownloadService.EXTRA_IMDB_ID)
+        if (!rawImdb.isNullOrBlank()) {
+            currentImdbId = MediaIdHelper.normalizeImdbId(rawImdb)
+        }
 
         if (torrentInfoHash.isNotBlank()) {
             try {
@@ -1150,6 +1156,9 @@ class LocalPlayerActivity : FragmentActivity() {
                     }
                     if (currentEpisodeNumber <= 0 && (dbRecord.episodeNumber ?: 0) > 0) {
                         currentEpisodeNumber = dbRecord.episodeNumber ?: 0
+                    }
+                    if (currentImdbId.isNullOrBlank() && !dbRecord.imdbId.isNullOrBlank()) {
+                        currentImdbId = MediaIdHelper.normalizeImdbId(dbRecord.imdbId)
                     }
                     if (posterUrl.isNullOrBlank() && !dbRecord.posterUrl.isNullOrBlank()) {
                         posterUrl = dbRecord.posterUrl
@@ -1235,9 +1244,10 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
             }
 
-            val isEpisode = currentSeriesId > 0
+            val isEpisode = currentSeriesId > 0 || (currentSeasonNumber > 0 && currentEpisodeNumber > 0)
             val mediaId = if (isEpisode) {
                 MediaIdHelper.forEpisode(
+                    imdbId = currentImdbId,
                     seriesId = currentSeriesId,
                     seasonNumber = currentSeasonNumber,
                     episodeNumber = currentEpisodeNumber,
@@ -1245,6 +1255,7 @@ class LocalPlayerActivity : FragmentActivity() {
                 )
             } else {
                 MediaIdHelper.forMovie(
+                    imdbId = currentImdbId,
                     movieId = currentMovieId,
                     title = mediaTitle
                 )
@@ -1275,6 +1286,9 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
                 if (currentEpisodeNumber > 0) {
                     putInt(EXTRA_EPISODE_NUMBER, currentEpisodeNumber)
+                }
+                if (!currentImdbId.isNullOrBlank()) {
+                    putString(EXTRA_IMDB_ID, currentImdbId)
                 }
                 val nextEpInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
                 if (!nextEpInfo.isNullOrEmpty()) {
@@ -3149,23 +3163,31 @@ class LocalPlayerActivity : FragmentActivity() {
                     val sId = currentSeriesId.takeIf { it > 0 } ?: epParsed?.first ?: 0
                     val sNum = currentSeasonNumber.takeIf { it > 0 } ?: epParsed?.second ?: 0
                     val eNum = currentEpisodeNumber.takeIf { it > 0 } ?: epParsed?.third ?: 0
-                    if (sId > 0 && sNum > 0 && eNum > 0) {
+                    val effectiveImdb = currentImdbId.orEmpty().ifBlank {
+                        epParsed?.imdbId ?: if (mediaId.startsWith("tt")) mediaId.substringBefore('_') else ""
+                    }
+                    if ((sId > 0 || effectiveImdb.isNotBlank() || title.isNotBlank()) && sNum > 0 && eNum > 0) {
                         userLibraryRepository.markEpisodeAsCompleted(
                             seriesId = sId,
                             seasonNumber = sNum,
                             episodeNumber = eNum,
                             episodeTitle = title,
                             seriesName = nextEpisodeSeriesName.ifBlank { "" },
-                            stillPath = posterUrl
+                            stillPath = posterUrl,
+                            imdbId = effectiveImdb
                         )
                     }
                 } else {
                     val mId = currentMovieId.takeIf { it > 0 } ?: mediaId.toIntOrNull() ?: 0
-                    if (mId > 0) {
+                    val effectiveImdb = currentImdbId.orEmpty().ifBlank {
+                        if (mediaId.startsWith("tt")) mediaId else ""
+                    }
+                    if (mId > 0 || effectiveImdb.isNotBlank() || mediaId.isNotBlank()) {
                         userLibraryRepository.markMovieAsCompleted(
                             movieId = mId,
                             movieTitle = title,
-                            posterUrl = posterUrl
+                            posterUrl = posterUrl,
+                            imdbId = effectiveImdb
                         )
                     }
                 }
@@ -3190,7 +3212,7 @@ class LocalPlayerActivity : FragmentActivity() {
         if (mediaId.isBlank() || mediaId == MediaItem.DEFAULT_MEDIA_ID) return
 
         val title = item.mediaMetadata.title?.toString() ?: mediaTitle
-        val isEpisode = currentSeriesId > 0
+        val isEpisode = currentSeriesId > 0 || (currentSeasonNumber > 0 && currentEpisodeNumber > 0) || MediaIdHelper.isCanonicalEpisodeId(mediaId)
 
         val isNearlyFinished = pos >= (dur * 0.95f).toLong()
         val finalPos = if (isNearlyFinished) dur else pos
@@ -3233,7 +3255,7 @@ class LocalPlayerActivity : FragmentActivity() {
         if (mediaId.isBlank() || mediaId == MediaItem.DEFAULT_MEDIA_ID) return
 
         val title = item.mediaMetadata.title?.toString() ?: mediaTitle
-        val isEpisode = currentSeriesId > 0
+        val isEpisode = currentSeriesId > 0 || (currentSeasonNumber > 0 && currentEpisodeNumber > 0) || MediaIdHelper.isCanonicalEpisodeId(mediaId)
 
         val isNearlyFinished = pos >= (dur * 0.95f).toLong()
         val finalPos = if (isNearlyFinished) dur else pos
@@ -3418,6 +3440,7 @@ class LocalPlayerActivity : FragmentActivity() {
         const val EXTRA_POSTER_URL = "extra_poster_url"
         const val EXTRA_FROM_PIP = "extra_from_pip"
         const val EXTRA_MEDIA_ID = "extra_media_id"
+        const val EXTRA_IMDB_ID = "extra_imdb_id"
         private const val TAG = "LocalPlayerActivity"
 
         fun handlePlayerTvKeyEvent(

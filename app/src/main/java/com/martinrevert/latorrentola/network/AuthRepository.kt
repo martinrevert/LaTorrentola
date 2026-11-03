@@ -18,11 +18,18 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.martinrevert.latorrentola.constants.Constants
+import com.martinrevert.latorrentola.database.SavedAccountDao
+import com.martinrevert.latorrentola.database.SavedAccountEntity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -32,38 +39,60 @@ import javax.inject.Singleton
  *
  * @property firebaseAuth Firebase authentication client.
  * @property context Application context used to create Credential Manager.
+ * @property savedAccountDao Local DAO persisting recognized user profiles on this device.
  */
 @Singleton
 class AuthRepository internal constructor(
     private val firebaseAuth: FirebaseAuth,
     @ApplicationContext private val context: Context,
     private val credentialManager: CredentialManager,
-    private val crashlyticsManager: CrashlyticsManager = CrashlyticsManager()
+    private val crashlyticsManager: CrashlyticsManager = CrashlyticsManager(),
+    private val savedAccountDao: SavedAccountDao? = null
 ) {
     @Inject
     constructor(
         firebaseAuth: FirebaseAuth,
         @ApplicationContext context: Context,
-        crashlyticsManager: CrashlyticsManager
-    ) : this(firebaseAuth, context, CredentialManager.create(context), crashlyticsManager)
+        crashlyticsManager: CrashlyticsManager,
+        savedAccountDao: SavedAccountDao? = null
+    ) : this(firebaseAuth, context, CredentialManager.create(context), crashlyticsManager, savedAccountDao)
 
     constructor(
         firebaseAuth: FirebaseAuth,
         @ApplicationContext context: Context
-    ) : this(firebaseAuth, context, CredentialManager.create(context), CrashlyticsManager())
+    ) : this(firebaseAuth, context, CredentialManager.create(context), CrashlyticsManager(), null)
 
     /** Mutable backing stream updated whenever Firebase authentication changes. */
     private val _currentUserFlow = MutableStateFlow(firebaseAuth.currentUser)
     /** Observable Firebase user state. */
     val authStateFlow: StateFlow<FirebaseUser?> = _currentUserFlow.asStateFlow()
 
-    /** Keeps [authStateFlow] synchronized with Firebase Auth state changes. */
+    /** Observes saved accounts persisted locally on this device for multi-account / OTT avatar profile switcher. */
+    val savedAccountsFlow: Flow<List<SavedAccountEntity>> =
+        savedAccountDao?.observeAll() ?: flowOf(emptyList())
+
+    /** Keeps [authStateFlow] synchronized with Firebase Auth state changes and persists profiles locally. */
     init {
         firebaseAuth.addAuthStateListener { auth ->
             val user = auth.currentUser
             _currentUserFlow.value = user
             if (user != null) {
                 crashlyticsManager.setUserId(user.uid)
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        savedAccountDao?.upsert(
+                            SavedAccountEntity(
+                                uid = user.uid,
+                                displayName = user.displayName.orEmpty().ifBlank { user.email.orEmpty().substringBefore("@") },
+                                email = user.email.orEmpty(),
+                                photoUrl = user.photoUrl?.toString(),
+                                lastActiveTimestamp = System.currentTimeMillis()
+                            )
+                        )
+                    } catch (e: Exception) {
+                        AppLogger.w("AuthRepository", "Failed saving local account profile: ${e.message}")
+                    }
+                }
             } else {
                 crashlyticsManager.setUserId(null)
             }
@@ -159,6 +188,17 @@ class AuthRepository internal constructor(
         } catch (e: Exception) {
             AppLogger.e("AuthRepository", "Error clearing credential state: ${e.message}", e)
         }
+    }
+
+    /** Updates the last active timestamp of a saved local profile. */
+    suspend fun touchAccount(uid: String) {
+        val account = savedAccountDao?.get(uid) ?: return
+        savedAccountDao.upsert(account.copy(lastActiveTimestamp = System.currentTimeMillis()))
+    }
+
+    /** Removes a saved local profile from this device. */
+    suspend fun deleteAccount(uid: String) {
+        savedAccountDao?.delete(uid)
     }
 
     private fun Context.findActivity(): Activity? {

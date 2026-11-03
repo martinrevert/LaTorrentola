@@ -69,6 +69,7 @@ class TvEpisodeDetailViewModel @Inject constructor(
     private val _rawUiState = MutableStateFlow<TvEpisodeDetailRawUiState>(TvEpisodeDetailRawUiState.Loading)
 
     private var activeSeriesId: Int = 0
+    private var activeSeriesImdbId: String? = null
     private var activeSeasonNumber: Int = 0
     private var activeEpisodeNumber: Int = 0
     private var activeSeriesName: String = ""
@@ -100,7 +101,8 @@ class TvEpisodeDetailViewModel @Inject constructor(
                     releasesByQuality = rawState.releasesByQuality,
                     isDownloaded = matching.isNotEmpty(),
                     downloadedHashes = downloadedHashes,
-                    posterUrl = rawState.posterUrl
+                    posterUrl = rawState.posterUrl,
+                    imdbId = activeSeriesImdbId
                 )
             }
         }
@@ -178,6 +180,7 @@ class TvEpisodeDetailViewModel @Inject constructor(
                         resolvedSeriesName = series.name.orEmpty()
                     }
                     resolvedPosterUrl = series.fullPosterUrl
+                    activeSeriesImdbId = series.effectiveImdbId ?: tmdbRepository.getTvImdbId(seriesId)
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                 }
@@ -232,12 +235,13 @@ class TvEpisodeDetailViewModel @Inject constructor(
             userLibraryRepository.markEpisodeAsDownloaded(
                 DownloadedEpisode(
                     seriesId = activeSeriesId,
+                    imdbId = activeSeriesImdbId,
                     seriesName = activeSeriesName,
                     seasonNumber = activeSeasonNumber,
                     episodeNumber = activeEpisodeNumber,
                     episodeName = episode.name.orEmpty(),
                     releaseTitle = torrent.title,
-                    extractQuality(torrent.title),
+                    quality = extractQuality(torrent.title),
                     hash = validHash,
                     magnetUrl = torrent.magnetUrl,
                     timestamp = System.currentTimeMillis(),
@@ -260,6 +264,7 @@ class TvEpisodeDetailViewModel @Inject constructor(
             userLibraryRepository.markEpisodeAsDownloaded(
                 DownloadedEpisode(
                     seriesId = activeSeriesId,
+                    imdbId = activeSeriesImdbId,
                     seriesName = activeSeriesName,
                     seasonNumber = activeSeasonNumber,
                     episodeNumber = activeEpisodeNumber,
@@ -372,6 +377,7 @@ sealed interface TvEpisodeDetailUiState {
         val releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>>,
         val isDownloaded: Boolean,
         val downloadedHashes: Set<String> = emptySet(),
-        val posterUrl: String? = null
+        val posterUrl: String? = null,
+        val imdbId: String? = null
     ) : TvEpisodeDetailUiState
 }

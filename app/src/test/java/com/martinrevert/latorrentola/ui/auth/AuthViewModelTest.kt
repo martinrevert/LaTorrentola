@@ -13,7 +13,6 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
@@ -115,5 +114,71 @@ class AuthViewModelTest {
     @Test
     fun `currentUserFlow exposes repository authStateFlow`() {
         assertThat(viewModel.currentUserFlow).isEqualTo(authRepository.authStateFlow)
+    }
+
+    @Test
+    fun `selectAccount when already logged in as that user triggers delta sync and proceeds`() = runTest {
+        val mockUser = mockk<FirebaseUser>()
+        every { mockUser.uid } returns "user_123"
+        every { authRepository.currentUser } returns mockUser
+        val account = com.martinrevert.latorrentola.database.SavedAccountEntity(uid = "user_123", displayName = "Martin", email = "martin@test.com")
+        var proceeded = false
+
+        viewModel.selectAccount(account, context) {
+            proceeded = true
+        }
+
+        assertThat(proceeded).isTrue()
+        assertThat(viewModel.authState.value).isEqualTo(AuthState.Success)
+        coVerify { authRepository.touchAccount("user_123") }
+    }
+
+    @Test
+    fun `selectAccount when logged in as another user triggers signInWithGoogle`() = runTest {
+        val mockUser = mockk<FirebaseUser>()
+        every { mockUser.uid } returns "user_other"
+        every { authRepository.currentUser } returns mockUser
+        coEvery { authRepository.signInWithGoogle(any()) } returns Result.success(Unit)
+        val account = com.martinrevert.latorrentola.database.SavedAccountEntity(uid = "user_123", displayName = "Martin", email = "martin@test.com")
+
+        viewModel.selectAccount(account, context) {}
+
+        coVerify { authRepository.touchAccount("user_123") }
+        coVerify { authRepository.signInWithGoogle(context) }
+    }
+
+    @Test
+    fun `continueAsGuest calls signOut and sets state to Idle`() = runTest {
+        coEvery { authRepository.signOut() } returns Unit
+        var proceeded = false
+        viewModel.continueAsGuest { proceeded = true }
+        assertThat(proceeded).isTrue()
+        assertThat(viewModel.authState.value).isEqualTo(AuthState.Idle)
+        coVerify { authRepository.signOut() }
+    }
+
+    @Test
+    fun `deleteAccount delegates to repository and signs out if deleted user is current user`() = runTest {
+        val mockUser = mockk<FirebaseUser>()
+        every { mockUser.uid } returns "user_to_delete"
+        every { authRepository.currentUser } returns mockUser
+        coEvery { authRepository.signOut() } returns Unit
+
+        viewModel.deleteAccount("user_to_delete")
+
+        coVerify { authRepository.deleteAccount("user_to_delete") }
+        coVerify { authRepository.signOut() }
+    }
+
+    @Test
+    fun `deleteAccount does not sign out if deleted user is not current user`() = runTest {
+        val mockUser = mockk<FirebaseUser>()
+        every { mockUser.uid } returns "other_user"
+        every { authRepository.currentUser } returns mockUser
+
+        viewModel.deleteAccount("user_to_delete")
+
+        coVerify { authRepository.deleteAccount("user_to_delete") }
+        coVerify(exactly = 0) { authRepository.signOut() }
     }
 }

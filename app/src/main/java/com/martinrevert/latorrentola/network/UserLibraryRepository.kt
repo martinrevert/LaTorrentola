@@ -1,59 +1,77 @@
 package com.martinrevert.latorrentola.network
 
 import android.util.Log
+import com.martinrevert.latorrentola.utils.AppLogger
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
-import com.martinrevert.latorrentola.model.YTS.Movie
-import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
-import com.martinrevert.latorrentola.model.user.FavoriteTvSeries
-import com.martinrevert.latorrentola.model.user.DownloadedEpisode
-import com.martinrevert.latorrentola.model.user.DownloadedMovie
-import com.martinrevert.latorrentola.model.user.PlaybackProgress
+import com.martinrevert.latorrentola.database.DownloadRecordDao
+import com.martinrevert.latorrentola.database.DownloadedEpisodeEntity
+import com.martinrevert.latorrentola.database.DownloadedMovieEntity
+import com.martinrevert.latorrentola.database.FavoriteDao
+import com.martinrevert.latorrentola.database.FavoriteMovieEntity
+import com.martinrevert.latorrentola.database.FavoriteTvSeriesEntity
+import com.martinrevert.latorrentola.database.SyncMetadataDao
+import com.martinrevert.latorrentola.database.SyncMetadataEntity
+import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.database.WatchHistoryDao
 import com.martinrevert.latorrentola.database.WatchHistoryEntity
-import com.martinrevert.latorrentola.database.TorrentDownloadDao
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.model.user.DownloadedEpisode
+import com.martinrevert.latorrentola.model.user.DownloadedMovie
+import com.martinrevert.latorrentola.model.user.FavoriteTvSeries
+import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.utils.MediaIdHelper
+import com.martinrevert.latorrentola.utils.MediaMetadataResolver
 import com.martinrevert.latorrentola.utils.PreferenceManager
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import com.martinrevert.latorrentola.utils.AppLogger
-import com.martinrevert.latorrentola.utils.MediaMetadataResolver
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Stores user favorites, downloads, and settings in their Firestore account.
+ * Single source of truth for user library, favorites, downloads, and watch progress.
  *
- * @property firestore Firestore client used for cloud library operations.
- * @property auth Firebase authentication client used to scope data by user.
- * @property watchHistoryDao Local database access for watch progress caching.
- * @property torrentDownloadDao Local database access for torrent transfers cleanup.
- * @property mediaMetadataResolver Lazy resolver used to migrate non-canonical media IDs to canonical IDs.
+ * Local Room database acts as the primary data store (SSOT) to eliminate recurring
+ * Firestore read costs and keep usage within the Free Tier. Firestore is used strictly as a
+ * remote backup and cross-device sync layer.
  */
 @Singleton
 class UserLibraryRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val auth: FirebaseAuth,
     private val watchHistoryDao: WatchHistoryDao,
+    private val favoriteDao: FavoriteDao? = null,
+    private val downloadRecordDao: DownloadRecordDao? = null,
+    private val syncMetadataDao: SyncMetadataDao? = null,
     private val torrentDownloadDao: TorrentDownloadDao? = null,
-    private val mediaMetadataResolver: dagger.Lazy<MediaMetadataResolver>? = null
+    private val mediaMetadataResolver: dagger.Lazy<MediaMetadataResolver>? = null,
+    private val preferenceManager: dagger.Lazy<PreferenceManager>? = null
 ) {
-    /** Authenticated Firebase UID used to scope cloud library documents. */
-    private val userId: String? get() = auth.currentUser?.uid
+    /** Authenticated Firebase UID used to scope cloud and local library records. */
+    val userId: String? get() = auth.currentUser?.uid
 
-    /** Observes the signed-in user's downloads in reverse chronological order. */
+    /** Returns the active user ID for local Room scoping, fallback to empty string for guest mode. */
+    private val currentUserId: String get() = userId.orEmpty()
+
+    /** Observes the active user's movie downloads from Room cache. */
     fun getDownloadedMovies(): Flow<List<DownloadedMovie>> {
+        if (downloadRecordDao != null) {
+            return downloadRecordDao.observeDownloadedMovies(currentUserId).map { list ->
+                list.map { it.toDownloadedMovie() }
+            }
+        }
         val uid = userId ?: return flowOf(emptyList())
         return callbackFlow {
             val subscription = firestore.collection("users")
@@ -77,14 +95,26 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
-    /** Saves or replaces a download record, keyed by its torrent hash. */
+    /** Saves or replaces a download record in local Room and syncs to Firestore. */
     suspend fun markAsDownloaded(download: DownloadedMovie) {
-        val uid = userId ?: return
+        val uid = currentUserId
         try {
+            downloadRecordDao?.upsertMovie(DownloadedMovieEntity.from(uid, download))
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            AppLogger.e("UserLibraryRepository", "Error saving movie download locally: ${e.message}", e)
+        }
+
+        val remoteUid = userId ?: return
+        try {
+            val docId = download.hash.ifBlank {
+                download.imdbId?.takeIf(String::isNotBlank)
+                    ?: if (download.movieId > 0) download.movieId.toString() else UUID.randomUUID().toString()
+            }
             firestore.collection("users")
-                .document(uid)
+                .document(remoteUid)
                 .collection("downloads")
-                .document(download.hash)
+                .document(docId)
                 .set(download)
                 .await()
         } catch (e: Exception) {
@@ -93,8 +123,13 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
-    /** Observes the signed-in user's TV episode downloads in reverse chronological order. */
+    /** Observes the active user's TV episode downloads from Room cache. */
     fun getDownloadedEpisodes(): Flow<List<DownloadedEpisode>> {
+        if (downloadRecordDao != null) {
+            return downloadRecordDao.observeDownloadedEpisodes(currentUserId).map { list ->
+                list.map { it.toDownloadedEpisode() }
+            }
+        }
         val uid = userId ?: return flowOf(emptyList())
         return callbackFlow {
             val subscription = firestore.collection("users")
@@ -118,16 +153,25 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
-    /** Saves or replaces a TV episode download record, keyed by its torrent hash or fallback document ID. */
+    /** Saves or replaces a TV episode download record in Room and syncs to Firestore. */
     suspend fun markEpisodeAsDownloaded(download: DownloadedEpisode) {
-        val uid = userId ?: return
+        val uid = currentUserId
         val docId = download.hash.ifBlank {
             "tv_${download.seriesId}_s${download.seasonNumber}_e${download.episodeNumber}"
         }
         val sanitizedDownload = download.copy(hash = docId)
+
+        try {
+            downloadRecordDao?.upsertEpisode(DownloadedEpisodeEntity.from(uid, sanitizedDownload))
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            AppLogger.e("UserLibraryRepository", "Error saving TV episode download locally: ${e.message}", e)
+        }
+
+        val remoteUid = userId ?: return
         try {
             firestore.collection("users")
-                .document(uid)
+                .document(remoteUid)
                 .collection("tv_downloads")
                 .document(docId)
                 .set(sanitizedDownload)
@@ -138,20 +182,22 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
-    /** Removes a movie download record by its torrent hash. */
+    /** Removes a movie download record by its torrent hash locally and remotely. */
     suspend fun removeDownloadedMovieByHash(hash: String) {
         if (hash.isBlank()) return
+        val uid = currentUserId
         try {
+            downloadRecordDao?.deleteMovieByHash(uid, hash)
             torrentDownloadDao?.delete(hash)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Log.e("UserLibraryRepository", "Error deleting local movie download by hash: ${e.message}")
         }
 
-        val uid = userId ?: return
+        val remoteUid = userId ?: return
         try {
             firestore.collection("users")
-                .document(uid)
+                .document(remoteUid)
                 .collection("downloads")
                 .document(hash)
                 .delete()
@@ -162,20 +208,22 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
-    /** Removes a TV episode download record by its torrent hash. */
+    /** Removes a TV episode download record by its torrent hash locally and remotely. */
     suspend fun removeDownloadedEpisodeByHash(hash: String) {
         if (hash.isBlank()) return
+        val uid = currentUserId
         try {
+            downloadRecordDao?.deleteEpisodeByHash(uid, hash)
             torrentDownloadDao?.delete(hash)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Log.e("UserLibraryRepository", "Error deleting local episode download by hash: ${e.message}")
         }
 
-        val uid = userId ?: return
+        val remoteUid = userId ?: return
         try {
             firestore.collection("users")
-                .document(uid)
+                .document(remoteUid)
                 .collection("tv_downloads")
                 .document(hash)
                 .delete()
@@ -186,8 +234,13 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
-    /** Observes the signed-in user's favorite movie records. */
+    /** Observes the active user's favorite movie records from Room cache. */
     fun getFavoriteMovies(): Flow<List<Movie>> {
+        if (favoriteDao != null) {
+            return favoriteDao.observeFavoriteMovies(currentUserId).map { list ->
+                list.map { it.toMovie() }
+            }
+        }
         val uid = userId ?: return flowOf(emptyList())
         return callbackFlow {
             val subscription = firestore.collection("users")
@@ -201,7 +254,7 @@ class UserLibraryRepository @Inject constructor(
                     }
 
                     val favorites = snapshot?.documents?.filterNot {
-                        it.id.startsWith("tv_")
+                        isTvDocument(it)
                     }?.mapNotNull {
                         it.toObject(Movie::class.java)
                     } ?: emptyList()
@@ -213,40 +266,101 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
-    /** Saves or replaces [movie] in the signed-in user's favorites. */
+    /** Saves or replaces [movie] in the user's favorites in Room and Firestore. */
     suspend fun addFavorite(movie: Movie) {
-        val uid = userId ?: return
+        val uid = currentUserId
+        try {
+            favoriteDao?.upsertMovie(FavoriteMovieEntity.from(uid, movie))
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            AppLogger.e("UserLibraryRepository", "Error saving favorite movie locally: ${e.message}", e)
+        }
+
+        val remoteUid = userId ?: return
+        val normalizedImdb = MediaIdHelper.normalizeImdbId(movie.imdbCode)
+        val targetDocId = normalizedImdb?.takeIf { it.isNotBlank() } ?: movie.id.toString()
         try {
             firestore.collection("users")
-                .document(uid)
+                .document(remoteUid)
                 .collection("favorites")
-                .document(movie.id.toString())
+                .document(targetDocId)
                 .set(movie)
                 .await()
+
+            try {
+                firestore.collection("users")
+                    .document(remoteUid)
+                    .collection("favorites")
+                    .document(targetDocId)
+                    .set(mapOf("updatedAt" to System.currentTimeMillis()), SetOptions.merge())
+                    .await()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+
+            if (targetDocId != movie.id.toString()) {
+                try {
+                    firestore.collection("users")
+                        .document(remoteUid)
+                        .collection("favorites")
+                        .document(movie.id.toString())
+                        .delete()
+                        .await()
+                } catch (_: Exception) {}
+            }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             AppLogger.e("Firestore", "Error adding favorite: ${e.message}", e)
         }
     }
 
-    /** Removes [movie] from the signed-in user's favorites. */
+    /** Removes [movie] from the user's favorites in Room and Firestore. */
     suspend fun removeFavorite(movie: Movie) {
-        val uid = userId ?: return
+        val uid = currentUserId
+        val normalizedImdb = MediaIdHelper.normalizeImdbId(movie.imdbCode).orEmpty()
+        try {
+            favoriteDao?.deleteMovie(uid, movie.id)
+            if (normalizedImdb.isNotBlank()) {
+                favoriteDao?.deleteMovieByImdbId(uid, normalizedImdb)
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            AppLogger.e("UserLibraryRepository", "Error removing favorite movie locally: ${e.message}", e)
+        }
+
+        val remoteUid = userId ?: return
+        val targetDocId = normalizedImdb.ifBlank { movie.id.toString() }
         try {
             firestore.collection("users")
-                .document(uid)
+                .document(remoteUid)
                 .collection("favorites")
-                .document(movie.id.toString())
+                .document(targetDocId)
                 .delete()
                 .await()
+
+            if (targetDocId != movie.id.toString()) {
+                try {
+                    firestore.collection("users")
+                        .document(remoteUid)
+                        .collection("favorites")
+                        .document(movie.id.toString())
+                        .delete()
+                        .await()
+                } catch (_: Exception) {}
+            }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             AppLogger.e("Firestore", "Error removing favorite: ${e.message}", e)
         }
     }
 
-    /** Observes the signed-in user's favorite TV series. */
+    /** Observes the active user's favorite TV series from Room cache. */
     fun getFavoriteTvSeries(): Flow<List<TmdbTvSummary>> {
+        if (favoriteDao != null) {
+            return favoriteDao.observeFavoriteTvSeries(currentUserId).map { list ->
+                list.map { it.toTmdbTvSummary() }
+            }
+        }
         val uid = userId ?: return flowOf(emptyList())
         return callbackFlow {
             val subscription = firestore.collection("users")
@@ -260,22 +374,8 @@ class UserLibraryRepository @Inject constructor(
                     }
 
                     val favorites = snapshot?.documents
-                        ?.filter { it.id.startsWith("tv_") }
-                        ?.mapNotNull { document ->
-                            val id = (document.get("id") as? Number)?.toInt() ?: return@mapNotNull null
-                            FavoriteTvSeries(
-                                id = id,
-                                name = document.getString("name"),
-                                posterPath = document.getString("posterPath"),
-                                firstAirDate = document.getString("firstAirDate"),
-                                voteAverage = (document.get("voteAverage") as? Number)?.toDouble(),
-                                genreIds = (document.get("genreIds") as? List<*>)
-                                    .orEmpty()
-                                    .mapNotNull { (it as? Number)?.toInt() },
-                                numberOfSeasons = (document.get("numberOfSeasons") as? Number)?.toInt(),
-                                numberOfEpisodes = (document.get("numberOfEpisodes") as? Number)?.toInt()
-                            ).toTmdbTvSummary()
-                        } ?: emptyList()
+                        ?.filter { isTvDocument(it) }
+                        ?.mapNotNull { parseTvDocument(it) } ?: emptyList()
                     trySend(favorites)
                 }
 
@@ -283,60 +383,221 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
-    /** Saves or replaces [series] in the signed-in user's TV favorites. */
+    private fun isTvDocument(doc: com.google.firebase.firestore.DocumentSnapshot): Boolean {
+        return doc.id.startsWith("tv_") ||
+            doc.contains("numberOfSeasons") ||
+            doc.contains("firstAirDate") ||
+            (doc.contains("name") && !doc.contains("title"))
+    }
+
+    private fun parseTvDocument(document: com.google.firebase.firestore.DocumentSnapshot): TmdbTvSummary? {
+        val id = (document.get("id") as? Number)?.toInt() ?: return null
+        val imdb = MediaIdHelper.normalizeImdbId(
+            document.getString("imdbId") ?: document.getString("imdb_id") ?: if (MediaIdHelper.isCanonicalMovieId(document.id)) document.id else null
+        )
+        return FavoriteTvSeries(
+            id = id,
+            imdbId = imdb,
+            name = document.getString("name"),
+            posterPath = document.getString("posterPath"),
+            firstAirDate = document.getString("firstAirDate"),
+            voteAverage = (document.get("voteAverage") as? Number)?.toDouble(),
+            genreIds = (document.get("genreIds") as? List<*>)
+                .orEmpty()
+                .mapNotNull { (it as? Number)?.toInt() },
+            numberOfSeasons = (document.get("numberOfSeasons") as? Number)?.toInt(),
+            numberOfEpisodes = (document.get("numberOfEpisodes") as? Number)?.toInt()
+        ).toTmdbTvSummary()
+    }
+
+    /** Saves or replaces [series] in the user's TV favorites in Room and Firestore. */
     suspend fun addFavoriteTvSeries(series: TmdbTvSummary) {
-        val uid = userId ?: throw IllegalStateException("User not logged in")
+        val uid = currentUserId
+        try {
+            favoriteDao?.upsertTvSeries(FavoriteTvSeriesEntity.from(uid, series))
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            AppLogger.e("UserLibraryRepository", "Error saving TV favorite locally: ${e.message}", e)
+        }
+
+        val remoteUid = userId ?: return
         val favorite = FavoriteTvSeries.from(series)
-        firestore.collection("users")
-            .document(uid)
-            .collection("favorites")
-            .document("tv_${series.id}")
-            .set(
-                mapOf(
-                    "id" to favorite.id,
-                    "name" to favorite.name,
-                    "posterPath" to favorite.posterPath,
-                    "firstAirDate" to favorite.firstAirDate,
-                    "voteAverage" to favorite.voteAverage,
-                    "genreIds" to favorite.genreIds.orEmpty(),
-                    "numberOfSeasons" to favorite.numberOfSeasons,
-                    "numberOfEpisodes" to favorite.numberOfEpisodes
-                )
-            )
-            .await()
-    }
-
-    /** Removes [series] from the signed-in user's TV favorites. */
-    suspend fun removeFavoriteTvSeries(series: TmdbTvSummary) {
-        val uid = userId ?: throw IllegalStateException("User not logged in")
-        firestore.collection("users")
-            .document(uid)
-            .collection("favorites")
-            .document("tv_${series.id}")
-            .delete()
-            .await()
-    }
-
-    /** Checks whether the signed-in user's library contains [movieId]. */
-    suspend fun isFavorite(movieId: Int): Boolean {
-        val uid = userId ?: return false
-        return try {
+        val normalizedImdb = series.effectiveImdbId
+        val targetDocId = normalizedImdb?.takeIf { it.isNotBlank() } ?: "tv_${series.id}"
+        try {
             firestore.collection("users")
-                .document(uid)
+                .document(remoteUid)
                 .collection("favorites")
-                .document(movieId.toString())
+                .document(targetDocId)
+                .set(
+                    mapOf(
+                        "id" to favorite.id,
+                        "imdbId" to (favorite.imdbId ?: ""),
+                        "name" to favorite.name,
+                        "posterPath" to favorite.posterPath,
+                        "firstAirDate" to favorite.firstAirDate,
+                        "voteAverage" to favorite.voteAverage,
+                        "genreIds" to favorite.genreIds.orEmpty(),
+                        "numberOfSeasons" to favorite.numberOfSeasons,
+                        "numberOfEpisodes" to favorite.numberOfEpisodes,
+                        "updatedAt" to System.currentTimeMillis()
+                    )
+                )
+                .await()
+
+            if (targetDocId != "tv_${series.id}") {
+                try {
+                    firestore.collection("users")
+                        .document(remoteUid)
+                        .collection("favorites")
+                        .document("tv_${series.id}")
+                        .delete()
+                        .await()
+                } catch (_: Exception) {}
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            AppLogger.e("Firestore", "Error saving TV favorite remotely: ${e.message}", e)
+        }
+    }
+
+    /** Removes [series] from the user's TV favorites in Room and Firestore. */
+    suspend fun removeFavoriteTvSeries(series: TmdbTvSummary) {
+        val uid = currentUserId
+        val normalizedImdb = series.effectiveImdbId.orEmpty()
+        try {
+            favoriteDao?.deleteTvSeries(uid, series.id)
+            if (normalizedImdb.isNotBlank()) {
+                favoriteDao?.deleteTvSeriesByImdbId(uid, normalizedImdb)
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            AppLogger.e("UserLibraryRepository", "Error removing TV favorite locally: ${e.message}", e)
+        }
+
+        val remoteUid = userId ?: return
+        val targetDocId = normalizedImdb.ifBlank { "tv_${series.id}" }
+        try {
+            firestore.collection("users")
+                .document(remoteUid)
+                .collection("favorites")
+                .document(targetDocId)
+                .delete()
+                .await()
+
+            if (targetDocId != "tv_${series.id}") {
+                try {
+                    firestore.collection("users")
+                        .document(remoteUid)
+                        .collection("favorites")
+                        .document("tv_${series.id}")
+                        .delete()
+                        .await()
+                } catch (_: Exception) {}
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            AppLogger.e("Firestore", "Error removing TV favorite remotely: ${e.message}", e)
+        }
+    }
+
+    /** Checks whether the active user's library contains [movieId], querying Room locally (0 Firestore reads). */
+    suspend fun isFavorite(movieId: Int, imdbCode: String? = null): Boolean {
+        val uid = currentUserId
+        val normImdb = MediaIdHelper.normalizeImdbId(imdbCode).orEmpty()
+        if (favoriteDao != null) {
+            return if (normImdb.isNotBlank()) {
+                favoriteDao.isMovieFavoriteByAnyId(uid, movieId, normImdb)
+            } else {
+                favoriteDao.isMovieFavorite(uid, movieId)
+            }
+        }
+        val remoteUid = userId ?: return false
+        val targetDocId = normImdb.ifBlank { movieId.toString() }
+        return try {
+            val exists = firestore.collection("users")
+                .document(remoteUid)
+                .collection("favorites")
+                .document(targetDocId)
                 .get()
                 .await()
                 .exists()
+            if (exists) true else if (targetDocId != movieId.toString()) {
+                firestore.collection("users")
+                    .document(remoteUid)
+                    .collection("favorites")
+                    .document(movieId.toString())
+                    .get()
+                    .await()
+                    .exists()
+            } else false
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             false
         }
     }
 
+    /** Checks whether the active user's library contains [seriesId], querying Room locally (0 Firestore reads). */
+    suspend fun isTvFavorite(seriesId: Int, imdbId: String? = null): Boolean {
+        val uid = currentUserId
+        val normImdb = MediaIdHelper.normalizeImdbId(imdbId).orEmpty()
+        if (favoriteDao != null) {
+            return if (normImdb.isNotBlank()) {
+                favoriteDao.isTvSeriesFavoriteByAnyId(uid, seriesId, normImdb)
+            } else {
+                favoriteDao.isTvSeriesFavorite(uid, seriesId)
+            }
+        }
+        val remoteUid = userId ?: return false
+        val targetDocId = normImdb.ifBlank { "tv_$seriesId" }
+        return try {
+            val exists = firestore.collection("users")
+                .document(remoteUid)
+                .collection("favorites")
+                .document(targetDocId)
+                .get()
+                .await()
+                .exists()
+            if (exists) true else if (targetDocId != "tv_$seriesId") {
+                firestore.collection("users")
+                    .document(remoteUid)
+                    .collection("favorites")
+                    .document("tv_$seriesId")
+                    .get()
+                    .await()
+                    .exists()
+            } else false
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            false
+        }
+    }
+
+    /** Observes whether the active user's library contains [movieId]. */
+    fun isFavoriteFlow(movieId: Int, imdbCode: String? = null): Flow<Boolean> {
+        val uid = currentUserId
+        val normImdb = MediaIdHelper.normalizeImdbId(imdbCode).orEmpty()
+        return if (normImdb.isNotBlank()) {
+            favoriteDao?.isMovieFavoriteByAnyIdFlow(uid, movieId, normImdb) ?: flowOf(false)
+        } else {
+            favoriteDao?.isMovieFavoriteFlow(uid, movieId) ?: flowOf(false)
+        }
+    }
+
+    /** Observes whether the active user's library contains [seriesId]. */
+    fun isTvFavoriteFlow(seriesId: Int, imdbId: String? = null): Flow<Boolean> {
+        val uid = currentUserId
+        val normImdb = MediaIdHelper.normalizeImdbId(imdbId).orEmpty()
+        return if (normImdb.isNotBlank()) {
+            favoriteDao?.isTvSeriesFavoriteByAnyIdFlow(uid, seriesId, normImdb) ?: flowOf(false)
+        } else {
+            favoriteDao?.isTvSeriesFavoriteFlow(uid, seriesId) ?: flowOf(false)
+        }
+    }
+
     /** Saves the user's serialized language filter setting to Firestore. */
     suspend fun saveFilteredLanguages(languages: String) {
-        val uid = userId ?: throw IllegalStateException("User not logged in")
+        val uid = userId ?: return
         Log.d("FirestoreSync", "Saving filtered languages for $uid: $languages")
         try {
             firestore.collection("users")
@@ -347,7 +608,7 @@ class UserLibraryRepository @Inject constructor(
                 .await()
             Log.d("FirestoreSync", "Settings saved successfully in settings/config")
         } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
+            if (e is CancellationException) throw e
             Log.e("FirestoreSync", "Error saving settings: ${e.message}")
             throw e
         }
@@ -355,7 +616,7 @@ class UserLibraryRepository @Inject constructor(
 
     /** Saves a bounded minimum rating preference to Firestore. */
     suspend fun saveMinimumRating(rating: Float) {
-        val uid = userId ?: throw IllegalStateException("User not logged in")
+        val uid = userId ?: return
         val boundedRating = (kotlin.math.round(rating * 10.0f) / 10.0f).coerceIn(
             PreferenceManager.MINIMUM_RATING_MIN,
             PreferenceManager.MINIMUM_RATING_MAX
@@ -368,7 +629,7 @@ class UserLibraryRepository @Inject constructor(
                 .set(mapOf("minimumRating" to boundedRating), SetOptions.merge())
                 .await()
         } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
+            if (e is CancellationException) throw e
             Log.e("FirestoreSync", "Error saving minimum rating: ${e.message}")
             throw e
         }
@@ -395,63 +656,18 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
-    /** Observes remote language-filter changes for the specified user. */
-    fun observeRemoteFilteredLanguages(uid: String): Flow<String?> = callbackFlow {
-        Log.d("FirestoreSync", "Observing remote settings for $uid")
-        val subscription = firestore.collection("users")
-            .document(uid)
-            .collection("settings")
-            .document("config")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e("FirestoreSync", "Error observing settings: ${error.message}")
-                    return@addSnapshotListener
-                }
-                val lang = snapshot?.getString("filteredLanguages")
-                Log.d("FirestoreSync", "Remote settings received: $lang")
-                trySend(lang)
-            }
-
-        awaitClose {
-            Log.d("FirestoreSync", "Stopping remote settings observation for $uid")
-            subscription.remove()
-        }
-    }
-
-    /** Observes the user's remote minimum rating, applying configured bounds. */
-    fun observeRemoteMinimumRating(uid: String): Flow<Float> = callbackFlow {
-        val subscription = firestore.collection("users")
-            .document(uid)
-            .collection("settings")
-            .document("config")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e("FirestoreSync", "Error observing minimum rating: ${error.message}")
-                    return@addSnapshotListener
-                }
-                val rawRating = snapshot?.getDouble("minimumRating")?.toFloat()
-                    ?: snapshot?.getLong("minimumRating")?.toFloat()
-                    ?: PreferenceManager.DEFAULT_MINIMUM_RATING
-                val boundedRating = (kotlin.math.round(rawRating * 10.0f) / 10.0f).coerceIn(
-                    PreferenceManager.MINIMUM_RATING_MIN,
-                    PreferenceManager.MINIMUM_RATING_MAX
-                )
-                trySend(boundedRating)
-            }
-
-        awaitClose { subscription.remove() }
-    }
-
     /**
      * Saves or updates watch history playback progress.
-     * Always writes to the local Room database.
+     * Always writes immediately to the local Room database (SSOT).
      * Remote Firestore write is only performed when [syncRemote] is true (e.g. on pause, stop, player exit, or completion),
      * preventing recurring network write bills during active 10-second playback ticks.
      */
     suspend fun savePlaybackProgress(progress: PlaybackProgress, syncRemote: Boolean = true) {
+        val uid = currentUserId
         try {
             watchHistoryDao.upsert(
                 WatchHistoryEntity(
+                    userId = uid,
                     mediaId = progress.mediaId,
                     title = progress.title,
                     positionMs = progress.positionMs,
@@ -467,10 +683,10 @@ class UserLibraryRepository @Inject constructor(
 
         if (!syncRemote) return
 
-        val uid = userId ?: return
+        val remoteUid = userId ?: return
         try {
             firestore.collection("users")
-                .document(uid)
+                .document(remoteUid)
                 .collection("watch_history")
                 .document(progress.mediaId)
                 .set(progress, SetOptions.merge())
@@ -515,51 +731,22 @@ class UserLibraryRepository @Inject constructor(
         )
     }
 
-    /** Retrieves saved playback progress locally from Room DB, falling back to or syncing with Firestore when signed in. */
+    /**
+     * Retrieves saved playback progress locally from Room DB (0 Firestore reads in normal flow),
+     * falling back to Firestore only if missing locally and user is signed in.
+     * Supports transparent migration from legacy TMDB/composite IDs to canonical IMDb IDs.
+     */
     suspend fun getPlaybackProgress(mediaId: String): PlaybackProgress? {
         if (mediaId.isBlank()) return null
-        val uid = userId
-        var remoteProgress: PlaybackProgress? = null
-        if (uid != null) {
-            try {
-                val doc = firestore.collection("users")
-                    .document(uid)
-                    .collection("watch_history")
-                    .document(mediaId)
-                    .get()
-                    .await()
-                remoteProgress = parsePlaybackProgress(doc)
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                AppLogger.e("UserLibraryRepository", "Error fetching remote watch history: ${e.message}", e)
-            }
-        }
+        val uid = currentUserId
 
+        // 1. Query local Room database first (exact match)
         var localEntity: WatchHistoryEntity? = null
         try {
-            localEntity = watchHistoryDao.get(mediaId)
+            localEntity = watchHistoryDao.get(uid, mediaId)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             AppLogger.e("UserLibraryRepository", "Error fetching local watch history: ${e.message}", e)
-        }
-
-        if (remoteProgress != null && (localEntity == null || remoteProgress.timestamp > localEntity.timestamp)) {
-            try {
-                watchHistoryDao.upsert(
-                    WatchHistoryEntity(
-                        mediaId = remoteProgress.mediaId,
-                        title = remoteProgress.title,
-                        positionMs = remoteProgress.positionMs,
-                        durationMs = remoteProgress.durationMs,
-                        timestamp = remoteProgress.timestamp,
-                        isEpisode = remoteProgress.isEpisode
-                    )
-                )
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                AppLogger.e("UserLibraryRepository", "Error saving remote progress to Room: ${e.message}", e)
-            }
-            return remoteProgress
         }
 
         if (localEntity != null) {
@@ -573,134 +760,72 @@ class UserLibraryRepository @Inject constructor(
             )
         }
 
-        // Fallback: If mediaId is canonical, attempt to look up and migrate matching legacy non-canonical records
-        if (MediaIdHelper.isCanonical(mediaId)) {
-            val legacyMatch = findAndMigrateLegacyProgress(mediaId)
-            if (legacyMatch != null) return legacyMatch
-        }
-
-        return null
-    }
-
-    /**
-     * Finds any legacy record in Room matching the requested canonical media ID,
-     * migrates it to the canonical key, and deletes the old legacy record.
-     */
-    private suspend fun findAndMigrateLegacyProgress(canonicalMediaId: String): PlaybackProgress? {
-        val resolver = mediaMetadataResolver?.get() ?: return null
-        val uid = userId
-        try {
-            val allLocal = watchHistoryDao.getAll()
-            val episodeTriple = MediaIdHelper.parseCanonicalEpisode(canonicalMediaId)
-
-            for (legacy in allLocal) {
-                if (MediaIdHelper.isCanonical(legacy.mediaId)) continue
-
-                // Check episode match by season and episode numbers
-                if (episodeTriple != null) {
-                    val (sNum, eNum) = MediaMetadataResolver.extractSeasonAndEpisode(legacy.title, legacy.mediaId)
-                    if (sNum == episodeTriple.second && eNum == episodeTriple.third) {
-                        val resolved = resolver.resolve(rawTitle = legacy.title.ifBlank { legacy.mediaId })
-                        if (resolved.mediaId == canonicalMediaId) {
-                            val migrated = PlaybackProgress(
-                                mediaId = canonicalMediaId,
-                                title = resolved.title.ifBlank { legacy.title },
-                                positionMs = legacy.positionMs,
-                                durationMs = legacy.durationMs,
-                                timestamp = legacy.timestamp,
-                                isEpisode = true
-                            )
-                            savePlaybackProgress(migrated)
-                            deletePlaybackProgress(legacy.mediaId)
-                            Log.i("UserLibraryRepository", "Migrated on-demand legacy episode '${legacy.mediaId}' -> '$canonicalMediaId'")
-                            return migrated
-                        }
-                    }
-                } else if (MediaIdHelper.isCanonicalMovieId(canonicalMediaId)) {
-                    // Check movie match by resolving legacy candidate
-                    val resolved = resolver.resolve(rawTitle = legacy.title.ifBlank { legacy.mediaId })
-                    if (resolved.mediaId == canonicalMediaId) {
-                        val migrated = PlaybackProgress(
-                            mediaId = canonicalMediaId,
-                            title = resolved.title.ifBlank { legacy.title },
-                            positionMs = legacy.positionMs,
-                            durationMs = legacy.durationMs,
-                            timestamp = legacy.timestamp,
-                            isEpisode = false
-                        )
-                        savePlaybackProgress(migrated)
-                        deletePlaybackProgress(legacy.mediaId)
-                        Log.i("UserLibraryRepository", "Migrated on-demand legacy movie '${legacy.mediaId}' -> '$canonicalMediaId'")
-                        return migrated
-                    }
-                }
+        // Remote Firestore fallback: Query remote Firestore by mediaId
+        val remoteUid = userId ?: return null
+        return try {
+            val doc = firestore.collection("users")
+                .document(remoteUid)
+                .collection("watch_history")
+                .document(mediaId)
+                .get()
+                .await()
+            val remoteProgress = parsePlaybackProgress(doc)
+            if (remoteProgress != null) {
+                watchHistoryDao.upsert(
+                    WatchHistoryEntity(
+                        userId = remoteUid,
+                        mediaId = remoteProgress.mediaId,
+                        title = remoteProgress.title,
+                        positionMs = remoteProgress.positionMs,
+                        durationMs = remoteProgress.durationMs,
+                        timestamp = remoteProgress.timestamp,
+                        isEpisode = remoteProgress.isEpisode
+                    )
+                )
             }
+            remoteProgress
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.w("UserLibraryRepository", "Error resolving on-demand legacy progress: ${e.message}")
+            AppLogger.e("UserLibraryRepository", "Error fetching remote watch history fallback: ${e.message}", e)
+            null
         }
-        return null
     }
 
     /**
-     * Scans Room and Firestore for any non-canonical watch history items
-     * (e.g. 40-char torrent infoHashes, raw file names, or unformatted titles).
-     * Resolves their canonical IDs via [MediaMetadataResolver], persists under the
-     * canonical key, and deletes the old bad records from Room and Firestore.
+     * Scans Room and Firestore for any legacy or non-canonical watch history items
+     * and migrates them directly to canonical IMDb identifiers.
      */
     suspend fun cleanupAndMigrateWatchHistory() {
+        val uid = currentUserId
+        if (uid.isNotBlank()) {
+            try {
+                watchHistoryDao.claimUnassignedItems(uid)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.w("UserLibraryRepository", "Error claiming unassigned items: ${e.message}")
+            }
+        }
         val resolver = mediaMetadataResolver?.get() ?: return
-        val uid = userId
 
-        // 1. Process local non-canonical items from Room
         try {
-            val localItems = watchHistoryDao.getAll()
-            for (item in localItems) {
-                if (!MediaIdHelper.isCanonical(item.mediaId)) {
-                    migrateSingleItem(
-                        item = PlaybackProgress(
-                            mediaId = item.mediaId,
-                            title = item.title,
-                            positionMs = item.positionMs,
-                            durationMs = item.durationMs,
-                            timestamp = item.timestamp,
-                            isEpisode = item.isEpisode
-                        ),
-                        resolver = resolver,
-                        uid = uid
-                    )
-                }
+            val legacyItems = watchHistoryDao.getLegacyItems(uid)
+            for (item in legacyItems) {
+                migrateSingleItem(
+                    item = PlaybackProgress(
+                        mediaId = item.mediaId,
+                        title = item.title,
+                        positionMs = item.positionMs,
+                        durationMs = item.durationMs,
+                        timestamp = item.timestamp,
+                        isEpisode = item.isEpisode
+                    ),
+                    resolver = resolver,
+                    uid = uid
+                )
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Log.w("UserLibraryRepository", "Error during local watch history migration: ${e.message}")
-        }
-
-        // 2. Process remote non-canonical items from Firestore
-        if (uid != null) {
-            try {
-                val snapshot = firestore.collection("users")
-                    .document(uid)
-                    .collection("watch_history")
-                    .get()
-                    .await()
-
-                for (doc in snapshot.documents) {
-                    val rawId = doc.id
-                    if (!MediaIdHelper.isCanonical(rawId)) {
-                        val progress = parsePlaybackProgress(doc)
-                        if (progress != null) {
-                            migrateSingleItem(progress, resolver, uid, rawDocId = rawId)
-                        } else {
-                            // Purge corrupt or empty document
-                            doc.reference.delete().await()
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                Log.w("UserLibraryRepository", "Error during remote watch history migration: ${e.message}")
-            }
         }
     }
 
@@ -712,21 +837,80 @@ class UserLibraryRepository @Inject constructor(
     ) {
         val oldId = rawDocId ?: item.mediaId
         try {
-            val titleToParse = item.title.ifBlank { oldId }
-            val resolved = resolver.resolve(rawTitle = titleToParse)
-            if (MediaIdHelper.isCanonical(resolved.mediaId) && resolved.mediaId != oldId) {
-                val migratedProgress = item.copy(
-                    mediaId = resolved.mediaId,
-                    title = if (resolved.title.isNotBlank()) resolved.title else item.title,
+            var canonicalId: String? = null
+            var resolvedTitle: String = item.title
+            var isEpisode: Boolean = item.isEpisode
+
+            val episodeComponents = MediaIdHelper.parseCanonicalEpisode(oldId)
+            if (episodeComponents != null || item.isEpisode || (oldId.contains("_s") && oldId.contains("_e"))) {
+                isEpisode = true
+                val sNum = episodeComponents?.second ?: 1
+                val eNum = episodeComponents?.third ?: 1
+                var seriesId = episodeComponents?.first ?: 0
+                var imdbId = episodeComponents?.imdbId
+
+                if (imdbId.isNullOrBlank() && seriesId > 0) {
+                    val fav = favoriteDao?.getFavoriteTvSeries(currentUserId)?.firstOrNull { it.seriesId == seriesId }
+                    imdbId = fav?.imdbId?.takeIf(String::isNotBlank)
+                        ?: downloadRecordDao?.getDownloadedEpisodes(currentUserId)?.firstOrNull { it.seriesId == seriesId }?.imdbId?.takeIf(String::isNotBlank)
+                        ?: torrentDownloadDao?.getAll()?.firstOrNull { it.seriesId == seriesId }?.imdbId?.takeIf(String::isNotBlank)
+                }
+
+                if (imdbId.isNullOrBlank()) {
+                    val resolved = resolver.resolve(rawTitle = item.title.ifBlank { oldId })
+                    if (!resolved.imdbId.isNullOrBlank()) {
+                        imdbId = resolved.imdbId
+                    }
+                    if (seriesId <= 0 && resolved.seriesId > 0) {
+                        seriesId = resolved.seriesId
+                    }
+                    if (resolved.title.isNotBlank()) {
+                        resolvedTitle = resolved.title
+                    }
+                }
+
+                canonicalId = MediaIdHelper.forEpisode(imdbId, seriesId, sNum, eNum, resolvedTitle)
+            } else if (MediaIdHelper.isInfoHash(oldId)) {
+                val resolved = resolver.resolve(rawTitle = item.title.ifBlank { oldId })
+                if (MediaIdHelper.isCanonical(resolved.mediaId) && resolved.mediaId != oldId) {
+                    canonicalId = resolved.mediaId
+                    resolvedTitle = resolved.title.ifBlank { item.title }
                     isEpisode = resolved.isEpisode
+                } else {
+                    deletePlaybackProgress(oldId)
+                    Log.i("UserLibraryRepository", "Purged unresolvable infoHash document '$oldId' from watch history")
+                    return
+                }
+            } else {
+                isEpisode = false
+                val movieId = oldId.toIntOrNull() ?: 0
+                var imdbId: String? = null
+                if (movieId > 0) {
+                    val fav = favoriteDao?.getFavoriteMovies(currentUserId)?.firstOrNull { it.movieId == movieId }
+                    imdbId = fav?.imdbId?.takeIf(String::isNotBlank)
+                        ?: downloadRecordDao?.getDownloadedMovies(currentUserId)?.firstOrNull { it.movieId == movieId }?.imdbId?.takeIf(String::isNotBlank)
+                }
+                if (imdbId.isNullOrBlank()) {
+                    val resolved = resolver.resolve(rawTitle = item.title.ifBlank { oldId })
+                    if (!resolved.imdbId.isNullOrBlank()) {
+                        imdbId = resolved.imdbId
+                    }
+                    if (resolved.title.isNotBlank()) {
+                        resolvedTitle = resolved.title
+                    }
+                }
+                canonicalId = MediaIdHelper.forMovie(imdbId, movieId, resolvedTitle)
+            }
+
+            if (canonicalId != null && canonicalId != oldId && MediaIdHelper.isCanonical(canonicalId)) {
+                val migratedProgress = item.copy(
+                    mediaId = canonicalId,
+                    title = resolvedTitle,
+                    isEpisode = isEpisode
                 )
                 savePlaybackProgress(migratedProgress)
                 deletePlaybackProgress(oldId)
-                Log.i("UserLibraryRepository", "Successfully migrated legacy watch history '$oldId' -> '${resolved.mediaId}'")
-            } else if (MediaIdHelper.isInfoHash(oldId)) {
-                // Purge orphan unresolvable 40-character torrent infoHash
-                deletePlaybackProgress(oldId)
-                Log.i("UserLibraryRepository", "Purged unresolvable infoHash document '$oldId' from watch history")
+                Log.i("UserLibraryRepository", "Successfully migrated legacy watch history '$oldId' -> '$canonicalId'")
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -734,90 +918,49 @@ class UserLibraryRepository @Inject constructor(
         }
     }
 
-    /** Observes the user's watch history from local Room cache, syncing with Firestore when signed in. */
-    fun getWatchHistory(): Flow<List<PlaybackProgress>> = callbackFlow {
-        val uid = userId
-        var firestoreListener: com.google.firebase.firestore.ListenerRegistration? = null
-
-        if (uid != null) {
-            firestoreListener = firestore.collection("users")
-                .document(uid)
-                .collection("watch_history")
-                .addSnapshotListener { snapshot, error ->
-                    if (error != null) {
-                        Log.e("UserLibraryRepository", "Error observing remote watch history: ${error.message}")
-                        return@addSnapshotListener
-                    }
-                    val remoteItems = snapshot?.documents?.mapNotNull { doc ->
-                        parsePlaybackProgress(doc)
-                    } ?: emptyList()
-
-                    if (remoteItems.isNotEmpty()) {
-                        launch(Dispatchers.IO) {
-                            for ((mediaId, title, positionMs, durationMs, timestamp, isEpisode) in remoteItems) {
-                                try {
-                                    val local = watchHistoryDao.get(mediaId)
-                                    if (local == null || timestamp > local.timestamp) {
-                                        watchHistoryDao.upsert(
-                                            WatchHistoryEntity(
-                                                mediaId = mediaId,
-                                                title = title,
-                                                positionMs = positionMs,
-                                                durationMs = durationMs,
-                                                timestamp = timestamp,
-                                                isEpisode = isEpisode
-                                            )
-                                        )
-                                    }
-                                } catch (e: Exception) {
-                                    if (e is CancellationException) throw e
-                                    Log.e("UserLibraryRepository", "Error syncing item: ${e.message}")
-                                }
-                            }
-                            if (remoteItems.any { !MediaIdHelper.isCanonical(it.mediaId) }) {
-                                cleanupAndMigrateWatchHistory()
-                            }
-                        }
-                    }
-                }
+    /**
+     * Observes the user's watch history exclusively from local Room cache (0 continuous Firestore reads).
+     */
+    fun getWatchHistory(): Flow<List<PlaybackProgress>> {
+        val uid = currentUserId
+        val flow = if (uid.isNotBlank()) {
+            watchHistoryDao.observeAll(uid)
+        } else {
+            watchHistoryDao.observeAll("")
         }
 
-        val job = launch(Dispatchers.IO) {
-            watchHistoryDao.observeAll().collect { entities ->
-                val list = entities.map {
-                    PlaybackProgress(
-                        mediaId = it.mediaId,
-                        title = it.title,
-                        positionMs = it.positionMs,
-                        durationMs = it.durationMs,
-                        timestamp = it.timestamp,
-                        isEpisode = it.isEpisode
-                    )
-                }.sortedByDescending { it.timestamp }
-                send(list)
-            }
-        }
-
-        awaitClose {
-            firestoreListener?.remove()
-            job.cancel()
+        return flow.map { entities ->
+            entities.map {
+                PlaybackProgress(
+                    mediaId = it.mediaId,
+                    title = it.title,
+                    positionMs = it.positionMs,
+                    durationMs = it.durationMs,
+                    timestamp = it.timestamp,
+                    isEpisode = it.isEpisode
+                )
+            }.sortedByDescending { it.timestamp }
         }
     }
 
     /** Deletes watch history playback progress locally from Room and from Firestore. */
     suspend fun deletePlaybackProgress(mediaId: String) {
         if (mediaId.isBlank()) return
+        val uid = currentUserId
         try {
-            watchHistoryDao.delete(mediaId)
+            watchHistoryDao.delete(uid, mediaId)
+            if (uid.isNotBlank()) {
+                watchHistoryDao.delete("", mediaId)
+            }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             AppLogger.e("UserLibraryRepository", "Error deleting watch history locally: ${e.message}", e)
         }
 
-        val uid = userId ?: return
+        val remoteUid = userId ?: return
         try {
             firestore.collection("users")
-                .document(uid)
+                .document(remoteUid)
                 .collection("watch_history")
                 .document(mediaId)
                 .delete()
@@ -833,10 +976,12 @@ class UserLibraryRepository @Inject constructor(
         movieId: Int,
         movieTitle: String,
         posterUrl: String? = null,
-        movie: Movie? = null
+        movie: Movie? = null,
+        imdbId: String? = null
     ) {
         val title = movieTitle.ifBlank { movie?.title.orEmpty() }
-        val mediaId = MediaIdHelper.forMovie(movieId, title = title)
+        val effectiveImdb = MediaIdHelper.normalizeImdbId(imdbId ?: movie?.imdbCode)
+        val mediaId = MediaIdHelper.forMovie(effectiveImdb, movieId, title)
         val progress = PlaybackProgress(
             mediaId = mediaId,
             title = title,
@@ -849,11 +994,12 @@ class UserLibraryRepository @Inject constructor(
 
         val downloadedMovie = DownloadedMovie(
             movieId = movieId,
+            imdbId = effectiveImdb,
             movieTitle = title,
             quality = movie?.torrents?.firstOrNull()?.quality ?: "HD",
-            hash = movieId.toString(),
+            hash = effectiveImdb?.ifBlank { null } ?: movieId.toString(),
             timestamp = System.currentTimeMillis(),
-            movie = movie ?: Movie(id = movieId, title = title, mediumCoverImage = posterUrl)
+            movie = movie ?: Movie(id = movieId, imdbCode = effectiveImdb, title = title, mediumCoverImage = posterUrl)
         )
         markAsDownloaded(downloadedMovie)
     }
@@ -864,48 +1010,77 @@ class UserLibraryRepository @Inject constructor(
             movieId = movie.id,
             movieTitle = movie.title.orEmpty(),
             posterUrl = movie.mediumCoverImage,
-            movie = movie
+            movie = movie,
+            imdbId = movie.imdbCode
         )
     }
 
     /** Clears watch progress and downloads for a movie in both Room and Firestore. */
-    suspend fun markMovieAsUncompleted(movieId: Int, movieTitle: String? = null) {
-        val mediaId = MediaIdHelper.forMovie(movieId, title = movieTitle)
+    suspend fun markMovieAsUncompleted(movieId: Int, movieTitle: String? = null, imdbId: String? = null) {
+        val effectiveImdb = MediaIdHelper.normalizeImdbId(imdbId)
+        val mediaId = MediaIdHelper.forMovie(effectiveImdb, movieId, movieTitle)
         deletePlaybackProgress(mediaId)
-        removeMovieDownloads(movieId)
+        if (effectiveImdb != null && effectiveImdb != movieId.toString()) {
+            deletePlaybackProgress(movieId.toString())
+        }
+        removeMovieDownloads(movieId, effectiveImdb)
     }
 
     /** Clears watch progress and downloads for a movie in both Room and Firestore. */
     suspend fun markMovieAsUncompleted(movie: Movie) {
-        markMovieAsUncompleted(movie.id, movie.title)
+        markMovieAsUncompleted(movie.id, movie.title, movie.imdbCode)
     }
 
     /** Deletes download records for a specific movie in Firestore and Room. */
-    suspend fun removeMovieDownloads(movieId: Int) {
+    suspend fun removeMovieDownloads(movieId: Int, imdbId: String? = null) {
+        val effectiveImdb = MediaIdHelper.normalizeImdbId(imdbId).orEmpty()
+        if (movieId <= 0 && effectiveImdb.isBlank()) return
+        val uid = currentUserId
         try {
-            torrentDownloadDao?.deleteForMovie(movieId)
+            if (movieId > 0) {
+                downloadRecordDao?.deleteMoviesByMovieId(uid, movieId)
+            }
+            if (effectiveImdb.isNotBlank()) {
+                downloadRecordDao?.deleteMoviesByImdbId(uid, effectiveImdb)
+            }
+            if (movieId > 0) {
+                torrentDownloadDao?.deleteForMovie(movieId)
+            }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             AppLogger.e("UserLibraryRepository", "Error deleting movie download local record: ${e.message}", e)
         }
 
-        val uid = userId ?: return
+        val remoteUid = userId ?: return
         try {
-            firestore.collection("users")
-                .document(uid)
-                .collection("downloads")
-                .document(movieId.toString())
-                .delete()
-                .await()
+            if (movieId > 0) {
+                firestore.collection("users")
+                    .document(remoteUid)
+                    .collection("downloads")
+                    .document(movieId.toString())
+                    .delete()
+                    .await()
+            }
 
-            val snapshot = firestore.collection("users")
-                .document(uid)
-                .collection("downloads")
-                .whereEqualTo("movieId", movieId)
-                .get()
-                .await()
-            for (doc in snapshot.documents) {
-                doc.reference.delete().await()
+            if (effectiveImdb.isNotBlank()) {
+                firestore.collection("users")
+                    .document(remoteUid)
+                    .collection("downloads")
+                    .document(effectiveImdb)
+                    .delete()
+                    .await()
+            }
+
+            if (movieId > 0) {
+                val snapshot = firestore.collection("users")
+                    .document(remoteUid)
+                    .collection("downloads")
+                    .whereEqualTo("movieId", movieId)
+                    .get()
+                    .await()
+                for (doc in snapshot.documents) {
+                    doc.reference.delete().await()
+                }
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -920,9 +1095,11 @@ class UserLibraryRepository @Inject constructor(
         episodeNumber: Int,
         episodeTitle: String,
         seriesName: String,
-        stillPath: String? = null
+        stillPath: String? = null,
+        imdbId: String? = null
     ) {
-        val mediaId = MediaIdHelper.forEpisode(seriesId, seasonNumber, episodeNumber)
+        val effectiveImdb = MediaIdHelper.normalizeImdbId(imdbId)
+        val mediaId = MediaIdHelper.forEpisode(effectiveImdb, seriesId, seasonNumber, episodeNumber, seriesName)
         val title = if (seriesName.isNotBlank()) {
             "$seriesName - S${seasonNumber}E${episodeNumber} - $episodeTitle"
         } else {
@@ -938,9 +1115,14 @@ class UserLibraryRepository @Inject constructor(
         )
         savePlaybackProgress(progress)
 
-        val docId = "tv_${seriesId}_s${seasonNumber}_e${episodeNumber}"
+        val docId = if (!effectiveImdb.isNullOrBlank()) {
+            "${effectiveImdb}_s${seasonNumber}_e${episodeNumber}"
+        } else {
+            "tv_${seriesId}_s${seasonNumber}_e${episodeNumber}"
+        }
         val downloadedEpisode = DownloadedEpisode(
             seriesId = seriesId,
+            imdbId = effectiveImdb,
             seriesName = seriesName,
             seasonNumber = seasonNumber,
             episodeNumber = episodeNumber,
@@ -958,30 +1140,53 @@ class UserLibraryRepository @Inject constructor(
     suspend fun markEpisodeAsUncompleted(
         seriesId: Int,
         seasonNumber: Int,
-        episodeNumber: Int
+        episodeNumber: Int,
+        imdbId: String? = null
     ) {
-        val mediaId = MediaIdHelper.forEpisode(seriesId, seasonNumber, episodeNumber)
+        val effectiveImdb = MediaIdHelper.normalizeImdbId(imdbId)
+        val mediaId = MediaIdHelper.forEpisode(effectiveImdb, seriesId, seasonNumber, episodeNumber)
         deletePlaybackProgress(mediaId)
-        removeEpisodeDownloads(seriesId, seasonNumber, episodeNumber)
+        removeEpisodeDownloads(seriesId, seasonNumber, episodeNumber, effectiveImdb)
     }
 
     /** Deletes download records for a specific episode in Firestore and Room. */
     suspend fun removeEpisodeDownloads(
         seriesId: Int,
         seasonNumber: Int,
-        episodeNumber: Int
+        episodeNumber: Int,
+        imdbId: String? = null
     ) {
+        val effectiveImdb = MediaIdHelper.normalizeImdbId(imdbId).orEmpty()
+        if (seriesId <= 0 && effectiveImdb.isBlank() && (seasonNumber <= 0 || episodeNumber <= 0)) return
+        val uid = currentUserId
+        val canonicalDocId = MediaIdHelper.forEpisode(effectiveImdb, seriesId, seasonNumber, episodeNumber)
         try {
-            torrentDownloadDao?.deleteForEpisode(seriesId, seasonNumber, episodeNumber)
+            downloadRecordDao?.deleteEpisodeByHash(uid, canonicalDocId)
+            if (seriesId > 0 && seasonNumber > 0 && episodeNumber > 0) {
+                downloadRecordDao?.deleteEpisode(uid, seriesId, seasonNumber, episodeNumber)
+            }
+            if (effectiveImdb.isNotBlank() && seasonNumber > 0 && episodeNumber > 0) {
+                downloadRecordDao?.deleteEpisodeByAnyId(uid, seriesId, effectiveImdb, seasonNumber, episodeNumber)
+            }
+            if (seriesId > 0 && seasonNumber > 0 && episodeNumber > 0) {
+                torrentDownloadDao?.deleteForEpisode(seriesId, seasonNumber, episodeNumber)
+            }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             AppLogger.e("UserLibraryRepository", "Error deleting local episode download: ${e.message}", e)
         }
 
-        val uid = userId ?: return
+        val remoteUid = userId ?: return
         try {
+            firestore.collection("users")
+                .document(remoteUid)
+                .collection("tv_downloads")
+                .document(canonicalDocId)
+                .delete()
+                .await()
+
             val snapshot = firestore.collection("users")
-                .document(uid)
+                .document(remoteUid)
                 .collection("tv_downloads")
                 .whereEqualTo("seriesId", seriesId)
                 .whereEqualTo("seasonNumber", seasonNumber)
@@ -1002,7 +1207,8 @@ class UserLibraryRepository @Inject constructor(
         seriesId: Int,
         seasonNumber: Int,
         episodes: List<com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode>,
-        seriesName: String
+        seriesName: String,
+        imdbId: String? = null
     ) {
         for (episode in episodes) {
             markEpisodeAsCompleted(
@@ -1011,7 +1217,8 @@ class UserLibraryRepository @Inject constructor(
                 episodeNumber = episode.episodeNumber,
                 episodeTitle = episode.name.orEmpty(),
                 seriesName = seriesName,
-                stillPath = episode.stillPath
+                stillPath = episode.stillPath,
+                imdbId = imdbId
             )
         }
     }
@@ -1020,14 +1227,204 @@ class UserLibraryRepository @Inject constructor(
     suspend fun markSeasonAsUncompleted(
         seriesId: Int,
         seasonNumber: Int,
-        episodes: List<com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode>
+        episodes: List<com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode>,
+        imdbId: String? = null
     ) {
         for (episode in episodes) {
             markEpisodeAsUncompleted(
                 seriesId = seriesId,
                 seasonNumber = seasonNumber,
-                episodeNumber = episode.episodeNumber
+                episodeNumber = episode.episodeNumber,
+                imdbId = imdbId
             )
+        }
+    }
+
+    /**
+     * Performs a one-shot bootstrap or delta sync from Firestore into local Room cache.
+     * Guaranteed to use minimal reads:
+     * - If full sync: reads collections once and inserts all into Room.
+     * - If delta sync: reads only docs where updatedAt > lastSyncTimestamp.
+     * - Respects a 15-minute throttle unless [forceFull] is true.
+     */
+    suspend fun syncFromCloud(forceFull: Boolean = false) {
+        val uid = userId ?: return
+        try {
+            watchHistoryDao.claimUnassignedItems(uid)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            AppLogger.w("UserLibraryRepository", "Error claiming unassigned watch history: ${e.message}")
+        }
+        val metadataDao = syncMetadataDao ?: return
+        val now = System.currentTimeMillis()
+
+        val lastSync = metadataDao.getLastSyncTimestamp(uid, "library") ?: 0L
+        if (!forceFull && lastSync > 0L && (now - lastSync) < 15 * 60 * 1000L) {
+            // Throttled: synced recently, no need to read Firestore
+            return
+        }
+
+        try {
+            // 1. Sync Favorites
+            val favRef = firestore.collection("users").document(uid).collection("favorites")
+            val favQuery = if (lastSync > 0L && !forceFull) {
+                favRef.whereGreaterThan("updatedAt", lastSync)
+            } else {
+                favRef
+            }
+            val favSnapshot = favQuery.get().await()
+            val movieEntities = mutableListOf<FavoriteMovieEntity>()
+            val tvEntities = mutableListOf<FavoriteTvSeriesEntity>()
+
+            for (doc in favSnapshot.documents) {
+                if (isTvDocument(doc)) {
+                    val id = (doc.get("id") as? Number)?.toInt() ?: 0
+                    val imdb = MediaIdHelper.normalizeImdbId(
+                        doc.getString("imdbId") ?: doc.getString("imdb_id") ?: if (MediaIdHelper.isCanonicalMovieId(doc.id)) doc.id else null
+                    ) ?: ""
+                    val name = doc.getString("name").orEmpty()
+                    val posterPath = doc.getString("posterPath")
+                    val firstAirDate = doc.getString("firstAirDate")
+                    val voteAverage = (doc.get("voteAverage") as? Number)?.toDouble()
+                    val genreIds = (doc.get("genreIds") as? List<*>)
+                        .orEmpty()
+                        .mapNotNull { (it as? Number)?.toInt() }
+                        .joinToString(",")
+                    val numberOfSeasons = (doc.get("numberOfSeasons") as? Number)?.toInt()
+                    val numberOfEpisodes = (doc.get("numberOfEpisodes") as? Number)?.toInt()
+                    val updatedAt = doc.getLong("updatedAt") ?: now
+
+                    tvEntities.add(
+                        FavoriteTvSeriesEntity(
+                            userId = uid,
+                            seriesId = id,
+                            imdbId = imdb,
+                            name = name,
+                            posterPath = posterPath,
+                            firstAirDate = firstAirDate,
+                            voteAverage = voteAverage,
+                            genreIds = genreIds,
+                            numberOfSeasons = numberOfSeasons,
+                            numberOfEpisodes = numberOfEpisodes,
+                            updatedAt = updatedAt
+                        )
+                    )
+                } else {
+                    val movie = doc.toObject(Movie::class.java)
+                    if (movie != null && (movie.id > 0 || !movie.imdbCode.isNullOrBlank())) {
+                        val normalizedImdb = MediaIdHelper.normalizeImdbId(
+                            movie.imdbCode ?: if (MediaIdHelper.isCanonicalMovieId(doc.id)) doc.id else null
+                        ) ?: ""
+                        val enrichedMovie = if (movie.imdbCode.isNullOrBlank() && normalizedImdb.isNotBlank()) {
+                            movie.copy(imdbCode = normalizedImdb)
+                        } else {
+                            movie
+                        }
+                        movieEntities.add(FavoriteMovieEntity.from(uid, enrichedMovie))
+                    }
+                }
+            }
+
+            if (movieEntities.isNotEmpty()) favoriteDao?.upsertMovies(movieEntities)
+            if (tvEntities.isNotEmpty()) favoriteDao?.upsertTvSeriesList(tvEntities)
+
+            // 2. Sync Movie Downloads
+            val dlSnapshot = firestore.collection("users").document(uid).collection("downloads").get().await()
+            val dlMovies = dlSnapshot.documents.mapNotNull { doc ->
+                val dl = doc.toObject(DownloadedMovie::class.java) ?: return@mapNotNull null
+                val normalizedImdb = MediaIdHelper.normalizeImdbId(
+                    dl.imdbId ?: dl.movie?.imdbCode ?: if (MediaIdHelper.isCanonicalMovieId(doc.id)) doc.id else null
+                ) ?: ""
+                val finalDl = if (dl.imdbId.isNullOrBlank() && normalizedImdb.isNotBlank()) dl.copy(imdbId = normalizedImdb) else dl
+                DownloadedMovieEntity.from(uid, finalDl)
+            }
+            if (dlMovies.isNotEmpty()) downloadRecordDao?.upsertMovies(dlMovies)
+
+            // 3. Sync TV Downloads
+            val tvDlSnapshot = firestore.collection("users").document(uid).collection("tv_downloads").get().await()
+            val dlEpisodes = tvDlSnapshot.documents.mapNotNull { doc ->
+                val ep = doc.toObject(DownloadedEpisode::class.java) ?: return@mapNotNull null
+                val episodeTriple = MediaIdHelper.parseCanonicalEpisode(doc.id)
+                val normalizedImdb = MediaIdHelper.normalizeImdbId(ep.imdbId ?: episodeTriple?.imdbId) ?: ""
+                val finalEp = if (ep.imdbId.isNullOrBlank() && normalizedImdb.isNotBlank()) ep.copy(imdbId = normalizedImdb) else ep
+                DownloadedEpisodeEntity.from(uid, finalEp)
+            }
+            if (dlEpisodes.isNotEmpty()) downloadRecordDao?.upsertEpisodes(dlEpisodes)
+
+            // 4. Sync Watch History (Recent 100 items)
+            val historySnapshot = firestore.collection("users")
+                .document(uid)
+                .collection("watch_history")
+                .orderBy("timestamp", Query.Direction.DESCENDING)
+                .limit(100)
+                .get()
+                .await()
+
+            val resolver = mediaMetadataResolver?.get()
+            for (doc in historySnapshot.documents) {
+                val progress = parsePlaybackProgress(doc)
+                if (progress != null) {
+                    val docId = doc.id
+                    val isLegacyDoc = docId.startsWith("media_") || docId.startsWith("tv_") || !MediaIdHelper.isCanonical(docId)
+                    if (isLegacyDoc && resolver != null) {
+                        migrateSingleItem(
+                            item = progress,
+                            resolver = resolver,
+                            uid = uid,
+                            rawDocId = docId
+                        )
+                    } else {
+                        val local = watchHistoryDao.get(uid, progress.mediaId)
+                        if (local == null || progress.timestamp > local.timestamp) {
+                            watchHistoryDao.upsert(
+                                WatchHistoryEntity(
+                                    userId = uid,
+                                    mediaId = progress.mediaId,
+                                    title = progress.title,
+                                    positionMs = progress.positionMs,
+                                    durationMs = progress.durationMs,
+                                    timestamp = progress.timestamp,
+                                    isEpisode = progress.isEpisode
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Ensure any legacy local items are backfilled to canonical format
+            cleanupAndMigrateWatchHistory()
+
+            // 5. Sync Remote Settings (One-time fetch of settings/config)
+            try {
+                val settingsDoc = firestore.collection("users")
+                    .document(uid)
+                    .collection("settings")
+                    .document("config")
+                    .get()
+                    .await()
+                if (settingsDoc.exists()) {
+                    val remoteRating = (settingsDoc.get("minimumRating") as? Number)?.toFloat()
+                    if (remoteRating != null) {
+                        preferenceManager?.get()?.setMinimumRating(remoteRating)
+                    }
+                    val remoteLanguages = settingsDoc.getString("filteredLanguages")
+                    if (!remoteLanguages.isNullOrBlank()) {
+                        preferenceManager?.get()?.setFilteredLanguages(remoteLanguages)
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                AppLogger.w("UserLibraryRepository", "Error syncing remote settings: ${e.message}")
+            }
+
+            metadataDao.setLastSyncTimestamp(
+                SyncMetadataEntity(userId = uid, collectionKey = "library", lastSyncTimestamp = now)
+            )
+            Log.i("UserLibraryRepository", "Successfully synced user library from cloud for $uid")
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            AppLogger.e("UserLibraryRepository", "Error syncing library from cloud: ${e.message}", e)
         }
     }
 }

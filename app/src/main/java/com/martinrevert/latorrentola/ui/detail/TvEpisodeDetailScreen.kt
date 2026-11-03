@@ -8,6 +8,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
+import com.martinrevert.latorrentola.utils.MediaIdHelper
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -213,7 +214,12 @@ fun TvEpisodeDetailScreen(
 
                 is TvEpisodeDetailUiState.Success -> {
                     var showOptionDialog by remember { mutableStateOf(false) }
-                    val mediaId = "media_${seriesId}_s${seasonNumber}_e${episodeNumber}"
+                    val mediaId = MediaIdHelper.forEpisode(
+                        imdbId = state.imdbId,
+                        seriesId = seriesId,
+                        seasonNumber = seasonNumber,
+                        episodeNumber = episodeNumber
+                    )
                     val progress = watchHistoryMap[mediaId]
                     val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
 

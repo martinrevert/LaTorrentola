@@ -128,8 +128,19 @@ data class TmdbTvSummary(
     val aggregateCredits: TmdbTvAggregateCredits? = null,
     @SerializedName("videos")
     @SerialName("videos")
-    val videos: TmdbVideosResponse? = null
+    val videos: TmdbVideosResponse? = null,
+    @SerializedName("imdb_id")
+    @SerialName("imdb_id")
+    val imdbId: String? = null,
+    @SerializedName("external_ids")
+    @SerialName("external_ids")
+    val externalIds: TmdbTvExternalIds? = null
 ) {
+    /** Normalized canonical IMDb identifier if available (e.g., "tt0944947"). */
+    val effectiveImdbId: String?
+        get() = com.martinrevert.latorrentola.utils.MediaIdHelper.normalizeImdbId(
+            imdbId?.takeIf(String::isNotBlank) ?: externalIds?.imdbId?.takeIf(String::isNotBlank)
+        )
     /** Full-size poster image URL, or `null` when no poster is available. */
     val fullPosterUrl: String?
         get() = posterPath?.takeIf(String::isNotBlank)?.let { "https://image.tmdb.org/t/p/w500$it" }

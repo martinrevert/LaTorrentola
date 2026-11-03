@@ -201,10 +201,16 @@ class TvDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _favoriteActionError.value = null
             try {
-                if (series.id in favoriteTvSeriesIds.value) {
-                    userLibraryRepository.removeFavoriteTvSeries(series)
+                val currentImdb = (uiState.value as? TvDetailUiState.Success)?.imdbId ?: series.effectiveImdbId
+                val effectiveSeries = if (series.imdbId.isNullOrBlank() && !currentImdb.isNullOrBlank()) {
+                    series.copy(imdbId = currentImdb)
                 } else {
-                    userLibraryRepository.addFavoriteTvSeries(series)
+                    series
+                }
+                if (series.id in favoriteTvSeriesIds.value) {
+                    userLibraryRepository.removeFavoriteTvSeries(effectiveSeries)
+                } else {
+                    userLibraryRepository.addFavoriteTvSeries(effectiveSeries)
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e

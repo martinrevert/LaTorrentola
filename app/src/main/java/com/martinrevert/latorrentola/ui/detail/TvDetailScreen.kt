@@ -820,7 +820,7 @@ private fun TvSeriesDetailTvContent(
                             watchHistoryMap.forEach { (mediaId, progress) ->
                                 if (progress.isCompleted || progress.progressPercent >= 95) {
                                     val parsed = MediaIdHelper.parseCanonicalEpisode(mediaId)
-                                    if (parsed != null && parsed.first == series.id && parsed.second == season.seasonNumber) {
+                                    if (parsed != null && parsed.matchesSeries(series.id, series.effectiveImdbId) && parsed.second == season.seasonNumber) {
                                         numbers.add(parsed.third)
                                     }
                                 }
@@ -909,7 +909,12 @@ private fun TvSeriesDetailTvContent(
                                     it.seasonNumber == (selectedSeasonNumber ?: episode.seasonNumber) &&
                                             it.episodeNumber == episode.episodeNumber
                                 }
-                                val mediaId = "media_${series.id}_s${episode.seasonNumber}_e${episode.episodeNumber}"
+                                val mediaId = MediaIdHelper.forEpisode(
+                                    imdbId = series.effectiveImdbId,
+                                    seriesId = series.id,
+                                    seasonNumber = episode.seasonNumber,
+                                    episodeNumber = episode.episodeNumber
+                                )
                                 val progress = watchHistoryMap[mediaId]
                                 val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
                                 TvEpisodeCard(
@@ -1324,7 +1329,7 @@ private fun HandheldTvSeriesDetailContent(
                             watchHistoryMap.forEach { (mediaId, progress) ->
                                 if (progress.isCompleted || progress.progressPercent >= 95) {
                                     val parsed = MediaIdHelper.parseCanonicalEpisode(mediaId)
-                                    if (parsed != null && parsed.first == series.id && parsed.second == season.seasonNumber) {
+                                    if (parsed != null && parsed.matchesSeries(series.id, series.effectiveImdbId) && parsed.second == season.seasonNumber) {
                                         numbers.add(parsed.third)
                                     }
                                 }
@@ -1402,7 +1407,12 @@ private fun HandheldTvSeriesDetailContent(
                                             it.seasonNumber == (selectedSeasonNumber ?: episode.seasonNumber) &&
                                                     it.episodeNumber == episode.episodeNumber
                                         }
-                                        val mediaId = "media_${series.id}_s${episode.seasonNumber}_e${episode.episodeNumber}"
+                                        val mediaId = MediaIdHelper.forEpisode(
+                                            imdbId = series.effectiveImdbId,
+                                            seriesId = series.id,
+                                            seasonNumber = episode.seasonNumber,
+                                            episodeNumber = episode.episodeNumber
+                                        )
                                         val progress = watchHistoryMap[mediaId]
                                         val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
                                         Box(modifier = Modifier.weight(1f)) {
@@ -1429,7 +1439,12 @@ private fun HandheldTvSeriesDetailContent(
                                     it.seasonNumber == (selectedSeasonNumber ?: episode.seasonNumber) &&
                                             it.episodeNumber == episode.episodeNumber
                                 }
-                                val mediaId = "media_${series.id}_s${episode.seasonNumber}_e${episode.episodeNumber}"
+                                val mediaId = MediaIdHelper.forEpisode(
+                                    imdbId = series.effectiveImdbId,
+                                    seriesId = series.id,
+                                    seasonNumber = episode.seasonNumber,
+                                    episodeNumber = episode.episodeNumber
+                                )
                                 val progress = watchHistoryMap[mediaId]
                                 val progressPercent = progress?.let { if (it.isCompleted) 100 else it.progressPercent }
                                 TvEpisodeCard(

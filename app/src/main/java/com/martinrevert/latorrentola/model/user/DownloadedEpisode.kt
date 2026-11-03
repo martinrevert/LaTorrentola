@@ -22,6 +22,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class DownloadedEpisode(
     val seriesId: Int = 0,
+    val imdbId: String? = null,
     val seriesName: String = "",
     val seasonNumber: Int = 0,
     val episodeNumber: Int = 0,

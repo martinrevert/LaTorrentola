@@ -11,6 +11,7 @@ import com.martinrevert.latorrentola.network.AuthRepository
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
+import com.martinrevert.latorrentola.utils.AppLogger
 import com.martinrevert.latorrentola.utils.MovieFilter
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.UiText
@@ -18,6 +19,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.Date
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -216,28 +218,19 @@ class HomeViewModel @Inject constructor(
         initVisitDate()
         observeTopGenres()
         observeMovieFilters()
-        syncRemoteSettings()
+        syncRemoteLibrary()
     }
 
-    /** Observes authenticated user's remote filters and applies changed values locally. */
-    private fun syncRemoteSettings() {
-        viewModelScope.launch {
+    /** Performs an incremental cloud library sync into Room when user authentication is active. */
+    private fun syncRemoteLibrary() {
+        viewModelScope.launch(Dispatchers.IO) {
             authRepository.authStateFlow
                 .filterNotNull()
-                .flatMapLatest { user ->
-                    combine(
-                        userLibraryRepository.observeRemoteFilteredLanguages(user.uid),
-                        userLibraryRepository.observeRemoteMinimumRating(user.uid)
-                    ) { languages, rating -> languages to rating }
-                }
-                .collect { (remoteLanguages, remoteRating) ->
-                    if (remoteLanguages != null &&
-                        remoteLanguages != preferenceManager.getFilteredLanguages()
-                    ) {
-                        preferenceManager.setFilteredLanguages(remoteLanguages)
-                    }
-                    if (remoteRating != preferenceManager.getMinimumRating()) {
-                        preferenceManager.setMinimumRating(remoteRating)
+                .collect { _ ->
+                    try {
+                        userLibraryRepository.syncFromCloud(forceFull = false)
+                    } catch (e: Exception) {
+                        AppLogger.w("HomeViewModel", "Background sync completed with error: ${e.message}")
                     }
                 }
         }
