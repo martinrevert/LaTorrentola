@@ -81,7 +81,7 @@ Elige en los **Ajustes** de la app el modo que mejor se adapte a tu manera de ve
 * **Historial Inteligente**: La app recuerda exactamente en qué minuto y segundo te quedaste, tanto si estabas viendo un torrent, un archivo de tu servidor NAS o un vídeo local.
 * **Arquitectura Offline-First con Room**: Tus favoritos, descargas e historial viven localmente en la base de datos de tu dispositivo, ofreciendo navegación instantánea sin consumir cuota de red en la nube (manteniéndose siempre dentro del Free Tier).
 * **Estándar Universal IMDb e Independencia de Catálogos**: Favoritos, descargas y avances quedan vinculados al identificador estándar de la industria IMDb (`tt0111161` para películas, `tt0944947_s1_e2` para episodios regulares, `tt0944947_s0_e1` para especiales), protegiendo tu videoteca ante contingencias con servicios de terceros y con migración 100% transparente sin pérdida de datos.
-* **Selector de Perfiles Estilo Disney+ ("¿Quién anda ahí?")**: Disfruta de una experiencia OTT en la pantalla de inicio. Cuando hay perfiles guardados en el dispositivo, se muestran avatares circulares con fotos personalizadas, un botón para Crear perfil (`+`) y un modo para Editar perfiles.
+* **Selector de Perfiles Estilo Disney+ ("¿Quién anda ahí?")**: Disfruta de una experiencia OTT en la pantalla de inicio. Cuando hay perfiles guardados en el dispositivo, se muestran avatares circulares con fotos personalizadas, un botón para Crear perfil (`+`) y un modo para Editar perfiles. Para proteger la sincronización y la biblioteca personal, se requiere una cuenta autenticada.
 * **Desbloqueo Biométrico Passwordless**: En móviles y tablets con lector de huella o bloqueo de pantalla, al tocar un perfil se solicita autenticación biométrica inmediata para entrar sin contraseña, con alternativa automática a inicio de sesión con Google. En Android TV, la navegación es directa y fluida con el control remoto.
 * **Aislamiento Multi-Cuenta para Televisores Familiares**: ¿Compartes un Android TV o Chromecast en el living con tu familia? La app recuerda cada cuenta de Google localmente. Si un usuario cierra sesión o cambia de cuenta, los historiales y favoritos de cada miembro de la familia se conservan intactos en el dispositivo sin borrarse jamás.
 * **Sincronización en la Nube Inteligente**: Cambia de habitación o de dispositivo sin perder tu progreso mediante sincronización delta en segundo plano.
@@ -89,7 +89,7 @@ Elige en los **Ajustes** de la app el modo que mejor se adapte a tu manera de ve
 ### 9. 🎙️ Búsqueda por Voz, Síntesis de Texto y Notificaciones
 * **Búsqueda por Voz**: Toca el icono del micrófono o usa el botón de voz del mando de tu Smart TV para decir el título que buscas sin tener que escribirlo letra por letra.
 * **Lectura por Voz de Resúmenes**: Escucha los títulos y resúmenes de películas leídos en voz alta mediante un motor de síntesis de voz asíncrono y desacoplado, optimizado para evitar demoras en la interfaz de Android TV y dispositivos móviles.
-* **Avisos de Nuevos Estrenos**: Recibe notificaciones cuando haya nuevos lanzamientos destacados y entra directo a su ficha con un solo toque.
+* **Avisos de Nuevos Estrenos y Navegación Inteligente**: Recibe notificaciones cuando haya nuevos lanzamientos destacados y entra directo a su ficha con un solo toque. Incluso si la app estaba cerrada o sin sesión activa al pulsar la notificación, el sistema te guía por el inicio de sesión y te lleva automáticamente a la película elegida.
 
 ---
 

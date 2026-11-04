@@ -436,7 +436,6 @@
     <string name="create_profile">Crear perfil</string>
     <string name="edit_profiles">EDITAR PERFILES</string>
     <string name="done_editing_profiles">LISTO</string>
-    <string name="continue_as_guest">Continuar como invitado</string>
     <string name="biometric_prompt_title">Acceder al perfil</string>
     <string name="biometric_prompt_subtitle">Confirma tu huella digital o bloqueo para continuar como %1$s</string>
     <string name="biometric_auth_failed">No se pudo autenticar</string>

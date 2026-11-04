@@ -81,7 +81,7 @@ Have a personal movie collection stored on your computer or home server? La Torr
 * **Smart Watch History**: The app remembers the exact minute and second where you paused, whether you were streaming a torrent, playing from your NAS, or watching a local file.
 * **Fast Offline-First Room Architecture**: Favorites, downloads, and playback progress live locally in Room on your device, delivering instant zero-latency browsing with zero cloud read fees (keeping usage strictly within the Free Tier).
 * **Global IMDb Standard & Vendor Independence**: All favorites, downloads, and progress are anchored to universal IMDb identifiers (`tt0111161` for movies, `tt0944947_s1_e2` for regular episodes, `tt0944947_s0_e1` for specials), shielding your library from third-party catalog disruptions with 100% transparent backwards compatibility and zero data loss.
-* **Disney+ Style Avatar Profile Selector ("¿Quién anda ahí?")**: Enjoy an OTT experience on your login screen. When saved profiles exist on the device, circular avatars with personalized photos are presented alongside an Add Profile (`+`) button and an Edit Profiles management mode to remove unused profiles.
+* **Disney+ Style Avatar Profile Selector ("¿Quién anda ahí?")**: Enjoy an OTT experience on your login screen. When saved profiles exist on the device, circular avatars with personalized photos are presented alongside an Add Profile (`+`) button and an Edit Profiles management mode to remove unused profiles. To protect library synchronization, an authenticated account is required.
 * **Passwordless Biometric Passkey Unlock**: On handheld devices with fingerprint or screen lock capabilities, tapping a profile presents a secure biometric prompt to unlock passwordlessly, with graceful fallback to Google Sign-In. On Android TV, users navigate smoothly with D-pad focus.
 * **Shared TV & Multi-Account Profile Isolation**: Sharing an Android TV or living room Chromecast with family members? The app remembers each authenticated Google account locally. When users switch accounts or log out, their respective watch histories and favorites remain completely preserved and isolated in local storage without wiping the device database.
 * **Effortless Cloud Sync**: Start watching on your phone during your commute and continue right where you left off on your living room Smart TV with automatic background sync.
@@ -89,7 +89,7 @@ Have a personal movie collection stored on your computer or home server? La Torr
 ### 9. 🎙️ Voice Search, Text-To-Speech & Release Notifications
 * **Voice Search**: Tap the microphone icon or press the voice button on your TV remote to search for titles naturally without tedious on-screen keyboard typing.
 * **Text-To-Speech Summaries**: Listen to movie titles and summaries spoken aloud via an asynchronous, offloaded speech engine designed for zero UI lag across Android TV and mobile devices.
-* **New Release Alerts**: Receive notifications for hot new releases and jump straight into the movie details with a single tap.
+* **New Release Alerts & Smart Navigation**: Receive notifications for hot new releases and jump straight into the movie details with a single tap. Even if you don't have an active session when tapping a notification, the app securely guides you through login and automatically opens the movie details right after!
 
 ---
 

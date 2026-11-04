@@ -438,7 +438,6 @@
     <string name="create_profile">Add profile</string>
     <string name="edit_profiles">EDIT PROFILES</string>
     <string name="done_editing_profiles">DONE</string>
-    <string name="continue_as_guest">Continue as guest</string>
     <string name="biometric_prompt_title">Unlock profile</string>
     <string name="biometric_prompt_subtitle">Confirm your fingerprint or screen lock to continue as %1$s</string>
     <string name="biometric_auth_failed">Authentication failed</string>

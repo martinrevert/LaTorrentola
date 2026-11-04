@@ -148,16 +148,6 @@ class AuthViewModelTest {
     }
 
     @Test
-    fun `continueAsGuest calls signOut and sets state to Idle`() = runTest {
-        coEvery { authRepository.signOut() } returns Unit
-        var proceeded = false
-        viewModel.continueAsGuest { proceeded = true }
-        assertThat(proceeded).isTrue()
-        assertThat(viewModel.authState.value).isEqualTo(AuthState.Idle)
-        coVerify { authRepository.signOut() }
-    }
-
-    @Test
     fun `deleteAccount delegates to repository and signs out if deleted user is current user`() = runTest {
         val mockUser = mockk<FirebaseUser>()
         every { mockUser.uid } returns "user_to_delete"

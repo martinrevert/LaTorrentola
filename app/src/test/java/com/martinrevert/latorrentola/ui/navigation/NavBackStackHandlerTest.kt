@@ -68,6 +68,51 @@ class NavBackStackHandlerTest {
     }
 
     @Test
+    fun `resetToWithTop replaces entire backstack with baseRoute and topRoute without leaving it empty`() {
+        val backStack = mutableListOf<Route>(Route.Login)
+
+        NavBackStackHandler.resetToWithTop(
+            backStack = backStack,
+            baseRoute = Route.Home,
+            topRoute = Route.Detail(movieId = 456)
+        )
+
+        assertEquals(2, backStack.size)
+        assertEquals(Route.Home, backStack[0])
+        assertEquals(Route.Detail(movieId = 456), backStack[1])
+    }
+
+    @Test
+    fun `resetToWithTop replaces multi-item backstack with baseRoute and topRoute`() {
+        val backStack = mutableListOf<Route>(
+            Route.Home,
+            Route.Detail(movieId = 100),
+            Route.Settings
+        )
+
+        NavBackStackHandler.resetToWithTop(
+            backStack = backStack,
+            baseRoute = Route.Home,
+            topRoute = Route.Detail(movieId = 200)
+        )
+
+        assertEquals(2, backStack.size)
+        assertEquals(Route.Home, backStack[0])
+        assertEquals(Route.Detail(movieId = 200), backStack[1])
+    }
+
+    @Test
+    fun `resetToWithTop on empty backstack populates baseRoute and topRoute without crashing`() {
+        val backStack = mutableListOf<Route>()
+
+        NavBackStackHandler.resetToWithTop(backStack, Route.Home, Route.Detail(movieId = 300))
+
+        assertEquals(2, backStack.size)
+        assertEquals(Route.Home, backStack[0])
+        assertEquals(Route.Detail(movieId = 300), backStack[1])
+    }
+
+    @Test
     fun `replaceTopDetail replaces top Route Detail with targetRoute`() {
         val backStack = mutableListOf<Route>(Route.Home, Route.Detail(movieId = 99))
 

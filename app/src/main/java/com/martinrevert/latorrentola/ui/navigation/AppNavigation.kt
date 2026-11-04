@@ -7,10 +7,10 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -190,6 +190,19 @@ internal object NavBackStackHandler {
     }
 
     /**
+     * Resets the entire back stack to [baseRoute] with [topRoute] on top without ever leaving the stack empty.
+     */
+    fun <T : Any> resetToWithTop(backStack: MutableList<in T>, baseRoute: T, topRoute: T) {
+        Snapshot.withMutableSnapshot {
+            backStack.add(baseRoute)
+            backStack.add(topRoute)
+            while (backStack.size > 2) {
+                backStack.removeAt(0)
+            }
+        }
+    }
+
+    /**
      * Navigates to [targetRoute] while replacing an existing [Route.Detail] if present at the top,
      * ensuring the back stack is never momentarily empty.
      */
@@ -222,15 +235,23 @@ fun AppNavigation(
     onInitialDataHandled: () -> Unit = {}
 ) {
     val authViewModel: AuthViewModel = hiltViewModel()
-    val currentUser by authViewModel.currentUserFlow.collectAsState()
-    val isLoggedIn = remember { authViewModel.currentUser != null }
+    val currentUser by authViewModel.currentUserFlow.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val preferenceManager = remember(context) { PreferenceManager(context) }
-    val themeMode by preferenceManager.themeFlow.collectAsState(initial = preferenceManager.getTheme())
+    val themeMode by preferenceManager.themeFlow.collectAsStateWithLifecycle(initialValue = preferenceManager.getTheme())
 
-    val initialRoute = if (isLoggedIn) Route.Home else Route.Login
+    val initialRoute = remember { if (authViewModel.currentUser != null) Route.Home else Route.Login }
     val backStack = rememberNavBackStack(initialRoute)
     NavBackStackHandler.ensureNotEmpty(backStack, initialRoute)
+
+    val pendingMovieRoute: Route? = remember(initialMovieJson, initialMovieId, initialSearchQuery) {
+        when {
+            initialMovieJson != null -> Route.Detail(movieJson = initialMovieJson)
+            initialMovieId != null -> Route.Detail(movieId = initialMovieId)
+            initialSearchQuery != null -> Route.Detail(query = initialSearchQuery)
+            else -> null
+        }
+    }
 
     val popBackStack = remember(context, backStack) {
         {
@@ -248,18 +269,11 @@ fun AppNavigation(
         }
     }
 
-    // Handle Deep Link / Notification navigation
-    LaunchedEffect(initialMovieJson, initialMovieId, initialSearchQuery) {
-        if (isLoggedIn && (initialMovieJson != null || initialMovieId != null || initialSearchQuery != null)) {
-            initialMovieJson?.let {
-                backStack.add(Route.Detail(movieJson = it))
-            }
-            initialMovieId?.let {
-                backStack.add(Route.Detail(movieId = it))
-            }
-            initialSearchQuery?.let {
-                // Prioritize Detail screen for a better user experience as requested
-                backStack.add(Route.Detail(query = it))
+    // Handle Deep Link / Notification navigation when session is active
+    LaunchedEffect(currentUser, pendingMovieRoute) {
+        if (currentUser != null && pendingMovieRoute != null && backStack.firstOrNull() != Route.Login) {
+            if (backStack.lastOrNull() != pendingMovieRoute) {
+                backStack.add(pendingMovieRoute)
             }
             onInitialDataHandled()
         }
@@ -275,7 +289,14 @@ fun AppNavigation(
                     themeMode = themeMode,
                     onLoginSuccess = {
                         authViewModel.resetAuthState()
-                        NavBackStackHandler.resetTo(backStack, Route.Home)
+                        if (backStack.firstOrNull() == Route.Login) {
+                            if (pendingMovieRoute != null) {
+                                NavBackStackHandler.resetToWithTop(backStack, Route.Home, pendingMovieRoute)
+                                onInitialDataHandled()
+                            } else {
+                                NavBackStackHandler.resetTo(backStack, Route.Home)
+                            }
+                        }
                     }
                 )
             }

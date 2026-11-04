@@ -126,20 +126,6 @@ class AuthViewModel @Inject constructor(
     /** Returns true if the specified UID matches the active Firebase authenticated user. */
     fun isCurrentAccount(uid: String): Boolean = authRepository.currentUser?.uid == uid
 
-    /** Continues to app without authentication in guest mode, signing out of any active account. */
-    fun continueAsGuest(onProceed: () -> Unit) {
-        _authState.value = AuthState.Idle
-        viewModelScope.launch {
-            try {
-                authRepository.signOut()
-            } catch (e: Exception) {
-                AppLogger.w("AuthViewModel", "Sign out on continueAsGuest error: ${e.message}")
-            }
-            _authState.value = AuthState.Idle
-            onProceed()
-        }
-    }
-
     /** Removes a saved profile from local device, signing out if it was the currently active user. */
     fun deleteAccount(uid: String) {
         viewModelScope.launch {

@@ -28,11 +28,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -85,8 +85,8 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit,
     themeMode: Int? = null
 ) {
-    val authState by viewModel.authState.collectAsState()
-    val savedAccounts by viewModel.savedAccounts.collectAsState()
+    val authState by viewModel.authState.collectAsStateWithLifecycle()
+    val savedAccounts by viewModel.savedAccounts.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val effectiveThemeMode = remember(context, themeMode) {
         themeMode ?: PreferenceManager(context).getTheme()
@@ -135,7 +135,6 @@ fun LoginScreen(
                 isTv = true,
                 onAccountClick = onAccountClick,
                 onAddProfileClick = { viewModel.signInWithGoogle(context) },
-                onContinueAsGuest = { viewModel.continueAsGuest(onLoginSuccess) },
                 onDeleteAccount = { uid -> viewModel.deleteAccount(uid) }
             )
         }
@@ -147,7 +146,6 @@ fun LoginScreen(
                 isTv = false,
                 onAccountClick = onAccountClick,
                 onAddProfileClick = { viewModel.signInWithGoogle(context) },
-                onContinueAsGuest = { viewModel.continueAsGuest(onLoginSuccess) },
                 onDeleteAccount = { uid -> viewModel.deleteAccount(uid) }
             )
         }
@@ -162,7 +160,6 @@ private fun LoginScreenContent(
     isTv: Boolean,
     onAccountClick: (SavedAccountEntity) -> Unit,
     onAddProfileClick: () -> Unit,
-    onContinueAsGuest: () -> Unit,
     onDeleteAccount: (String) -> Unit
 ) {
     if (isTv) {
@@ -179,7 +176,6 @@ private fun LoginScreenContent(
                     isTv = true,
                     onAccountClick = onAccountClick,
                     onAddProfileClick = onAddProfileClick,
-                    onContinueAsGuest = onContinueAsGuest,
                     onDeleteAccount = onDeleteAccount
                 )
             } else {
@@ -187,8 +183,7 @@ private fun LoginScreenContent(
                     authState = authState,
                     isTv = true,
                     titleColor = TvMaterialTheme.colorScheme.primary,
-                    onSignInClick = onAddProfileClick,
-                    onContinueAsGuest = onContinueAsGuest
+                    onSignInClick = onAddProfileClick
                 )
             }
         }
@@ -206,7 +201,6 @@ private fun LoginScreenContent(
                     isTv = false,
                     onAccountClick = onAccountClick,
                     onAddProfileClick = onAddProfileClick,
-                    onContinueAsGuest = onContinueAsGuest,
                     onDeleteAccount = onDeleteAccount
                 )
             } else {
@@ -214,8 +208,7 @@ private fun LoginScreenContent(
                     authState = authState,
                     isTv = false,
                     titleColor = MaterialTheme.colorScheme.primary,
-                    onSignInClick = onAddProfileClick,
-                    onContinueAsGuest = onContinueAsGuest
+                    onSignInClick = onAddProfileClick
                 )
             }
         }
@@ -232,7 +225,6 @@ private fun ProfileSelectorBody(
     isTv: Boolean,
     onAccountClick: (SavedAccountEntity) -> Unit,
     onAddProfileClick: () -> Unit,
-    onContinueAsGuest: () -> Unit,
     onDeleteAccount: (String) -> Unit
 ) {
     val initialFocusRequester = remember { FocusRequester() }
@@ -453,34 +445,6 @@ private fun ProfileSelectorBody(
                         Text(
                             text = stringResource(if (isEditing) R.string.done_editing_profiles else R.string.edit_profiles),
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Secondary guest button
-                if (isTv) {
-                    TvButton(
-                        onClick = onContinueAsGuest,
-                        colors = TvButtonDefaults.colors(
-                            containerColor = Color.Transparent,
-                            focusedContainerColor = TvMaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = TvMaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f),
-                            focusedContentColor = TvMaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    ) {
-                        TvText(
-                            text = stringResource(R.string.continue_as_guest),
-                            fontSize = 14.sp
-                        )
-                    }
-                } else {
-                    TextButton(onClick = onContinueAsGuest) {
-                        Text(
-                            text = stringResource(R.string.continue_as_guest),
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f),
                             fontSize = 14.sp
                         )
                     }
@@ -730,8 +694,7 @@ private fun WelcomeLoginBody(
     authState: AuthState,
     isTv: Boolean,
     titleColor: Color,
-    onSignInClick: () -> Unit,
-    onContinueAsGuest: () -> Unit
+    onSignInClick: () -> Unit
 ) {
     val initialFocusRequester = remember { FocusRequester() }
     val buttonFocusRequester = remember { FocusRequester() }
@@ -900,33 +863,6 @@ private fun WelcomeLoginBody(
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                if (isTv) {
-                    TvButton(
-                        onClick = onContinueAsGuest,
-                        colors = TvButtonDefaults.colors(
-                            containerColor = Color.Transparent,
-                            focusedContainerColor = TvMaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = TvMaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                            focusedContentColor = TvMaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    ) {
-                        TvText(
-                            text = stringResource(R.string.continue_as_guest),
-                            fontSize = 14.sp
-                        )
-                    }
-                } else {
-                    TextButton(onClick = onContinueAsGuest) {
-                        Text(
-                            text = stringResource(R.string.continue_as_guest),
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                            fontSize = 14.sp
-                        )
-                    }
-                }
             }
         }
     }
@@ -954,7 +890,6 @@ fun LoginScreenMobilePreview() {
             isTv = false,
             onAccountClick = {},
             onAddProfileClick = {},
-            onContinueAsGuest = {},
             onDeleteAccount = {}
         )
     }
@@ -973,7 +908,6 @@ fun LoginScreenTvPreview() {
             isTv = true,
             onAccountClick = {},
             onAddProfileClick = {},
-            onContinueAsGuest = {},
             onDeleteAccount = {}
         )
     }
@@ -990,7 +924,6 @@ fun LoginScreenWelcomePreview() {
             isTv = false,
             onAccountClick = {},
             onAddProfileClick = {},
-            onContinueAsGuest = {},
             onDeleteAccount = {}
         )
     }
@@ -1007,7 +940,6 @@ fun LoginScreenLoadingPreview() {
             isTv = false,
             onAccountClick = {},
             onAddProfileClick = {},
-            onContinueAsGuest = {},
             onDeleteAccount = {}
         )
     }

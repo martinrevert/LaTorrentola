@@ -478,8 +478,10 @@ To guarantee seamless watch history parity and minimal cloud consumption across 
   * **Bootstrap Sync**: When signing in on a new device, `syncFromCloud(forceFull = true)` performs a single one-shot batch read (`Source.SERVER`) and populates local Room tables.
   * **Delta Sync**: Subsequent background synchronizations query only changes modified after `lastSyncTimestamp` (`whereGreaterThan("updatedAt", lastSync)`), throttled to at most once every 15 minutes.
   * **Settings Sync**: Remote user settings (`settings/config`) are synchronized on login and saved on demand; individual ViewModels no longer attach duplicate real-time listeners.
-* **Google Credential Manager**: Modern, one-tap identity retrieval via `GetGoogleIdOption` passing ID Tokens directly to Firebase Auth.
-* **Push Notifications**: Managed by `MyFirebaseMessagingService` and `FcmRepository`, registering tokens with the app backend and enabling deep-linking into specific movie or series destinations.
+* **Google Credential Manager & Authenticated Access Only**: Modern, one-tap identity retrieval via `GetGoogleIdOption` passing ID Tokens directly to Firebase Auth. Unauthenticated guest access is removed; an active profile is required to browse catalogs and safeguard personalized Room/Firestore libraries.
+* **Push Notifications & Deep-Link Preservation Across Authentication**:
+  * Managed by `MyFirebaseMessagingService` and `FcmRepository`, registering tokens with the app backend and enabling push notification deep-linking into specific movie detail destinations (`Route.Detail`).
+  * **Login Gate Preservation**: When a push notification opens the app without an active session (`currentUser == null`), the target movie payload (`initialMovieJson` or `initialMovieId`) is retained intact in memory while displaying `Route.Login`. Upon successful authentication via Google Sign-In or profile selection, `NavBackStackHandler.resetToWithTop(backStack, Route.Home, pendingMovieRoute)` atomically places `Route.Home` in the base and `Route.Detail` on top, ensuring the user immediately lands on the requested movie and can navigate back to `Route.Home` naturally without empty stack crashes.
 
 ### 5.10 Hardware Keystore & Security Model
 * Sensitive credentials (OpenSubtitles passwords, SMB network passwords) are never stored in plaintext.
