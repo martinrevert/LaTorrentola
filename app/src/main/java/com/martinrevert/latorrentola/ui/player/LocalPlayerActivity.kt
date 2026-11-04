@@ -436,6 +436,7 @@ class LocalPlayerActivity : FragmentActivity() {
     private var posterUrl by mutableStateOf<String?>(null)
     private var lastKnownPlaybackPositionMs = 0L
     private var lastStreamRecoveryAttemptMillis = 0L
+    private var localStreamRecoveryAttempts = 0
 
     private fun buildEnrichedMediaMetadata(
         title: String,
@@ -1121,6 +1122,7 @@ class LocalPlayerActivity : FragmentActivity() {
         metadataRecoveryJob = null
         showNextEpisodeDialog = false
         playbackDecodingError = null
+        localStreamRecoveryAttempts = 0
         surfaceRebindKey++
         handleIntent(intent)
         val controller = mediaController
@@ -1912,13 +1914,16 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    if (!isPlaying) {
+                    if (isPlaying) {
+                        localStreamRecoveryAttempts = 0
+                    } else {
                         saveCurrentProgress(controller)
                     }
                 }
 
                 override fun onPlaybackStateChanged(state: Int) {
                     if (state == Player.STATE_READY) {
+                        localStreamRecoveryAttempts = 0
                         if (playbackDecodingError?.isDtsHdError != true) {
                             playbackDecodingError = null
                         }
@@ -1931,7 +1936,25 @@ class LocalPlayerActivity : FragmentActivity() {
                         Log.i(TAG, "Ignoring player error during shutdown or media deletion: ${error.message}")
                         return
                     }
-                    AppLogger.e(TAG, "Player error encountered: ${error.errorCodeName} (${error.errorCode}): ${error.message}", error)
+
+                    val isLocalStream = localStreamUrl.contains("127.0.0.1") || localStreamUrl.contains("localhost")
+                    val isLocalConnectionFailure = isLocalStream && (
+                        error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                        error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+                        error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+                    )
+
+                    if (isLocalConnectionFailure) {
+                        localStreamRecoveryAttempts++
+                        if (localStreamRecoveryAttempts <= 3) {
+                            AppLogger.w(TAG, "Transient local stream error encountered (attempt $localStreamRecoveryAttempts/3): ${error.errorCodeName} (${error.errorCode}): ${error.message}", error)
+                        } else {
+                            AppLogger.e(TAG, "Unrecoverable local stream error after $localStreamRecoveryAttempts attempts: ${error.errorCodeName} (${error.errorCode}): ${error.message}", error)
+                        }
+                    } else {
+                        AppLogger.e(TAG, "Player error encountered: ${error.errorCodeName} (${error.errorCode}): ${error.message}", error)
+                    }
+
                     if (controller.currentPosition > 5000L) {
                         lastKnownPlaybackPositionMs = controller.currentPosition
                     }
@@ -1942,8 +1965,7 @@ class LocalPlayerActivity : FragmentActivity() {
                         error.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE ||
                         error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED) {
 
-                        val isLocalStream = localStreamUrl.contains("127.0.0.1") || localStreamUrl.contains("localhost")
-                        if (error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED && isLocalStream && torrentInfoHash.isNotBlank()) {
+                        if (isLocalConnectionFailure && torrentInfoHash.isNotBlank()) {
                             val now = System.currentTimeMillis()
                             if (now - lastStreamRecoveryAttemptMillis > 3000L) {
                                 lastStreamRecoveryAttemptMillis = now

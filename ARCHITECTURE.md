@@ -478,10 +478,8 @@ To guarantee seamless watch history parity and minimal cloud consumption across 
   * **Bootstrap Sync**: When signing in on a new device, `syncFromCloud(forceFull = true)` performs a single one-shot batch read (`Source.SERVER`) and populates local Room tables.
   * **Delta Sync**: Subsequent background synchronizations query only changes modified after `lastSyncTimestamp` (`whereGreaterThan("updatedAt", lastSync)`), throttled to at most once every 15 minutes.
   * **Settings Sync**: Remote user settings (`settings/config`) are synchronized on login and saved on demand; individual ViewModels no longer attach duplicate real-time listeners.
-* **Google Credential Manager & Authenticated Access Only**: Modern, one-tap identity retrieval via `GetGoogleIdOption` passing ID Tokens directly to Firebase Auth. Unauthenticated guest access is removed; an active profile is required to browse catalogs and safeguard personalized Room/Firestore libraries.
-* **Push Notifications & Deep-Link Preservation Across Authentication**:
-  * Managed by `MyFirebaseMessagingService` and `FcmRepository`, registering tokens with the app backend and enabling push notification deep-linking into specific movie detail destinations (`Route.Detail`).
-  * **Login Gate Preservation**: When a push notification opens the app without an active session (`currentUser == null`), the target movie payload (`initialMovieJson` or `initialMovieId`) is retained intact in memory while displaying `Route.Login`. Upon successful authentication via Google Sign-In or profile selection, `NavBackStackHandler.resetToWithTop(backStack, Route.Home, pendingMovieRoute)` atomically places `Route.Home` in the base and `Route.Detail` on top, ensuring the user immediately lands on the requested movie and can navigate back to `Route.Home` naturally without empty stack crashes.
+* **Google Credential Manager**: Modern, one-tap identity retrieval via `GetGoogleIdOption` passing ID Tokens directly to Firebase Auth.
+* **Push Notifications**: Managed by `MyFirebaseMessagingService` and `FcmRepository`, registering tokens with the app backend and enabling deep-linking into specific movie or series destinations.
 
 ### 5.10 Hardware Keystore & Security Model
 * Sensitive credentials (OpenSubtitles passwords, SMB network passwords) are never stored in plaintext.
@@ -494,11 +492,6 @@ To guarantee seamless watch history parity and minimal cloud consumption across 
   * Firestore Documents: `-keepclassmembers @com.google.firebase.firestore.IgnoreExtraProperties class * { public <init>(); <fields>; <methods>; }`.
   * Kotlinx Serialization: `-keep,allowoptimization @kotlinx.serialization.Serializable class * { *; }`.
 * **Reflection & JNI Entry Points**: Targeted constructor keeps for `AppCastOptionsProvider` and explicit JNI preservation for `libtorrent_jni` and `LibNfsNative`.
-
-### 5.12 Voice Manager & Asynchronous Text-To-Speech (TTS) Engine
-* **Offloaded Binder IPC**: `VoiceManager` encapsulates Android's platform `TextToSpeech` engine. To prevent main UI thread hangs and ANR crashes on low-resource Android TV devices (such as TCL Smart TV Pro running Android 11), all synchronous Binder IPC operations (`setLanguage`, `getVoices`, `setVoice`, `speak`, `stop`) are dispatched to `Dispatchers.IO` using a background `CoroutineScope(Dispatchers.IO + SupervisorJob())`.
-* **Platform Exception Resilience**: All TTS calls are wrapped in defensive `try-catch` blocks to swallow IPC binder failures (`DeadObjectException`, `RuntimeException`) if the platform TTS engine process crashes, hangs, or is missing on TV hardware.
-* **Locale & Voice Selection**: Dynamically scans available native voices for target locales (e.g. `Locale.US` and `es-ES`), prioritizing non-network local voices matching country and language tags for speech synthesis.
 
 ---
 

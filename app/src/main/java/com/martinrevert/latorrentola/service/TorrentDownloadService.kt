@@ -775,7 +775,7 @@ class TorrentDownloadService : Service() {
     private suspend fun openReadyPlayer(infoHash: String, castWhenReady: Boolean? = null) {
         val readyIntent = readyPlayerIntents[infoHash]
         val server = streamServers[infoHash]
-        if (readyIntent != null && server != null) {
+        if (readyIntent != null && server != null && server.isAlive()) {
             if (castWhenReady != null) {
                 readyIntent.putExtra(LocalPlayerActivity.EXTRA_CAST_ENABLED, castWhenReady)
             }
@@ -788,6 +788,14 @@ class TorrentDownloadService : Service() {
                 }
             }
             return
+        }
+
+        if (server == null || !server.isAlive()) {
+            if (server != null) {
+                Log.w(TAG, "Cached stream server for $infoHash is dead (isAlive=false), cleaning up for restart")
+                streamServers.remove(infoHash)?.stop()
+            }
+            readyPlayerIntents.remove(infoHash)
         }
 
         // The stream server is not currently running for this hash (e.g. after service restart).
@@ -1341,7 +1349,9 @@ class TorrentDownloadService : Service() {
                         )
                     )
 
-                    val isReady = !readyNotified && target != null && tracker != null && run {
+                    val currentServer = streamServers[infoHash]
+                    val serverNeedsRestart = readyNotified && (currentServer == null || !currentServer.isAlive())
+                    val isReady = (!readyNotified || serverNeedsRestart) && target != null && tracker != null && run {
                         val startupBytes = piecePlanner?.startupBufferBytes ?: StreamingPiecePlanner.calculateStartupBufferBytes(target.length)
                         val startupEnd = minOf(target.length - 1, startupBytes - 1)
                         val headVerified = tracker.isRangeVerified(0, startupEnd)

@@ -56,6 +56,7 @@ Choose the torrent handling mode in **Settings** that fits your personal workflo
 * **Integrated Download Manager**: Monitor active transfers in the background, pause, resume, check speeds and peer counts, or clean up completed files.
 * **Cost-Efficient Cloud Sync**: Playback progress is recorded every 10 seconds in the fast, local Room database without incurring cloud write bills, syncing snapshots to Firebase Firestore only when playback is paused, stopped, finished, or the player is closed.
 * **Seamless Next-Episode Transitions**: When selecting the next episode or using Auto-Play, the choice dialog stays open showing live liquid buffering progress until 100% ready, with a pinned Close button for easy dismissal. Previous video surfaces and hardware decoders are cleanly released, completely eliminating video stalls or black screens on Android.
+* **Self-Healing Local Streaming & Stability**: The built-in local streaming server (`VerifiedTorrentHttpServer`) actively monitors socket health and seamlessly resurrects instances if Android TV memory pressure (LMK) or sleep cycles interrupt the connection, recovering playback silently without reporting false-positive errors.
 * **Smart Next-Episode Progression**: Filtered multi-stream scraping prevents season pack confusion or re-downloading previously watched episodes when progressing through a series.
 
 ### 5. 🏠 Connect Your Home Server (NAS, PC, SMB & NFS)

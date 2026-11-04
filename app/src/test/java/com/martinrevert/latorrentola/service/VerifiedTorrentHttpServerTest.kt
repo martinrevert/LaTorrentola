@@ -48,6 +48,22 @@ class VerifiedTorrentHttpServerTest {
     }
 
     @Test
+    fun `isAlive reports true while server is running and false after stop`() {
+        val dummyFile = tempFolder.newFile("test_video.mkv")
+        val server = VerifiedTorrentHttpServer(dummyFile, dummyFile.length()) { _, _ -> true }
+        assertThat(server.isAlive()).isFalse()
+
+        val port = server.startServer()
+        try {
+            assertThat(port).isGreaterThan(0)
+            assertThat(server.isAlive()).isTrue()
+        } finally {
+            server.stop()
+        }
+        assertThat(server.isAlive()).isFalse()
+    }
+
+    @Test
     fun `lanUrl returns valid http format with port and filename`() {
         val dummyFile = tempFolder.newFile("test_video.mkv")
         val server = VerifiedTorrentHttpServer(dummyFile, dummyFile.length()) { _, _ -> true }
