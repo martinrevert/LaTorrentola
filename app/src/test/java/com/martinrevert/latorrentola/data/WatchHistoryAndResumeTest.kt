@@ -14,27 +14,13 @@ class WatchHistoryAndResumeTest {
         val seasonNumber = 1
         val episodeNumber = 2
 
-        // Test Movie ID format
-        val movieMediaId = MediaIdHelper.forMovie(movieId = movieId, infoHash = "hash123", title = "Inception")
-        assertThat(movieMediaId).isEqualTo("tmdb_12345")
-
         // Test movie with canonical IMDb ID
         val imdbMovieMediaId = MediaIdHelper.forMovie(imdbId = "tt1375666", movieId = movieId, title = "Inception")
         assertThat(imdbMovieMediaId).isEqualTo("tt1375666")
 
-        // Test fallback for movie without movieId (infoHash is rejected per AGENTS.md, title is used as temporary fallback)
-        val fallbackMovieMediaId = MediaIdHelper.forMovie(movieId = 0, infoHash = "hash123", title = "Inception")
-        assertThat(fallbackMovieMediaId).isEqualTo("Inception")
-
-        // Test TV Episode ID format
-        val episodeMediaId = MediaIdHelper.forEpisode(
-            seriesId = seriesId,
-            seasonNumber = seasonNumber,
-            episodeNumber = episodeNumber,
-            infoHash = "hash456",
-            title = "Episode 2"
-        )
-        assertThat(episodeMediaId).isEqualTo("tmdb_100_s1_e2")
+        // Test movie without IMDb ID returns unknown_movie
+        val fallbackMovieMediaId = MediaIdHelper.forMovie(movieId = movieId, infoHash = "hash123", title = "Inception")
+        assertThat(fallbackMovieMediaId).isEqualTo("unknown_movie")
 
         // Test TV Episode with canonical IMDb ID
         val imdbEpisodeMediaId = MediaIdHelper.forEpisode(
@@ -44,6 +30,16 @@ class WatchHistoryAndResumeTest {
             episodeNumber = episodeNumber
         )
         assertThat(imdbEpisodeMediaId).isEqualTo("tt0944947_s1_e2")
+
+        // Test TV Episode without IMDb ID returns unknown_episode
+        val episodeMediaId = MediaIdHelper.forEpisode(
+            seriesId = seriesId,
+            seasonNumber = seasonNumber,
+            episodeNumber = episodeNumber,
+            infoHash = "hash456",
+            title = "Episode 2"
+        )
+        assertThat(episodeMediaId).isEqualTo("unknown_episode")
     }
 
     @Test

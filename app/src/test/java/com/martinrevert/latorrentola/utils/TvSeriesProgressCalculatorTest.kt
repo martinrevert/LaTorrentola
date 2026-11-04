@@ -12,15 +12,47 @@ import org.junit.Test
 
 class TvSeriesProgressCalculatorTest {
 
+    private fun createSeries(
+        id: Int,
+        name: String,
+        numberOfEpisodes: Int? = null,
+        numberOfSeasons: Int? = null,
+        imdbId: String = "tt%07d".format(id),
+        status: String? = null,
+        inProduction: Boolean? = null,
+        lastEpisodeToAir: TmdbTvEpisode? = null,
+        nextEpisodeToAir: TmdbTvEpisode? = null,
+        seasons: List<TmdbTvSeason>? = null
+    ): TmdbTvSummary = TmdbTvSummary(
+        id = id,
+        name = name,
+        numberOfEpisodes = numberOfEpisodes,
+        numberOfSeasons = numberOfSeasons,
+        imdbId = imdbId,
+        status = status,
+        inProduction = inProduction,
+        lastEpisodeToAir = lastEpisodeToAir,
+        nextEpisodeToAir = nextEpisodeToAir,
+        seasons = seasons
+    )
+
+    private fun forEpisode(series: TmdbTvSummary, seasonNumber: Int, episodeNumber: Int): String {
+        return MediaIdHelper.forEpisode(
+            imdbId = series.effectiveImdbId,
+            seasonNumber = seasonNumber,
+            episodeNumber = episodeNumber
+        )
+    }
+
     @Test
     fun `calculateProgressPercent returns null when history is empty or seriesId invalid`() {
-        val series = TmdbTvSummary(id = 100, name = "Breaking Bad", numberOfEpisodes = 62)
+        val series = createSeries(id = 100, name = "Breaking Bad", numberOfEpisodes = 62)
         assertNull(TvSeriesProgressCalculator.calculateProgressPercent(series, emptyMap()))
 
-        val invalidSeries = TmdbTvSummary(id = 0, name = "Invalid", numberOfEpisodes = 10)
+        val invalidSeries = createSeries(id = 0, name = "Invalid", numberOfEpisodes = 10, imdbId = "")
         val history = mapOf(
-            MediaIdHelper.forEpisode(0, 1, 1) to PlaybackProgress(
-                mediaId = MediaIdHelper.forEpisode(0, 1, 1),
+            MediaIdHelper.forEpisode(null, 1, 1) to PlaybackProgress(
+                mediaId = MediaIdHelper.forEpisode(null, 1, 1),
                 title = "Ep 1",
                 positionMs = 1000L,
                 durationMs = 1000L,
@@ -32,10 +64,11 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `calculateProgressPercent returns null when series has no progress in history`() {
-        val series = TmdbTvSummary(id = 100, name = "Breaking Bad", numberOfEpisodes = 10)
+        val series = createSeries(id = 100, name = "Breaking Bad", numberOfEpisodes = 10)
+        val otherSeries = createSeries(id = 200, name = "Other Series", numberOfEpisodes = 10)
         val history = mapOf(
-            MediaIdHelper.forEpisode(200, 1, 1) to PlaybackProgress(
-                mediaId = MediaIdHelper.forEpisode(200, 1, 1),
+            forEpisode(otherSeries, 1, 1) to PlaybackProgress(
+                mediaId = forEpisode(otherSeries, 1, 1),
                 title = "Other Series S1E1",
                 positionMs = 1000L,
                 durationMs = 1000L,
@@ -47,10 +80,11 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `calculateProgressPercent accurately calculates 10 percent when 1 of 10 episodes is watched`() {
-        val series = TmdbTvSummary(id = 500, name = "Test Series", numberOfEpisodes = 10)
+        val series = createSeries(id = 500, name = "Test Series", numberOfEpisodes = 10)
+        val episodeId = forEpisode(series, 1, 1)
         val history = mapOf(
-            MediaIdHelper.forEpisode(500, 1, 1) to PlaybackProgress(
-                mediaId = MediaIdHelper.forEpisode(500, 1, 1),
+            episodeId to PlaybackProgress(
+                mediaId = episodeId,
                 title = "Ep 1",
                 positionMs = 950L,
                 durationMs = 1000L,
@@ -64,9 +98,9 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `calculateProgressPercent accurately calculates 100 percent when all episodes are watched`() {
-        val series = TmdbTvSummary(id = 500, name = "Test Series", numberOfEpisodes = 3)
+        val series = createSeries(id = 500, name = "Test Series", numberOfEpisodes = 3)
         val history = (1..3).associate { ep ->
-            val id = MediaIdHelper.forEpisode(500, 1, ep)
+            val id = forEpisode(series, 1, ep)
             id to PlaybackProgress(
                 mediaId = id,
                 title = "Ep $ep",
@@ -82,10 +116,11 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `calculateProgressPercent weights partial episode playback properly`() {
-        val series = TmdbTvSummary(id = 500, name = "Test Series", numberOfEpisodes = 10)
+        val series = createSeries(id = 500, name = "Test Series", numberOfEpisodes = 10)
+        val episodeId = forEpisode(series, 1, 1)
         val history = mapOf(
-            MediaIdHelper.forEpisode(500, 1, 1) to PlaybackProgress(
-                mediaId = MediaIdHelper.forEpisode(500, 1, 1),
+            episodeId to PlaybackProgress(
+                mediaId = episodeId,
                 title = "Ep 1",
                 positionMs = 500L,
                 durationMs = 1000L,
@@ -100,7 +135,7 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `calculateProgressPercent sums seasons episodeCount when numberOfEpisodes is null`() {
-        val series = TmdbTvSummary(
+        val series = createSeries(
             id = 500,
             name = "Test Series",
             numberOfEpisodes = null,
@@ -109,9 +144,10 @@ class TvSeriesProgressCalculatorTest {
                 TmdbTvSeason(id = 2, seasonNumber = 2, episodeCount = 5)
             )
         )
+        val episodeId = forEpisode(series, 1, 1)
         val history = mapOf(
-            MediaIdHelper.forEpisode(500, 1, 1) to PlaybackProgress(
-                mediaId = MediaIdHelper.forEpisode(500, 1, 1),
+            episodeId to PlaybackProgress(
+                mediaId = episodeId,
                 title = "Ep 1",
                 positionMs = 1000L,
                 durationMs = 1000L,
@@ -126,16 +162,17 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `calculateProgressPercent does not return 100 percent when numberOfEpisodes and seasons are null and only one episode watched`() {
-        val series = TmdbTvSummary(
+        val series = createSeries(
             id = 500,
             name = "Catalog Feed Series",
             numberOfEpisodes = null,
             seasons = null,
             numberOfSeasons = 1
         )
+        val episodeId = forEpisode(series, 1, 1)
         val history = mapOf(
-            MediaIdHelper.forEpisode(500, 1, 1) to PlaybackProgress(
-                mediaId = MediaIdHelper.forEpisode(500, 1, 1),
+            episodeId to PlaybackProgress(
+                mediaId = episodeId,
                 title = "Ep 1",
                 positionMs = 1000L,
                 durationMs = 1000L,
@@ -149,18 +186,20 @@ class TvSeriesProgressCalculatorTest {
     }
 
     @Test
-    fun `calculateProgressPercent correctly parses non-canonical episode IDs and prevents key collisions`() {
-        val series = TmdbTvSummary(id = 500, name = "Test Series", numberOfEpisodes = 10)
+    fun `calculateProgressPercent correctly tracks multiple canonical episode IDs and prevents key collisions`() {
+        val series = createSeries(id = 500, name = "Test Series", numberOfEpisodes = 10)
+        val ep1 = forEpisode(series, 1, 1)
+        val ep2 = forEpisode(series, 1, 2)
         val history = mapOf(
-            "media_500_s1_e1_1080p" to PlaybackProgress(
-                mediaId = "media_500_s1_e1_1080p",
+            ep1 to PlaybackProgress(
+                mediaId = ep1,
                 title = "Ep 1",
                 positionMs = 1000L,
                 durationMs = 1000L,
                 timestamp = System.currentTimeMillis()
             ),
-            "media_500_s1_e2_1080p" to PlaybackProgress(
-                mediaId = "media_500_s1_e2_1080p",
+            ep2 to PlaybackProgress(
+                mediaId = ep2,
                 title = "Ep 2",
                 positionMs = 1000L,
                 durationMs = 1000L,
@@ -175,7 +214,7 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `calculateProgressPercent excludes Season 0 specials from series progress`() {
-        val series = TmdbTvSummary(
+        val series = createSeries(
             id = 500,
             name = "Test Series",
             numberOfEpisodes = 10,
@@ -185,9 +224,10 @@ class TvSeriesProgressCalculatorTest {
             )
         )
         // Only Season 0 Special is watched
+        val specialEpId = forEpisode(series, 0, 1)
         val historySpecialOnly = mapOf(
-            MediaIdHelper.forEpisode(500, 0, 1) to PlaybackProgress(
-                mediaId = MediaIdHelper.forEpisode(500, 0, 1),
+            specialEpId to PlaybackProgress(
+                mediaId = specialEpId,
                 title = "Special Ep 1",
                 positionMs = 1000L,
                 durationMs = 1000L,
@@ -197,16 +237,17 @@ class TvSeriesProgressCalculatorTest {
         assertNull(TvSeriesProgressCalculator.calculateProgressPercent(series, historySpecialOnly))
 
         // Season 0 Special + 1 regular episode watched
+        val regularEpId = forEpisode(series, 1, 1)
         val historyWithRegular = mapOf(
-            MediaIdHelper.forEpisode(500, 0, 1) to PlaybackProgress(
-                mediaId = MediaIdHelper.forEpisode(500, 0, 1),
+            specialEpId to PlaybackProgress(
+                mediaId = specialEpId,
                 title = "Special Ep 1",
                 positionMs = 1000L,
                 durationMs = 1000L,
                 isEpisode = true
             ),
-            MediaIdHelper.forEpisode(500, 1, 1) to PlaybackProgress(
-                mediaId = MediaIdHelper.forEpisode(500, 1, 1),
+            regularEpId to PlaybackProgress(
+                mediaId = regularEpId,
                 title = "Ep 1",
                 positionMs = 1000L,
                 durationMs = 1000L,
@@ -219,7 +260,7 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `calculateProgressPercent ignores future upcoming season and marks series complete based on available episodes`() {
-        val series = TmdbTvSummary(
+        val series = createSeries(
             id = 500,
             name = "Test Series",
             numberOfEpisodes = 20,
@@ -230,7 +271,7 @@ class TvSeriesProgressCalculatorTest {
         )
         // Watch all 10 episodes of Season 1
         val history = (1..10).associate { ep ->
-            val id = MediaIdHelper.forEpisode(500, 1, ep)
+            val id = forEpisode(series, 1, ep)
             id to PlaybackProgress(
                 mediaId = id,
                 title = "Ep $ep",
@@ -246,7 +287,7 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `calculateProgressPercent does not falsely match movies or unrelated franchise titles`() {
-        val series = TmdbTvSummary(id = 500, name = "Superman", numberOfEpisodes = 10)
+        val series = createSeries(id = 500, name = "Superman", numberOfEpisodes = 10)
         // History only has a movie titled "Superman Returns"
         val history = mapOf(
             "tt0348150" to PlaybackProgress(
@@ -263,7 +304,7 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `calculateProgressPercent ignores Season 2 when airDate is null or blank and marks series 100 percent complete`() {
-        val series = TmdbTvSummary(
+        val series = createSeries(
             id = 600,
             name = "Severance",
             numberOfEpisodes = 18,
@@ -273,7 +314,7 @@ class TvSeriesProgressCalculatorTest {
             )
         )
         val history = (1..9).associate { ep ->
-            val id = MediaIdHelper.forEpisode(600, 1, ep)
+            val id = forEpisode(series, 1, ep)
             id to PlaybackProgress(
                 mediaId = id,
                 title = "Severance - S01E0$ep",
@@ -292,7 +333,7 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `calculateProgressPercent ignores Season 2 when episodeCount is 0 or empty chip`() {
-        val series = TmdbTvSummary(
+        val series = createSeries(
             id = 601,
             name = "Loki",
             numberOfEpisodes = 12,
@@ -302,7 +343,7 @@ class TvSeriesProgressCalculatorTest {
             )
         )
         val history = (1..6).associate { ep ->
-            val id = MediaIdHelper.forEpisode(601, 1, ep)
+            val id = forEpisode(series, 1, ep)
             id to PlaybackProgress(
                 mediaId = id,
                 title = "Loki - S01E0$ep",
@@ -319,7 +360,7 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `isSeriesInProgress is true when some episodes are watched and not completed`() {
-        val series = TmdbTvSummary(
+        val series = createSeries(
             id = 700,
             name = "In Progress Show",
             numberOfEpisodes = 10,
@@ -328,7 +369,7 @@ class TvSeriesProgressCalculatorTest {
             )
         )
         val history = (1..5).associate { ep ->
-            val id = MediaIdHelper.forEpisode(700, 1, ep)
+            val id = forEpisode(series, 1, ep)
             id to PlaybackProgress(
                 mediaId = id,
                 title = "Ep $ep",
@@ -346,7 +387,7 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `series with unconsumed Season 0 specials, 4 completed seasons, and upcoming Season 5 is marked WATCHED`() {
-        val series = TmdbTvSummary(
+        val series = createSeries(
             id = 800,
             name = "Epic Show",
             numberOfEpisodes = 48,
@@ -373,7 +414,7 @@ class TvSeriesProgressCalculatorTest {
         val history = mutableMapOf<String, PlaybackProgress>()
         for (s in 1..4) {
             for (e in 1..10) {
-                val mediaId = MediaIdHelper.forEpisode(800, s, e)
+                val mediaId = forEpisode(series, s, e)
                 history[mediaId] = PlaybackProgress(
                     mediaId = mediaId,
                     title = "Epic Show S0${s}E%02d".format(e),
@@ -393,7 +434,7 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `series with Season 0 specials, 4 completed seasons, and upcoming Season 5 with year-only air date is marked WATCHED`() {
-        val series = TmdbTvSummary(
+        val series = createSeries(
             id = 801,
             name = "Epic Show 2",
             numberOfEpisodes = 48,
@@ -419,7 +460,7 @@ class TvSeriesProgressCalculatorTest {
         val history = mutableMapOf<String, PlaybackProgress>()
         for (s in 1..4) {
             for (e in 1..10) {
-                val mediaId = MediaIdHelper.forEpisode(801, s, e)
+                val mediaId = forEpisode(series, s, e)
                 history[mediaId] = PlaybackProgress(
                     mediaId = mediaId,
                     title = "Epic Show 2 S0${s}E%02d".format(e),
@@ -438,7 +479,7 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `calculateProgressPercent does not drop past regular seasons with year-only air dates`() {
-        val series = TmdbTvSummary(
+        val series = createSeries(
             id = 850,
             name = "Classic Anime",
             numberOfEpisodes = 24,
@@ -450,7 +491,7 @@ class TvSeriesProgressCalculatorTest {
         )
         // User watched all 12 episodes of Season 1
         val history = (1..12).associate { ep ->
-            val id = MediaIdHelper.forEpisode(850, 1, ep)
+            val id = forEpisode(series, 1, ep)
             id to PlaybackProgress(
                 mediaId = id,
                 title = "Ep $ep",
@@ -469,7 +510,7 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `calculateProgressPercent retains latest regular season when last episode to air is Season 0 special`() {
-        val series = TmdbTvSummary(
+        val series = createSeries(
             id = 851,
             name = "Sherlock Style",
             numberOfEpisodes = 6,
@@ -491,7 +532,7 @@ class TvSeriesProgressCalculatorTest {
 
         // User watched only Season 1 (3 episodes out of 6 regular episodes)
         val history = (1..3).associate { ep ->
-            val id = MediaIdHelper.forEpisode(851, 1, ep)
+            val id = forEpisode(series, 1, ep)
             id to PlaybackProgress(
                 mediaId = id,
                 title = "Ep $ep",
@@ -510,7 +551,7 @@ class TvSeriesProgressCalculatorTest {
 
     @Test
     fun `calculateProgressPercent includes current-year season when lastEpisodeToAir confirms it has aired`() {
-        val series = TmdbTvSummary(
+        val series = createSeries(
             id = 852,
             name = "Airing Hit Show",
             numberOfEpisodes = 20,
@@ -531,7 +572,7 @@ class TvSeriesProgressCalculatorTest {
 
         // User watched only Season 1
         val history = (1..10).associate { ep ->
-            val id = MediaIdHelper.forEpisode(852, 1, ep)
+            val id = forEpisode(series, 1, ep)
             id to PlaybackProgress(
                 mediaId = id,
                 title = "Ep $ep",
@@ -550,7 +591,7 @@ class TvSeriesProgressCalculatorTest {
     @Test
     fun `calculateProgressPercent treats month-precision air date as aired once premiere month begins`() {
         val currentMonthIso = LocalDate.now().toString().take(7) // e.g. "2026-11"
-        val series = TmdbTvSummary(
+        val series = createSeries(
             id = 853,
             name = "Monthly Premiere Show",
             numberOfEpisodes = 10,
@@ -562,7 +603,7 @@ class TvSeriesProgressCalculatorTest {
 
         // User watched 5 episodes of Season 1
         val history = (1..5).associate { ep ->
-            val id = MediaIdHelper.forEpisode(853, 1, ep)
+            val id = forEpisode(series, 1, ep)
             id to PlaybackProgress(
                 mediaId = id,
                 title = "Ep $ep",
@@ -576,5 +617,22 @@ class TvSeriesProgressCalculatorTest {
         val progress = TvSeriesProgressCalculator.calculateProgressPercent(series, history)
         assertEquals(50, progress)
         assertEquals(true, TvSeriesProgressCalculator.isSeriesInProgress(series, history))
+    }
+
+    @Test
+    fun `calculateProgressPercent processes canonical episode and matching titles cleanly`() {
+        val series = createSeries(id = 500, name = "Breaking Bad", numberOfEpisodes = 10, imdbId = "tt0903747")
+        val epId = "tt0903747_s1_e1"
+        val history = mapOf(
+            epId to PlaybackProgress(
+                mediaId = epId,
+                title = "Breaking Bad - S01E01 - Pilot",
+                positionMs = 1000L,
+                durationMs = 1000L,
+                isEpisode = true
+            )
+        )
+        val progress = TvSeriesProgressCalculator.calculateProgressPercent(series, history)
+        assertEquals(10, progress)
     }
 }

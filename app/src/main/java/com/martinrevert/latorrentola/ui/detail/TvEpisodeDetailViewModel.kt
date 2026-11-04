@@ -230,7 +230,7 @@ class TvEpisodeDetailViewModel @Inject constructor(
         val episode = currentEpisode ?: return
         viewModelScope.launch {
             val validHash = torrent.downloadInfoHash()
-                ?: "tv_${activeSeriesId}_s${activeSeasonNumber}_e${activeEpisodeNumber}"
+                ?: "${activeSeriesId}_s${activeSeasonNumber}_e${activeEpisodeNumber}"
 
             userLibraryRepository.markEpisodeAsDownloaded(
                 DownloadedEpisode(

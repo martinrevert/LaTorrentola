@@ -11,8 +11,6 @@ import kotlin.math.roundToInt
  */
 object TvSeriesProgressCalculator {
 
-    private val FALLBACK_EPISODE_REGEX = Regex("""_s(\d+)_e(\d+)""", RegexOption.IGNORE_CASE)
-
     /**
      * Checks if [title] matches [seriesName] exactly or with standard episode delimiters
      * (e.g. "Series - S01E01", "Series.S01E01", "Series S01E01").
@@ -152,39 +150,18 @@ object TvSeriesProgressCalculator {
 
         if ((seriesId <= 0 && imdbId.isNullOrBlank() && seriesName.isBlank()) || watchHistoryMap.isEmpty()) return null
 
-        val imdbPrefix = imdbId?.let { "${it}_s" }
         val normImdbId = MediaIdHelper.normalizeImdbId(imdbId)
-        val tmdbPrefix = if (seriesId > 0) "tmdb_${seriesId}_s" else null
         val episodeEntries = mutableMapOf<Pair<Int, Int>, Float>()
 
         watchHistoryMap.forEach { (mediaId, progress) ->
-            val parsed = MediaIdHelper.parseCanonicalEpisode(mediaId)
-            val fallbackPair = if (parsed == null) {
-                FALLBACK_EPISODE_REGEX.find(mediaId)?.let { match ->
-                    val s = match.groupValues[1].toIntOrNull() ?: 1
-                    val e = match.groupValues[2].toIntOrNull() ?: 1
-                    Pair(s, e)
-                }
-            } else null
+            val parsed = MediaIdHelper.parseCanonicalEpisode(mediaId) ?: return@forEach
 
-            // An episode must either be flagged as such, or have a parsed/regex episode structure
-            val isEpisodeCandidate = progress.isEpisode || parsed != null || fallbackPair != null
-            if (!isEpisodeCandidate) return@forEach
-
-            val matchesSeries = if (parsed != null) {
-                parsed.matchesSeries(seriesId, imdbId, normImdbId) ||
-                    ((seriesId <= 0 && imdbId.isNullOrBlank() || (parsed.first <= 0 && parsed.imdbId.isNullOrBlank())) &&
-                        seriesName.isNotBlank() && isEpisodeTitleMatchingSeries(progress.title, seriesName))
-            } else {
-                (imdbPrefix != null && mediaId.startsWith(imdbPrefix)) ||
-                    (tmdbPrefix != null && mediaId.startsWith(tmdbPrefix)) ||
-                    (seriesId > 0 && mediaId.contains("_${seriesId}_s")) ||
-                    (seriesName.isNotBlank() && isEpisodeTitleMatchingSeries(progress.title, seriesName))
-            }
+            val matchesSeries = parsed.matchesSeries(targetImdbId = imdbId, normTarget = normImdbId) ||
+                (seriesName.isNotBlank() && isEpisodeTitleMatchingSeries(progress.title, seriesName))
 
             if (matchesSeries) {
-                val sNum = parsed?.second ?: fallbackPair?.first ?: return@forEach
-                val eNum = parsed?.third ?: fallbackPair?.second ?: return@forEach
+                val sNum = parsed.seasonNumber
+                val eNum = parsed.episodeNumber
 
                 // Season 0 specials are excluded from series overall progress calculation
                 if (sNum <= 0) return@forEach

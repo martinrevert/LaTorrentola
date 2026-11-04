@@ -12,57 +12,54 @@ import org.junit.Test
 class MediaIdHelperTest {
 
     @Test
-    fun `forMovie generates deterministic tmdb string when movieId is valid without imdbId`() {
+    fun `forMovie returns unknown_movie when imdbId is missing`() {
         val mediaId = MediaIdHelper.forMovie(movieId = 12230)
-        assertEquals("tmdb_12230", mediaId)
+        assertEquals("unknown_movie", mediaId)
         assertFalse(MediaIdHelper.isCanonical(mediaId))
     }
 
     @Test
-    fun `forMovie never uses infoHash even if provided`() {
+    fun `forMovie generates canonical IMDb ID when imdbId is provided`() {
+        val mediaId = MediaIdHelper.forMovie(imdbId = "tt0111161", movieId = 12230)
+        assertEquals("tt0111161", mediaId)
+        assertTrue(MediaIdHelper.isCanonical(mediaId))
+        assertTrue(MediaIdHelper.isCanonicalMovieId(mediaId))
+    }
+
+    @Test
+    fun `forMovie ignores infoHash even if provided`() {
         val fakeHash = "092ea1d9309572ad7caf0868c3a94217dad15769"
         val mediaId = MediaIdHelper.forMovie(
+            imdbId = "tt0111161",
             movieId = 12230,
-            infoHash = fakeHash,
             title = "Inception"
         )
-        assertEquals("tmdb_12230", mediaId)
+        assertEquals("tt0111161", mediaId)
         assertFalse(mediaId.contains(fakeHash))
     }
 
     @Test
-    fun `forMovie falls back to cleaned title when movieId is 0 without using infoHash`() {
-        val fakeHash = "092ea1d9309572ad7caf0868c3a94217dad15769"
-        val mediaId = MediaIdHelper.forMovie(
-            movieId = 0,
-            infoHash = fakeHash,
-            title = "Gladiator (2000).mkv"
-        )
-        assertEquals("Gladiator (2000)", mediaId)
-        assertFalse(mediaId.contains(fakeHash))
-    }
-
-    @Test
-    fun `forEpisode never uses infoHash`() {
-        val fakeHash = "092ea1d9309572ad7caf0868c3a94217dad15769"
+    fun `forEpisode returns unknown_episode when imdbId is missing`() {
         val mediaId = MediaIdHelper.forEpisode(
             seriesId = 111803,
             seasonNumber = 2,
-            episodeNumber = 5,
-            infoHash = fakeHash,
-            title = "Severance S02E05"
+            episodeNumber = 5
         )
-        assertEquals("tmdb_111803_s2_e5", mediaId)
-        assertFalse(mediaId.contains(fakeHash))
+        assertEquals("unknown_episode", mediaId)
+        assertFalse(MediaIdHelper.isCanonical(mediaId))
     }
 
     @Test
-    fun `isInfoHash correctly identifies 40-character hex hashes`() {
-        assertTrue(MediaIdHelper.isInfoHash("092ea1d9309572ad7caf0868c3a94217dad15769"))
-        assertTrue(MediaIdHelper.isInfoHash("092EA1D9309572AD7CAF0868C3A94217DAD15769"))
-        assertFalse(MediaIdHelper.isInfoHash("12230"))
-        assertFalse(MediaIdHelper.isInfoHash("media_111803_s1_e1"))
-        assertFalse(MediaIdHelper.isInfoHash("Inception"))
+    fun `forEpisode generates canonical IMDb episode ID when imdbId is provided`() {
+        val mediaId = MediaIdHelper.forEpisode(
+            imdbId = "tt11111111",
+            seriesId = 111803,
+            seasonNumber = 1,
+            episodeNumber = 2
+        )
+        assertEquals("tt11111111_s1_e2", mediaId)
+        assertTrue(MediaIdHelper.isCanonical(mediaId))
+        assertTrue(MediaIdHelper.isCanonicalEpisodeId(mediaId))
     }
 
     @Test
@@ -80,39 +77,21 @@ class MediaIdHelperTest {
         assertFalse(MediaIdHelper.isCanonical("Severance.S01E01.mkv"))
         assertFalse(MediaIdHelper.isCanonical("media_0_s1_e1"))
         assertFalse(MediaIdHelper.isCanonical("unknown_movie"))
+        assertFalse(MediaIdHelper.isCanonical("unknown_episode"))
     }
 
     @Test
-    fun `parseCanonicalEpisode correctly extracts components`() {
-        val parsed = MediaIdHelper.parseCanonicalEpisode("media_111803_s2_e8")
+    fun `parseCanonicalEpisode correctly extracts components from IMDb format`() {
+        val parsed = MediaIdHelper.parseCanonicalEpisode("tt1118030_s2_e8")
         assertNotNull(parsed)
-        assertEquals(111803, parsed!!.first)
-        assertEquals(2, parsed.second)
-        assertEquals(8, parsed.third)
+        assertEquals("tt1118030", parsed!!.imdbId)
+        assertEquals(2, parsed.seasonNumber)
+        assertEquals(8, parsed.episodeNumber)
 
+        assertNull(MediaIdHelper.parseCanonicalEpisode("media_111803_s2_e8"))
+        assertNull(MediaIdHelper.parseCanonicalEpisode("tmdb_111803_s2_e8"))
         assertNull(MediaIdHelper.parseCanonicalEpisode("12230"))
         assertNull(MediaIdHelper.parseCanonicalEpisode("invalid_id"))
-    }
-
-    @Test
-    fun `forMovie generates canonical IMDb ID when imdbId is provided`() {
-        val mediaId = MediaIdHelper.forMovie(imdbId = "tt0111161", movieId = 12230)
-        assertEquals("tt0111161", mediaId)
-        assertTrue(MediaIdHelper.isCanonical(mediaId))
-        assertTrue(MediaIdHelper.isCanonicalMovieId(mediaId))
-    }
-
-    @Test
-    fun `forEpisode generates canonical IMDb episode ID when imdbId is provided`() {
-        val mediaId = MediaIdHelper.forEpisode(
-            imdbId = "tt11111111",
-            seriesId = 111803,
-            seasonNumber = 1,
-            episodeNumber = 2
-        )
-        assertEquals("tt11111111_s1_e2", mediaId)
-        assertTrue(MediaIdHelper.isCanonical(mediaId))
-        assertTrue(MediaIdHelper.isCanonicalEpisodeId(mediaId))
     }
 
     @Test
@@ -120,58 +99,36 @@ class MediaIdHelperTest {
         assertEquals("tt0111161", MediaIdHelper.normalizeImdbId("0111161"))
         assertEquals("tt0111161", MediaIdHelper.normalizeImdbId("tt0111161"))
         assertEquals("tt0111161", MediaIdHelper.normalizeImdbId("TT0111161"))
+        assertEquals("tt0111161", MediaIdHelper.normalizeImdbId(" TT0111161 "))
         assertNull(MediaIdHelper.normalizeImdbId(""))
+        assertNull(MediaIdHelper.normalizeImdbId(null))
         assertNull(MediaIdHelper.normalizeImdbId("invalid"))
     }
 
     @Test
-    fun `parseCanonicalEpisode handles both IMDb and legacy series mnemonic`() {
+    fun `parseCanonicalEpisode handles series matching by IMDb ID`() {
         val parsedImdb = MediaIdHelper.parseCanonicalEpisode("tt11111111_s1_e2")
         assertNotNull(parsedImdb)
         assertEquals("tt11111111", parsedImdb!!.seriesIdentifier)
         assertEquals("tt11111111", parsedImdb.imdbId)
         assertEquals(1, parsedImdb.second)
         assertEquals(2, parsedImdb.third)
-        assertTrue(parsedImdb.matchesSeries(seriesId = 0, targetImdbId = "tt11111111"))
-        assertTrue(parsedImdb.matchesSeries(seriesId = 0, targetImdbId = "11111111"))
-        assertTrue(parsedImdb.matchesSeries(seriesId = 0, targetImdbId = "TT11111111"))
-        assertFalse(parsedImdb.matchesSeries(seriesId = 0, targetImdbId = "tt22222222"))
-        assertFalse(parsedImdb.matchesSeries(seriesId = 9999, targetImdbId = null))
-
-        val parsedLegacy = MediaIdHelper.parseCanonicalEpisode("media_1399_s3_e4")
-        assertNotNull(parsedLegacy)
-        assertEquals(1399, parsedLegacy!!.first)
-        assertEquals("1399", parsedLegacy.seriesIdentifier)
-        assertEquals(3, parsedLegacy.second)
-        assertEquals(4, parsedLegacy.third)
-        assertTrue(parsedLegacy.matchesSeries(seriesId = 1399, targetImdbId = null))
-        assertFalse(parsedLegacy.matchesSeries(seriesId = 5555, targetImdbId = null))
-
-        val parsedTmdb = MediaIdHelper.parseCanonicalEpisode("tmdb_111803_s1_e2")
-        assertNotNull(parsedTmdb)
-        assertNull(parsedTmdb!!.imdbId)
-        assertFalse(parsedTmdb.matchesSeries(seriesId = 0, targetImdbId = "tt111803"))
-        assertTrue(parsedTmdb.matchesSeries(seriesId = 111803, targetImdbId = null))
+        assertTrue(parsedImdb.matchesSeries(targetImdbId = "tt11111111"))
+        assertTrue(parsedImdb.matchesSeries(targetImdbId = "11111111"))
+        assertTrue(parsedImdb.matchesSeries(targetImdbId = "TT11111111"))
+        assertFalse(parsedImdb.matchesSeries(targetImdbId = "tt22222222"))
+        assertFalse(parsedImdb.matchesSeries(targetImdbId = null))
     }
 
     @Test
-    fun `findMovieProgress resolves progress via canonical IMDb ID, TMDB ID, numeric ID, and title`() {
+    fun `findMovieProgress resolves progress exclusively via canonical IMDb ID`() {
         val progressImdb = PlaybackProgress(
             mediaId = "tt0111161",
             title = "The Shawshank Redemption",
             positionMs = 5000L,
             durationMs = 10000L
         )
-        val progressTmdb = PlaybackProgress(
-            mediaId = "tmdb_550",
-            title = "Fight Club",
-            positionMs = 3000L,
-            durationMs = 9000L
-        )
-        val map = mapOf(
-            "tt0111161" to progressImdb,
-            "tmdb_550" to progressTmdb
-        )
+        val map = mapOf("tt0111161" to progressImdb)
 
         // Movie with IMDb code matches canonical entry
         val movie1 = Movie(id = 278, imdbCode = "tt0111161", title = "The Shawshank Redemption")
@@ -179,63 +136,32 @@ class MediaIdHelperTest {
         assertNotNull(found1)
         assertEquals("tt0111161", found1?.mediaId)
 
-        // Movie with only TMDB ID matches tmdb_ entry
+        // Movie without IMDb code returns null
         val movie2 = Movie(id = 550, imdbCode = null, title = "Fight Club")
         val found2 = MediaIdHelper.findMovieProgress(movie2, map)
-        assertNotNull(found2)
-        assertEquals("tmdb_550", found2?.mediaId)
+        assertNull(found2)
     }
 
     @Test
-    fun `buildWatchHistoryMap creates dual-key lookup entries for movies and episodes`() {
+    fun `findMovieProgress ignores episode records with identical IMDb ID if marked isEpisode`() {
         val progressEpisode = PlaybackProgress(
-            mediaId = "tt0944947_s1_e1",
-            title = "Game of Thrones - S01E01 - Winter Is Coming",
-            positionMs = 1000L,
-            durationMs = 2000L,
-            isEpisode = true
-        )
-        val progressMovie = PlaybackProgress(
-            mediaId = "tt0111161",
-            title = "The Shawshank Redemption",
-            positionMs = 5000L,
-            durationMs = 10000L,
-            isEpisode = false
-        )
-
-        val map = MediaIdHelper.buildWatchHistoryMap(listOf(progressEpisode, progressMovie))
-
-        // Direct canonical lookup
-        assertTrue(map.containsKey("tt0944947_s1_e1"))
-        assertTrue(map.containsKey("tt0111161"))
-
-        // Movie title lookups
-        assertTrue(map.containsKey("The Shawshank Redemption"))
-        assertTrue(map.containsKey("the shawshank redemption"))
-        // Episode titles should not be indexed in flat title map to prevent collisions with movies
-        assertFalse(map.containsKey("Game of Thrones - S01E01 - Winter Is Coming"))
-    }
-
-    @Test
-    fun `findMovieProgress ignores episode records with identical titles`() {
-        val progressEpisode = PlaybackProgress(
-            mediaId = "tt0944947_s1_e1",
+            mediaId = "tt0944947",
             title = "Pilot",
             positionMs = 1000L,
             durationMs = 2000L,
             isEpisode = true
         )
-        val mapWithEpisode = mapOf("Pilot" to progressEpisode)
+        val mapWithEpisode = mapOf("tt0944947" to progressEpisode)
         val movie = Movie(
             id = 9999,
-            imdbCode = null,
+            imdbCode = "tt0944947",
             title = "Pilot"
         )
         assertNull(MediaIdHelper.findMovieProgress(movie, mapWithEpisode))
     }
 
     @Test
-    fun `buildWatchHistoryMap indexes normalized IMDb ID for case-insensitive resolution`() {
+    fun `buildWatchHistoryMap indexes canonical IMDb ID and handles case-insensitivity`() {
         val progressMovie = PlaybackProgress(
             mediaId = "TT0111161",
             title = "The Shawshank Redemption",
@@ -288,26 +214,25 @@ class MediaIdHelperTest {
     }
 
     @Test
-    fun `parseCanonicalEpisode parses legacy and fallback Season 0 specials`() {
-        val parsedTmdb = MediaIdHelper.parseCanonicalEpisode("tmdb_1399_s0_e2")
-        assertNotNull(parsedTmdb)
-        assertEquals(1399, parsedTmdb?.first)
-        assertEquals(0, parsedTmdb?.second)
-        assertEquals(2, parsedTmdb?.third)
-
-        val parsedLegacy = MediaIdHelper.parseCanonicalEpisode("tv_1399_s0_e3")
-        assertNotNull(parsedLegacy)
-        assertEquals(1399, parsedLegacy?.first)
-        assertEquals(0, parsedLegacy?.second)
-        assertEquals(3, parsedLegacy?.third)
+    fun `buildWatchHistoryMap indexes canonical episode ID and handles case-insensitivity`() {
+        val progressEp = PlaybackProgress(
+            mediaId = "TT0944947_s1_e2",
+            title = "Game of Thrones S1E2",
+            positionMs = 1000L,
+            durationMs = 2000L,
+            isEpisode = true
+        )
+        val map = MediaIdHelper.buildWatchHistoryMap(listOf(progressEp))
+        assertTrue(map.containsKey("tt0944947_s1_e2"))
+        assertEquals("TT0944947_s1_e2", map["tt0944947_s1_e2"]?.mediaId)
     }
 
     @Test
-    fun `normalizeImdbId normalizes raw numeric and prefixed IMDb strings`() {
-        assertEquals("tt0111161", MediaIdHelper.normalizeImdbId("0111161"))
-        assertEquals("tt0111161", MediaIdHelper.normalizeImdbId("tt0111161"))
-        assertEquals("tt0111161", MediaIdHelper.normalizeImdbId(" TT0111161 "))
-        assertNull(MediaIdHelper.normalizeImdbId(""))
-        assertNull(MediaIdHelper.normalizeImdbId(null))
+    fun `EpisodeComponents matchesSeries matches without seriesId`() {
+        val parsed = MediaIdHelper.parseCanonicalEpisode("tt11111111_s1_e2")
+        assertNotNull(parsed)
+        assertTrue(parsed!!.matchesSeries("tt11111111"))
+        assertTrue(parsed.matchesSeries("11111111"))
+        assertFalse(parsed.matchesSeries("tt22222222"))
     }
 }

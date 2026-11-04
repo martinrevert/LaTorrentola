@@ -837,7 +837,7 @@ private fun TvSeriesDetailTvContent(
                             watchHistoryMap.forEach { (mediaId, progress) ->
                                 if (progress.isCompleted || progress.progressPercent >= 95) {
                                     val parsed = MediaIdHelper.parseCanonicalEpisode(mediaId)
-                                    if (parsed != null && parsed.matchesSeries(series.id, series.effectiveImdbId) && parsed.second == season.seasonNumber) {
+                                    if (parsed != null && parsed.matchesSeries(series.effectiveImdbId) && parsed.second == season.seasonNumber) {
                                         numbers.add(parsed.third)
                                     }
                                 }
@@ -1353,7 +1353,7 @@ private fun HandheldTvSeriesDetailContent(
                             watchHistoryMap.forEach { (mediaId, progress) ->
                                 if (progress.isCompleted || progress.progressPercent >= 95) {
                                     val parsed = MediaIdHelper.parseCanonicalEpisode(mediaId)
-                                    if (parsed != null && parsed.matchesSeries(series.id, series.effectiveImdbId) && parsed.second == season.seasonNumber) {
+                                    if (parsed != null && parsed.matchesSeries(series.effectiveImdbId) && parsed.second == season.seasonNumber) {
                                         numbers.add(parsed.third)
                                     }
                                 }

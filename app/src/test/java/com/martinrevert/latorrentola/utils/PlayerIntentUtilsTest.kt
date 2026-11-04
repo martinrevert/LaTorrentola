@@ -53,13 +53,14 @@ class PlayerIntentUtilsTest {
         every { intent.getIntExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, 0) } returns 0
         every { intent.getIntExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, 0) } returns 0
         every { intent.getIntExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, 0) } returns 12230
+        every { intent.getStringExtra(LocalPlayerActivity.EXTRA_IMDB_ID) } returns "tt1375666"
         every { intent.getStringExtra(LocalPlayerActivity.EXTRA_MIME_TYPE) } returns "video/mp4"
         every { intent.getStringExtra(LocalPlayerActivity.EXTRA_CAST_URL) } returns null
         every { intent.getStringExtra(LocalPlayerActivity.EXTRA_INFO_HASH) } returns "hash12230"
 
         val mediaItem = PlayerIntentUtils.buildMediaItem(intent)
 
-        assertEquals("tmdb_12230", mediaItem.mediaId)
+        assertEquals("tt1375666", mediaItem.mediaId)
         assertEquals("Inception", mediaItem.mediaMetadata.title?.toString())
         assertEquals("video/mp4", mediaItem.localConfiguration?.mimeType)
         assertNotNull(mediaItem.mediaMetadata.extras)
@@ -77,13 +78,14 @@ class PlayerIntentUtilsTest {
         every { intent.getIntExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, 0) } returns 1
         every { intent.getIntExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, 0) } returns 1
         every { intent.getIntExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, 0) } returns 0
+        every { intent.getStringExtra(LocalPlayerActivity.EXTRA_IMDB_ID) } returns "tt11280740"
         every { intent.getStringExtra(LocalPlayerActivity.EXTRA_MIME_TYPE) } returns "video/x-matroska"
         every { intent.getStringExtra(LocalPlayerActivity.EXTRA_CAST_URL) } returns "http://192.168.1.50:8080/ep1.mkv"
         every { intent.getStringExtra(LocalPlayerActivity.EXTRA_INFO_HASH) } returns "hashSeverance"
 
         val mediaItem = PlayerIntentUtils.buildMediaItem(intent)
 
-        assertEquals("tmdb_111803_s1_e1", mediaItem.mediaId)
+        assertEquals("tt11280740_s1_e1", mediaItem.mediaId)
         assertEquals("Severance S01E01", mediaItem.mediaMetadata.title?.toString())
         assertEquals("video/x-matroska", mediaItem.localConfiguration?.mimeType)
         assertNotNull(mediaItem.mediaMetadata.extras)
@@ -117,13 +119,14 @@ class PlayerIntentUtilsTest {
             mediaPath = "/storage/downloads/matrix.mp4",
             castWhenReady = false,
             updatedAtMillis = System.currentTimeMillis(),
-            movieId = 603
+            movieId = 603,
+            imdbId = "tt0133093"
         )
         val file = File("matrix.mp4")
 
         val mediaItem = PlayerIntentUtils.buildMediaItem(download, file)
 
-        assertEquals("tmdb_603", mediaItem.mediaId)
+        assertEquals("tt0133093", mediaItem.mediaId)
         assertEquals("The Matrix (1999)", mediaItem.mediaMetadata.title?.toString())
         assertEquals("video/mp4", mediaItem.localConfiguration?.mimeType)
         assertNotNull(mediaItem.mediaMetadata.extras)

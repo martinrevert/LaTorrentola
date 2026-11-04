@@ -18,21 +18,9 @@ interface WatchHistoryDao {
     @Query("SELECT * FROM watch_history ORDER BY timestamp DESC")
     fun observeAll(): Flow<List<WatchHistoryEntity>>
 
-    /** Returns watch progress for a specific media item and user, falling back to unassigned legacy records. */
+    /** Returns watch progress for a specific canonical media item and user, falling back to unassigned records. */
     @Query("SELECT * FROM watch_history WHERE (userId = :userId OR (userId = '' AND :userId != '')) AND mediaId = :mediaId ORDER BY CASE WHEN userId = :userId THEN 0 ELSE 1 END, timestamp DESC LIMIT 1")
     suspend fun get(userId: String, mediaId: String): WatchHistoryEntity?
-
-    /** Returns watch progress for any candidate media ID for a user, falling back to unassigned records. */
-    @Query("SELECT * FROM watch_history WHERE (userId = :userId OR (userId = '' AND :userId != '')) AND mediaId IN (:mediaIds) ORDER BY CASE WHEN userId = :userId THEN 0 ELSE 1 END, timestamp DESC LIMIT 1")
-    suspend fun getByAnyMediaId(userId: String, mediaIds: List<String>): WatchHistoryEntity?
-
-    /** Returns legacy watch history items needing migration to canonical IMDb format for a specific user. */
-    @Query("SELECT * FROM watch_history WHERE userId = :userId AND (mediaId LIKE 'media_%' OR mediaId LIKE 'tv_%' OR (mediaId NOT LIKE 'tt%' AND mediaId NOT LIKE 'tmdb_%'))")
-    suspend fun getLegacyItems(userId: String): List<WatchHistoryEntity>
-
-    /** Returns all legacy watch history items needing migration across unassigned records. */
-    @Query("SELECT * FROM watch_history WHERE mediaId LIKE 'media_%' OR mediaId LIKE 'tv_%' OR (mediaId NOT LIKE 'tt%' AND mediaId NOT LIKE 'tmdb_%')")
-    suspend fun getLegacyItems(): List<WatchHistoryEntity>
 
     /** Claims unassigned pre-migration watch history records for a newly authenticated user. */
     @Query("UPDATE watch_history SET userId = :userId WHERE userId = ''")

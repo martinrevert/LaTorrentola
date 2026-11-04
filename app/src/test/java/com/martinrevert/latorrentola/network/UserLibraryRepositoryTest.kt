@@ -354,48 +354,6 @@ class UserLibraryRepositoryTest {
     }
 
     @Test
-    fun `cleanupAndMigrateWatchHistory should migrate legacy records to canonical IMDb format`() = runTest {
-        val legacyEntity = WatchHistoryEntity(
-            userId = "",
-            mediaId = "media_1399_s1_e2",
-            title = "Game of Thrones - S1E2",
-            positionMs = 25000L,
-            durationMs = 60000L,
-            timestamp = 5000L,
-            isEpisode = true
-        )
-        val resolver: com.martinrevert.latorrentola.utils.MediaMetadataResolver = mockk(relaxed = true)
-        coEvery { resolver.getTvImdbId(1399) } returns "tt0944947"
-        coEvery { resolver.resolve(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns com.martinrevert.latorrentola.utils.CanonicalMediaInfo(
-            mediaId = "tt0944947_s1_e2",
-            title = "Game of Thrones - S1E2",
-            imdbId = "tt0944947",
-            seriesId = 1399,
-            seasonNumber = 1,
-            episodeNumber = 2,
-            isEpisode = true
-        )
-        repository = UserLibraryRepository(
-            firestore = firestore,
-            auth = auth,
-            watchHistoryDao = watchHistoryDao,
-            mediaMetadataResolver = dagger.Lazy { resolver }
-        )
-        coEvery { watchHistoryDao.getLegacyItems(any()) } returns listOf(legacyEntity)
-        coEvery { watchHistoryDao.getLegacyItems() } returns listOf(legacyEntity)
-
-        repository.cleanupAndMigrateWatchHistory()
-
-        // Verify it was migrated in Room and old legacy record deleted
-        io.mockk.coVerify {
-            watchHistoryDao.upsert(
-                match { it.mediaId == "tt0944947_s1_e2" && it.positionMs == 25000L }
-            )
-            watchHistoryDao.delete("", "media_1399_s1_e2")
-        }
-    }
-
-    @Test
     fun `getWatchHistory in guest mode observes only records with empty userId`() = runTest {
         every { auth.currentUser } returns null
         every { watchHistoryDao.observeAll("") } returns flowOf(emptyList())
@@ -406,73 +364,6 @@ class UserLibraryRepositoryTest {
         }
 
         io.mockk.verify { watchHistoryDao.observeAll("") }
-    }
-
-    @Test
-    fun `cleanupAndMigrateWatchHistory scopes legacy items query to current userId`() = runTest {
-        val mockUser = mockk<com.google.firebase.auth.FirebaseUser>()
-        every { mockUser.uid } returns "user_xyz"
-        every { auth.currentUser } returns mockUser
-        val usersCol = mockk<com.google.firebase.firestore.CollectionReference>(relaxed = true)
-        val userDoc = mockk<com.google.firebase.firestore.DocumentReference>(relaxed = true)
-        val watchCol = mockk<com.google.firebase.firestore.CollectionReference>(relaxed = true)
-        val snapshot = mockk<com.google.firebase.firestore.QuerySnapshot>(relaxed = true)
-        every { snapshot.documents } returns emptyList()
-        val task = com.google.android.gms.tasks.Tasks.forResult(snapshot)
-        every { firestore.collection("users") } returns usersCol
-        every { usersCol.document("user_xyz") } returns userDoc
-        every { userDoc.collection("watch_history") } returns watchCol
-        every { watchCol.get() } returns task
-
-        val resolver: com.martinrevert.latorrentola.utils.MediaMetadataResolver = mockk(relaxed = true)
-        val repo = UserLibraryRepository(
-            firestore = firestore,
-            auth = auth,
-            watchHistoryDao = watchHistoryDao,
-            mediaMetadataResolver = dagger.Lazy { resolver }
-        )
-        coEvery { watchHistoryDao.getLegacyItems("user_xyz") } returns emptyList()
-
-        repo.cleanupAndMigrateWatchHistory()
-
-        io.mockk.coVerify { watchHistoryDao.claimUnassignedItems("user_xyz") }
-        io.mockk.coVerify { watchHistoryDao.getLegacyItems("user_xyz") }
-    }
-
-    @Test
-    fun `cleanupAndMigrateWatchHistory should retain legacy record when resolution fails`() = runTest {
-        val legacyEntity = WatchHistoryEntity(
-            userId = "",
-            mediaId = "unknown_legacy_media_id",
-            title = "Unresolvable Media",
-            positionMs = 15000L,
-            durationMs = 60000L,
-            timestamp = 5000L,
-            isEpisode = false
-        )
-        val resolver: com.martinrevert.latorrentola.utils.MediaMetadataResolver = mockk(relaxed = true)
-        coEvery { resolver.getMovieImdbId(any()) } returns null
-        coEvery { resolver.resolve(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns com.martinrevert.latorrentola.utils.CanonicalMediaInfo(
-            mediaId = "unknown_movie",
-            title = "Unresolvable Media",
-            imdbId = null,
-            movieId = 0
-        )
-        repository = UserLibraryRepository(
-            firestore = firestore,
-            auth = auth,
-            watchHistoryDao = watchHistoryDao,
-            mediaMetadataResolver = dagger.Lazy { resolver }
-        )
-        coEvery { watchHistoryDao.getLegacyItems(any()) } returns listOf(legacyEntity)
-        coEvery { watchHistoryDao.getLegacyItems() } returns listOf(legacyEntity)
-
-        repository.cleanupAndMigrateWatchHistory()
-
-        // Verify it was NOT deleted
-        io.mockk.coVerify(exactly = 0) {
-            watchHistoryDao.delete(any(), "unknown_legacy_media_id")
-        }
     }
 
     @Test
@@ -623,58 +514,94 @@ class UserLibraryRepositoryTest {
     }
 
     @Test
-    fun `cleanupAndMigrateFavorites migrates legacy room and firestore favorites to canonical IMDb IDs`() = runTest {
-        val favoriteDao: com.martinrevert.latorrentola.database.FavoriteDao = mockk(relaxed = true)
-        val mockUser = mockk<com.google.firebase.auth.FirebaseUser>()
-        every { mockUser.uid } returns "user_123"
-        every { auth.currentUser } returns mockUser
-
-        val usersCol = mockk<com.google.firebase.firestore.CollectionReference>(relaxed = true)
-        val userDoc = mockk<com.google.firebase.firestore.DocumentReference>(relaxed = true)
-        val favCol = mockk<com.google.firebase.firestore.CollectionReference>(relaxed = true)
-        val docRef = mockk<com.google.firebase.firestore.DocumentReference>(relaxed = true)
-        val completedTask = com.google.android.gms.tasks.Tasks.forResult<Void>(null)
-
-        every { firestore.collection("users") } returns usersCol
-        every { usersCol.document("user_123") } returns userDoc
-        every { userDoc.collection("favorites") } returns favCol
-        every { favCol.document(any()) } returns docRef
-        every { docRef.set(any()) } returns completedTask
-        every { docRef.delete() } returns completedTask
-
-        val favQuerySnapshot = mockk<com.google.firebase.firestore.QuerySnapshot>(relaxed = true)
-        val legacyTvDoc = mockk<com.google.firebase.firestore.DocumentSnapshot>(relaxed = true)
-        every { legacyTvDoc.id } returns "tv_1399"
-        every { legacyTvDoc.get("id") } returns 1399
-        every { legacyTvDoc.getString("name") } returns "Game of Thrones"
-        every { legacyTvDoc.getString("imdbId") } returns null
-        every { legacyTvDoc.contains("numberOfSeasons") } returns true
-        every { legacyTvDoc.reference } returns docRef
-
-        every { favQuerySnapshot.documents } returns listOf(legacyTvDoc)
-        val snapshotTask = com.google.android.gms.tasks.Tasks.forResult(favQuerySnapshot)
-        every { favCol.get() } returns snapshotTask
-
+    fun `markMovieAsUncompleted with null imdbId resolves IMDb ID and deletes progress`() = runTest {
         val resolver: com.martinrevert.latorrentola.utils.MediaMetadataResolver = mockk(relaxed = true)
-        coEvery { resolver.getTvImdbId(1399) } returns "tt0944947"
-
+        coEvery { resolver.getMovieImdbId(278) } returns "tt0111161"
         val repo = UserLibraryRepository(
             firestore = firestore,
             auth = auth,
             watchHistoryDao = watchHistoryDao,
-            favoriteDao = favoriteDao,
             mediaMetadataResolver = dagger.Lazy { resolver }
         )
 
-        repo.cleanupAndMigrateFavorites()
+        repo.markMovieAsUncompleted(movieId = 278, imdbId = null)
 
         io.mockk.coVerify {
-            favoriteDao.upsertTvSeries(
-                match { it.seriesId == 1399 && it.imdbId == "tt0944947" }
-            )
+            watchHistoryDao.delete("", "tt0111161")
         }
-        io.mockk.verify {
-            favCol.document("tt0944947")
+    }
+
+    @Test
+    fun `markEpisodeAsUncompleted with null imdbId resolves IMDb ID and deletes episode progress`() = runTest {
+        val resolver: com.martinrevert.latorrentola.utils.MediaMetadataResolver = mockk(relaxed = true)
+        coEvery { resolver.getTvImdbId(1399) } returns "tt0944947"
+        val repo = UserLibraryRepository(
+            firestore = firestore,
+            auth = auth,
+            watchHistoryDao = watchHistoryDao,
+            mediaMetadataResolver = dagger.Lazy { resolver }
+        )
+
+        repo.markEpisodeAsUncompleted(seriesId = 1399, seasonNumber = 1, episodeNumber = 2, imdbId = null)
+
+        io.mockk.coVerify {
+            watchHistoryDao.delete("", "tt0944947_s1_e2")
+        }
+    }
+
+    @Test
+    fun `savePlaybackProgress drops sentinel keys unknown_movie and unknown_episode`() = runTest {
+        val movieProgress = PlaybackProgress(
+            mediaId = "unknown_movie",
+            title = "Unknown",
+            positionMs = 100L,
+            durationMs = 200L
+        )
+        val epProgress = PlaybackProgress(
+            mediaId = "unknown_episode",
+            title = "Unknown Ep",
+            positionMs = 100L,
+            durationMs = 200L
+        )
+        val blankProgress = PlaybackProgress(
+            mediaId = "   ",
+            title = "Blank",
+            positionMs = 100L,
+            durationMs = 200L
+        )
+
+        repository.savePlaybackProgress(movieProgress)
+        repository.savePlaybackProgress(epProgress)
+        repository.savePlaybackProgress(blankProgress)
+
+        io.mockk.coVerify(exactly = 0) {
+            watchHistoryDao.upsert(any())
+        }
+    }
+
+    @Test
+    fun `markEpisodeAsCompleted without imdbId does not use tv_ prefix for fallback document ID`() = runTest {
+        val downloadRecordDao: com.martinrevert.latorrentola.database.DownloadRecordDao = mockk(relaxed = true)
+        val repo = UserLibraryRepository(
+            firestore = firestore,
+            auth = auth,
+            watchHistoryDao = watchHistoryDao,
+            downloadRecordDao = downloadRecordDao
+        )
+
+        repo.markEpisodeAsCompleted(
+            seriesId = 1234,
+            seasonNumber = 1,
+            episodeNumber = 1,
+            episodeTitle = "Pilot",
+            seriesName = "No IMDb Show",
+            imdbId = null
+        )
+
+        io.mockk.coVerify {
+            downloadRecordDao.upsertEpisode(
+                match { it.hash == "1234_s1_e1" && !it.hash.startsWith("tv_") }
+            )
         }
     }
 }

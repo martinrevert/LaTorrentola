@@ -293,7 +293,7 @@ class SearchViewModelTest {
     @Test
     fun `watchHistoryMap should expose progress items mapped by mediaId`() = runTest {
         val progress = com.martinrevert.latorrentola.model.user.PlaybackProgress(
-            mediaId = "100",
+            mediaId = "tt0000100",
             title = "Test Movie",
             positionMs = 300000L,
             durationMs = 600000L,
@@ -309,7 +309,7 @@ class SearchViewModelTest {
             if (map.isEmpty()) {
                 map = awaitItem()
             }
-            assertThat(map["100"]).isEqualTo(progress)
+            assertThat(map["tt0000100"]).isEqualTo(progress)
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -354,18 +354,18 @@ class SearchViewModelTest {
 
     @Test
     fun `showFavorites with IN_PROGRESS filter should return movies and series in progress`() = runTest {
-        val inProgressMovie = Movie(id = 1, title = "In Progress Movie", rating = "8")
-        val watchedMovie = Movie(id = 2, title = "Watched Movie", rating = "8")
-        val inProgressSeries = TmdbTvSummary(id = 10, name = "Series 1", numberOfEpisodes = 10)
+        val inProgressMovie = Movie(id = 1, imdbCode = "tt0000001", title = "In Progress Movie", rating = "8")
+        val watchedMovie = Movie(id = 2, imdbCode = "tt0000002", title = "Watched Movie", rating = "8")
+        val inProgressSeries = TmdbTvSummary(id = 10, imdbId = "tt0000010", name = "Series 1", numberOfEpisodes = 10)
 
         val movieProgress = com.martinrevert.latorrentola.model.user.PlaybackProgress(
-            mediaId = "1", title = "In Progress Movie", positionMs = 500000L, durationMs = 1000000L, isEpisode = false
+            mediaId = "tt0000001", title = "In Progress Movie", positionMs = 500000L, durationMs = 1000000L, isEpisode = false
         )
         val watchedMovieProgress = com.martinrevert.latorrentola.model.user.PlaybackProgress(
-            mediaId = "2", title = "Watched Movie", positionMs = 980000L, durationMs = 1000000L, isEpisode = false
+            mediaId = "tt0000002", title = "Watched Movie", positionMs = 980000L, durationMs = 1000000L, isEpisode = false
         )
         val episodeProgress = com.martinrevert.latorrentola.model.user.PlaybackProgress(
-            mediaId = "tmdb_10_s1_e1", title = "Episode 1", positionMs = 500000L, durationMs = 1000000L, isEpisode = true
+            mediaId = "tt0000010_s1_e1", title = "Episode 1", positionMs = 500000L, durationMs = 1000000L, isEpisode = true
         )
 
         every { repository.getFavoriteMovies() } returns flowOf(listOf(inProgressMovie, watchedMovie))
@@ -556,6 +556,7 @@ class SearchViewModelTest {
     fun `showFavorites with WATCHED filter marks series with completed Season 1 as watched when Season 2 is upcoming`() = runTest {
         val series = TmdbTvSummary(
             id = 200,
+            imdbId = "tt0200000",
             name = "Test Series",
             numberOfEpisodes = 20,
             seasons = listOf(
@@ -565,7 +566,7 @@ class SearchViewModelTest {
         )
         val watchHistory = (1..10).map { ep ->
             PlaybackProgress(
-                mediaId = MediaIdHelper.forEpisode(200, 1, ep),
+                mediaId = MediaIdHelper.forEpisode("tt0200000", 1, ep),
                 title = "Test Series - S01E0$ep",
                 positionMs = 1000L,
                 durationMs = 1000L,
@@ -628,6 +629,7 @@ class SearchViewModelTest {
         // Series from Room without seasons (typical FavoriteTvSeriesEntity)
         val roomSeries = TmdbTvSummary(
             id = 400,
+            imdbId = "tt11280740",
             name = "Severance",
             numberOfEpisodes = 18,
             seasons = null
@@ -635,6 +637,7 @@ class SearchViewModelTest {
         // Full TMDB details with Season 1 aired and Season 2 unannounced
         val tmdbDetails = TmdbTvSummary(
             id = 400,
+            imdbId = "tt11280740",
             name = "Severance",
             numberOfEpisodes = 18,
             seasons = listOf(
@@ -644,7 +647,7 @@ class SearchViewModelTest {
         )
         val watchHistory = (1..9).map { ep ->
             PlaybackProgress(
-                mediaId = MediaIdHelper.forEpisode(400, 1, ep),
+                mediaId = MediaIdHelper.forEpisode("tt11280740", 1, ep),
                 title = "Severance - S01E0$ep",
                 positionMs = 1000L,
                 durationMs = 1000L,

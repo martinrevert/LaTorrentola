@@ -429,11 +429,12 @@ To ensure optimal audio fidelity and prevent silent stereo downmixes:
 
 ### 5.8 Canonical Watch History, Cost-Optimized Sync & Completion Authority
 To guarantee seamless watch history parity and minimal cloud consumption across Torrents, Local files, and Network Storage (SMB/NFS):
-* **Canonical Movie IDs**: Standardized on global industry-standard IMDb IDs (e.g. `"tt0111161"` for The Shawshank Redemption). Backward-compatible with legacy numeric TMDB/YTS IDs via dual-lookup queries and automatic migration. Raw infoHashes or filenames are strictly prohibited.
-* **Canonical TV Episode IDs**: Standardized on the IMDb composite format `"${imdbId}_s${season}_e${episode}"` (e.g. `"tt0944947_s1_e2"` for regular episodes, `"tt0944947_s0_e1"` for Season 0 specials). Backward-compatible with legacy `"media_${seriesId}_s${season}_e${episode}"` via automatic candidate migration.
+* **Canonical Movie IDs**: Standardized purely and exclusively on global industry-standard IMDb IDs (e.g. `"tt0111161"` for The Shawshank Redemption). All previous migration and retrocompatibility routines have been cleanly dismantled following full user migration in Room and Firestore. Raw infoHashes, filenames, or legacy numeric IDs are strictly prohibited.
+* **Canonical TV Episode IDs**: Standardized purely and exclusively on the IMDb composite format `"${imdbId}_s${season}_e${episode}"` (e.g. `"tt0944947_s1_e2"` for regular episodes, `"tt0944947_s0_e1"` for Season 0 specials). Legacy `"media_..."` / `"tmdb_..."` candidate formats and defensive cleanup deletions have been fully removed.
   * **Season 0 Specials Canonical Integrity**: Season 0 episodes are parsed, resolved, and stored canonically as `${imdbId}_s0_e${episode}` instead of falling back to raw title strings.
   * **Season 0 Series Progress Exclusion**: Specials possess their own individual status chips in episode detail views, but are strictly excluded from series-level progress percentage calculations and completion state evaluations.
-* **Dual Lookups & Zero Data Loss**: In `AppDatabase` (v14) via `MIGRATION_13_14`, `FavoriteMovieEntity`, `FavoriteTvSeriesEntity`, `DownloadedMovieEntity`, and `DownloadedEpisodeEntity` retain relational numeric IDs (`movieId`, `seriesId`) and add `imdbId`. Room queries check both numeric ID and IMDb ID (`WHERE (movieId = :id OR imdbId = :imdb)`), ensuring no user favorites or progress are lost.
+* **Pure Canonical Single-Key Lookups & Zero Data Loss**: In `AppDatabase` (v14) and Firestore collections (`users/{uid}/watch_history`, `downloads`, `favorites_movies`, `favorites_tv`), items are accessed directly by canonical IMDb key (`tt...`), ensuring maximum performance without candidate multiplexing.
+  * **Sentinel Key Defense**: Attempted persistence of invalid or empty keys (`"unknown_movie"`, `"unknown_episode"`, or blank) is strictly intercepted and dropped in `UserLibraryRepository.savePlaybackProgress`, preventing corrupted document creation in Room or Firestore.
 * **Inverse Metadata Resolution (`MediaMetadataResolver`)**: Filenames from NAS or local storage are regex-cleaned and queried against TMDB/YTS asynchronously to resolve both numeric and IMDb IDs before saving watch history.
 * **Delimited Episode Title Matching & Movie Collision Prevention**:
   * Fallback progress matching uses strict regex word boundaries (`isEpisodeTitleMatchingSeries`) and candidate episode verification (`isEpisodeCandidate`) to ensure TV series (e.g., "Halo") never match unrelated movies that share title prefixes (e.g., "Halloween").
@@ -872,12 +873,12 @@ sequenceDiagram
     alt Media is a TV Episode
         MMR->>MMR: extractSeasonAndEpisode(regex)
         MMR->>TR: searchTvSeries(cleanTitle)
-        TR-->>MMR: Resolved seriesId
-        MMR-->>LPA: Canonical ID: "media_{seriesId}_s{season}_e{episode}"
+        TR-->>MMR: Resolved seriesId & IMDb ID
+        MMR-->>LPA: Canonical ID: "{imdbId}_s{season}_e{episode}"
     else Media is a Movie
         MMR->>YTS: searchMovies(cleanTitle)
-        YTS-->>MMR: Resolved canonical movieId
-        MMR-->>LPA: Canonical ID: "{movieId}"
+        YTS-->>MMR: Resolved canonical movieId & IMDb ID
+        MMR-->>LPA: Canonical ID: "{imdbId}"
     end
     LPA->>WDAO: getProgress(canonicalId)
     WDAO-->>LPA: PlaybackProgress (resume position)

@@ -44,7 +44,7 @@ data class DownloadedEpisodeEntity(
                 if (normalizedImdb.isNotBlank()) {
                     "${normalizedImdb}_s${download.seasonNumber}_e${download.episodeNumber}"
                 } else {
-                    "tv_${download.seriesId}_s${download.seasonNumber}_e${download.episodeNumber}"
+                    "${download.seriesId}_s${download.seasonNumber}_e${download.episodeNumber}"
                 }
             }
             return DownloadedEpisodeEntity(

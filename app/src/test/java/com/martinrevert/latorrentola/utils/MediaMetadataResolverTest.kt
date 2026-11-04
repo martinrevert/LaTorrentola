@@ -95,18 +95,19 @@ class MediaMetadataResolverTest {
             totalPages = 1,
             totalResults = 1
         )
+        coEvery { tmdbRepository.getTvImdbId(111803) } returns "tt11280740"
 
         val result = resolver.resolve(
             rawTitle = "Severance.S01E01.Good.News.About.Hell.1080p.mkv",
             filePath = "/storage/nas/series/Severance/Season 1/Severance.S01E01.mkv"
         )
 
-        assertEquals("tmdb_111803_s1_e1", result.mediaId)
+        assertEquals("tt11280740_s1_e1", result.mediaId)
         assertEquals(111803, result.seriesId)
         assertEquals(1, result.seasonNumber)
         assertEquals(1, result.episodeNumber)
         assertTrue(result.isEpisode)
-        assertFalse(MediaIdHelper.isCanonical(result.mediaId))
+        assertTrue(MediaIdHelper.isCanonical(result.mediaId))
     }
 
     @Test
@@ -133,17 +134,18 @@ class MediaMetadataResolverTest {
     }
 
     @Test
-    fun `resolve when movieId already provided but YTS has no match returns deterministic TMDB ID`() = runTest {
+    fun `resolve when movieId already provided but YTS has no match returns unknown_movie when no IMDb ID`() = runTest {
         coEvery { ytsRepository.searchMovies(any(), any(), any()) } returns MovieDetails(
             status = "ok",
             data = Data(movies = emptyList(), movieCount = 0)
         )
+        coEvery { tmdbRepository.getMovieImdbId(9988) } returns null
 
         val result = resolver.resolve(
             rawTitle = "Some Movie",
             existingMovieId = 9988
         )
-        assertEquals("tmdb_9988", result.mediaId)
+        assertEquals("unknown_movie", result.mediaId)
         assertEquals(9988, result.movieId)
         assertFalse(MediaIdHelper.isCanonical(result.mediaId))
     }
