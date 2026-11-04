@@ -429,6 +429,11 @@ To eliminate runaway cloud billing, prevent broken season completion counters, a
    - **Mandatory Architectural Contract**: Piece availability checks MUST retrieve the bitfield using `handle.status(TorrentHandle.QUERY_PIECES)?.pieces()`. Furthermore, callers MUST validate `!isEmpty && p in 0 until size()` before calling `getBit(p)` (e.g. via `piecesBitfield.hasPiece(p)`).
    - **PROHIBITION: NEVER invoke `handle.havePiece(p)` inside loops or within `synchronized(sessionLock)` blocks.** Always query piece availability via `handle.status(TorrentHandle.QUERY_PIECES)?.pieces()` and guard bit accesses with `!isEmpty && p in 0 until size()`.
 
+10. **Media Deletion Teardown, SingleTop `onNewIntent` Preservation & Clean Playback End Mandate (STRICT)**:
+   - **The Latched Deletion Flag & `onNewIntent` Drop Trap**: When media deletion is confirmed in `LocalPlayerActivity`, setting a transient deletion flag (e.g. `isDeletingMedia`) without resetting it in a `finally` block permanently latches the activity in a deleting state. Because `singleTop` `onNewIntent` checks this flag, subsequent next-episode transitions or new playback intents are dropped immediately, leaving the player on an idle black screen. Furthermore, ignoring player errors based on `nextEpisodeTriggered` suppresses legitimate startup exceptions on subsequent media.
+   - **Mandatory Architectural Contract**: Transient deletion flags MUST be scoped via `try-finally` blocks to the active deletion I/O operation and reset to `false`. `onNewIntent` MUST NOT drop valid incoming playback intents due to previous deletion operations. Furthermore, `proceedAfterPlaybackEnded` MUST cleanly `finish()` the activity when `autoPlayMode` is `DO_NOTHING` and unregister player listeners.
+   - **PROHIBITION: NEVER leave `isDeletingMedia` latched to true across coroutine completion, NEVER drop valid `onNewIntent` playback deliveries due to previous deletion operations, and NEVER use `nextEpisodeTriggered` to swallow legitimate player initialization errors.**
+
 ### Previews
 - Every UI Component MUST include `@Preview` functions covering: Light Mode, Dark Mode, Mobile form-factor, and TV form-factor (using appropriate theme wrappers).
 
@@ -461,3 +466,4 @@ Before marking a task complete, verify:
 23. [ ] Did I verify that all TextToSpeech Binder IPC operations in `VoiceManager` are offloaded to `Dispatchers.IO` and wrapped in `try-catch` blocks to prevent UI thread hangs and ANRs on Android TV?
 24. [ ] Did I verify that all ViewModel `StateFlow` collections in top-level Compose screen composables use `collectAsStateWithLifecycle()` to prevent lifecycle teardown slot table corruption in `GapComposer`?
 25. [ ] Did I verify that piece availability queries use `handle.status(TorrentHandle.QUERY_PIECES)?.pieces()` with bounds-safe `hasPiece(p)` checks (`!isEmpty && p in 0 until size()`) instead of calling `handle.havePiece(p)` or raw `getBit(p)` on unaugmented status bitfields?
+26. [ ] Did I verify that in `LocalPlayerActivity`, `isDeletingMedia` is reset in a `finally` block, `onNewIntent` processes new playback intents, error suppression does not use `nextEpisodeTriggered`, and `DO_NOTHING` `autoPlayMode` finishes cleanly after media deletion?

@@ -406,6 +406,7 @@ class LocalPlayerActivity : FragmentActivity() {
     private var mediaControllerListener: Player.Listener? = null
     private var playbackCompletionListener: Player.Listener? = null
     private var showDeletePromptDialog by mutableStateOf(false)
+    private var isDeletingMedia by mutableStateOf(false)
     private var insufficientStorageData by mutableStateOf<Pair<Long, Long>?>(null)
     private var playerBottomSheetState by mutableStateOf<PlayerBottomSheetState?>(null)
     private var showStatsForNerds by mutableStateOf(false)
@@ -914,19 +915,31 @@ class LocalPlayerActivity : FragmentActivity() {
                             mediaTitle = mediaTitle,
                             onConfirmDelete = {
                                 val hashToDelete = torrentInfoHash
+                                isDeletingMedia = true
                                 showDeletePromptDialog = false
                                 try {
+                                    mediaControllerListener?.let { mediaController?.removeListener(it) }
+                                    mediaControllerListener = null
+                                    playbackCompletionListener?.let { mediaController?.removeListener(it) }
+                                    playbackCompletionListener = null
                                     mediaController?.stop()
                                     mediaController?.clearMediaItems()
                                     SubtitleServerRegistry.stopAll()
                                 } catch (_: Exception) {}
                                 lifecycleScope.launch {
-                                    if (hashToDelete.isNotBlank()) {
-                                        TorrentDownloadService.deleteTorrentSynchronously(
-                                            this@LocalPlayerActivity,
-                                            hashToDelete,
-                                            torrentDownloadDao
-                                        )
+                                    try {
+                                        if (hashToDelete.isNotBlank()) {
+                                            TorrentDownloadService.deleteTorrentSynchronously(
+                                                this@LocalPlayerActivity,
+                                                hashToDelete,
+                                                torrentDownloadDao
+                                            )
+                                        }
+                                    } catch (e: Exception) {
+                                        if (e is CancellationException) throw e
+                                        Log.w(TAG, "Failed deleting torrent synchronously: ${e.message}")
+                                    } finally {
+                                        isDeletingMedia = false
                                     }
                                     proceedAfterPlaybackEnded()
                                 }
@@ -1098,6 +1111,11 @@ class LocalPlayerActivity : FragmentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (shouldIgnoreNewIntent(isFinishing, isDestroyed)) {
+            Log.i(TAG, "Ignoring onNewIntent: activity is finishing or destroyed")
+            return
+        }
+        isDeletingMedia = false
         setIntent(intent)
         metadataRecoveryJob?.cancel()
         metadataRecoveryJob = null
@@ -1524,6 +1542,7 @@ class LocalPlayerActivity : FragmentActivity() {
         controllerFuture = MediaControllerHelper.buildControllerAsync(this)
         controllerFuture?.addListener({
             try {
+                if (isFinishing || isDestroyed || isDeletingMedia) return@addListener
                 val controller = controllerFuture?.get()
                 mediaController = controller
                 if (controller != null) {
@@ -1541,10 +1560,15 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     private fun setupControllerMedia(controller: MediaController) {
+        if (isFinishing || isDestroyed || isDeletingMedia) {
+            Log.i(TAG, "setupControllerMedia aborted: activity is finishing or deleting media")
+            return
+        }
         lifecycleScope.launch {
             try {
                 metadataRecoveryJob?.join()
             } catch (_: Throwable) {}
+            if (isFinishing || isDestroyed || isDeletingMedia) return@launch
             val activeItem = controller.currentMediaItem
             val newItem = pendingMediaItem
             val isFromPip = intent.getBooleanExtra(EXTRA_FROM_PIP, false)
@@ -1620,6 +1644,7 @@ class LocalPlayerActivity : FragmentActivity() {
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
+                        if (shouldIgnorePlayerError(isFinishing, isDestroyed, isDeletingMedia)) return
                         AppLogger.e(TAG, "Player error encountered during playback: ${error.message}", error)
                         if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_LOCAL) {
                             resolvePlaybackDecodingError(error)?.let { decodingError ->
@@ -1902,6 +1927,10 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
+                    if (shouldIgnorePlayerError(isFinishing, isDestroyed, isDeletingMedia)) {
+                        Log.i(TAG, "Ignoring player error during shutdown or media deletion: ${error.message}")
+                        return
+                    }
                     AppLogger.e(TAG, "Player error encountered: ${error.errorCodeName} (${error.errorCode}): ${error.message}", error)
                     if (controller.currentPosition > 5000L) {
                         lastKnownPlaybackPositionMs = controller.currentPosition
@@ -2083,13 +2112,17 @@ class LocalPlayerActivity : FragmentActivity() {
     private fun proceedAfterPlaybackEnded() {
         val effectiveSeriesId = currentSeriesId.takeIf { it > 0 } ?: nextEpisodeSeriesId
         val isTvEpisode = hasNextEpisodeInfo || (effectiveSeriesId > 0 && currentSeasonNumber > 0 && currentEpisodeNumber > 0)
-        if (!isTvEpisode) {
-            finish()
-            return
-        }
-
         val autoPlayMode = preferenceManager.getAutoPlayQualitySelectionMethod()
-        if (autoPlayMode == AutoPlayQualitySelectionMethod.DO_NOTHING) {
+        if (shouldFinishOnPlaybackEnded(isTvEpisode, autoPlayMode)) {
+            try {
+                mediaControllerListener?.let { mediaController?.removeListener(it) }
+                mediaControllerListener = null
+                playbackCompletionListener?.let { mediaController?.removeListener(it) }
+                playbackCompletionListener = null
+                mediaController?.stop()
+                mediaController?.clearMediaItems()
+            } catch (_: Exception) {}
+            finish()
             return
         }
 
@@ -3461,6 +3494,28 @@ class LocalPlayerActivity : FragmentActivity() {
         internal fun cancelDtsHdStallWatchdog(job: Job?): Job? {
             job?.cancel()
             return null
+        }
+
+        @androidx.annotation.VisibleForTesting
+        internal fun shouldIgnoreNewIntent(isFinishing: Boolean, isDestroyed: Boolean): Boolean {
+            return isFinishing || isDestroyed
+        }
+
+        @androidx.annotation.VisibleForTesting
+        internal fun shouldIgnorePlayerError(
+            isFinishing: Boolean,
+            isDestroyed: Boolean,
+            isDeletingMedia: Boolean
+        ): Boolean {
+            return isFinishing || isDestroyed || isDeletingMedia
+        }
+
+        @androidx.annotation.VisibleForTesting
+        internal fun shouldFinishOnPlaybackEnded(
+            isTvEpisode: Boolean,
+            autoPlayMode: AutoPlayQualitySelectionMethod
+        ): Boolean {
+            return !isTvEpisode || autoPlayMode == AutoPlayQualitySelectionMethod.DO_NOTHING
         }
 
         fun shouldPauseOnTvExit(isTv: Boolean): Boolean = isTv

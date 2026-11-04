@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.ui.player
 
 import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
+import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
 
 import android.util.Log
 import androidx.media3.common.Player
@@ -674,6 +675,36 @@ class LocalPlayerActivityTest {
     fun `cancelDtsHdStallWatchdog handles null gracefully`() {
         val result = LocalPlayerActivity.cancelDtsHdStallWatchdog(null)
         assertThat(result).isNull()
+    }
+
+    @Test
+    fun `shouldIgnoreNewIntent only returns true if activity is finishing or destroyed`() {
+        assertThat(LocalPlayerActivity.shouldIgnoreNewIntent(isFinishing = true, isDestroyed = false)).isTrue()
+        assertThat(LocalPlayerActivity.shouldIgnoreNewIntent(isFinishing = false, isDestroyed = true)).isTrue()
+        assertThat(LocalPlayerActivity.shouldIgnoreNewIntent(isFinishing = false, isDestroyed = false)).isFalse()
+    }
+
+    @Test
+    fun `shouldIgnorePlayerError ignores error during shutdown or media deletion`() {
+        assertThat(LocalPlayerActivity.shouldIgnorePlayerError(isFinishing = true, isDestroyed = false, isDeletingMedia = false)).isTrue()
+        assertThat(LocalPlayerActivity.shouldIgnorePlayerError(isFinishing = false, isDestroyed = true, isDeletingMedia = false)).isTrue()
+        assertThat(LocalPlayerActivity.shouldIgnorePlayerError(isFinishing = false, isDestroyed = false, isDeletingMedia = true)).isTrue()
+        assertThat(LocalPlayerActivity.shouldIgnorePlayerError(isFinishing = false, isDestroyed = false, isDeletingMedia = false)).isFalse()
+    }
+
+    @Test
+    fun `shouldFinishOnPlaybackEnded returns true for movies and DO_NOTHING tv episodes`() {
+        // Movies always finish on playback end
+        assertThat(LocalPlayerActivity.shouldFinishOnPlaybackEnded(isTvEpisode = false, autoPlayMode = AutoPlayQualitySelectionMethod.BY_QUALITY)).isTrue()
+        assertThat(LocalPlayerActivity.shouldFinishOnPlaybackEnded(isTvEpisode = false, autoPlayMode = AutoPlayQualitySelectionMethod.DO_NOTHING)).isTrue()
+
+        // TV episodes finish if DO_NOTHING is configured
+        assertThat(LocalPlayerActivity.shouldFinishOnPlaybackEnded(isTvEpisode = true, autoPlayMode = AutoPlayQualitySelectionMethod.DO_NOTHING)).isTrue()
+
+        // TV episodes do not finish if auto-play or dialog prompt is configured
+        assertThat(LocalPlayerActivity.shouldFinishOnPlaybackEnded(isTvEpisode = true, autoPlayMode = AutoPlayQualitySelectionMethod.OFF)).isFalse()
+        assertThat(LocalPlayerActivity.shouldFinishOnPlaybackEnded(isTvEpisode = true, autoPlayMode = AutoPlayQualitySelectionMethod.BY_QUALITY)).isFalse()
+        assertThat(LocalPlayerActivity.shouldFinishOnPlaybackEnded(isTvEpisode = true, autoPlayMode = AutoPlayQualitySelectionMethod.BY_SEED_PEERS)).isFalse()
     }
 }
 
