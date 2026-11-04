@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -130,24 +131,24 @@ fun SearchScreen(
     onBackClick: () -> Unit,
     themeMode: Int? = null
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val isTvMode by viewModel.isTvMode.collectAsState()
-    val isActorMode by viewModel.isActorMode.collectAsState()
-    val actorUiState by viewModel.actorUiState.collectAsState()
-    val tvUiState by viewModel.tvUiState.collectAsState()
-    val searchQuery by viewModel.searchQuery.collectAsState()
-    val downloadedSeriesIds by viewModel.downloadedSeriesIds.collectAsState()
-    val favoriteTvSeries by viewModel.favoriteTvSeries.collectAsState()
-    val tvGenres by viewModel.tvGenres.collectAsState()
-    val lastClickedSeriesId by viewModel.lastClickedSeriesId.collectAsState()
-    val lastClickedCreditKey by viewModel.lastClickedCreditKey.collectAsState()
-    val selectedQuality by viewModel.selectedQuality.collectAsState()
-    val selectedFavoritesFilter by viewModel.selectedFavoritesFilter.collectAsState()
-    val lastClickedMovieId by viewModel.lastClickedMovieId.collectAsState()
-    val downloadedMovieIds by viewModel.downloadedMovieIds.collectAsState()
-    val watchHistoryMap by viewModel.watchHistoryMap.collectAsState()
-    val selectedFavoriteIds by viewModel.selectedFavoriteIds.collectAsState()
-    val isLoadingMore by viewModel.isLoadingMore.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isTvMode by viewModel.isTvMode.collectAsStateWithLifecycle()
+    val isActorMode by viewModel.isActorMode.collectAsStateWithLifecycle()
+    val actorUiState by viewModel.actorUiState.collectAsStateWithLifecycle()
+    val tvUiState by viewModel.tvUiState.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val downloadedSeriesIds by viewModel.downloadedSeriesIds.collectAsStateWithLifecycle()
+    val favoriteTvSeries by viewModel.favoriteTvSeries.collectAsStateWithLifecycle()
+    val tvGenres by viewModel.tvGenres.collectAsStateWithLifecycle()
+    val lastClickedSeriesId by viewModel.lastClickedSeriesId.collectAsStateWithLifecycle()
+    val lastClickedCreditKey by viewModel.lastClickedCreditKey.collectAsStateWithLifecycle()
+    val selectedQuality by viewModel.selectedQuality.collectAsStateWithLifecycle()
+    val selectedFavoritesFilter by viewModel.selectedFavoritesFilter.collectAsStateWithLifecycle()
+    val lastClickedMovieId by viewModel.lastClickedMovieId.collectAsStateWithLifecycle()
+    val downloadedMovieIds by viewModel.downloadedMovieIds.collectAsStateWithLifecycle()
+    val watchHistoryMap by viewModel.watchHistoryMap.collectAsStateWithLifecycle()
+    val selectedFavoriteIds by viewModel.selectedFavoriteIds.collectAsStateWithLifecycle()
+    val isLoadingMore by viewModel.isLoadingMore.collectAsStateWithLifecycle()
     val qualityOptions = viewModel.qualityOptions
 
     val isShowingFavorites = initialGenre == "milista" || initialGenre == "favorites"
@@ -199,11 +200,11 @@ fun SearchScreen(
         }
     }
 
-    val focusedMovie by viewModel.focusedMovie.collectAsState()
-    val focusedMovieBackdrop by viewModel.focusedMovieBackdrop.collectAsState()
-    val focusedMovieLogo by viewModel.focusedMovieLogo.collectAsState()
-    val isFocusedMovieLogoLoading by viewModel.isFocusedMovieLogoLoading.collectAsState()
-    val focusedMovieTmdb by viewModel.focusedMovieTmdb.collectAsState()
+    val focusedMovie by viewModel.focusedMovie.collectAsStateWithLifecycle()
+    val focusedMovieBackdrop by viewModel.focusedMovieBackdrop.collectAsStateWithLifecycle()
+    val focusedMovieLogo by viewModel.focusedMovieLogo.collectAsStateWithLifecycle()
+    val isFocusedMovieLogoLoading by viewModel.isFocusedMovieLogoLoading.collectAsStateWithLifecycle()
+    val focusedMovieTmdb by viewModel.focusedMovieTmdb.collectAsStateWithLifecycle()
 
     SearchScreenContent(
         uiState = uiState,

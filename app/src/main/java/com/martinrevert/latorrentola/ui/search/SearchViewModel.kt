@@ -21,14 +21,19 @@ import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TvSeriesProgressCalculator
 import com.martinrevert.latorrentola.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+
+private val IMDB_SEARCH_REGEX = Regex("tt\\d{7,10}", RegexOption.IGNORE_CASE)
 
 /** Filter options for the mixed Favorites collection. */
 enum class FavoritesFilter {
@@ -55,6 +60,18 @@ class SearchViewModel @Inject constructor(
     private val userLibraryRepository: UserLibraryRepository,
     private val preferenceManager: PreferenceManager
 ) : ViewModel() {
+
+    private var defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
+
+    constructor(
+        ytsRepository: YtsRepository,
+        tmdbRepository: TmdbRepository,
+        userLibraryRepository: UserLibraryRepository,
+        preferenceManager: PreferenceManager,
+        dispatcher: CoroutineDispatcher
+    ) : this(ytsRepository, tmdbRepository, userLibraryRepository, preferenceManager) {
+        this.defaultDispatcher = dispatcher
+    }
 
     companion object {
         private const val TARGET_INITIAL_BATCH = 18
@@ -397,7 +414,7 @@ class SearchViewModel @Inject constructor(
 
     /** Reactive cache of enriched TV series details used in Favorites without triggering Loading resets. */
     private val seriesDetailsCacheFlow = MutableStateFlow<Map<Int, TmdbTvSummary>>(emptyMap())
-    private val attemptedSeriesDetailIds = HashSet<Int>()
+    private val attemptedSeriesDetailIds = ConcurrentHashMap.newKeySet<Int>()
 
     /** Observes local filter preferences to refresh the active result collection. */
     init {
@@ -784,8 +801,7 @@ class SearchViewModel @Inject constructor(
     }
 
     private fun extractImdbId(input: String): String? {
-        val regex = Regex("tt\\d{7,10}", RegexOption.IGNORE_CASE)
-        return regex.find(input)?.value
+        return IMDB_SEARCH_REGEX.find(input)?.value
     }
 
     /** Loads TV series that have downloaded episodes for the user. */
@@ -1006,7 +1022,7 @@ class SearchViewModel @Inject constructor(
 
                 if (missingSeriesIds.isNotEmpty()) {
                     attemptedSeriesDetailIds.addAll(missingSeriesIds)
-                    viewModelScope.launch {
+                    viewModelScope.launch(defaultDispatcher) {
                         val fetched = mutableMapOf<Int, TmdbTvSummary>()
                         missingSeriesIds.forEach { seriesId ->
                             try {
@@ -1076,7 +1092,8 @@ class SearchViewModel @Inject constructor(
                 ).distinctBy { it.id }
 
                 finalMovies to filteredSeries
-            }.collect { (filteredMovies, filteredSeries) ->
+            }.flowOn(defaultDispatcher)
+            .collect { (filteredMovies, filteredSeries) ->
                 if (isShowingFavorites) {
                     _favoriteTvSeries.value = filteredSeries
                     allResults.clear()

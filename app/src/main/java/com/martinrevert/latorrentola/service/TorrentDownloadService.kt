@@ -17,7 +17,9 @@ import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
 import dagger.hilt.android.AndroidEntryPoint
 import com.martinrevert.latorrentola.utils.mediaMimeType
+import org.libtorrent4j.PieceIndexBitfield
 import org.libtorrent4j.Priority
+import org.libtorrent4j.TorrentHandle
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
@@ -65,6 +67,23 @@ data class TorrentBufferState(
     val numSeeds: Int,
     val numPeers: Int
 )
+
+/**
+ * Safely queries whether a piece bit is set in [PieceIndexBitfield], protecting against
+ * uninitialized/empty bitfield native pointer dereferences (SIGSEGV fault addr 0x4) and out-of-bounds indices.
+ */
+private fun PieceIndexBitfield?.hasPiece(p: Int): Boolean {
+    if (this == null) return false
+    val empty = try { isEmpty } catch (_: Throwable) { true }
+    if (empty) return false
+    val s = try { size() } catch (_: Throwable) { 0 }
+    if (p !in 0 until s) return false
+    return try {
+        getBit(p)
+    } catch (_: Throwable) {
+        false
+    }
+}
 
 /**
  * Downloads torrents in a background service and only serves byte ranges covered by verified
@@ -1068,9 +1087,16 @@ class TorrentDownloadService : Service() {
                                             fileOffset = target.fileOffset,
                                             pieceLength = target.pieceLength
                                         )
-                                        for (p in target.firstPiece..target.lastPiece) {
-                                            if (handle.havePiece(p)) {
-                                                tracker.markPieceVerified(p)
+                                        val piecesBitfield = try {
+                                            if (handle.isValid) handle.status(TorrentHandle.QUERY_PIECES)?.pieces() else null
+                                        } catch (_: Throwable) {
+                                            null
+                                        }
+                                        if (piecesBitfield != null) {
+                                            for (p in target.firstPiece..target.lastPiece) {
+                                                if (piecesBitfield.hasPiece(p)) {
+                                                    tracker.markPieceVerified(p)
+                                                }
                                             }
                                         }
                                         pieceTracker = tracker
@@ -1417,16 +1443,48 @@ class TorrentDownloadService : Service() {
                                 }
                             },
                             isRangeVerified = { start, end ->
-                                completed.get() || tracker.isRangeVerified(start, end) { p ->
-                                    synchronized(sessionLock) {
-                                        sessionManager === manager && handle.isValid && handle.havePiece(p)
+                                if (completed.get()) {
+                                    true
+                                } else {
+                                    val bitfield = synchronized(sessionLock) {
+                                        if (sessionManager === manager && handle.isValid) {
+                                            try {
+                                                handle.status(TorrentHandle.QUERY_PIECES)?.pieces()
+                                            } catch (_: Throwable) {
+                                                null
+                                            }
+                                        } else null
+                                    }
+                                    tracker.isRangeVerified(start, end) { p ->
+                                        bitfield.hasPiece(p)
                                     }
                                 }
                             },
                             awaitRangeVerified = { start, end, timeoutMs ->
-                                completed.get() || tracker.awaitRange(start, end, timeoutMs) { p ->
-                                    synchronized(sessionLock) {
-                                        sessionManager === manager && handle.isValid && handle.havePiece(p)
+                                if (completed.get()) {
+                                    true
+                                } else {
+                                    var cachedBitfield: PieceIndexBitfield? = null
+                                    var lastBitfieldFetchTime = 0L
+                                    tracker.awaitRange(start, end, timeoutMs) { p ->
+                                        val now = System.currentTimeMillis()
+                                        val bitfield = if (cachedBitfield != null && (now - lastBitfieldFetchTime < 50L)) {
+                                            cachedBitfield
+                                        } else {
+                                            synchronized(sessionLock) {
+                                                if (sessionManager === manager && handle.isValid) {
+                                                    try {
+                                                        handle.status(TorrentHandle.QUERY_PIECES)?.pieces()
+                                                    } catch (_: Throwable) {
+                                                        null
+                                                    }
+                                                } else null
+                                            }?.also {
+                                                cachedBitfield = it
+                                                lastBitfieldFetchTime = now
+                                            }
+                                        }
+                                        bitfield.hasPiece(p)
                                     }
                                 }
                             }
@@ -1659,7 +1717,7 @@ class TorrentDownloadService : Service() {
      * @return Whether every overlapping piece has passed libtorrent's hash check.
      */
     private fun isVerifiedRange(
-        handle: org.libtorrent4j.TorrentHandle,
+        handle: TorrentHandle,
         target: MediaTarget,
         start: Long,
         end: Long
@@ -1669,7 +1727,12 @@ class TorrentDownloadService : Service() {
         }
         val firstPiece = ((target.fileOffset + start) / target.pieceLength).toInt()
         val lastPiece = ((target.fileOffset + end) / target.pieceLength).toInt()
-        (firstPiece..lastPiece).all(handle::havePiece)
+        val piecesBitfield = try {
+            handle.status(TorrentHandle.QUERY_PIECES)?.pieces()
+        } catch (_: Throwable) {
+            null
+        } ?: return@synchronized false
+        (firstPiece..lastPiece).all { p -> piecesBitfield.hasPiece(p) }
     }
 
     /**

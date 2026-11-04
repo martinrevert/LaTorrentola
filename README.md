@@ -86,8 +86,9 @@ Have a personal movie collection stored on your computer or home server? La Torr
 * **Shared TV & Multi-Account Profile Isolation**: Sharing an Android TV or living room Chromecast with family members? The app remembers each authenticated Google account locally. When users switch accounts or log out, their respective watch histories and favorites remain completely preserved and isolated in local storage without wiping the device database.
 * **Effortless Cloud Sync**: Start watching on your phone during your commute and continue right where you left off on your living room Smart TV with automatic background sync.
 
-### 9. 🎙️ Voice Search & Release Notifications
+### 9. 🎙️ Voice Search, Text-To-Speech & Release Notifications
 * **Voice Search**: Tap the microphone icon or press the voice button on your TV remote to search for titles naturally without tedious on-screen keyboard typing.
+* **Text-To-Speech Summaries**: Listen to movie titles and summaries spoken aloud via an asynchronous, offloaded speech engine designed for zero UI lag across Android TV and mobile devices.
 * **New Release Alerts**: Receive notifications for hot new releases and jump straight into the movie details with a single tap.
 
 ---

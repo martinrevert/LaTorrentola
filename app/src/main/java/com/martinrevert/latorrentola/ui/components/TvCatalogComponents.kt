@@ -402,6 +402,15 @@ fun TvSeriesGrid(
     val focusManager = LocalFocusManager.current
     val coroutineScope = rememberCoroutineScope()
 
+    val seriesProgressPercentMap = remember(series, watchHistoryMap) {
+        if (watchHistoryMap.isEmpty()) emptyMap<Int, Int?>()
+        else {
+            series.associate { item ->
+                item.id to TvSeriesProgressCalculator.calculateProgressPercent(item, watchHistoryMap)
+            }
+        }
+    }
+
     LazyVerticalGrid(
         columns = columns,
         state = state,
@@ -420,9 +429,7 @@ fun TvSeriesGrid(
             val itemGenres = remember(item.genreIds, genreNames) {
                 item.genreIds.orEmpty().mapNotNull(genreNames::get)
             }
-            val progressPercent = remember(item, watchHistoryMap) {
-                TvSeriesProgressCalculator.calculateProgressPercent(item, watchHistoryMap)
-            }
+            val progressPercent = seriesProgressPercentMap[item.id]
 
             TvSeriesCard(
                 series = item,

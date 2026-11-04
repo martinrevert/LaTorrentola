@@ -130,6 +130,9 @@ fun EztvTorrent.downloadInfoHash(): String? {
     return (directHash ?: magnetHash)?.lowercase()
 }
 
+private val EZTV_S_E_PATTERN = Regex("""[sS](\d{1,2})[eE](\d{1,2})""", RegexOption.IGNORE_CASE)
+private val EZTV_X_PATTERN = Regex("""\b(\d{1,2})x(\d{1,2})\b""", RegexOption.IGNORE_CASE)
+
 /**
  * Checks whether this release matches a specific target season and episode number,
  * using JSON fields or title/filename regex patterns as fallback.
@@ -141,15 +144,13 @@ fun EztvTorrent.matchesEpisode(targetSeason: Int, targetEpisode: Int): Boolean {
 
     val textToSearch = "${title} ${filename.orEmpty()}"
 
-    val sEPattern = Regex("""[sS](\d{1,2})[eE](\d{1,2})""", RegexOption.IGNORE_CASE)
-    sEPattern.find(textToSearch)?.let { match ->
+    EZTV_S_E_PATTERN.find(textToSearch)?.let { match ->
         val s = match.groupValues[1].toIntOrNull()
         val e = match.groupValues[2].toIntOrNull()
         if (s == targetSeason && e == targetEpisode) return true
     }
 
-    val xPattern = Regex("""\b(\d{1,2})x(\d{1,2})\b""", RegexOption.IGNORE_CASE)
-    xPattern.find(textToSearch)?.let { match ->
+    EZTV_X_PATTERN.find(textToSearch)?.let { match ->
         val s = match.groupValues[1].toIntOrNull()
         val e = match.groupValues[2].toIntOrNull()
         if (s == targetSeason && e == targetEpisode) return true

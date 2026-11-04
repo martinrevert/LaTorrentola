@@ -40,6 +40,8 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
+private val MIGRATION_SERIES_ID_REGEX = Regex("""^(?:tmdb|tv|media)?_?(\d+)_s""", RegexOption.IGNORE_CASE)
+
 /**
  * Single source of truth for user library, favorites, downloads, and watch progress.
  *
@@ -1062,7 +1064,7 @@ class UserLibraryRepository @Inject constructor(
                 var seriesId = when {
                     episodeComponents != null && episodeComponents.first > 0 -> episodeComponents.first
                     else -> {
-                        val match = Regex("""^(?:tmdb|tv|media)?_?(\d+)_s""", RegexOption.IGNORE_CASE).find(oldId)
+                        val match = MIGRATION_SERIES_ID_REGEX.find(oldId)
                         match?.groupValues?.get(1)?.toIntOrNull() ?: 0
                     }
                 }

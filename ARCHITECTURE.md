@@ -21,6 +21,7 @@ Comprehensive technical documentation covering the system architecture, design p
    - [5.9 Cloud Library, FCM & Google Identity](#59-cloud-library-fcm--google-identity)
    - [5.10 Hardware Keystore & Security Model](#510-hardware-keystore--security-model)
    - [5.11 R8, ProGuard & App Shrinking Architecture](#511-r8-proguard--app-shrinking-architecture)
+   - [5.12 Voice Manager & Asynchronous Text-To-Speech (TTS) Engine](#512-voice-manager--asynchronous-text-to-speech-tts-engine)
 6. [Complete Suite of Sequence & Flow Diagrams](#6-complete-suite-of-sequence--flow-diagrams)
 
 ---
@@ -371,7 +372,7 @@ if (context.isTvDevice()) {
 The application features a robust in-app streaming pipeline that eliminates the need for full pre-downloads:
 1. `TorrentDownloadService` starts a foreground service managing a native `libtorrent4j` session.
 2. `StreamingPiecePlanner` prioritizes sequential pieces: the first 2% of the file (container header, index, and metadata) and the current playback head are requested with top priority.
-3. `VerifiedPieceTracker` listens to libtorrent piece-finished events and validates piece hashes.
+3. `VerifiedPieceTracker` listens to libtorrent piece-finished events and validates piece hashes, querying `TorrentStatus.pieces()` bitfield in memory to avoid native C++ IPC thread stalls.
 4. `VerifiedTorrentHttpServer` (embedded NanoHTTPD) serves HTTP range requests (`206 Partial Content`). **Crucial Guardrail**: A byte range is ONLY served once every overlapping torrent piece has passed its cryptographic SHA-1 hash check. Unverified ranges are held until verified, preventing player decoder corruption.
 5. `PublicTrackersRepository` dynamically fetches live public tracker lists from GitHub (`ngosang/trackerslist`) to maximize DHT peer discovery.
 
@@ -491,6 +492,11 @@ To guarantee seamless watch history parity and minimal cloud consumption across 
   * Firestore Documents: `-keepclassmembers @com.google.firebase.firestore.IgnoreExtraProperties class * { public <init>(); <fields>; <methods>; }`.
   * Kotlinx Serialization: `-keep,allowoptimization @kotlinx.serialization.Serializable class * { *; }`.
 * **Reflection & JNI Entry Points**: Targeted constructor keeps for `AppCastOptionsProvider` and explicit JNI preservation for `libtorrent_jni` and `LibNfsNative`.
+
+### 5.12 Voice Manager & Asynchronous Text-To-Speech (TTS) Engine
+* **Offloaded Binder IPC**: `VoiceManager` encapsulates Android's platform `TextToSpeech` engine. To prevent main UI thread hangs and ANR crashes on low-resource Android TV devices (such as TCL Smart TV Pro running Android 11), all synchronous Binder IPC operations (`setLanguage`, `getVoices`, `setVoice`, `speak`, `stop`) are dispatched to `Dispatchers.IO` using a background `CoroutineScope(Dispatchers.IO + SupervisorJob())`.
+* **Platform Exception Resilience**: All TTS calls are wrapped in defensive `try-catch` blocks to swallow IPC binder failures (`DeadObjectException`, `RuntimeException`) if the platform TTS engine process crashes, hangs, or is missing on TV hardware.
+* **Locale & Voice Selection**: Dynamically scans available native voices for target locales (e.g. `Locale.US` and `es-ES`), prioritizing non-network local voices matching country and language tags for speech synthesis.
 
 ---
 

@@ -54,7 +54,7 @@ class SearchViewModelTest {
         every { preferenceManager.filteredLanguagesFlow } returns MutableStateFlow("")
         every { preferenceManager.getMinimumRating() } returns 6f
         every { preferenceManager.minimumRatingFlow } returns MutableStateFlow(6f)
-        viewModel = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager)
+        viewModel = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
     }
 
     @Test
@@ -329,6 +329,7 @@ class SearchViewModelTest {
 
         viewModel.setFavoritesFilter(FavoritesFilter.MOVIES)
         viewModel.showFavorites()
+        testScheduler.advanceUntilIdle()
 
         val state = viewModel.uiState.value as SearchUiState.Success
         assertThat(state.movies).containsExactly(movie)
@@ -344,6 +345,7 @@ class SearchViewModelTest {
 
         viewModel.setFavoritesFilter(FavoritesFilter.TV_SERIES)
         viewModel.showFavorites()
+        testScheduler.advanceUntilIdle()
 
         val state = viewModel.uiState.value as SearchUiState.Success
         assertThat(state.movies).isEmpty()
@@ -370,9 +372,10 @@ class SearchViewModelTest {
         every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(inProgressSeries))
         every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(movieProgress, watchedMovieProgress, episodeProgress))
 
-        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager)
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
         vm.setFavoritesFilter(FavoritesFilter.IN_PROGRESS)
         vm.showFavorites()
+        testScheduler.advanceUntilIdle()
 
         val state = vm.uiState.value as SearchUiState.Success
         assertThat(state.movies).containsExactly(inProgressMovie)
@@ -574,9 +577,10 @@ class SearchViewModelTest {
         every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(series))
         every { userLibraryRepository.getWatchHistory() } returns flowOf(watchHistory)
 
-        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager)
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
         vm.showFavorites()
         vm.setFavoritesFilter(FavoritesFilter.WATCHED)
+        testScheduler.advanceUntilIdle()
 
         val state = vm.uiState.value as SearchUiState.Success
         assertThat(state.favoriteSeries).containsExactly(series)
@@ -606,14 +610,16 @@ class SearchViewModelTest {
         every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(series))
         every { userLibraryRepository.getWatchHistory() } returns flowOf(movieHistory)
 
-        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager)
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
         vm.showFavorites()
         vm.setFavoritesFilter(FavoritesFilter.UNWATCHED)
+        testScheduler.advanceUntilIdle()
 
         val state = vm.uiState.value as SearchUiState.Success
         assertThat(state.favoriteSeries).containsExactly(series)
 
         vm.setFavoritesFilter(FavoritesFilter.WATCHED)
+        testScheduler.advanceUntilIdle()
         assertThat((vm.uiState.value as? SearchUiState.Success)?.favoriteSeries.orEmpty()).isEmpty()
     }
 
@@ -651,7 +657,7 @@ class SearchViewModelTest {
         every { userLibraryRepository.getWatchHistory() } returns flowOf(watchHistory)
         coEvery { tmdbRepository.getTvDetails(400) } returns tmdbDetails
 
-        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager)
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
         vm.setFavoritesFilter(FavoritesFilter.WATCHED)
         vm.showFavorites()
         testScheduler.advanceUntilIdle()

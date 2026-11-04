@@ -49,6 +49,22 @@ class MediaMetadataResolver @Inject constructor(
     companion object {
         private const val TAG = "MediaMetadataResolver"
 
+        private val SE_REGEX = Regex("""\bS(\d{1,2})[\s.]?E(\d{1,2})\b""", RegexOption.IGNORE_CASE)
+        private val X_REGEX = Regex("""\b(\d{1,2})x(\d{1,2})\b""", RegexOption.IGNORE_CASE)
+        private val VIDEO_EXT_REGEX = Regex("""\.(mp4|mkv|avi|mov|wmv|webm|ts|m4v)$""", RegexOption.IGNORE_CASE)
+        private val RELEASE_TAGS_REGEX = Regex(
+            """\b(1080p|720p|480p|2160p|4k|uhd|bluray|blu-ray|web-dl|webrip|web|dvdrip|dvd|hdtv|h264|x264|h265|x265|hevc|avc|10bit|aac|ac3|dts|ddp5\.?1|cakes|eztv|yts|yify|rarbg|ettv|galaxytv|tgx)\b.*$""",
+            RegexOption.IGNORE_CASE
+        )
+        private val BRACKETED_TAGS_REGEX = Regex("""\[.*?\]|\(.*?\)|[\{\}]""")
+        private val EP_TAGS_SPLIT_REGEX = Regex("""\bS\d{1,2}[\s.]?E\d{1,2}\b|\b\d{1,2}x\d{1,2}\b|[-/]""", RegexOption.IGNORE_CASE)
+        private val YEAR_TRAILING_REGEX = Regex("""\b(19\d\d|20\d\d)\b.*$""")
+        private val DOT_UNDERSCORE_REGEX = Regex("""[._]""")
+        private val MULTI_SPACE_REGEX = Regex("""\s+""")
+        private val EP_TAGS_REPLACE_REGEX = Regex("""\bS\d{1,2}[\s.]?E\d{1,2}\b|\b\d{1,2}x\d{1,2}\b""", RegexOption.IGNORE_CASE)
+        private val YEAR_REGEX = Regex("""\b(19\d\d|20\d\d)\b""")
+        private val NON_ALPHANUMERIC_REGEX = Regex("""[^a-z0-9]""")
+
         /**
          * Extracts season and episode numbers from any number of candidate strings
          * (e.g. title, file name, URI path).
@@ -57,8 +73,7 @@ class MediaMetadataResolver @Inject constructor(
         fun extractSeasonAndEpisode(vararg candidates: String?): Pair<Int, Int> {
             for (candidate in candidates) {
                 if (candidate.isNullOrBlank()) continue
-                val sMatch = Regex("""\bS(\d{1,2})[\s.]?E(\d{1,2})\b""", RegexOption.IGNORE_CASE).find(candidate)
-                    ?: Regex("""\b(\d{1,2})x(\d{1,2})\b""", RegexOption.IGNORE_CASE).find(candidate)
+                val sMatch = SE_REGEX.find(candidate) ?: X_REGEX.find(candidate)
                 if (sMatch != null) {
                     val season = sMatch.groupValues[1].toIntOrNull() ?: 0
                     val episode = sMatch.groupValues[2].toIntOrNull() ?: 0
@@ -78,32 +93,23 @@ class MediaMetadataResolver @Inject constructor(
             if (rawTitle.isBlank()) return emptyList()
 
             // 1. Strip video extensions
-            var text = rawTitle.replace(
-                Regex("""\.(mp4|mkv|avi|mov|wmv|webm|ts|m4v)$""", RegexOption.IGNORE_CASE),
-                ""
-            )
+            var text = rawTitle.replace(VIDEO_EXT_REGEX, "")
 
             // 2. Strip quality, codec, release tags and everything that follows them
-            text = text.replace(
-                Regex(
-                    """\b(1080p|720p|480p|2160p|4k|uhd|bluray|blu-ray|web-dl|webrip|web|dvdrip|dvd|hdtv|h264|x264|h265|x265|hevc|avc|10bit|aac|ac3|dts|ddp5\.?1|cakes|eztv|yts|yify|rarbg|ettv|galaxytv|tgx)\b.*$""",
-                    RegexOption.IGNORE_CASE
-                ),
-                ""
-            )
+            text = text.replace(RELEASE_TAGS_REGEX, "")
 
             // 3. Strip bracketed release tags
-            text = text.replace(Regex("""\[.*?\]|\(.*?\)|[\{\}]"""), " ")
+            text = text.replace(BRACKETED_TAGS_REGEX, " ")
 
             // 4. Split by episode tags (e.g. S38E01, 38x01) or major title separators (- or /)
-            val chunks = text.split(Regex("""\bS\d{1,2}[\s.]?E\d{1,2}\b|\b\d{1,2}x\d{1,2}\b|[-/]""", RegexOption.IGNORE_CASE))
+            val chunks = text.split(EP_TAGS_SPLIT_REGEX)
 
             val results = mutableListOf<String>()
             for (chunk in chunks) {
                 val cleanChunk = chunk
-                    .replace(Regex("""\b(19\d\d|20\d\d)\b.*$"""), "")
-                    .replace(Regex("""[._]"""), " ")
-                    .replace(Regex("""\s+"""), " ")
+                    .replace(YEAR_TRAILING_REGEX, "")
+                    .replace(DOT_UNDERSCORE_REGEX, " ")
+                    .replace(MULTI_SPACE_REGEX, " ")
                     .trim()
                 if (cleanChunk.length >= 2 && !results.contains(cleanChunk)) {
                     results.add(cleanChunk)
@@ -112,9 +118,9 @@ class MediaMetadataResolver @Inject constructor(
 
             // Also include the full string without episode tags if not already present
             val fullClean = text
-                .replace(Regex("""\bS\d{1,2}[\s.]?E\d{1,2}\b|\b\d{1,2}x\d{1,2}\b""", RegexOption.IGNORE_CASE), " ")
-                .replace(Regex("""[._]"""), " ")
-                .replace(Regex("""\s+"""), " ")
+                .replace(EP_TAGS_REPLACE_REGEX, " ")
+                .replace(DOT_UNDERSCORE_REGEX, " ")
+                .replace(MULTI_SPACE_REGEX, " ")
                 .trim()
             if (fullClean.length >= 2 && !results.contains(fullClean)) {
                 results.add(fullClean)
@@ -128,7 +134,7 @@ class MediaMetadataResolver @Inject constructor(
          */
         fun extractYear(candidate: String?): Int? {
             if (candidate.isNullOrBlank()) return null
-            val match = Regex("""\b(19\d\d|20\d\d)\b""").find(candidate)
+            val match = YEAR_REGEX.find(candidate)
             return match?.value?.toIntOrNull()
         }
 
@@ -138,9 +144,9 @@ class MediaMetadataResolver @Inject constructor(
         fun normalizeTitle(title: String): String {
             return title
                 .lowercase(Locale.ROOT)
-                .replace(Regex("""\b(19\d\d|20\d\d)\b"""), " ")
-                .replace(Regex("""[^a-z0-9]"""), " ")
-                .replace(Regex("""\s+"""), " ")
+                .replace(YEAR_REGEX, " ")
+                .replace(NON_ALPHANUMERIC_REGEX, " ")
+                .replace(MULTI_SPACE_REGEX, " ")
                 .trim()
         }
     }

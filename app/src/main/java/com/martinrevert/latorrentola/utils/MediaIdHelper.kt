@@ -24,14 +24,20 @@ data class EpisodeComponents(
     val imdbId: String? get() = if (seriesIdentifier.startsWith("tt", ignoreCase = true)) seriesIdentifier else null
 
     /** Returns true if this episode matches the given TMDB series ID or IMDb ID. */
-    fun matchesSeries(seriesId: Int, targetImdbId: String? = null): Boolean {
+    fun matchesSeries(
+        seriesId: Int,
+        targetImdbId: String? = null,
+        normTarget: String? = null
+    ): Boolean {
         if (seriesId > 0 && first == seriesId) return true
-        val normTarget = MediaIdHelper.normalizeImdbId(targetImdbId)
-        val normSelf = MediaIdHelper.normalizeImdbId(seriesIdentifier)
-        if (!normTarget.isNullOrBlank() && !normSelf.isNullOrBlank() && normTarget.equals(normSelf, ignoreCase = true)) {
-            return true
+        if (!targetImdbId.isNullOrBlank()) {
+            val effectiveNormTarget = normTarget ?: MediaIdHelper.normalizeImdbId(targetImdbId)
+            val normSelf = imdbId?.let { MediaIdHelper.normalizeImdbId(it) }
+            if (!effectiveNormTarget.isNullOrBlank() && !normSelf.isNullOrBlank() && effectiveNormTarget.equals(normSelf, ignoreCase = true)) {
+                return true
+            }
+            if (imdbId != null && seriesIdentifier.equals(targetImdbId, ignoreCase = true)) return true
         }
-        if (!targetImdbId.isNullOrBlank() && seriesIdentifier.equals(targetImdbId, ignoreCase = true)) return true
         return false
     }
 }
@@ -51,21 +57,46 @@ object MediaIdHelper {
     private val DETERMINISTIC_FALLBACK_EPISODE_REGEX = Regex("""^tmdb_(\d+)_s(\d+)_e(\d+)$""", RegexOption.IGNORE_CASE)
     private val LEGACY_EPISODE_REGEX = Regex("""^(?:media|tv)_(\d+)_s(\d+)_e(\d+)$""", RegexOption.IGNORE_CASE)
     private val INFO_HASH_REGEX = Regex("""^[0-9a-fA-F]{40}$""")
+    private val MOVIE_EXTENSION_REGEX = Regex("""\.(mp4|mkv|avi|mov|wmv|webm|ts|m4v)$""", RegexOption.IGNORE_CASE)
 
     /**
      * Normalizes a raw IMDb identifier candidate into the standard "tt1234567" format.
+     * Uses zero-allocation, zero-regex char checks for maximum performance in high-frequency loops.
      */
     fun normalizeImdbId(raw: String?): String? {
         if (raw.isNullOrBlank()) return null
         val trimmed = raw.trim()
-        val digitsMatch = Regex("""^(?:tt)?(\d{5,10})$""", RegexOption.IGNORE_CASE).matchEntire(trimmed)
-        return if (digitsMatch != null) {
-            "tt${digitsMatch.groupValues[1]}"
-        } else if (trimmed.startsWith("tt", ignoreCase = true)) {
-            trimmed.lowercase()
-        } else {
-            null
+        val len = trimmed.length
+
+        // Case 1: Standard "tt1234567" (7 to 12 chars total: "tt" + 5..10 digits)
+        if (len in 7..12 && trimmed.startsWith("tt", ignoreCase = true)) {
+            var allDigits = true
+            for (i in 2 until len) {
+                if (!trimmed[i].isDigit()) {
+                    allDigits = false
+                    break
+                }
+            }
+            if (allDigits) {
+                return trimmed.lowercase()
+            }
         }
+
+        // Case 2: Raw numeric string "1234567" (5 to 10 digits)
+        if (len in 5..10) {
+            var allDigits = true
+            for (i in 0 until len) {
+                if (!trimmed[i].isDigit()) {
+                    allDigits = false
+                    break
+                }
+            }
+            if (allDigits) {
+                return "tt$trimmed"
+            }
+        }
+
+        return null
     }
 
     /**
@@ -83,10 +114,7 @@ object MediaIdHelper {
             normalizedImdb != null -> normalizedImdb
             movieId > 0 -> "tmdb_$movieId"
             !title.isNullOrBlank() -> {
-                val cleaned = title.replace(
-                    Regex("""\.(mp4|mkv|avi|mov|wmv|webm|ts|m4v)$""", RegexOption.IGNORE_CASE),
-                    ""
-                ).trim()
+                val cleaned = title.replace(MOVIE_EXTENSION_REGEX, "").trim()
                 cleaned.ifBlank { "unknown_movie" }
             }
             else -> "unknown_movie"

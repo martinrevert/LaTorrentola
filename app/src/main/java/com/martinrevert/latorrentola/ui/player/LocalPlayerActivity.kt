@@ -427,9 +427,11 @@ class LocalPlayerActivity : FragmentActivity() {
     private var playbackDecodingError by mutableStateOf<PlaybackDecodingError?>(null)
 
     private val completedMediaIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    private val mediaRouter: MediaRouter by lazy { MediaRouter.getInstance(this) }
 
     private var pendingMediaUri: Uri? = null
     private var pendingMediaItem: MediaItem? = null
+    private var metadataRecoveryJob: Job? = null
     private var posterUrl by mutableStateOf<String?>(null)
     private var lastKnownPlaybackPositionMs = 0L
     private var lastStreamRecoveryAttemptMillis = 0L
@@ -464,6 +466,104 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
             }
             .build()
+    }
+
+    private fun buildPendingMediaItem(mediaUri: Uri?, file: File?): MediaItem? {
+        if (mediaUri == null) return null
+        val isEpisode = currentSeriesId > 0 || (currentSeasonNumber > 0 && currentEpisodeNumber > 0)
+        val mediaId = if (isEpisode) {
+            MediaIdHelper.forEpisode(
+                imdbId = currentImdbId,
+                seriesId = currentSeriesId,
+                seasonNumber = currentSeasonNumber,
+                episodeNumber = currentEpisodeNumber,
+                title = mediaTitle
+            )
+        } else {
+            MediaIdHelper.forMovie(
+                imdbId = currentImdbId,
+                movieId = currentMovieId,
+                title = mediaTitle
+            )
+        }
+
+        val itemBundle = Bundle().apply {
+            putBoolean(PlaybackService.EXTRA_IS_EPISODE, isEpisode)
+            if (castStreamUrl.isNotBlank()) {
+                putString(PlaybackService.EXTRA_CAST_URL, castStreamUrl)
+            }
+            if (localStreamUrl.isNotBlank()) {
+                putString(EXTRA_STREAM_URL, localStreamUrl)
+            }
+            if (file != null && file.exists()) {
+                putString(EXTRA_FILE_PATH, file.absolutePath)
+            }
+            if (torrentInfoHash.isNotBlank()) {
+                putString(EXTRA_INFO_HASH, torrentInfoHash)
+            }
+            if (currentMovieId > 0) {
+                putInt(EXTRA_MOVIE_ID, currentMovieId)
+            }
+            if (currentSeriesId > 0) {
+                putInt(EXTRA_SERIES_ID, currentSeriesId)
+            }
+            if (currentSeasonNumber > 0) {
+                putInt(EXTRA_SEASON_NUMBER, currentSeasonNumber)
+            }
+            if (currentEpisodeNumber > 0) {
+                putInt(EXTRA_EPISODE_NUMBER, currentEpisodeNumber)
+            }
+            if (!currentImdbId.isNullOrBlank()) {
+                putString(EXTRA_IMDB_ID, currentImdbId)
+            }
+            val nextEpInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
+            if (!nextEpInfo.isNullOrEmpty()) {
+                putStringArrayList(EXTRA_NEXT_EPISODE_INFO, nextEpInfo)
+            }
+            val inferredMime = intent.getStringExtra(EXTRA_MIME_TYPE) ?: file?.mediaMimeType()
+            if (!inferredMime.isNullOrBlank()) {
+                putString(EXTRA_MIME_TYPE, inferredMime)
+            }
+            if (!posterUrl.isNullOrBlank()) {
+                putString(EXTRA_POSTER_URL, posterUrl)
+            }
+        }
+
+        val inferredMimeType = intent.getStringExtra(EXTRA_MIME_TYPE)
+            ?: file?.mediaMimeType()
+            ?: intent.getStringExtra(EXTRA_REMOTE_FILE_PATH)?.mediaMimeType()
+            ?: intent.getStringExtra(EXTRA_TITLE)?.mediaMimeType()
+
+        val mediaMetadata = buildEnrichedMediaMetadata(
+            title = mediaTitle,
+            isEpisode = isEpisode,
+            seasonNumber = currentSeasonNumber,
+            episodeNumber = currentEpisodeNumber,
+            posterUrl = posterUrl,
+            extras = itemBundle
+        )
+
+        return MediaItem.Builder()
+            .setMediaId(mediaId)
+            .setUri(mediaUri)
+            .setMimeType(inferredMimeType)
+            .setMediaMetadata(mediaMetadata)
+            .build()
+    }
+
+    private fun refreshMediaItem(mediaUri: Uri?, file: File?) {
+        val updatedItem = buildPendingMediaItem(mediaUri, file) ?: return
+        val oldMediaId = currentMediaItem?.mediaId ?: pendingMediaItem?.mediaId
+        pendingMediaItem = updatedItem
+        currentMediaItem = updatedItem
+        mediaController?.let { controller ->
+            if (controller.currentMediaItem?.mediaId == oldMediaId || controller.currentMediaItem == null) {
+                val idx = controller.currentMediaItemIndex
+                if (idx >= 0 && controller.mediaItemCount > idx) {
+                    controller.replaceMediaItem(idx, updatedItem)
+                }
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -587,7 +687,6 @@ class LocalPlayerActivity : FragmentActivity() {
                                     safeGetCastContext(this@LocalPlayerActivity)?.sessionManager?.currentCastSession?.let { castSession ->
                                         saveCastSessionProgress(castSession)
                                     }
-                                    val mediaRouter = MediaRouter.getInstance(this@LocalPlayerActivity)
                                     mediaRouter.selectRoute(mediaRouter.defaultRoute)
                                 },
                                 onShowCast = { showCastBottomSheet = true },
@@ -1000,6 +1099,8 @@ class LocalPlayerActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        metadataRecoveryJob?.cancel()
+        metadataRecoveryJob = null
         showNextEpisodeDialog = false
         playbackDecodingError = null
         surfaceRebindKey++
@@ -1039,6 +1140,8 @@ class LocalPlayerActivity : FragmentActivity() {
 
         pendingMediaUri = mediaUri
 
+        var remoteServerConfigToStart: com.martinrevert.latorrentola.service.storage.remote.RemoteServerConfig? = null
+        var remoteFileItemToStart: com.martinrevert.latorrentola.service.storage.remote.RemoteFileItem? = null
         if (castStreamUrl.isBlank() && file != null && file.isFile && file.canRead()) {
             try {
                 val server = VerifiedTorrentHttpServer(file, file.length()) { _, _ -> true }
@@ -1091,13 +1194,10 @@ class LocalPlayerActivity : FragmentActivity() {
                             lastModified = 0L,
                             serverConfigId = serverId
                         )
-                        val server = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-                            remoteStorageManager.startRemoteStreamServer(serverConfig, fileItem)
-                        }
-                        castStreamUrl = server.lanUrl()
-                        Log.i(TAG, "Started RemoteMediaHttpServer for remote Cast: $castStreamUrl")
+                        remoteServerConfigToStart = serverConfig
+                        remoteFileItemToStart = fileItem
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to start RemoteMediaHttpServer for remote Cast: ${e.message}")
+                        Log.w(TAG, "Failed to prepare RemoteFileItem for remote Cast: ${e.message}")
                     }
                 }
             }
@@ -1142,33 +1242,7 @@ class LocalPlayerActivity : FragmentActivity() {
             currentImdbId = MediaIdHelper.normalizeImdbId(rawImdb)
         }
 
-        if (torrentInfoHash.isNotBlank()) {
-            try {
-                val dbRecord = runBlocking(Dispatchers.IO) { torrentDownloadDao.get(torrentInfoHash) }
-                if (dbRecord != null) {
-                    if (currentMovieId <= 0 && (dbRecord.movieId ?: 0) > 0) {
-                        currentMovieId = dbRecord.movieId ?: 0
-                    }
-                    if (currentSeriesId <= 0 && (dbRecord.seriesId ?: 0) > 0) {
-                        currentSeriesId = dbRecord.seriesId ?: 0
-                    }
-                    if (currentSeasonNumber <= 0 && (dbRecord.seasonNumber ?: 0) > 0) {
-                        currentSeasonNumber = dbRecord.seasonNumber ?: 0
-                    }
-                    if (currentEpisodeNumber <= 0 && (dbRecord.episodeNumber ?: 0) > 0) {
-                        currentEpisodeNumber = dbRecord.episodeNumber ?: 0
-                    }
-                    if (currentImdbId.isNullOrBlank() && !dbRecord.imdbId.isNullOrBlank()) {
-                        currentImdbId = MediaIdHelper.normalizeImdbId(dbRecord.imdbId)
-                    }
-                    if (posterUrl.isNullOrBlank() && !dbRecord.posterUrl.isNullOrBlank()) {
-                        posterUrl = dbRecord.posterUrl
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to recover series/movie metadata from DB: ${e.message}")
-            }
-        }
+
 
         if (mediaUri != null) {
 
@@ -1245,7 +1319,6 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
             }
 
-            val isEpisode = currentSeriesId > 0 || (currentSeasonNumber > 0 && currentEpisodeNumber > 0)
             if (currentImdbId.isNullOrBlank() && (currentSeriesId > 0 || currentMovieId > 0)) {
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
@@ -1259,40 +1332,7 @@ class LocalPlayerActivity : FragmentActivity() {
                             withContext(Dispatchers.Main) {
                                 currentImdbId = norm
                                 intent.putExtra(EXTRA_IMDB_ID, norm)
-                                val updatedMediaId = if (isEpisode) {
-                                    MediaIdHelper.forEpisode(
-                                        imdbId = norm,
-                                        seriesId = currentSeriesId,
-                                        seasonNumber = currentSeasonNumber,
-                                        episodeNumber = currentEpisodeNumber,
-                                        title = mediaTitle
-                                    )
-                                } else {
-                                    MediaIdHelper.forMovie(
-                                        imdbId = norm,
-                                        movieId = currentMovieId,
-                                        title = mediaTitle
-                                    )
-                                }
-                                currentMediaItem?.let { item ->
-                                    val updatedExtras = (item.mediaMetadata.extras ?: Bundle()).apply {
-                                        putString(EXTRA_IMDB_ID, norm)
-                                    }
-                                    val updatedMetadata = item.mediaMetadata.buildUpon()
-                                        .setExtras(updatedExtras)
-                                        .build()
-                                    val updatedItem = item.buildUpon()
-                                        .setMediaId(updatedMediaId)
-                                        .setMediaMetadata(updatedMetadata)
-                                        .build()
-                                    currentMediaItem = updatedItem
-                                    pendingMediaItem = updatedItem
-                                    mediaController?.let { controller ->
-                                        if (controller.currentMediaItem?.mediaId == item.mediaId) {
-                                            controller.replaceMediaItem(controller.currentMediaItemIndex, updatedItem)
-                                        }
-                                    }
-                                }
+                                refreshMediaItem(mediaUri, file)
                             }
                         }
                     } catch (e: Exception) {
@@ -1302,85 +1342,71 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
             }
 
-            val mediaId = if (isEpisode) {
-                MediaIdHelper.forEpisode(
-                    imdbId = currentImdbId,
-                    seriesId = currentSeriesId,
-                    seasonNumber = currentSeasonNumber,
-                    episodeNumber = currentEpisodeNumber,
-                    title = mediaTitle
-                )
-            } else {
-                MediaIdHelper.forMovie(
-                    imdbId = currentImdbId,
-                    movieId = currentMovieId,
-                    title = mediaTitle
-                )
-            }
-
-            val itemBundle = Bundle().apply {
-                putBoolean(PlaybackService.EXTRA_IS_EPISODE, isEpisode)
-                if (castStreamUrl.isNotBlank()) {
-                    putString(PlaybackService.EXTRA_CAST_URL, castStreamUrl)
-                }
-                if (localStreamUrl.isNotBlank()) {
-                    putString(EXTRA_STREAM_URL, localStreamUrl)
-                }
-                if (file != null && file.exists()) {
-                    putString(EXTRA_FILE_PATH, file.absolutePath)
-                }
-                if (torrentInfoHash.isNotBlank()) {
-                    putString(EXTRA_INFO_HASH, torrentInfoHash)
-                }
-                if (currentMovieId > 0) {
-                    putInt(EXTRA_MOVIE_ID, currentMovieId)
-                }
-                if (currentSeriesId > 0) {
-                    putInt(EXTRA_SERIES_ID, currentSeriesId)
-                }
-                if (currentSeasonNumber > 0) {
-                    putInt(EXTRA_SEASON_NUMBER, currentSeasonNumber)
-                }
-                if (currentEpisodeNumber > 0) {
-                    putInt(EXTRA_EPISODE_NUMBER, currentEpisodeNumber)
-                }
-                if (!currentImdbId.isNullOrBlank()) {
-                    putString(EXTRA_IMDB_ID, currentImdbId)
-                }
-                val nextEpInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
-                if (!nextEpInfo.isNullOrEmpty()) {
-                    putStringArrayList(EXTRA_NEXT_EPISODE_INFO, nextEpInfo)
-                }
-                val inferredMime = intent.getStringExtra(EXTRA_MIME_TYPE) ?: file?.mediaMimeType()
-                if (!inferredMime.isNullOrBlank()) {
-                    putString(EXTRA_MIME_TYPE, inferredMime)
-                }
-                if (!posterUrl.isNullOrBlank()) {
-                    putString(EXTRA_POSTER_URL, posterUrl)
-                }
-            }
-
-            val inferredMimeType = intent.getStringExtra(EXTRA_MIME_TYPE)
-                ?: file?.mediaMimeType()
-                ?: intent.getStringExtra(EXTRA_REMOTE_FILE_PATH)?.mediaMimeType()
-                ?: intent.getStringExtra(EXTRA_TITLE)?.mediaMimeType()
-
-            val mediaMetadata = buildEnrichedMediaMetadata(
-                title = mediaTitle,
-                isEpisode = isEpisode,
-                seasonNumber = currentSeasonNumber,
-                episodeNumber = currentEpisodeNumber,
-                posterUrl = posterUrl,
-                extras = itemBundle
-            )
-
-            pendingMediaItem = MediaItem.Builder()
-                .setMediaId(mediaId)
-                .setUri(mediaUri)
-                .setMimeType(inferredMimeType)
-                .setMediaMetadata(mediaMetadata)
-                .build()
+            pendingMediaItem = buildPendingMediaItem(mediaUri, file)
             currentMediaItem = pendingMediaItem
+
+            metadataRecoveryJob = lifecycleScope.launch {
+                var stateChanged = false
+
+                if (remoteServerConfigToStart != null && remoteFileItemToStart != null) {
+                    try {
+                        val server = withContext(Dispatchers.IO) {
+                            remoteStorageManager.startRemoteStreamServer(remoteServerConfigToStart, remoteFileItemToStart)
+                        }
+                        val lanUrl = server.lanUrl()
+                        if (lanUrl.isNotBlank()) {
+                            castStreamUrl = lanUrl
+                            stateChanged = true
+                            Log.i(TAG, "Started RemoteMediaHttpServer for remote Cast: $castStreamUrl")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to start RemoteMediaHttpServer for remote Cast: ${e.message}")
+                    }
+                }
+
+                if (torrentInfoHash.isNotBlank()) {
+                    try {
+                        val dbRecord = withContext(Dispatchers.IO) {
+                            torrentDownloadDao.get(torrentInfoHash)
+                        }
+                        if (dbRecord != null) {
+                            if (currentMovieId <= 0 && (dbRecord.movieId ?: 0) > 0) {
+                                currentMovieId = dbRecord.movieId ?: 0
+                                stateChanged = true
+                            }
+                            if (currentSeriesId <= 0 && (dbRecord.seriesId ?: 0) > 0) {
+                                currentSeriesId = dbRecord.seriesId ?: 0
+                                stateChanged = true
+                            }
+                            if (currentSeasonNumber <= 0 && (dbRecord.seasonNumber ?: 0) > 0) {
+                                currentSeasonNumber = dbRecord.seasonNumber ?: 0
+                                stateChanged = true
+                            }
+                            if (currentEpisodeNumber <= 0 && (dbRecord.episodeNumber ?: 0) > 0) {
+                                currentEpisodeNumber = dbRecord.episodeNumber ?: 0
+                                stateChanged = true
+                            }
+                            if (currentImdbId.isNullOrBlank() && !dbRecord.imdbId.isNullOrBlank()) {
+                                val norm = MediaIdHelper.normalizeImdbId(dbRecord.imdbId)
+                                if (!norm.isNullOrBlank()) {
+                                    currentImdbId = norm
+                                    stateChanged = true
+                                }
+                            }
+                            if (posterUrl.isNullOrBlank() && !dbRecord.posterUrl.isNullOrBlank()) {
+                                posterUrl = dbRecord.posterUrl
+                                stateChanged = true
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to recover series/movie metadata from DB: ${e.message}")
+                    }
+                }
+
+                if (stateChanged) {
+                    refreshMediaItem(mediaUri, file)
+                }
+            }
 
             if (posterUrl.isNullOrBlank()) {
                 lifecycleScope.launch(Dispatchers.IO) {
@@ -1516,6 +1542,9 @@ class LocalPlayerActivity : FragmentActivity() {
 
     private fun setupControllerMedia(controller: MediaController) {
         lifecycleScope.launch {
+            try {
+                metadataRecoveryJob?.join()
+            } catch (_: Throwable) {}
             val activeItem = controller.currentMediaItem
             val newItem = pendingMediaItem
             val isFromPip = intent.getBooleanExtra(EXTRA_FROM_PIP, false)
@@ -3347,7 +3376,6 @@ class LocalPlayerActivity : FragmentActivity() {
         val controller = mediaController
         val isCasting = controller?.deviceInfo?.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE
         if (isCasting && event.action == android.view.KeyEvent.ACTION_DOWN) {
-            val mediaRouter = MediaRouter.getInstance(this)
             val selectedRoute = mediaRouter.selectedRoute
             if (!selectedRoute.isDefault && selectedRoute.volumeHandling == MediaRouter.RouteInfo.PLAYBACK_VOLUME_VARIABLE) {
                 when (event.keyCode) {
@@ -3366,6 +3394,8 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     override fun onDestroy() {
+        metadataRecoveryJob?.cancel()
+        metadataRecoveryJob = null
         mediaControllerListener?.let { mediaController?.removeListener(it) }
         mediaControllerListener = null
         playbackCompletionListener?.let { mediaController?.removeListener(it) }

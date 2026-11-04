@@ -86,8 +86,9 @@ Elige en los **Ajustes** de la app el modo que mejor se adapte a tu manera de ve
 * **Aislamiento Multi-Cuenta para Televisores Familiares**: ¿Compartes un Android TV o Chromecast en el living con tu familia? La app recuerda cada cuenta de Google localmente. Si un usuario cierra sesión o cambia de cuenta, los historiales y favoritos de cada miembro de la familia se conservan intactos en el dispositivo sin borrarse jamás.
 * **Sincronización en la Nube Inteligente**: Cambia de habitación o de dispositivo sin perder tu progreso mediante sincronización delta en segundo plano.
 
-### 9. 🎙️ Búsqueda por Voz y Notificaciones
+### 9. 🎙️ Búsqueda por Voz, Síntesis de Texto y Notificaciones
 * **Búsqueda por Voz**: Toca el icono del micrófono o usa el botón de voz del mando de tu Smart TV para decir el título que buscas sin tener que escribirlo letra por letra.
+* **Lectura por Voz de Resúmenes**: Escucha los títulos y resúmenes de películas leídos en voz alta mediante un motor de síntesis de voz asíncrono y desacoplado, optimizado para evitar demoras en la interfaz de Android TV y dispositivos móviles.
 * **Avisos de Nuevos Estrenos**: Recibe notificaciones cuando haya nuevos lanzamientos destacados y entra directo a su ficha con un solo toque.
 
 ---

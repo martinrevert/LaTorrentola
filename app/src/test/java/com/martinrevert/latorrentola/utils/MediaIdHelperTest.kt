@@ -146,6 +146,12 @@ class MediaIdHelperTest {
         assertEquals(4, parsedLegacy.third)
         assertTrue(parsedLegacy.matchesSeries(seriesId = 1399, targetImdbId = null))
         assertFalse(parsedLegacy.matchesSeries(seriesId = 5555, targetImdbId = null))
+
+        val parsedTmdb = MediaIdHelper.parseCanonicalEpisode("tmdb_111803_s1_e2")
+        assertNotNull(parsedTmdb)
+        assertNull(parsedTmdb!!.imdbId)
+        assertFalse(parsedTmdb.matchesSeries(seriesId = 0, targetImdbId = "tt111803"))
+        assertTrue(parsedTmdb.matchesSeries(seriesId = 111803, targetImdbId = null))
     }
 
     @Test
@@ -294,5 +300,14 @@ class MediaIdHelperTest {
         assertEquals(1399, parsedLegacy?.first)
         assertEquals(0, parsedLegacy?.second)
         assertEquals(3, parsedLegacy?.third)
+    }
+
+    @Test
+    fun `normalizeImdbId normalizes raw numeric and prefixed IMDb strings`() {
+        assertEquals("tt0111161", MediaIdHelper.normalizeImdbId("0111161"))
+        assertEquals("tt0111161", MediaIdHelper.normalizeImdbId("tt0111161"))
+        assertEquals("tt0111161", MediaIdHelper.normalizeImdbId(" TT0111161 "))
+        assertNull(MediaIdHelper.normalizeImdbId(""))
+        assertNull(MediaIdHelper.normalizeImdbId(null))
     }
 }
