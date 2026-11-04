@@ -30,8 +30,9 @@ Ya sea en la pantalla táctil de tu teléfono, en tu tablet, en un dispositivo p
   * Póster panorámico a pantalla completa y logotipos oficiales de la película.
   * Sinopsis detallada traducida al instante.
   * **Puntuaciones Reales**: Calificaciones combinadas de IMDb, Rotten Tomatoes y Metacritic en un solo vistazo.
+  * **Reparto Completo de IMDb/TMDB**: Integración directa del reparto y fotos de perfil desde TMDB/IMDb con marcadores de carga suave shimmer, evitando metadatos truncados o saltos visuales.
   * **Trailers Oficiales**: Mira los trailers de YouTube en alta definición directamente dentro de la app, sin publicidad ni cortes.
-* **Reparto y Ficha de Actores**: Toca la foto de cualquier actor o actriz para ver su biografía, fecha de nacimiento y su filmografía completa para descubrir otras películas o series en las que participa.
+* **Reparto, Ficha de Actores y Directores**: Busca cualquier actor, actriz o director/a de películas o series para explorar a los artistas mediante chips interactivos con su biografía ubicada dinámicamente a la izquierda del seleccionado, y acceder a su filmografía completa (obras dirigidas y actuadas) ordenada cronológicamente.
 
 ### 2. 📺 Series de TV Temporada a Temporada
 * **Catálogo Completo**: Explora series en emisión, las más populares y las mejor valoradas del momento.

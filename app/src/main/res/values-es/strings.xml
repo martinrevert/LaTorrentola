@@ -396,8 +396,8 @@
     <string name="settings_test_crash_confirm_title">¿Forzar cierre de prueba?</string>
     <string name="settings_test_crash_confirm_desc">Esto cerrará la aplicación de inmediato para verificar los reportes de Crashlytics. ¿Deseas continuar?</string>
     <string name="settings_test_crash_confirm_action">Cerrar app</string>
-    <string name="actor_search_desc">Buscar por Actor</string>
-    <string name="actor_search_placeholder">Buscar actores o actrices…</string>
+    <string name="actor_search_desc">Buscar por Actor o Director</string>
+    <string name="actor_search_placeholder">Buscar actores, actrices o directores…</string>
     <string name="actor_bio_chip">Biografía</string>
     <string name="series_status_ended_title">Serie finalizada</string>
     <string name="series_status_ended_message">Has llegado al final de los capítulos disponibles. Según TMDB, la serie ha finalizado y no habrá más episodios.</string>

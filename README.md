@@ -30,8 +30,9 @@ Whether on your phone's touchscreen, your tablet, a foldable device, or comforta
   * Full-screen panoramic backdrop and official movie logo artwork.
   * Detailed plot synopsis translated on the fly.
   * **Aggregated Ratings**: Side-by-side scores from IMDb, Rotten Tomatoes, and Metacritic for informed viewing choices.
+  * **Full IMDb/TMDB Cast**: High-fidelity cast members and profile avatars directly from TMDB/IMDb with smooth shimmer loading placeholders, avoiding truncated metadata or visual jumps.
   * **Official Trailers**: Watch official YouTube HD trailers directly inside the app without ads or pop-up interruptions.
-* **Cast & Actor Filmographies**: Tap any actor or actress photo to view their biography, birthdate, and complete filmography to jump directly to their other movies or TV series.
+* **Cast, Actor & Director Filmographies**: Search any actor, actress, or movie/TV director to explore matching artists via interactive chips with their biography positioned dynamically to the left of the selected artist, and view their complete filmography (both directed and acted works) sorted chronologically.
 
 ### 2. 📺 TV Series Season by Season
 * **Extensive TV Catalog**: Browse currently airing shows, popular series, and all-time top-rated television.

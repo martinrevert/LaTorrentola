@@ -12,6 +12,7 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbTvPage
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.TMDB.TmdbWatchProvider
+import com.martinrevert.latorrentola.model.TMDB.combineActingAndDirectingCredits
 import com.martinrevert.latorrentola.model.TMDB.sortedByYearDescending
 import com.martinrevert.latorrentola.model.YTS.Cast
 import java.util.Locale
@@ -126,9 +127,9 @@ class TmdbRepository @Inject constructor(
                 apiKey = apiKey,
                 appendToResponse = "combined_credits"
             )
-            val sortedCast = detail.combinedCredits?.cast?.sortedByYearDescending()
-            val sortedDetail = if (sortedCast != null) {
-                detail.copy(combinedCredits = detail.combinedCredits.copy(cast = sortedCast))
+            val combinedCredits = detail.combinedCredits?.combineActingAndDirectingCredits()
+            val sortedDetail = if (combinedCredits != null) {
+                detail.copy(combinedCredits = detail.combinedCredits.copy(cast = combinedCredits))
             } else {
                 detail
             }

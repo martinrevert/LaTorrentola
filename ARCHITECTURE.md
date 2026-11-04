@@ -554,6 +554,10 @@ sequenceDiagram
     end
 ```
 
+> [!NOTE]
+> **Cast Enrichment & Shimmer Placeholder Standard**:
+> In `MovieDetailScreen`, initial YTS cast payloads are explicitly stripped (`cast = null`) to eliminate visual jumping ("fogonazo"). While TMDB credits are fetched in the background by `TmdbRepository`, `isCastLoading = true` renders a full-scale `CastPlaceholderRow` (7–8 items) in both handheld and TV layouts, smoothly replacing it with complete TMDB/IMDb cast metadata once received.
+
 ### Diagram 3: In-App Torrent Streaming, Piece Verification & Playback Resume
 ```mermaid
 sequenceDiagram
@@ -634,10 +638,12 @@ sequenceDiagram
         SS->>VM: onSearch(query)
         VM->>YTS: searchMovies(query)
         YTS-->>VM: Filtered movie results
-    else Actor Search
-        SS->>VM: onSearchActor(query)
+    else Actor & Director Person Search
+        SS->>VM: onSearchPerson(query)
         VM->>TR: searchActors(query)
-        TR-->>VM: List of TmdbActor
+        TR-->>VM: List of matching persons
+        VM->>TR: getActorDetails(personId)
+        TR-->>VM: Combined acting & directing credits sorted descending
     else Favorites Tab
         VM->>UR: getFavoriteMovies()
         UR->>FS: users/uid/favorites

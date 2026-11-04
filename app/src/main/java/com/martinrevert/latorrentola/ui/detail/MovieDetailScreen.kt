@@ -94,6 +94,7 @@ import com.martinrevert.latorrentola.model.YTS.Torrent
 import com.martinrevert.latorrentola.model.YTS.Cast
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.ui.components.ActorDetailBottomSheet
+import com.martinrevert.latorrentola.ui.components.CastPlaceholderRow
 import com.martinrevert.latorrentola.ui.components.InsufficientStorageDialog
 import com.martinrevert.latorrentola.ui.components.MovieDetailPlaceholder
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
@@ -295,6 +296,7 @@ private fun MovieDetailScreenContent(
                     backdropUrl = uiState.backdropUrl,
                     logoUrl = uiState.logoUrl,
                     isLogoLoading = uiState.isLogoLoading,
+                    isCastLoading = uiState.isCastLoading,
                     isFavorite = uiState.isFavorite,
                     releasesByQuality = uiState.releasesByQuality,
                     downloadedHashes = downloadedHashes,
@@ -382,6 +384,7 @@ private fun MovieDetailScreenContent(
                     backdropUrl = uiState.backdropUrl,
                     logoUrl = uiState.logoUrl,
                     isLogoLoading = uiState.isLogoLoading,
+                    isCastLoading = uiState.isCastLoading,
                     isFavorite = uiState.isFavorite,
                     releasesByQuality = uiState.releasesByQuality,
                     downloadedHashes = downloadedHashes,
@@ -510,6 +513,7 @@ private fun HandheldMovieDetailContent(
     backdropUrl: String?,
     logoUrl: String? = null,
     isLogoLoading: Boolean = false,
+    isCastLoading: Boolean = false,
     isFavorite: Boolean,
     releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>>,
     downloadedHashes: Set<String>,
@@ -879,7 +883,17 @@ private fun HandheldMovieDetailContent(
             Spacer(modifier = Modifier.height(24.dp))
 
             // Cast Section
-            if (!movie.cast.isNullOrEmpty()) {
+            if (isCastLoading) {
+                Text(
+                    text = stringResource(R.string.cast_header),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                CastPlaceholderRow(isTv = false, count = if (isWideScreen) 8 else 7)
+                Spacer(modifier = Modifier.height(24.dp))
+            } else if (!movie.cast.isNullOrEmpty()) {
                 Text(
                     text = stringResource(R.string.cast_header),
                     style = MaterialTheme.typography.titleMedium,
@@ -1364,6 +1378,7 @@ private fun TvMovieDetailContent(
     backdropUrl: String?,
     logoUrl: String? = null,
     isLogoLoading: Boolean = false,
+    isCastLoading: Boolean = false,
     isFavorite: Boolean,
     releasesByQuality: Map<VideoQualityGroup, List<TorrentRelease>>,
     downloadedHashes: Set<String>,
@@ -1918,7 +1933,17 @@ private fun TvMovieDetailContent(
             Spacer(modifier = Modifier.height(32.dp))
 
             // Cast Section
-            if (!movie.cast.isNullOrEmpty()) {
+            if (isCastLoading) {
+                Text(
+                    text = stringResource(R.string.cast_header),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                CastPlaceholderRow(isTv = true, count = 8)
+                Spacer(modifier = Modifier.height(32.dp))
+            } else if (!movie.cast.isNullOrEmpty()) {
                 Text(
                     text = stringResource(R.string.cast_header),
                     style = MaterialTheme.typography.titleLarge,

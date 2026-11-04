@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.ui.components
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -128,6 +129,53 @@ fun MovieListPlaceholder(
 }
 
 /**
+ * Shimmer placeholder row for cast members matching the IMDb / TMDB cast scale.
+ */
+@Composable
+fun CastPlaceholderRow(
+    isTv: Boolean = false,
+    count: Int = if (isTv) 8 else 7,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState(), enabled = false),
+        horizontalArrangement = Arrangement.spacedBy(if (isTv) 16.dp else 12.dp)
+    ) {
+        repeat(count) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = if (isTv) Modifier.width(105.dp) else Modifier.width(80.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(if (isTv) 64.dp else 70.dp)
+                        .clip(CircleShape)
+                        .shimmer()
+                )
+                Spacer(modifier = Modifier.height(if (isTv) 6.dp else 4.dp))
+                Box(
+                    modifier = Modifier
+                        .width(if (isTv) 68.dp else 60.dp)
+                        .height(12.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .shimmer()
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Box(
+                    modifier = Modifier
+                        .width(if (isTv) 52.dp else 44.dp)
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .shimmer()
+                )
+            }
+        }
+    }
+}
+
+/**
  * Displays a loading skeleton matching the adaptive movie-detail layout for TV and mobile.
  */
 @Composable
@@ -217,20 +265,7 @@ fun MovieDetailPlaceholder(
             // Cast Section
             Box(modifier = Modifier.width(100.dp).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmer())
             Spacer(modifier = Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                repeat(7) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.width(105.dp)
-                    ) {
-                        Box(modifier = Modifier.size(72.dp).clip(CircleShape).shimmer())
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Box(modifier = Modifier.width(68.dp).height(12.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Box(modifier = Modifier.width(52.dp).height(10.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                    }
-                }
-            }
+            CastPlaceholderRow(isTv = true, count = 8)
 
             Spacer(modifier = Modifier.height(32.dp))
 
@@ -278,15 +313,7 @@ fun MovieDetailPlaceholder(
             Spacer(modifier = Modifier.height(24.dp))
             Box(modifier = Modifier.width(100.dp).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmer())
             Spacer(modifier = Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                repeat(6) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(modifier = Modifier.size(70.dp).clip(CircleShape).shimmer())
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Box(modifier = Modifier.width(60.dp).height(10.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                    }
-                }
-            }
+            CastPlaceholderRow(isTv = false, count = 8)
             Spacer(modifier = Modifier.height(24.dp))
             Box(modifier = Modifier.width(120.dp).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmer())
             Spacer(modifier = Modifier.height(12.dp))
@@ -327,15 +354,7 @@ fun MovieDetailPlaceholder(
             Spacer(modifier = Modifier.height(24.dp))
             Box(modifier = Modifier.width(100.dp).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmer())
             Spacer(modifier = Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                repeat(4) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(modifier = Modifier.size(70.dp).clip(CircleShape).shimmer())
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Box(modifier = Modifier.width(60.dp).height(10.dp).clip(RoundedCornerShape(4.dp)).shimmer())
-                    }
-                }
-            }
+            CastPlaceholderRow(isTv = false, count = 7)
             Spacer(modifier = Modifier.height(24.dp))
             Box(modifier = Modifier.width(120.dp).height(24.dp).clip(RoundedCornerShape(4.dp)).shimmer())
             Spacer(modifier = Modifier.height(12.dp))

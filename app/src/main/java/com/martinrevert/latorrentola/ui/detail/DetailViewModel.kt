@@ -134,22 +134,25 @@ class DetailViewModel @Inject constructor(
     fun setMovie(movie: Movie) {
         lastLoadAction = { setMovie(movie) }
         viewModelScope.launch {
-            // Optimization: Show passed movie immediately to avoid blank loading screen
+            // Optimization: Show passed movie immediately to avoid blank loading screen without YTS cast
+            val movieWithoutYtsCast = movie.copy(cast = null)
             val isFavorite = ytsRepository.isFavorite(movie.id)
-            val initialYts = buildInitialYtsReleases(movie)
-            val initialBackdrop = movie.backgroundImageOriginal ?: movie.backgroundImage
+            val initialYts = buildInitialYtsReleases(movieWithoutYtsCast)
+            val initialBackdrop = movieWithoutYtsCast.backgroundImageOriginal ?: movieWithoutYtsCast.backgroundImage
+            val hasImdb = !movieWithoutYtsCast.imdbCode.isNullOrBlank()
             _uiState.value = DetailUiState.Success(
-                movie = movie,
+                movie = movieWithoutYtsCast,
                 isFavorite = isFavorite,
                 releasesByQuality = groupAndSortReleases(initialYts),
                 backdropUrl = initialBackdrop,
-                isLogoLoading = !movie.imdbCode.isNullOrBlank()
+                isLogoLoading = hasImdb,
+                isCastLoading = hasImdb
             )
 
             try {
-                // Fetch full details (cast, images, etc.) in the background
+                // Fetch full details in the background (disregarding YTS cast)
                 val fullDetailsResponse = ytsRepository.getMovieFullDetails(movie.id)
-                var fullMovie = fullDetailsResponse.data?.movie ?: movie
+                var fullMovie = (fullDetailsResponse.data?.movie ?: movie).copy(cast = null)
 
                 // Fetch richer TMDB details, director, studio, and cast if IMDb code is available
                 val imdbId = fullMovie.imdbCode ?: movie.imdbCode
@@ -212,7 +215,8 @@ class DetailViewModel @Inject constructor(
                     studioName = studioName,
                     ratings = ratings,
                     backdropUrl = backdropUrl,
-                    logoUrl = logoUrl
+                    logoUrl = logoUrl,
+                    isCastLoading = false
                 )
                 
                 // Clear any existing voice job before starting a new one
@@ -229,11 +233,11 @@ class DetailViewModel @Inject constructor(
                 if (e is CancellationException) throw e
                 val imdbId = movie.imdbCode
                 var tmdbMovie: TmdbMovieResult? = null
-                val movieWithCast = if (!imdbId.isNullOrBlank()) {
+                val tmdbCast = if (!imdbId.isNullOrBlank()) {
                     tmdbMovie = tmdbRepository.findMovieByImdbId(imdbId)
-                    val tmdbCast = tmdbRepository.getMovieCastByImdbId(imdbId)
-                    if (tmdbCast.isNotEmpty()) movie.copy(cast = tmdbCast) else movie
-                } else movie
+                    tmdbRepository.getMovieCastByImdbId(imdbId)
+                } else emptyList()
+                val movieWithCast = movie.copy(cast = tmdbCast.takeIf { it.isNotEmpty() })
 
                 val isFavorite = ytsRepository.isFavorite(movie.id)
                 val ytsReleases = buildInitialYtsReleases(movieWithCast)
@@ -250,7 +254,8 @@ class DetailViewModel @Inject constructor(
                     releasesByQuality = groupAndSortReleases(ytsReleases),
                     tmdbMovie = tmdbMovie,
                     ratings = ratings,
-                    backdropUrl = fallbackBackdrop
+                    backdropUrl = fallbackBackdrop,
+                    isCastLoading = false
                 )
                 
                 voiceJob?.cancel()
@@ -271,7 +276,7 @@ class DetailViewModel @Inject constructor(
                 val fullDetailsResponse = ytsRepository.getMovieFullDetails(movieId)
                 val movie = fullDetailsResponse.data?.movie
                 if (movie != null) {
-                    var fullMovie = movie
+                    var fullMovie = movie.copy(cast = null)
                     val imdbId = fullMovie.imdbCode
                     var tmdbMovie: TmdbMovieResult? = null
                     var director: String? = null
@@ -332,7 +337,8 @@ class DetailViewModel @Inject constructor(
                         ratings = ratings,
                         backdropUrl = backdropUrl,
                         logoUrl = logoUrl,
-                        isLogoLoading = false
+                        isLogoLoading = false,
+                        isCastLoading = false
                     )
                     
                     voiceJob?.cancel()
@@ -584,7 +590,8 @@ sealed interface DetailUiState {
         val ratings: MovieRatings? = null,
         val backdropUrl: String? = null,
         val logoUrl: String? = null,
-        val isLogoLoading: Boolean = false
+        val isLogoLoading: Boolean = false,
+        val isCastLoading: Boolean = false
     ) : DetailUiState
     /**
      * Query resolved to a TV series on TMDB.

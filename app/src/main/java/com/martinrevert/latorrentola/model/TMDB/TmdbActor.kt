@@ -114,16 +114,99 @@ data class TmdbActorDetail(
 }
 
 /**
- * Combined-credit response containing cast credits.
+ * Combined-credit response containing cast and crew credits.
  *
- * @property cast Movies and television appearances credited to the person.
+ * @property cast Movies and television appearances credited to the person as cast.
+ * @property crew Production and crew roles credited to the person.
  */
 @Serializable
 data class TmdbCreditsResponse(
     @SerializedName("cast")
     @SerialName("cast")
-    val cast: List<TmdbCastCredit>? = null
+    val cast: List<TmdbCastCredit>? = null,
+
+    @SerializedName("crew")
+    @SerialName("crew")
+    val crew: List<TmdbCrewCredit>? = null
 )
+
+/**
+ * A crew credit for a TMDB person (such as directing, writing, producing).
+ *
+ * @property id TMDB media identifier.
+ * @property title Movie title, if this is a movie credit.
+ * @property name Television title, if this is a television credit.
+ * @property job Role name (e.g., "Director", "Series Director").
+ * @property department Department name (e.g., "Directing").
+ * @property posterPath Relative path to the media poster.
+ * @property releaseDate Movie release date.
+ * @property firstAirDate Television first-air date.
+ * @property voteAverage TMDB average user rating.
+ * @property mediaType TMDB media type, such as `movie` or `tv`.
+ */
+@Serializable
+data class TmdbCrewCredit(
+    @SerializedName("id")
+    @SerialName("id")
+    val id: Int,
+
+    @SerializedName("title")
+    @SerialName("title")
+    val title: String? = null,
+
+    @SerializedName("name")
+    @SerialName("name")
+    val name: String? = null,
+
+    @SerializedName("job")
+    @SerialName("job")
+    val job: String? = null,
+
+    @SerializedName("department")
+    @SerialName("department")
+    val department: String? = null,
+
+    @SerializedName("poster_path")
+    @SerialName("poster_path")
+    val posterPath: String? = null,
+
+    @SerializedName("release_date")
+    @SerialName("release_date")
+    val releaseDate: String? = null,
+
+    @SerializedName("first_air_date")
+    @SerialName("first_air_date")
+    val firstAirDate: String? = null,
+
+    @SerializedName("vote_average")
+    @SerialName("vote_average")
+    val voteAverage: Double? = null,
+
+    @SerializedName("media_type")
+    @SerialName("media_type")
+    val mediaType: String? = null
+) {
+    /** Whether this crew entry represents a primary director role. */
+    fun isDirectorCredit(): Boolean {
+        val j = job?.trim().orEmpty()
+        return j.equals("Director", ignoreCase = true) ||
+            j.equals("Series Director", ignoreCase = true) ||
+            j.equals("Co-Director", ignoreCase = true)
+    }
+
+    /** Converts this director credit into a [TmdbCastCredit] marked with "Director" role. */
+    fun toCastCredit(): TmdbCastCredit = TmdbCastCredit(
+        id = id,
+        title = title,
+        name = name,
+        character = "Director",
+        posterPath = posterPath,
+        releaseDate = releaseDate,
+        firstAirDate = firstAirDate,
+        voteAverage = voteAverage,
+        mediaType = mediaType
+    )
+}
 
 /**
  * A movie or television cast credit for a TMDB person.
@@ -200,6 +283,44 @@ fun List<TmdbCastCredit>.sortedByYearDescending(): List<TmdbCastCredit> {
             compareByDescending<TmdbCastCredit> { it.displayYear.toIntOrNull() ?: 0 }
                 .thenByDescending { it.releaseDate ?: it.firstAirDate ?: "" }
         )
+}
+
+/**
+ * Combines acting and directing credits into a single deduplicated list,
+ * sorted by release/first-air year descending, placing undated entries at the end.
+ * If a media title appears in both (person both directed and acted in it),
+ * the directing role is combined into the credit's character field (e.g. "Director / CharacterName").
+ */
+fun TmdbCreditsResponse.combineActingAndDirectingCredits(): List<TmdbCastCredit> {
+    val castList = cast.orEmpty()
+    val directingList = crew.orEmpty()
+        .filter { it.isDirectorCredit() }
+        .map { it.toCastCredit() }
+
+    val directorKeys = directingList.map { "${it.mediaType ?: "movie"}_${it.id}" }.toSet()
+    val combinedMap = linkedMapOf<String, TmdbCastCredit>()
+
+    for (credit in directingList) {
+        val key = "${credit.mediaType ?: "movie"}_${credit.id}"
+        combinedMap[key] = credit
+    }
+
+    for (credit in castList) {
+        val key = "${credit.mediaType ?: "movie"}_${credit.id}"
+        val existing = combinedMap[key]
+        if (existing != null && key in directorKeys) {
+            val combinedRole = if (!credit.character.isNullOrBlank()) {
+                "Director / ${credit.character}"
+            } else {
+                "Director"
+            }
+            combinedMap[key] = existing.copy(character = combinedRole)
+        } else if (existing == null) {
+            combinedMap[key] = credit
+        }
+    }
+
+    return combinedMap.values.toList().sortedByYearDescending()
 }
 
 /**

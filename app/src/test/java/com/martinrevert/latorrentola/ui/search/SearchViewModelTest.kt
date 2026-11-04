@@ -437,6 +437,28 @@ class SearchViewModelTest {
     }
 
     @Test
+    fun `searchActors loads director filmography when selected`() = runTest {
+        val director = TmdbPersonResult(id = 525, name = "Christopher Nolan")
+        val nolanCredits = listOf(
+            TmdbCastCredit(id = 872585, title = "Oppenheimer", releaseDate = "2023-07-21", character = "Director", mediaType = "movie"),
+            TmdbCastCredit(id = 157336, title = "Interstellar", releaseDate = "2014-11-05", character = "Director", mediaType = "movie")
+        )
+
+        coEvery { tmdbRepository.searchActors("Nolan") } returns listOf(director)
+        coEvery { tmdbRepository.getActorDetails(525) } returns Result.success(
+            TmdbActorDetail(id = 525, name = "Christopher Nolan", combinedCredits = TmdbCreditsResponse(cast = nolanCredits))
+        )
+
+        viewModel.setActorMode(true)
+        viewModel.search("Nolan")
+
+        val state = viewModel.actorUiState.value as SearchActorUiState.Success
+        assertThat(state.selectedActor).isEqualTo(director)
+        assertThat(state.credits.map { it.id }).containsExactly(872585, 157336).inOrder()
+        assertThat(state.credits.first().character).isEqualTo("Director")
+    }
+
+    @Test
     fun `searchTvSeries and loadMoreTvSeries paginate and deduplicate results`() = runTest {
         coEvery { tmdbRepository.searchTvSeries("Dark", 1) } returns TmdbTvPage(
             page = 1,

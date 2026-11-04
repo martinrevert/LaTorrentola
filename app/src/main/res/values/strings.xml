@@ -398,8 +398,8 @@
     <string name="settings_test_crash_confirm_action">Crash App</string>
 
     <string name="asset_statements" translatable="false">[]</string>
-    <string name="actor_search_desc">Search by Actor</string>
-    <string name="actor_search_placeholder">Search actors or actresses…</string>
+    <string name="actor_search_desc">Search by Actor or Director</string>
+    <string name="actor_search_placeholder">Search actors, actresses or directors…</string>
     <string name="actor_bio_chip">Biography</string>
     <string name="series_status_ended_title">Series Ended</string>
     <string name="series_status_ended_message">You have reached the end of the available episodes. According to TMDB, this series has ended and there will be no more episodes.</string>

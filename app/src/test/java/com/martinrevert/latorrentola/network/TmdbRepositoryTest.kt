@@ -2,10 +2,16 @@ package com.martinrevert.latorrentola.network
 
 import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.database.TvGenreDao
+import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
+import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
+import com.martinrevert.latorrentola.model.TMDB.TmdbCreditsResponse
+import com.martinrevert.latorrentola.model.TMDB.TmdbCrewCredit
 import com.martinrevert.latorrentola.model.TMDB.TmdbImageItem
 import com.martinrevert.latorrentola.model.TMDB.TmdbImagesResponse
 import com.martinrevert.latorrentola.model.TMDB.TmdbMoviePage
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieSummary
+import com.martinrevert.latorrentola.model.TMDB.TmdbPersonResult
+import com.martinrevert.latorrentola.model.TMDB.TmdbSearchPersonResponse
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvPage
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.TMDB.TmdbVideoItem
@@ -341,4 +347,39 @@ class TmdbRepositoryTest {
         assertThat(response.getBestTrailerKey("es")).isEqualTo("trailer_es")
         assertThat(response.getBestTrailerKey("fr")).isEqualTo("trailer_en")
     }
+
+    @Test
+    fun `getActorDetails combines directing and acting credits sorted descending`() = runTest {
+        val mockDetail = TmdbActorDetail(
+            id = 525,
+            name = "Christopher Nolan",
+            combinedCredits = TmdbCreditsResponse(
+                cast = emptyList(),
+                crew = listOf(
+                    TmdbCrewCredit(id = 157336, title = "Interstellar", releaseDate = "2014-11-05", job = "Director", mediaType = "movie"),
+                    TmdbCrewCredit(id = 872585, title = "Oppenheimer", releaseDate = "2023-07-21", job = "Director", mediaType = "movie"),
+                    TmdbCrewCredit(id = 27205, title = "Inception", releaseDate = "2010-07-16", job = "Director", mediaType = "movie"),
+                    TmdbCrewCredit(id = 99999, title = "Unrelated Role", releaseDate = "2000-01-01", job = "Producer", department = "Production", mediaType = "movie")
+                )
+            )
+        )
+
+        coEvery {
+            tmdbService.getPersonDetail(
+                personId = 525,
+                apiKey = any(),
+                appendToResponse = "combined_credits",
+                language = any()
+            )
+        } returns mockDetail
+
+        val result = repository.getActorDetails(525)
+
+        assertThat(result.isSuccess).isTrue()
+        val actor = result.getOrThrow()
+        val castCredits = actor.combinedCredits?.cast.orEmpty()
+        assertThat(castCredits.map { it.id }).containsExactly(872585, 157336, 27205).inOrder()
+        assertThat(castCredits.map { it.character }).containsExactly("Director", "Director", "Director").inOrder()
+    }
 }
+

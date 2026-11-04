@@ -101,6 +101,25 @@ class DetailViewModelTest {
     }
 
     @Test
+    fun `setMovie should disregard YTS cast and only populate cast from TMDB`() = runTest {
+        val ytsCast = listOf(com.martinrevert.latorrentola.model.YTS.Cast(name = "YTS Actor"))
+        val tmdbCast = listOf(com.martinrevert.latorrentola.model.YTS.Cast(name = "IMDb Actor", characterName = "Hero"))
+        val movie = Movie(id = 1, title = "Test Movie", imdbCode = "tt1234567", cast = ytsCast)
+        val fullMovie = movie.copy(title = "Full Title", cast = ytsCast)
+
+        coEvery { repository.getMovieFullDetails(1) } returns MovieDetails(data = Data(movie = fullMovie))
+        coEvery { tmdbRepository.getMovieDetailsByImdbId("tt1234567") } returns null
+        coEvery { tmdbRepository.getMovieCastByImdbId("tt1234567") } returns tmdbCast
+
+        viewModel.setMovie(movie)
+
+        val state = viewModel.uiState.value as DetailUiState.Success
+        assertThat(state.movie.cast).containsExactlyElementsIn(tmdbCast)
+        assertThat(state.movie.cast?.map { it.name }).doesNotContain("YTS Actor")
+        assertThat(state.isCastLoading).isFalse()
+    }
+
+    @Test
     fun `watchHistoryMap should map watch history items by mediaId`() = runTest {
         val progress = PlaybackProgress(mediaId = "100", title = "Test", positionMs = 500)
         every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(progress))
