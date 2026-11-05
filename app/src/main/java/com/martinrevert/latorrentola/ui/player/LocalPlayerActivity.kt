@@ -6,6 +6,18 @@ package com.martinrevert.latorrentola.ui.player
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import android.provider.Settings
+import android.view.OrientationEventListener
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.martinrevert.latorrentola.ui.navigation.findActivity
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -117,9 +129,17 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.graphics.Brush
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -581,6 +601,15 @@ class LocalPlayerActivity : FragmentActivity() {
         if (isTvDevice()) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+        if (!isTvDevice() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+        if (!isTvDevice()) {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+        }
 
         handleIntent(intent)
 
@@ -776,7 +805,12 @@ class LocalPlayerActivity : FragmentActivity() {
                                 onSearchSubtitles = { searchSubtitles() },
                                 onShowSubtitleStyle = { showSubtitleStyleOptions() },
                                 onShowAudioTracks = { showAudioOptions() },
-                                onShowCast = { showCastBottomSheet = true }
+                                onShowCast = { showCastBottomSheet = true },
+                                onBack = { finish() },
+                                videoAspectRatio = PlayerPortraitLayout.resolveAspectRatio(
+                                    presentationState.videoSizeDp?.width,
+                                    presentationState.videoSizeDp?.height
+                                )
                             )
                         }
 
@@ -4009,9 +4043,12 @@ fun PlayerControlsOverlay(
     onSearchSubtitles: () -> Unit,
     onShowSubtitleStyle: () -> Unit,
     onShowAudioTracks: () -> Unit,
-    onShowCast: () -> Unit
+    onShowCast: () -> Unit,
+    onBack: () -> Unit = {},
+    videoAspectRatio: Float = PlayerPortraitLayout.DEFAULT_ASPECT_RATIO
 ) {
     var controlsVisible by remember { mutableStateOf(true) }
+    var showMoreOptionsSheet by remember { mutableStateOf(false) }
     var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var isScrubbing by remember { mutableStateOf(false) }
     var isSliderFocused by remember { mutableStateOf(false) }
@@ -4024,7 +4061,88 @@ fun PlayerControlsOverlay(
     var doubleTapSeekDelta by remember { mutableIntStateOf(0) }
     var doubleTapTriggerTime by remember { mutableLongStateOf(0L) }
 
-    val isTv = LocalContext.current.isTvDevice()
+    val context = LocalContext.current
+    val isTv = context.isTvDevice()
+    val configuration = LocalConfiguration.current
+    val isOrientationPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+    // YouTube-style vertical layout only applies to handhelds held in portrait (never on Android TV)
+    val isPortrait = !isTv && isOrientationPortrait
+    val hostActivity = remember(context) { context.findActivity() }
+
+    // Release the orientation forced by the fullscreen toggle once the device physically matches it
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(hostActivity, isTv, lifecycleOwner) {
+        val activity = hostActivity
+        if (isTv || activity == null) return@DisposableEffect onDispose {}
+        val orientationListener = object : OrientationEventListener(activity) {
+            override fun onOrientationChanged(orientation: Int) {
+                val currentLock = activity.requestedOrientation
+                if (orientation == ORIENTATION_UNKNOWN ||
+                    currentLock == ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                ) {
+                    return
+                }
+                val autoRotate = try {
+                    Settings.System.getInt(activity.contentResolver, Settings.System.ACCELEROMETER_ROTATION, 0) == 1
+                } catch (_: Exception) {
+                    false
+                }
+                if (PlayerPortraitLayout.shouldReleaseOrientationLock(currentLock, orientation, autoRotate)) {
+                    activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                }
+            }
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME ->
+                    if (orientationListener.canDetectOrientation()) orientationListener.enable()
+                Lifecycle.Event.ON_PAUSE ->
+                    orientationListener.disable()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            orientationListener.disable()
+            if (activity.requestedOrientation != ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) {
+                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
+        }
+    }
+
+    // YouTube-style system bars management (Option A):
+    // - In landscape: always hide status + navigation bars with transient swipe behavior.
+    // - In portrait: hide bars when player controls auto-hide; show them when controls are visible.
+    val shouldShowSystemBars = PlayerPortraitLayout.shouldShowSystemBars(
+        isTv = isTv,
+        isOrientationPortrait = isOrientationPortrait,
+        controlsVisible = controlsVisible
+    )
+    DisposableEffect(hostActivity, isTv, shouldShowSystemBars) {
+        val activity = hostActivity
+        if (isTv || activity == null) return@DisposableEffect onDispose {}
+        val window = activity.window
+        val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+        insetsController.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (shouldShowSystemBars) {
+            insetsController.show(WindowInsetsCompat.Type.systemBars())
+        } else {
+            insetsController.hide(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose {}
+    }
+    DisposableEffect(hostActivity, isTv) {
+        val activity = hostActivity
+        onDispose {
+            if (!isTv && activity != null) {
+                val window = activity.window
+                WindowCompat.getInsetsController(window, window.decorView)
+                    .show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
 
     val playPauseFocusRequester = remember { FocusRequester() }
     val rewindFocusRequester = remember { FocusRequester() }
@@ -4071,11 +4189,17 @@ fun PlayerControlsOverlay(
         }
     }
 
-    // Auto-hide timeout resets whenever user interacts; paused while scrubbing or slider focused
-    LaunchedEffect(controlsVisible, lastInteractionTime, isScrubbing, isSliderFocused) {
-        if (controlsVisible && !isScrubbing && !isSliderFocused) {
+    LaunchedEffect(isPortrait) {
+        if (!isPortrait && showMoreOptionsSheet) {
+            showMoreOptionsSheet = false
+        }
+    }
+
+    // Auto-hide timeout resets whenever user interacts; paused while scrubbing, slider focused, or overflow sheet open
+    LaunchedEffect(controlsVisible, lastInteractionTime, isScrubbing, isSliderFocused, showMoreOptionsSheet) {
+        if (controlsVisible && !isScrubbing && !isSliderFocused && !showMoreOptionsSheet) {
             delay(6.seconds)
-            if (!isScrubbing && !isSliderFocused) {
+            if (!isScrubbing && !isSliderFocused && !showMoreOptionsSheet) {
                 controlsVisible = false
             }
         }
@@ -4140,9 +4264,16 @@ fun PlayerControlsOverlay(
         }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
+            .then(
+                if (!isTv && isPortrait) {
+                    Modifier.windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
+                } else {
+                    Modifier
+                }
+            )
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown) {
                     lastInteractionTime = System.currentTimeMillis()
@@ -4188,17 +4319,60 @@ fun PlayerControlsOverlay(
             }
             .then(gestureModifier)
     ) {
+        // Portrait handheld: anchor controls to a frame hugging the centered video (YouTube-style),
+        // instead of pinning them to the status bar / navigation bar edges of a tall screen.
+        val controlsFrameModifier = if (isPortrait) {
+            val frameHeight = PlayerPortraitLayout.controlsFrameHeightDp(
+                containerWidthDp = maxWidth.value,
+                containerHeightDp = maxHeight.value,
+                aspectRatio = videoAspectRatio
+            ).dp
+            Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth()
+                .height(frameHeight)
+        } else {
+            Modifier.fillMaxSize()
+        }
+        val scrimColor = MaterialTheme.colorScheme.scrim
+
         AnimatedVisibility(
             visible = controlsVisible,
             enter = fadeIn(),
-            exit = fadeOut()
+            exit = fadeOut(),
+            modifier = controlsFrameModifier
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f))
-                    .padding(24.dp)
+                    .then(
+                        if (isPortrait) {
+                            Modifier.background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        scrimColor.copy(alpha = 0.7f),
+                                        scrimColor.copy(alpha = 0.35f),
+                                        scrimColor.copy(alpha = 0.35f),
+                                        scrimColor.copy(alpha = 0.75f)
+                                    )
+                                )
+                            )
+                        } else {
+                            Modifier.background(scrimColor.copy(alpha = 0.5f))
+                        }
+                    )
+                    .then(
+                        if (!isTv && !isPortrait) {
+                            Modifier.windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .padding(if (isPortrait) PaddingValues(horizontal = 4.dp, vertical = 0.dp) else PaddingValues(24.dp))
             ) {
+                val hasSubtitleTracks = playbackTracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
+                val hasAudioTracks = playbackTracks.groups.any { it.type == C.TRACK_TYPE_AUDIO }
+
                 // Top Bar
                 Row(
                     modifier = Modifier
@@ -4207,6 +4381,52 @@ fun PlayerControlsOverlay(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (isPortrait) {
+                        // YouTube-style portrait top bar: Back + prominent title + essential actions + overflow
+                        ControlButton(
+                            onClick = onBack,
+                            icon = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back_desc)
+                        )
+                        Text(
+                            text = mediaTitle,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 4.dp)
+                        )
+                        ControlButton(
+                            onClick = {
+                                lastInteractionTime = System.currentTimeMillis()
+                                onShowSubtitles()
+                            },
+                            icon = Icons.Default.Subtitles,
+                            contentDescription = stringResource(R.string.player_subtitle_tracks),
+                            enabled = hasSubtitleTracks,
+                            tint = if (hasSubtitleTracks) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
+                        ControlButton(
+                            onClick = {
+                                lastInteractionTime = System.currentTimeMillis()
+                                onShowCast()
+                            },
+                            icon = if (isCasting) Icons.Default.CastConnected else Icons.Default.Cast,
+                            contentDescription = stringResource(R.string.cast_desc),
+                            tint = if (isCasting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+                        ControlButton(
+                            onClick = {
+                                lastInteractionTime = System.currentTimeMillis()
+                                showMoreOptionsSheet = true
+                            },
+                            icon = Icons.Default.MoreVert,
+                            contentDescription = stringResource(R.string.player_more_options)
+                        )
+                    } else {
                     Text(
                         text = mediaTitle,
                         style = MaterialTheme.typography.titleMedium,
@@ -4216,9 +4436,6 @@ fun PlayerControlsOverlay(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
-
-                    val hasSubtitleTracks = playbackTracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
-                    val hasAudioTracks = playbackTracks.groups.any { it.type == C.TRACK_TYPE_AUDIO }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         // 1. Subtítulos Incrustados
@@ -4289,12 +4506,15 @@ fun PlayerControlsOverlay(
                             )
                         }
                     }
+                    }
                 }
 
                 // Center Bar
                 Row(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalArrangement = Arrangement.spacedBy(32.dp),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(bottom = if (isPortrait) 16.dp else 0.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (isPortrait) 40.dp else 32.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     ControlButton(
@@ -4305,7 +4525,7 @@ fun PlayerControlsOverlay(
                         icon = Icons.Default.FastRewind,
                         contentDescription = "Rewind",
                         focusRequester = rewindFocusRequester,
-                        iconSize = 48.dp
+                        iconSize = if (isPortrait) 36.dp else 48.dp
                     )
                     ControlButton(
                         onClick = {
@@ -4321,7 +4541,7 @@ fun PlayerControlsOverlay(
                         icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = "Play/Pause",
                         focusRequester = playPauseFocusRequester,
-                        iconSize = 64.dp
+                        iconSize = if (isPortrait) 48.dp else 64.dp
                     )
                     ControlButton(
                         onClick = {
@@ -4331,7 +4551,7 @@ fun PlayerControlsOverlay(
                         icon = Icons.Default.FastForward,
                         contentDescription = "Forward",
                         focusRequester = forwardFocusRequester,
-                        iconSize = 48.dp
+                        iconSize = if (isPortrait) 36.dp else 48.dp
                     )
                 }
 
@@ -4346,11 +4566,34 @@ fun PlayerControlsOverlay(
                     val displayFraction = if (isScrubbing) scrubFraction else currentFraction
                     val displayPositionMs = if (isScrubbing) (scrubFraction * dur).toLong() else currentPosition.coerceAtLeast(0L)
 
-                    Text(
-                        text = "${formatTime(displayPositionMs)} / ${formatTime(dur)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(if (isPortrait) Modifier.height(36.dp) else Modifier)
+                            .padding(start = if (isPortrait) 12.dp else 0.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${formatTime(displayPositionMs)} / ${formatTime(dur)}",
+                            style = if (isPortrait) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
+                        // Handheld only: 1-tap fullscreen toggle (rotates to landscape / back to portrait)
+                        if (!isTv) {
+                            ControlButton(
+                                onClick = {
+                                    lastInteractionTime = System.currentTimeMillis()
+                                    hostActivity?.requestedOrientation =
+                                        PlayerPortraitLayout.targetOrientationForFullscreenToggle(isOrientationPortrait)
+                                },
+                                icon = if (isOrientationPortrait) Icons.Default.Fullscreen else Icons.Default.FullscreenExit,
+                                contentDescription = stringResource(
+                                    if (isOrientationPortrait) R.string.player_enter_fullscreen else R.string.player_exit_fullscreen
+                                )
+                            )
+                        }
+                    }
 
                     WatchProgressSlider(
                         value = displayFraction.coerceIn(0f, 1f),
@@ -4367,6 +4610,7 @@ fun PlayerControlsOverlay(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
+                            .then(if (isPortrait) Modifier.height(32.dp) else Modifier)
                             .focusRequester(sliderFocusRequester)
                             .focusHighlight(shape = MaterialTheme.shapes.small)
                             .onFocusChanged {
@@ -4467,6 +4711,90 @@ fun PlayerControlsOverlay(
                     )
                 }
             }
+        }
+    }
+
+    // Portrait overflow sheet: secondary actions moved out of the narrow top bar (same functionality)
+    if (showMoreOptionsSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        val hasAudioTracks = playbackTracks.groups.any { it.type == C.TRACK_TYPE_AUDIO }
+        val dismissThen: (() -> Unit) -> Unit = { action ->
+            showMoreOptionsSheet = false
+            lastInteractionTime = System.currentTimeMillis()
+            action()
+        }
+        ModalBottomSheet(
+            onDismissRequest = {
+                showMoreOptionsSheet = false
+                lastInteractionTime = System.currentTimeMillis()
+            },
+            sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ) {
+            Column(modifier = Modifier.padding(bottom = 16.dp)) {
+                PlayerMoreOptionRow(
+                    icon = Icons.Default.GraphicEq,
+                    label = stringResource(R.string.player_audio_tracks),
+                    enabled = hasAudioTracks,
+                    onClick = { dismissThen(onShowAudioTracks) }
+                )
+                PlayerMoreOptionRow(
+                    icon = Icons.Default.Download,
+                    label = stringResource(R.string.player_search_opensubtitles),
+                    onClick = { dismissThen(onSearchSubtitles) }
+                )
+                PlayerMoreOptionRow(
+                    icon = Icons.Default.ColorLens,
+                    label = stringResource(R.string.player_subtitle_style),
+                    onClick = { dismissThen(onShowSubtitleStyle) }
+                )
+                PlayerMoreOptionRow(
+                    icon = Icons.Default.BugReport,
+                    label = stringResource(R.string.player_stats_nerds),
+                    selected = showStats,
+                    onClick = { dismissThen(onToggleStats) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerMoreOptionRow(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    selected: Boolean = false
+) {
+    val contentColor = when {
+        !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+        selected -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = contentColor)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = contentColor,
+            modifier = Modifier.weight(1f)
+        )
+        if (selected) {
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

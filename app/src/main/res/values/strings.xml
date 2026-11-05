@@ -380,6 +380,9 @@
     <string name="player_rewind_10">Rewind 10 seconds</string>
     <string name="player_forward_10">Forward 10 seconds</string>
     <string name="player_stats_nerds">Stats for nerds</string>
+    <string name="player_more_options">More options</string>
+    <string name="player_enter_fullscreen">Enter fullscreen</string>
+    <string name="player_exit_fullscreen">Exit fullscreen</string>
     <string name="pip_expand_desc">Expand to fullscreen</string>
     <string name="pip_close_desc">Close floating player</string>
     <!-- Torrentio & Quality Groups -->

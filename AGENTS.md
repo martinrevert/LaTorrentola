@@ -456,6 +456,18 @@ To eliminate runaway cloud billing, prevent broken season completion counters, a
        5. **Preview Coverage**: All detail screens and dialogs MUST include `@Preview` configurations with narrow foldable dimensions (`widthDp = 320`, `widthDp = 340`).
    - **PROHIBITION: NEVER use rigid `Row`s without wrapping for dynamic metadata chips or multi-button action bars on handheld layouts, NEVER trap action button groups inside narrow columns beside posters on phones, and NEVER specify rigid `widthIn(min = ...)` constraints on dialogs that exceed constrained foldable screen widths.**
 
+14. **Handheld Portrait Player Controls Contract (YouTube-Style, STRICT)**:
+   - **The Detached Controls & Vanishing Title Trap**:
+     - *Root Cause / Failure Trap*: In portrait, the letterboxed video occupies only ~150–230dp in the vertical center. An overlay pinned to `fillMaxSize()` pushes the top bar under the status bar and the scrubber over the navigation bar, far from the picture; and 6 fixed-width icon buttons in the same `Row` as `mediaTitle` (`weight(1f)`) squeeze the title to 0dp so the file name disappears.
+     - *Mandatory Architectural Contract*:
+       1. In `PlayerControlsOverlay`, when `isPortrait` (`!isTv && orientation == PORTRAIT`), the visible controls MUST be anchored to a frame centered on the video whose height comes from `PlayerPortraitLayout.controlsFrameHeightDp(...)` (video aspect ratio from `presentationState.videoSizeDp`). Gestures MUST remain on the full-screen root.
+       2. The portrait top bar MUST show Back + `mediaTitle` (≥ `weight(1f)`, up to 2 lines) + at most 3 essential actions (Subtitles, Cast, More). Secondary actions (Audio tracks, OpenSubtitles, Subtitle style, Stats for nerds) MUST remain reachable via the More `ModalBottomSheet` using the same callbacks (100% feature parity).
+       3. Timestamps, the handheld Fullscreen toggle and `WatchProgressSlider` MUST sit on the video's bottom edge.
+       4. Android TV and landscape MUST keep the original full-screen layout, all 6 top buttons, and D-pad focus behavior.
+       5. Fullscreen toggling MUST use `requestedOrientation` and release the lock (`SCREEN_ORIENTATION_UNSPECIFIED`) via `PlayerPortraitLayout.shouldReleaseOrientationLock` only when auto-rotate is enabled.
+       6. In handheld landscape (`!isTv && !isPortrait`), system bars MUST be hidden via `WindowInsetsControllerCompat` (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`) and the controls container MUST apply `Modifier.windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))` so transient 3-button navigation bars or camera cutouts never overlap the Cast icon, fullscreen button, or scrubber. In portrait, system bars hide when `controlsVisible == false` and reappear when `controlsVisible == true` (`PlayerPortraitLayout.shouldShowSystemBars`).
+   - **PROHIBITION: NEVER pin handheld portrait player controls to the screen edges, NEVER put more than 3 icon actions next to `mediaTitle` in the portrait top bar, NEVER omit `systemBars.union(displayCutout)` insets on handheld landscape player controls, and NEVER remove a player action instead of relocating it to the overflow sheet.**
+
 ### Previews
 - Every UI Component MUST include `@Preview` functions covering: Light Mode, Dark Mode, Mobile form-factor, and TV form-factor (using appropriate theme wrappers).
 
@@ -492,3 +504,4 @@ Before marking a task complete, verify:
 27. [ ] Did I verify that deep-link / push notification destinations are preserved across the unauthenticated login gate via `NavBackStackHandler.resetToWithTop(backStack, Route.Home, pendingRoute)` and that unauthenticated guest access remains prohibited?
 28. [ ] Did I verify that local loopback stream server instances in `TorrentDownloadService` check `server.isAlive()` before reuse/resurrection, and that `LocalPlayerActivity` logs transient local loopback connection failures as warnings (`AppLogger.w`) up to 3 retries rather than immediately flooding Crashlytics with `AppLogger.e`?
 29. [ ] Did I verify that constrained foldable handheld screens (< 360dp) use `FlowRow` for metadata badges and action buttons, decouple action buttons below poster rows, use adaptive padding, enforce `softWrap = false` on badge chips, and maintain 100% data and feature parity without clipping or vertical letter breakage?
+30. [ ] If modifying `PlayerControlsOverlay`, did I keep portrait handheld controls anchored to the video frame (top bar with Back + visible title + ≤ 3 actions, overflow sheet for the rest, timestamps/fullscreen/scrubber on the video's bottom edge) while leaving TV and landscape layouts and D-pad focus untouched?
