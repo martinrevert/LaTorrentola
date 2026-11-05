@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
@@ -69,7 +70,19 @@ class AuthRepository internal constructor(
 
     /** Observes saved accounts persisted locally on this device for multi-account / OTT avatar profile switcher. */
     val savedAccountsFlow: Flow<List<SavedAccountEntity>> =
-        savedAccountDao?.observeAll() ?: flowOf(emptyList())
+        (savedAccountDao?.observeAll() ?: flowOf(emptyList())).combine(_currentUserFlow) { accounts, user ->
+            if (user != null && accounts.none { it.uid == user.uid }) {
+                accounts + SavedAccountEntity(
+                    uid = user.uid,
+                    displayName = user.displayName.orEmpty().ifBlank { user.email.orEmpty().substringBefore("@") },
+                    email = user.email.orEmpty(),
+                    photoUrl = user.photoUrl?.toString(),
+                    lastActiveTimestamp = System.currentTimeMillis()
+                )
+            } else {
+                accounts
+            }
+        }
 
     /** Keeps [authStateFlow] synchronized with Firebase Auth state changes and persists profiles locally. */
     init {
@@ -161,6 +174,7 @@ class AuthRepository internal constructor(
             
             Log.d("AuthRepository", "Exchanging Google ID token for Firebase credential")
             firebaseAuth.signInWithCredential(authCredential).await()
+            _currentUserFlow.value = firebaseAuth.currentUser
             Log.d("AuthRepository", "Firebase authentication completed successfully")
             Result.success(Unit)
         } catch (e: GetCredentialCancellationException) {
@@ -183,6 +197,7 @@ class AuthRepository internal constructor(
     /** Signs out of Firebase and clears the Credential Manager credential state. */
     suspend fun signOut() {
         firebaseAuth.signOut()
+        _currentUserFlow.value = null
         try {
             credentialManager.clearCredentialState(ClearCredentialStateRequest())
         } catch (e: Exception) {

@@ -1,9 +1,11 @@
 package com.martinrevert.latorrentola.ui.auth
 
 import android.content.Context
+import androidx.credentials.exceptions.GetCredentialCancellationException
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import com.google.firebase.auth.FirebaseUser
+import com.martinrevert.latorrentola.database.SavedAccountEntity
 import com.martinrevert.latorrentola.network.AuthRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.rules.MainDispatcherRule
@@ -11,9 +13,12 @@ import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.UiText
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Rule
@@ -79,7 +84,7 @@ class AuthViewModelTest {
     fun `signInWithGoogle cancellation resets state to Idle`() = runTest {
         val cancellationMessage = "activity is cancelled by the user."
         coEvery { authRepository.signInWithGoogle(any()) } returns Result.failure(
-            androidx.credentials.exceptions.GetCredentialCancellationException(cancellationMessage)
+            GetCredentialCancellationException(cancellationMessage)
         )
 
         viewModel.signInWithGoogle(context)
@@ -112,8 +117,18 @@ class AuthViewModelTest {
     }
 
     @Test
-    fun `currentUserFlow exposes repository authStateFlow`() {
-        assertThat(viewModel.currentUserFlow).isEqualTo(authRepository.authStateFlow)
+    fun `currentUserFlow exposes repository authStateFlow emissions`() = runTest {
+        val mockUser = mockk<FirebaseUser>()
+        val stateFlow = MutableStateFlow<FirebaseUser?>(null)
+        every { authRepository.authStateFlow } returns stateFlow
+
+        val testViewModel = AuthViewModel(authRepository, userLibraryRepository, preferenceManager)
+
+        testViewModel.currentUserFlow.test {
+            assertThat(awaitItem()).isNull()
+            stateFlow.value = mockUser
+            assertThat(awaitItem()).isEqualTo(mockUser)
+        }
     }
 
     @Test
@@ -121,7 +136,7 @@ class AuthViewModelTest {
         val mockUser = mockk<FirebaseUser>()
         every { mockUser.uid } returns "user_123"
         every { authRepository.currentUser } returns mockUser
-        val account = com.martinrevert.latorrentola.database.SavedAccountEntity(uid = "user_123", displayName = "Martin", email = "martin@test.com")
+        val account = SavedAccountEntity(uid = "user_123", displayName = "Martin", email = "martin@test.com")
         var proceeded = false
 
         viewModel.selectAccount(account, context) {
@@ -134,21 +149,21 @@ class AuthViewModelTest {
     }
 
     @Test
-    fun `selectAccount when logged in as another user triggers signInWithGoogle`() = runTest {
+    fun `selectAccount when logged in as another user triggers signInWithGoogle without touching account prematurely`() = runTest {
         val mockUser = mockk<FirebaseUser>()
         every { mockUser.uid } returns "user_other"
         every { authRepository.currentUser } returns mockUser
         coEvery { authRepository.signInWithGoogle(any()) } returns Result.success(Unit)
-        val account = com.martinrevert.latorrentola.database.SavedAccountEntity(uid = "user_123", displayName = "Martin", email = "martin@test.com")
+        val account = SavedAccountEntity(uid = "user_123", displayName = "Martin", email = "martin@test.com")
 
         viewModel.selectAccount(account, context) {}
 
-        coVerify { authRepository.touchAccount("user_123") }
+        coVerify(exactly = 0) { authRepository.touchAccount(any()) }
         coVerify { authRepository.signInWithGoogle(context) }
     }
 
     @Test
-    fun `deleteAccount delegates to repository and signs out if deleted user is current user`() = runTest {
+    fun `deleteAccount signs out before deleting when deleted user is current user`() = runTest {
         val mockUser = mockk<FirebaseUser>()
         every { mockUser.uid } returns "user_to_delete"
         every { authRepository.currentUser } returns mockUser
@@ -156,8 +171,10 @@ class AuthViewModelTest {
 
         viewModel.deleteAccount("user_to_delete")
 
-        coVerify { authRepository.deleteAccount("user_to_delete") }
-        coVerify { authRepository.signOut() }
+        coVerifyOrder {
+            authRepository.signOut()
+            authRepository.deleteAccount("user_to_delete")
+        }
     }
 
     @Test
@@ -170,5 +187,26 @@ class AuthViewModelTest {
 
         coVerify { authRepository.deleteAccount("user_to_delete") }
         coVerify(exactly = 0) { authRepository.signOut() }
+    }
+
+    @Test
+    fun `savedAccounts starts as null before repository flow emits to prevent welcome flash`() = runTest {
+        val accountsFlow = MutableSharedFlow<List<SavedAccountEntity>>()
+        every { authRepository.savedAccountsFlow } returns accountsFlow
+
+        val testViewModel = AuthViewModel(authRepository, userLibraryRepository, preferenceManager)
+
+        testViewModel.savedAccounts.test {
+            assertThat(awaitItem()).isNull()
+
+            val savedProfile = SavedAccountEntity(
+                uid = "user_123",
+                displayName = "Martin",
+                email = "martin@test.com"
+            )
+            accountsFlow.emit(listOf(savedProfile))
+
+            assertThat(awaitItem()).containsExactly(savedProfile)
+        }
     }
 }

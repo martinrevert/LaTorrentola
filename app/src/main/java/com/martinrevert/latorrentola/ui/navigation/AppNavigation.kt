@@ -240,7 +240,7 @@ fun AppNavigation(
     val preferenceManager = remember(context) { PreferenceManager(context) }
     val themeMode by preferenceManager.themeFlow.collectAsStateWithLifecycle(initialValue = preferenceManager.getTheme())
 
-    val initialRoute = remember { if (authViewModel.currentUser != null) Route.Home else Route.Login }
+    val initialRoute = remember { Route.Login }
     val backStack = rememberNavBackStack(initialRoute)
     NavBackStackHandler.ensureNotEmpty(backStack, initialRoute)
 

@@ -3,10 +3,10 @@ package com.martinrevert.latorrentola.network
 import android.app.Activity
 import android.content.Context
 import android.util.Log
+import app.cash.turbine.test
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
-import androidx.credentials.GetCredentialResponse
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
@@ -14,6 +14,8 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.common.truth.Truth.assertThat
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.martinrevert.latorrentola.database.SavedAccountDao
+import com.martinrevert.latorrentola.database.SavedAccountEntity
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -22,6 +24,8 @@ import io.mockk.mockkStatic
 import io.mockk.slot
 import io.mockk.unmockkStatic
 import io.mockk.verify
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
@@ -156,9 +160,9 @@ class AuthRepositoryTest {
 
     @Test
     fun `touchAccount updates lastActiveTimestamp when account exists`() = runTest {
-        val savedAccountDao: com.martinrevert.latorrentola.database.SavedAccountDao = mockk(relaxed = true)
+        val savedAccountDao: SavedAccountDao = mockk(relaxed = true)
         val repoWithDao = AuthRepository(firebaseAuth, context, credentialManager, crashlyticsManager, savedAccountDao)
-        val entity = com.martinrevert.latorrentola.database.SavedAccountEntity(uid = "uid1", displayName = "Martin", email = "m@test.com", lastActiveTimestamp = 1000L)
+        val entity = SavedAccountEntity(uid = "uid1", displayName = "Martin", email = "m@test.com", lastActiveTimestamp = 1000L)
         coEvery { savedAccountDao.get("uid1") } returns entity
 
         repoWithDao.touchAccount("uid1")
@@ -168,11 +172,60 @@ class AuthRepositoryTest {
 
     @Test
     fun `deleteAccount delegates to savedAccountDao delete`() = runTest {
-        val savedAccountDao: com.martinrevert.latorrentola.database.SavedAccountDao = mockk(relaxed = true)
+        val savedAccountDao: SavedAccountDao = mockk(relaxed = true)
         val repoWithDao = AuthRepository(firebaseAuth, context, credentialManager, crashlyticsManager, savedAccountDao)
 
         repoWithDao.deleteAccount("uid1")
 
         coVerify { savedAccountDao.delete("uid1") }
+    }
+
+    @Test
+    fun `savedAccountsFlow includes currentUser when DAO initially emits empty list`() = runTest {
+        val savedAccountDao: SavedAccountDao = mockk(relaxed = true)
+        every { savedAccountDao.observeAll() } returns flowOf(emptyList())
+        every { firebaseAuth.currentUser } returns firebaseUser
+        every { firebaseUser.uid } returns "uid_active"
+        every { firebaseUser.displayName } returns "Martin"
+        every { firebaseUser.email } returns "martin@test.com"
+        every { firebaseUser.photoUrl } returns null
+
+        val repoWithDao = AuthRepository(firebaseAuth, context, credentialManager, crashlyticsManager, savedAccountDao)
+        repoWithDao.savedAccountsFlow.test {
+            val emitted = awaitItem()
+            assertThat(emitted).hasSize(1)
+            assertThat(emitted.first().uid).isEqualTo("uid_active")
+            assertThat(emitted.first().displayName).isEqualTo("Martin")
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `deleting active account after signOut does not re-synthesize deleted profile in savedAccountsFlow`() = runTest {
+        val savedAccountDao: SavedAccountDao = mockk(relaxed = true)
+        val savedEntity = SavedAccountEntity(uid = "uid_active", displayName = "Martin", email = "martin@test.com")
+        val daoState = MutableStateFlow(listOf(savedEntity))
+        every { savedAccountDao.observeAll() } returns daoState
+        coEvery { savedAccountDao.delete("uid_active") } answers {
+            daoState.value = emptyList()
+        }
+        every { firebaseAuth.currentUser } returns firebaseUser
+        every { firebaseUser.uid } returns "uid_active"
+        every { firebaseUser.displayName } returns "Martin"
+        every { firebaseUser.email } returns "martin@test.com"
+        every { firebaseUser.photoUrl } returns null
+
+        val repoWithDao = AuthRepository(firebaseAuth, context, credentialManager, crashlyticsManager, savedAccountDao)
+        repoWithDao.savedAccountsFlow.test {
+            assertThat(awaitItem()).containsExactly(savedEntity)
+
+            repoWithDao.signOut()
+            assertThat(awaitItem()).containsExactly(savedEntity)
+
+            repoWithDao.deleteAccount("uid_active")
+            assertThat(awaitItem()).isEmpty()
+            assertThat(repoWithDao.authStateFlow.value).isNull()
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 }

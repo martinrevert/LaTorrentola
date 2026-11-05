@@ -1,7 +1,6 @@
 package com.martinrevert.latorrentola.ui.auth
 
 import android.content.Context
-import android.util.Log
 import com.martinrevert.latorrentola.utils.AppLogger
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.lifecycle.ViewModel
@@ -16,7 +15,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 import com.martinrevert.latorrentola.database.SavedAccountEntity
@@ -48,12 +46,15 @@ class AuthViewModel @Inject constructor(
     /** Currently authenticated Firebase account, if signed in. */
     val currentUser: FirebaseUser? get() = authRepository.currentUser
 
-    /** Locally saved accounts for OTT / Disney+ multi-account profile switching. */
-    val savedAccounts: StateFlow<List<SavedAccountEntity>> =
+    /**
+     * Locally saved accounts for OTT / Disney+ multi-account profile switching.
+     * Emits `null` while the initial Room query is in flight to prevent welcome-screen flashing.
+     */
+    val savedAccounts: StateFlow<List<SavedAccountEntity>?> =
         authRepository.savedAccountsFlow.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
+            initialValue = null
         )
 
     /** Resets the authentication UI state back to [AuthState.Idle]. */
@@ -105,9 +106,9 @@ class AuthViewModel @Inject constructor(
         onProceed: (() -> Unit)? = null
     ) {
         viewModelScope.launch {
-            authRepository.touchAccount(account.uid)
             val current = authRepository.currentUser
             if (current != null && current.uid == account.uid) {
+                authRepository.touchAccount(account.uid)
                 viewModelScope.launch(Dispatchers.IO) {
                     try {
                         userLibraryRepository.syncFromCloud(forceFull = false)
@@ -123,14 +124,10 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    /** Returns true if the specified UID matches the active Firebase authenticated user. */
-    fun isCurrentAccount(uid: String): Boolean = authRepository.currentUser?.uid == uid
-
     /** Removes a saved profile from local device, signing out if it was the currently active user. */
     fun deleteAccount(uid: String) {
         viewModelScope.launch {
             val currentUid = authRepository.currentUser?.uid
-            authRepository.deleteAccount(uid)
             if (currentUid == uid) {
                 try {
                     authRepository.signOut()
@@ -138,6 +135,7 @@ class AuthViewModel @Inject constructor(
                     AppLogger.w("AuthViewModel", "Sign out on deleteAccount error: ${e.message}")
                 }
             }
+            authRepository.deleteAccount(uid)
         }
     }
 

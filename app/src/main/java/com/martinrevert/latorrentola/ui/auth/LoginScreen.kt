@@ -57,6 +57,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.fragment.app.FragmentActivity
 import androidx.tv.material3.Border
 import androidx.tv.material3.Button as TvButton
@@ -98,6 +99,7 @@ fun LoginScreen(
             onLoginSuccess()
         } else if (authState is AuthState.Error) {
             Toast.makeText(context, (authState as AuthState.Error).message.asString(context), Toast.LENGTH_LONG).show()
+            viewModel.resetAuthState()
         }
     }
 
@@ -106,7 +108,7 @@ fun LoginScreen(
 
     val onAccountClick: (SavedAccountEntity) -> Unit = { account ->
         val activity = context.findFragmentActivity()
-        if ((!isTv) && (activity != null) && BiometricAuthHelper.isBiometricAvailable(context) && viewModel.isCurrentAccount(account.uid)) {
+        if ((!isTv) && (activity != null) && BiometricAuthHelper.isBiometricAvailable(context)) {
             val subtitle = String.format(biometricSubtitleTemplate, account.displayName)
             BiometricAuthHelper.authenticate(
                 activity = activity,
@@ -152,11 +154,15 @@ fun LoginScreen(
     }
 }
 
-/** Renders either the Disney+ profile selector or the welcome branding screen based on saved accounts. */
+/**
+ * Renders either the Disney+ profile selector or the welcome branding screen based on saved accounts.
+ * When [savedAccounts] is `null` (initial database read in progress), renders only the themed background
+ * surface to prevent a momentary flash of [WelcomeLoginBody].
+ */
 @Composable
 private fun LoginScreenContent(
     authState: AuthState,
-    savedAccounts: List<SavedAccountEntity>,
+    savedAccounts: List<SavedAccountEntity>?,
     isTv: Boolean,
     onAccountClick: (SavedAccountEntity) -> Unit,
     onAddProfileClick: () -> Unit,
@@ -169,22 +175,24 @@ private fun LoginScreenContent(
                 containerColor = TvMaterialTheme.colorScheme.background
             )
         ) {
-            if (savedAccounts.isNotEmpty()) {
-                ProfileSelectorBody(
-                    authState = authState,
-                    savedAccounts = savedAccounts,
-                    isTv = true,
-                    onAccountClick = onAccountClick,
-                    onAddProfileClick = onAddProfileClick,
-                    onDeleteAccount = onDeleteAccount
-                )
-            } else {
-                WelcomeLoginBody(
-                    authState = authState,
-                    isTv = true,
-                    titleColor = TvMaterialTheme.colorScheme.primary,
-                    onSignInClick = onAddProfileClick
-                )
+            if (savedAccounts != null) {
+                if (savedAccounts.isNotEmpty()) {
+                    ProfileSelectorBody(
+                        authState = authState,
+                        savedAccounts = savedAccounts,
+                        isTv = true,
+                        onAccountClick = onAccountClick,
+                        onAddProfileClick = onAddProfileClick,
+                        onDeleteAccount = onDeleteAccount
+                    )
+                } else {
+                    WelcomeLoginBody(
+                        authState = authState,
+                        isTv = true,
+                        titleColor = TvMaterialTheme.colorScheme.primary,
+                        onSignInClick = onAddProfileClick
+                    )
+                }
             }
         }
     } else {
@@ -194,22 +202,24 @@ private fun LoginScreenContent(
                 .safeDrawingPadding(),
             color = MaterialTheme.colorScheme.background
         ) {
-            if (savedAccounts.isNotEmpty()) {
-                ProfileSelectorBody(
-                    authState = authState,
-                    savedAccounts = savedAccounts,
-                    isTv = false,
-                    onAccountClick = onAccountClick,
-                    onAddProfileClick = onAddProfileClick,
-                    onDeleteAccount = onDeleteAccount
-                )
-            } else {
-                WelcomeLoginBody(
-                    authState = authState,
-                    isTv = false,
-                    titleColor = MaterialTheme.colorScheme.primary,
-                    onSignInClick = onAddProfileClick
-                )
+            if (savedAccounts != null) {
+                if (savedAccounts.isNotEmpty()) {
+                    ProfileSelectorBody(
+                        authState = authState,
+                        savedAccounts = savedAccounts,
+                        isTv = false,
+                        onAccountClick = onAccountClick,
+                        onAddProfileClick = onAddProfileClick,
+                        onDeleteAccount = onDeleteAccount
+                    )
+                } else {
+                    WelcomeLoginBody(
+                        authState = authState,
+                        isTv = false,
+                        titleColor = MaterialTheme.colorScheme.primary,
+                        onSignInClick = onAddProfileClick
+                    )
+                }
             }
         }
     }
@@ -234,8 +244,8 @@ private fun ProfileSelectorBody(
     val context = LocalContext.current
     val hasBiometrics = remember(context) { BiometricAuthHelper.isBiometricAvailable(context) }
 
-    LaunchedEffect(isTv) {
-        if (isTv) {
+    LaunchedEffect(isTv, accountToDelete, savedAccounts.size) {
+        if (isTv && accountToDelete == null) {
             try {
                 initialFocusRequester.requestFocus()
             } catch (_: Exception) {}
@@ -251,7 +261,10 @@ private fun ProfileSelectorBody(
                     cancelFocusRequester.requestFocus()
                 } catch (_: Exception) {}
             }
-            Dialog(onDismissRequest = { accountToDelete = null }) {
+            Dialog(
+                onDismissRequest = { accountToDelete = null },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
