@@ -16,6 +16,7 @@ Whether on your phone's touchscreen, your tablet, a foldable device, or comforta
 * 📡 **Your Home Cloud (NAS, PC, SMB & NFS)**: Connect directly to shared folders on your Windows PC, Linux home servers, or NAS appliances (Synology, QNAP, TrueNAS, Unraid). Stream your home video collection over Wi-Fi without stuttering!
 * ☁️ **Full Google Cloud Synchronization**: Sign in with a single tap. Your favorite movies, followed TV shows, and exact playback progress synchronize across all your phones, tablets, and TVs.
 * 🏷️ **Quick Progress Marking**: Finished an episode or movie? Long-press its poster to instantly mark it as "Completed" or "Uncompleted", complete with the streaming industry-standard red progress bar.
+* 📱 **Foldable & Small Screen Optimization**: Fully adaptive interface designed with foldable cover screens (Galaxy Z Fold, Pixel Fold) in mind. Enjoy 100% of the information, badges, actions, and torrent options without text clipping or vertical character splitting.
 * 🌐 **On-Device Smart Translation**: Using local on-device machine learning, movie summaries are automatically translated into Spanish without consuming mobile data or uploading your reading history to the cloud.
 * 🍿 **Streaming Platform Explorer (OTT)**: Discover what is trending and streaming on Netflix, Disney+, Max (HBO), Amazon Prime Video, Apple TV+, and more.
 

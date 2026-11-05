@@ -10,13 +10,16 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -103,6 +106,7 @@ fun LiquidShimmerProgressSurface(
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
     shape: Shape = MaterialTheme.shapes.medium,
+    containerColor: Color? = null,
     focusRequester: FocusRequester? = null,
     enabled: Boolean = true,
     themeMode: Int? = null,
@@ -140,7 +144,8 @@ fun LiquidShimmerProgressSurface(
         label = "shimmerTranslate"
     )
 
-    val surfaceContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val surfaceContainerColor = containerColor ?: MaterialTheme.colorScheme.surfaceContainerLow
+    val outlineBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
     val primaryColor = MaterialTheme.colorScheme.primary
     val primaryContainerColor = MaterialTheme.colorScheme.primaryContainer
 
@@ -241,6 +246,7 @@ fun LiquidShimmerProgressSurface(
                 interactionSource = interactionSource,
                 modifier = modifier
                     .fillMaxWidth()
+                    .border(width = 1.dp, color = outlineBorderColor, shape = shape)
                     .tvDpadLongClickable(onLongClick)
                     .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             ) {
@@ -251,6 +257,7 @@ fun LiquidShimmerProgressSurface(
         LaTorrentolaTheme(themeMode = effectiveThemeMode) {
             Card(
                 shape = shape,
+                border = BorderStroke(width = 1.dp, color = outlineBorderColor),
                 colors = CardDefaults.cardColors(
                     containerColor = surfaceContainerColor,
                     contentColor = MaterialTheme.colorScheme.onSurface
@@ -279,6 +286,7 @@ fun MovieTorrentShimmerCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
+    containerColor: Color? = null,
     focusRequester: FocusRequester? = null,
     themeMode: Int? = null
 ) {
@@ -320,6 +328,7 @@ fun MovieTorrentShimmerCard(
         isActive = isActive,
         onClick = onClick,
         onLongClick = onLongClick,
+        containerColor = containerColor,
         focusRequester = focusRequester,
         themeMode = themeMode,
         modifier = modifier
@@ -417,6 +426,7 @@ fun EpisodeTorrentShimmerCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
+    containerColor: Color? = null,
     focusRequester: FocusRequester? = null,
     themeMode: Int? = null
 ) {
@@ -440,6 +450,7 @@ fun EpisodeTorrentShimmerCard(
         isActive = isActive,
         onClick = onClick,
         onLongClick = onLongClick,
+        containerColor = containerColor,
         focusRequester = focusRequester,
         themeMode = themeMode,
         modifier = modifier
@@ -523,6 +534,7 @@ fun TorrentReleaseShimmerCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
+    containerColor: Color? = null,
     focusRequester: FocusRequester? = null,
     themeMode: Int? = null,
     download: TorrentDownload? = null,
@@ -559,11 +571,14 @@ fun TorrentReleaseShimmerCard(
     val seeds = visualState.seeds
     val peers = visualState.peers
 
+    val isConstrainedWidth = LocalConfiguration.current.screenWidthDp < 360
+
     LiquidShimmerProgressSurface(
         progress = readyProgress,
         isActive = isActive,
         onClick = onClick,
         onLongClick = if (visualState.canDelete || isDownloaded) onLongClick else null,
+        containerColor = containerColor,
         focusRequester = focusRequester,
         themeMode = themeMode,
         modifier = modifier
@@ -571,14 +586,17 @@ fun TorrentReleaseShimmerCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(
+                    horizontal = if (isConstrainedWidth) 12.dp else 16.dp,
+                    vertical = if (isConstrainedWidth) 10.dp else 12.dp
+                ),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(end = 12.dp),
+                    .padding(end = if (isConstrainedWidth) 8.dp else 12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 // Title
@@ -591,10 +609,11 @@ fun TorrentReleaseShimmerCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                // Badges row: Provider • Resolution • Video Codec • Audio Codec
-                Row(
+                // Badges row: Provider • Resolution • Video Codec • Audio Codec (Adaptive FlowRow)
+                FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     // Source badge (e.g. YTS, EZTV, 1337x, etc.)
                     Text(
@@ -602,6 +621,8 @@ fun TorrentReleaseShimmerCard(
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        maxLines = 1,
+                        softWrap = false,
                         modifier = Modifier
                             .clip(MaterialTheme.shapes.extraSmall)
                             .background(MaterialTheme.colorScheme.tertiaryContainer)
@@ -615,6 +636,8 @@ fun TorrentReleaseShimmerCard(
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier
                                 .clip(MaterialTheme.shapes.extraSmall)
                                 .background(MaterialTheme.colorScheme.secondaryContainer)
@@ -628,6 +651,8 @@ fun TorrentReleaseShimmerCard(
                             text = release.videoCodec,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier
                                 .clip(MaterialTheme.shapes.extraSmall)
                                 .background(MaterialTheme.colorScheme.surfaceVariant)
@@ -642,6 +667,8 @@ fun TorrentReleaseShimmerCard(
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier
                                 .clip(MaterialTheme.shapes.extraSmall)
                                 .background(MaterialTheme.colorScheme.primaryContainer)
@@ -658,6 +685,8 @@ fun TorrentReleaseShimmerCard(
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.error,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier
                                 .clip(MaterialTheme.shapes.extraSmall)
                                 .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f))
@@ -670,6 +699,8 @@ fun TorrentReleaseShimmerCard(
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.error,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier
                                 .clip(MaterialTheme.shapes.extraSmall)
                                 .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f))
@@ -679,16 +710,19 @@ fun TorrentReleaseShimmerCard(
                     else -> {}
                 }
 
-                // Size and Seeds/Peers or Live Transfer
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                // Size and Seeds/Peers or Live Transfer (Adaptive FlowRow)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     if (release.formattedSize.isNotBlank()) {
                         Text(
                             text = release.formattedSize,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
 
@@ -697,7 +731,9 @@ fun TorrentReleaseShimmerCard(
                             text = "${(readyProgress * 100).toInt()}% · ${formatTransferRate(downloadSpeed)}",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     } else {
                         val peersText = if (peers > 0) {
@@ -708,7 +744,9 @@ fun TorrentReleaseShimmerCard(
                         Text(
                             text = peersText,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -755,6 +793,7 @@ fun NextEpisodeTorrentShimmerCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
+    containerColor: Color? = null,
     focusRequester: FocusRequester? = null,
     themeMode: Int? = null
 ) {
@@ -769,11 +808,14 @@ fun NextEpisodeTorrentShimmerCard(
     val seeds = if (isActive && (activeBuffer?.numSeeds ?: 0) > 0) activeBuffer?.numSeeds ?: torrent.seeds else torrent.seeds
     val peers = if (isActive && (activeBuffer?.numPeers ?: 0) > 0) activeBuffer?.numPeers ?: torrent.peers else torrent.peers
 
+    val isConstrainedWidth = LocalConfiguration.current.screenWidthDp < 360
+
     LiquidShimmerProgressSurface(
         progress = readyProgress,
         isActive = isActive,
         onClick = onClick,
         onLongClick = onLongClick,
+        containerColor = containerColor,
         focusRequester = focusRequester,
         themeMode = themeMode,
         modifier = modifier
@@ -781,14 +823,17 @@ fun NextEpisodeTorrentShimmerCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp),
+                .padding(
+                    horizontal = if (isConstrainedWidth) 10.dp else 14.dp,
+                    vertical = if (isConstrainedWidth) 8.dp else 10.dp
+                ),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(end = 8.dp),
+                    .padding(end = if (isConstrainedWidth) 6.dp else 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
@@ -799,15 +844,18 @@ fun NextEpisodeTorrentShimmerCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     if (torrent.formattedSize.isNotBlank()) {
                         Text(
                             text = torrent.formattedSize,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                     if (isActive) {
@@ -815,13 +863,17 @@ fun NextEpisodeTorrentShimmerCard(
                             text = "${(readyProgress * 100).toInt()}% · ${formatTransferRate(downloadSpeed)}",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     } else {
                         Text(
                             text = stringResource(R.string.tv_torrent_peers_info, seeds, peers),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }

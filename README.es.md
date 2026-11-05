@@ -16,6 +16,7 @@ Ya sea en la pantalla táctil de tu teléfono, en tu tablet, en un dispositivo p
 * 📡 **Tu Nube Doméstica (NAS, PC, SMB y NFS)**: Conecta fácilmente las carpetas compartidas de tu ordenador con Windows, servidores Linux o dispositivos NAS (Synology, QNAP, TrueNAS, Unraid). ¡Reproduce tus vídeos directamente por Wi-Fi sin tirones!
 * ☁️ **Sincronización Total con Google**: Inicia sesión con un solo toque. Tus películas favoritas, series seguidas y el punto exacto donde pausaste se guardan en la nube para continuar en cualquier otro dispositivo.
 * 🏷️ **Marcado Rápido de Progreso**: ¿Ya viste un capítulo o película? Mantén presionado su póster para marcarlo como "Visto" o "No visto" al instante, con la clásica barra de progreso roja de las plataformas de streaming.
+* 📱 **Optimización para Plegables y Pantallas Compactas**: Interfaz completamente adaptativa diseñada teniendo en cuenta las pantallas frontales de dispositivos plegables (Galaxy Z Fold, Pixel Fold). Disfruta del 100% de la información, insignias, acciones y opciones de torrents sin cortes de texto ni divisiones verticales de letras.
 * 🌐 **Traducción Inteligente en tu Dispositivo**: Sin gastar datos móviles adicionales ni enviar información a internet, la inteligencia artificial integrada en tu móvil traduce automáticamente las sinopsis al español.
 * 🍿 **Explorador por Plataformas de Streaming**: Descubre qué títulos están disponibles en Netflix, Disney+, HBO Max, Amazon Prime Video, Apple TV+ y muchas más.
 

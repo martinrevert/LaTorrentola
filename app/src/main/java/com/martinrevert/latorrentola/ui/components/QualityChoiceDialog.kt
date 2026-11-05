@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -169,10 +170,11 @@ fun NextEpisodeTorrentDialog(
                     ),
                 contentAlignment = Alignment.Center
             ) {
+                val isConstrainedWidth = LocalConfiguration.current.screenWidthDp < 360
                 val dialogContent: @Composable () -> Unit = {
                     Column(
                         modifier = Modifier
-                            .padding(24.dp)
+                            .padding(if (isConstrainedWidth) 14.dp else 24.dp)
                             .fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
@@ -519,9 +521,9 @@ fun NextEpisodeTorrentDialog(
                 } else {
                     Surface(
                         modifier = Modifier
-                            .padding(24.dp)
-                            .widthIn(min = 320.dp, max = 560.dp)
-                            .fillMaxWidth(0.92f)
+                            .padding(if (isConstrainedWidth) 10.dp else 24.dp)
+                            .widthIn(max = 560.dp)
+                            .fillMaxWidth(if (isConstrainedWidth) 0.98f else 0.92f)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
@@ -690,6 +692,8 @@ fun QualityChoiceDialog(
 @Preview(name = "Light Phone", uiMode = Configuration.UI_MODE_NIGHT_NO, showBackground = true, widthDp = 360, heightDp = 640)
 @Preview(name = "Dark Phone", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, widthDp = 360, heightDp = 640)
 @Preview(name = "Light Tablet", uiMode = Configuration.UI_MODE_NIGHT_NO, showBackground = true, widthDp = 600, heightDp = 800)
+@Preview(name = "Fold Front Narrow", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, widthDp = 320, heightDp = 800)
+@Preview(name = "Fold Front Standard", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, widthDp = 340, heightDp = 800)
 @Preview(name = "Dark Tablet", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, widthDp = 600, heightDp = 800)
 @Preview(name = "Light TV", uiMode = Configuration.UI_MODE_NIGHT_NO, showBackground = true, widthDp = 960, heightDp = 540)
 @Preview(name = "Dark TV", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, widthDp = 960, heightDp = 540)

@@ -19,6 +19,7 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -1003,6 +1004,7 @@ private fun HandheldTvSeriesDetailContent(
     val screenWidthDp = configuration.screenWidthDp
     val isTablet = screenWidthDp >= 840
     val isWideScreen = screenWidthDp >= 600
+    val isConstrainedWidth = screenWidthDp < 360
 
     var isRevealed by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { isRevealed = true }
@@ -1125,8 +1127,8 @@ private fun HandheldTvSeriesDetailContent(
                 .padding(
                     top = statusBarHeight + 56.dp,
                     bottom = navBarHeight + 24.dp,
-                    start = if (isWideScreen) 28.dp else 16.dp,
-                    end = if (isWideScreen) 28.dp else 16.dp
+                    start = if (isWideScreen) 28.dp else if (isConstrainedWidth) 12.dp else 16.dp,
+                    end = if (isWideScreen) 28.dp else if (isConstrainedWidth) 12.dp else 16.dp
                 )
         ) {
             if (isWideScreen) {
@@ -1222,7 +1224,7 @@ private fun HandheldTvSeriesDetailContent(
                 // PHONE (< 600dp): Compact Two-Row Hero Layout
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (isConstrainedWidth) 12.dp else 16.dp),
                     verticalAlignment = Alignment.Top
                 ) {
                     if (!posterUrl.isNullOrEmpty()) {
@@ -1233,7 +1235,7 @@ private fun HandheldTvSeriesDetailContent(
                             ),
                             elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
                             modifier = Modifier
-                                .width(115.dp)
+                                .width(if (isConstrainedWidth) 100.dp else 115.dp)
                                 .aspectRatio(2 / 3f)
                                 .graphicsLayer {
                                     scaleX = posterScale
@@ -1275,18 +1277,18 @@ private fun HandheldTvSeriesDetailContent(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         TvSeriesMetadataBadges(series = series)
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        HandheldTvActionButtons(
-                            hasTrailer = hasTrailer,
-                            isFavorite = isFavorite,
-                            onWatchTrailer = onWatchTrailer,
-                            onFavoriteToggle = onFavoriteToggle,
-                            onShareClick = onShareClick
-                        )
                     }
                 }
+
+                Spacer(modifier = Modifier.height(if (isConstrainedWidth) 12.dp else 16.dp))
+
+                HandheldTvActionButtons(
+                    hasTrailer = hasTrailer,
+                    isFavorite = isFavorite,
+                    onWatchTrailer = onWatchTrailer,
+                    onFavoriteToggle = onFavoriteToggle,
+                    onShareClick = onShareClick
+                )
 
                 if (!series.overview.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(14.dp))
@@ -1540,10 +1542,10 @@ private fun TvSeriesMetadataBadges(
     series.numberOfEpisodes?.let { items.add(stringResource(R.string.tv_episode_count, it)) }
     series.status?.let { items.add(it) }
 
-    Row(
-        modifier = modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         items.forEach { badge ->
             SuggestionChip(
@@ -1552,7 +1554,9 @@ private fun TvSeriesMetadataBadges(
                     Text(
                         text = badge,
                         style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 },
                 colors = SuggestionChipDefaults.suggestionChipColors(
@@ -1581,16 +1585,22 @@ private fun HandheldTvActionButtons(
     onShareClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    val configuration = LocalConfiguration.current
+    val isConstrainedWidth = configuration.screenWidthDp < 360
+
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(if (isConstrainedWidth) 8.dp else 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier.fillMaxWidth()
     ) {
         if (hasTrailer) {
             FilledTonalButton(
                 onClick = onWatchTrailer,
                 shape = MaterialTheme.shapes.small,
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                contentPadding = PaddingValues(
+                    horizontal = if (isConstrainedWidth) 10.dp else 14.dp,
+                    vertical = if (isConstrainedWidth) 8.dp else 10.dp
+                )
             ) {
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
@@ -1598,10 +1608,12 @@ private fun HandheldTvActionButtons(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(if (isConstrainedWidth) 4.dp else 6.dp))
                 Text(
                     text = stringResource(R.string.watch_trailer),
-                    style = MaterialTheme.typography.labelMedium
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
@@ -1609,7 +1621,10 @@ private fun HandheldTvActionButtons(
         FilledTonalButton(
             onClick = onFavoriteToggle,
             shape = MaterialTheme.shapes.small,
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+            contentPadding = PaddingValues(
+                horizontal = if (isConstrainedWidth) 10.dp else 14.dp,
+                vertical = if (isConstrainedWidth) 8.dp else 10.dp
+            )
         ) {
             Icon(
                 imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -1617,17 +1632,22 @@ private fun HandheldTvActionButtons(
                 tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp)
             )
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(if (isConstrainedWidth) 4.dp else 6.dp))
             Text(
                 text = if (isFavorite) stringResource(R.string.remove_favorite_desc) else stringResource(R.string.add_favorite_desc),
-                style = MaterialTheme.typography.labelMedium
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                softWrap = false
             )
         }
 
         FilledTonalButton(
             onClick = onShareClick,
             shape = MaterialTheme.shapes.small,
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+            contentPadding = PaddingValues(
+                horizontal = if (isConstrainedWidth) 10.dp else 12.dp,
+                vertical = if (isConstrainedWidth) 8.dp else 10.dp
+            )
         ) {
             Icon(
                 imageVector = Icons.Default.Share,

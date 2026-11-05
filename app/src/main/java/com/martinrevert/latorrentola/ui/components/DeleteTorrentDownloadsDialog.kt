@@ -7,6 +7,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -67,6 +69,8 @@ fun DeleteTorrentDownloadsDialog(
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
+    val configuration = LocalConfiguration.current
+    val isConstrainedWidth = configuration.screenWidthDp < 360
     val effectiveThemeMode = remember(context, themeMode) {
         themeMode ?: PreferenceManager(context).getTheme()
     }
@@ -102,7 +106,7 @@ fun DeleteTorrentDownloadsDialog(
             val dialogBody: @Composable () -> Unit = {
                 Column(
                     modifier = Modifier
-                        .padding(24.dp)
+                        .padding(if (isConstrainedWidth && !isTv) 16.dp else 24.dp)
                         .fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -153,18 +157,19 @@ fun DeleteTorrentDownloadsDialog(
                             }
                         }
                     } else {
-                        Row(
+                        FlowRow(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             TextButton(onClick = onKeep) {
                                 Text(
                                     text = stringResource(R.string.delete_torrent_dialog_keep),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
-                            Spacer(modifier = Modifier.width(8.dp))
                             androidx.compose.material3.Button(
                                 onClick = onConfirmDelete,
                                 colors = ButtonDefaults.buttonColors(
@@ -172,7 +177,11 @@ fun DeleteTorrentDownloadsDialog(
                                     contentColor = MaterialTheme.colorScheme.onError
                                 )
                             ) {
-                                Text(text = stringResource(R.string.delete_torrent_dialog_confirm))
+                                Text(
+                                    text = stringResource(R.string.delete_torrent_dialog_confirm),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
                         }
                     }
@@ -196,7 +205,7 @@ fun DeleteTorrentDownloadsDialog(
                 Card(
                     modifier = Modifier
                         .widthIn(max = 480.dp)
-                        .padding(24.dp),
+                        .padding(if (isConstrainedWidth) 12.dp else 24.dp),
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh

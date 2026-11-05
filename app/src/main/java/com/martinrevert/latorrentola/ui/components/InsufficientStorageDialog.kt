@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -63,6 +64,8 @@ fun InsufficientStorageDialog(
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
+    val configuration = LocalConfiguration.current
+    val isConstrainedWidth = configuration.screenWidthDp < 360
     val effectiveThemeMode = remember(context, themeMode) {
         themeMode ?: PreferenceManager(context).getTheme()
     }
@@ -102,7 +105,7 @@ fun InsufficientStorageDialog(
             val dialogBody: @Composable () -> Unit = {
                 Column(
                     modifier = Modifier
-                        .padding(24.dp)
+                        .padding(if (isConstrainedWidth && !isTv) 16.dp else 24.dp)
                         .fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -172,7 +175,7 @@ fun InsufficientStorageDialog(
                     Card(
                         modifier = Modifier
                             .widthIn(max = 480.dp)
-                            .padding(24.dp),
+                            .padding(if (isConstrainedWidth) 12.dp else 24.dp),
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh

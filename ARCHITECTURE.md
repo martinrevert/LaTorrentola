@@ -352,6 +352,13 @@ if (context.isTvDevice()) {
 * **Dialog Focus Traps**: Dialogs use `androidx.compose.ui.window.Dialog(properties = DialogProperties(usePlatformDefaultWidth = false))` with opaque container surfaces ($\alpha \ge 0.95f$) to prevent D-pad events from leaking into underlying video surfaces.
 * **YouTube Focus Isolation**: Embedded `YouTubePlayerView` instances are isolated (`descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS`) and overlaid with a focusable native `IconButton`.
 
+### 4.5 Foldable & Constrained Viewport Adaptive Layout Architecture
+* **Constrained Viewport Adaptability (< 360dp)**: To support compact vertical front/cover screens on foldables (e.g. Galaxy Z Fold, Pixel Fold with ~320dp–340dp viewport width and 21:9–23:9 aspect ratio) without data or functional loss:
+  * **FlowRow Wrapping for Dynamic Badges & Action Groups**: Metadata chips (year, runtime, resolution, language, genre, studio, director, certifications) and action button toolbars in `MovieDetailScreen`, `TvDetailScreen`, `PlaybackErrorDialog`, and `DeleteTorrentDownloadsDialog` leverage `FlowRow` with item-level `softWrap = false` and `maxLines = 1`. This stops horizontal truncation or letter-by-letter vertical character wrapping (`[ C c u l r e r t a i l ]`).
+  * **Decoupled Action Bars on Handheld Hero Layouts**: On mobile screen viewports (< 600dp), action buttons ("Ver Trailer", "Añadir a favoritos", "Compartir") are decoupled from the column beside the poster and positioned full-width beneath the poster row. This ensures buttons have sufficient horizontal breathing room.
+  * **Adaptive Padding & Scaled Surfaces**: Layout margins (`12.dp` vs `16.dp`–`24.dp`) and poster widths (`100.dp` vs `115.dp`–`180.dp`) scale dynamically based on `LocalConfiguration.current.screenWidthDp < 360`. Dialog containers avoid rigid minimum widths (`widthIn(min = 320.dp)` removed) and use adaptive padding to prevent off-screen clipping.
+  * **Shimmer Release Card Responsiveness**: In `LiquidShimmerProgressCard`, release badges and status rows wrap via `FlowRow` while keeping 100% of torrent stats, progress percentages, and peer info fully legible.
+
 ---
 
 ## 5. Core Subsystems

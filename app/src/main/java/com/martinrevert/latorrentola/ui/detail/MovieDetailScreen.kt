@@ -584,6 +584,7 @@ private fun HandheldMovieDetailContent(
 
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val isConstrainedWidth = LocalConfiguration.current.screenWidthDp < 360
 
     Box(
         modifier = modifier
@@ -665,8 +666,8 @@ private fun HandheldMovieDetailContent(
                 .padding(
                     top = statusBarHeight + 56.dp,
                     bottom = navBarHeight + 24.dp,
-                    start = if (isWideScreen) 28.dp else 16.dp,
-                    end = if (isWideScreen) 28.dp else 16.dp
+                    start = if (isWideScreen) 28.dp else if (isConstrainedWidth) 12.dp else 16.dp,
+                    end = if (isWideScreen) 28.dp else if (isConstrainedWidth) 12.dp else 16.dp
                 )
         ) {
             if (isWideScreen) {
@@ -774,7 +775,7 @@ private fun HandheldMovieDetailContent(
                 // PHONE (< 600dp): Compact Two-Row Hero Layout
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (isConstrainedWidth) 12.dp else 16.dp),
                     verticalAlignment = Alignment.Top
                 ) {
                     if (!posterUrl.isNullOrEmpty()) {
@@ -785,7 +786,7 @@ private fun HandheldMovieDetailContent(
                             ),
                             elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
                             modifier = Modifier
-                                .width(115.dp)
+                                .width(if (isConstrainedWidth) 100.dp else 115.dp)
                                 .aspectRatio(2 / 3f)
                                 .graphicsLayer {
                                     scaleX = posterScale
@@ -1034,9 +1035,9 @@ private fun HandheldMetadataBadges(
     tmdbMovie: TmdbMovieResult?,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
         modifier = modifier.fillMaxWidth()
     ) {
         val releaseYear = movie.year?.takeIf { it != 0 }?.toString()
@@ -1052,7 +1053,9 @@ private fun HandheldMetadataBadges(
                     text = releaseYear,
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
@@ -1068,7 +1071,9 @@ private fun HandheldMetadataBadges(
                     text = movie.runtime,
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
@@ -1084,7 +1089,9 @@ private fun HandheldMetadataBadges(
                     text = movie.mpaRating,
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
@@ -1100,7 +1107,9 @@ private fun HandheldMetadataBadges(
                     text = lang.uppercase(Locale.US),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
@@ -1116,7 +1125,9 @@ private fun HandheldMetadataBadges(
                 Text(
                     text = translatedGenre,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
@@ -1130,9 +1141,9 @@ private fun HandheldRatingsRow(
     metacriticRating: String?,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
         modifier = modifier
     ) {
         imdbRating?.let { imdb ->
@@ -1149,7 +1160,9 @@ private fun HandheldRatingsRow(
                     text = imdb,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
@@ -1168,7 +1181,9 @@ private fun HandheldRatingsRow(
                     text = rt,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
@@ -1187,7 +1202,9 @@ private fun HandheldRatingsRow(
                     text = meta,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
@@ -1201,9 +1218,9 @@ private fun HandheldDirectorAndStudio(
     studioName: String?,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
         modifier = modifier
     ) {
         if (!director.isNullOrBlank()) {
@@ -1242,7 +1259,9 @@ private fun HandheldDirectorAndStudio(
                     text = studioName,
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
@@ -1258,16 +1277,22 @@ private fun HandheldActionButtons(
     onShareClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    val isConstrainedWidth = LocalConfiguration.current.screenWidthDp < 360
+    val buttonPadding = if (isConstrainedWidth) {
+        PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+    } else {
+        PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+    }
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(if (isConstrainedWidth) 8.dp else 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier.fillMaxWidth()
     ) {
         if (hasTrailer) {
             FilledTonalButton(
                 onClick = onWatchTrailer,
                 shape = MaterialTheme.shapes.small,
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                contentPadding = buttonPadding
             ) {
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
@@ -1275,10 +1300,12 @@ private fun HandheldActionButtons(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(if (isConstrainedWidth) 4.dp else 6.dp))
                 Text(
                     text = stringResource(R.string.watch_trailer),
-                    style = MaterialTheme.typography.labelMedium
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
@@ -1286,7 +1313,7 @@ private fun HandheldActionButtons(
         FilledTonalButton(
             onClick = onFavoriteToggle,
             shape = MaterialTheme.shapes.small,
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+            contentPadding = buttonPadding
         ) {
             Icon(
                 imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -1294,17 +1321,19 @@ private fun HandheldActionButtons(
                 tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp)
             )
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(if (isConstrainedWidth) 4.dp else 6.dp))
             Text(
                 text = if (isFavorite) stringResource(R.string.remove_favorite_desc) else stringResource(R.string.add_favorite_desc),
-                style = MaterialTheme.typography.labelMedium
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                softWrap = false
             )
         }
 
         FilledTonalButton(
             onClick = onShareClick,
             shape = MaterialTheme.shapes.small,
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+            contentPadding = if (isConstrainedWidth) PaddingValues(horizontal = 10.dp, vertical = 8.dp) else PaddingValues(horizontal = 12.dp, vertical = 10.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Share,

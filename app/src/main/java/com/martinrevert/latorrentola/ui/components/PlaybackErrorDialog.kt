@@ -9,6 +9,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -380,6 +382,9 @@ internal fun PlaybackErrorDialogMobileCard(
     onChangeAudioTrack: (() -> Unit)? = null,
     onEnableDtsHdLpcm: (() -> Unit)? = null
 ) {
+    val configuration = LocalConfiguration.current
+    val isConstrainedWidth = configuration.screenWidthDp < 360
+
     val title = when {
         error.isDtsHdError -> stringResource(R.string.player_decoding_error_dts_hd_title)
         error.isAudioError -> stringResource(R.string.player_decoding_error_audio_title)
@@ -400,7 +405,7 @@ internal fun PlaybackErrorDialogMobileCard(
     Card(
         modifier = Modifier
             .widthIn(max = 480.dp)
-            .padding(24.dp),
+            .padding(if (isConstrainedWidth) 12.dp else 24.dp),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -410,7 +415,7 @@ internal fun PlaybackErrorDialogMobileCard(
     ) {
         Column(
             modifier = Modifier
-                .padding(24.dp)
+                .padding(if (isConstrainedWidth) 14.dp else 24.dp)
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -432,33 +437,57 @@ internal fun PlaybackErrorDialogMobileCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (error.isDtsHdError && onEnableDtsHdLpcm != null) {
                     OutlinedButton(onClick = onDismiss) {
-                        Text(text = stringResource(R.string.player_decoding_error_close))
+                        Text(
+                            text = stringResource(R.string.player_decoding_error_close),
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                     if (onChangeAudioTrack != null) {
                         OutlinedButton(onClick = onChangeAudioTrack) {
-                            Text(text = stringResource(R.string.player_decoding_error_change_audio))
+                            Text(
+                                text = stringResource(R.string.player_decoding_error_change_audio),
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                     Button(onClick = onEnableDtsHdLpcm) {
-                        Text(text = stringResource(R.string.player_decoding_error_enable_dts_hd_pcm))
+                        Text(
+                            text = stringResource(R.string.player_decoding_error_enable_dts_hd_pcm),
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 } else if (error.isAudioError && onChangeAudioTrack != null) {
                     OutlinedButton(onClick = onDismiss) {
-                        Text(text = stringResource(R.string.player_decoding_error_close))
+                        Text(
+                            text = stringResource(R.string.player_decoding_error_close),
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                     Button(onClick = onChangeAudioTrack) {
-                        Text(text = stringResource(R.string.player_decoding_error_change_audio))
+                        Text(
+                            text = stringResource(R.string.player_decoding_error_change_audio),
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 } else {
                     Button(onClick = onDismiss) {
-                        Text(text = stringResource(R.string.player_decoding_error_close))
+                        Text(
+                            text = stringResource(R.string.player_decoding_error_close),
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
             }
@@ -473,6 +502,19 @@ private fun PlaybackErrorDialogMobileLightPreview() {
         PlaybackErrorDialogMobileCard(
             error = PlaybackDecodingError(isAudioError = false, codecSummary = "HEVC / H.265 10-bit"),
             onDismiss = {}
+        )
+    }
+}
+
+@Preview(name = "Mobile Foldable Narrow - Playback Decoding Error", widthDp = 320)
+@Composable
+private fun PlaybackErrorDialogMobileFoldableNarrowPreview() {
+    LaTorrentolaTheme(themeMode = PreferenceManager.THEME_DARK) {
+        PlaybackErrorDialogMobileCard(
+            error = PlaybackDecodingError(isAudioError = true, codecSummary = "DTS-HD", isDtsHdError = true),
+            onDismiss = {},
+            onChangeAudioTrack = {},
+            onEnableDtsHdLpcm = {}
         )
     }
 }
