@@ -7,10 +7,12 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
-import com.martinrevert.latorrentola.utils.AppLogger
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.google.firebase.installations.FirebaseInstallations
+import com.google.firebase.installations.FirebaseInstallationsException
 import com.google.firebase.messaging.FirebaseMessaging
+import com.martinrevert.latorrentola.utils.AppLogger
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -83,40 +85,61 @@ class FirebaseMessagingInitializer @Inject constructor(
      * @param shouldSubscribe `true` to join the topic, `false` to leave it.
      */
     fun syncTopicSubscription(shouldSubscribe: Boolean) {
+        val messaging = try {
+            FirebaseMessaging.getInstance()
+        } catch (e: Exception) {
+            Log.w(TAG, "FirebaseMessaging is not initialized or available", e)
+            return
+        }
+
         if (shouldSubscribe) {
-            FirebaseMessaging.getInstance().subscribeToTopic(FirebaseMessagingConfig.TOPIC_ALL)
+            messaging.subscribeToTopic(FirebaseMessagingConfig.TOPIC_ALL)
                 .addOnCompleteListener { task ->
                     if (task.isSuccessful) {
                         preferenceManager.setFcmTopicSubscribed(true)
                         Log.d(TAG, "Subscribed to topic '${FirebaseMessagingConfig.TOPIC_ALL}'")
                         syncWithBackend(true)
                     } else {
-                        Log.w(TAG, "Topic subscription failed", task.exception)
-                        // Even if topic fails, try backend sync to maintain consistency
-                        syncWithBackend(true)
+                        val isFisError = handleFirebaseInstallationsError(task.exception)
+                        Log.w(TAG, "Topic subscription failed: ${task.exception?.message}", task.exception)
+                        // If subscription failed due to FIS auth token error, skip immediate backend sync to prevent duplicate failing FIS requests
+                        if (!isFisError) {
+                            syncWithBackend(true)
+                        }
                     }
                 }
             return
         }
 
-        FirebaseMessaging.getInstance().unsubscribeFromTopic(FirebaseMessagingConfig.TOPIC_ALL)
+        messaging.unsubscribeFromTopic(FirebaseMessagingConfig.TOPIC_ALL)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     preferenceManager.setFcmTopicSubscribed(false)
                     Log.d(TAG, "Unsubscribed from topic '${FirebaseMessagingConfig.TOPIC_ALL}'")
                     syncWithBackend(false)
                 } else {
-                    Log.w(TAG, "Topic unsubscription failed", task.exception)
-                    syncWithBackend(false)
+                    val isFisError = handleFirebaseInstallationsError(task.exception)
+                    Log.w(TAG, "Topic unsubscription failed: ${task.exception?.message}", task.exception)
+                    if (!isFisError) {
+                        syncWithBackend(false)
+                    }
                 }
             }
     }
 
     /** Synchronizes the current FCM token with the backend after topic processing. */
     private fun syncWithBackend(shouldSubscribe: Boolean) {
-        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+        val messaging = try {
+            FirebaseMessaging.getInstance()
+        } catch (e: Exception) {
+            Log.w(TAG, "FirebaseMessaging is not initialized or available for backend sync", e)
+            return
+        }
+
+        messaging.token.addOnCompleteListener { task ->
             if (!task.isSuccessful) {
-                Log.w(TAG, "FCM token fetch failed for backend sync", task.exception)
+                handleFirebaseInstallationsError(task.exception)
+                Log.w(TAG, "FCM token fetch failed for backend sync: ${task.exception?.message}", task.exception)
                 return@addOnCompleteListener
             }
 
@@ -137,13 +160,9 @@ class FirebaseMessagingInitializer @Inject constructor(
                             AppLogger.e(TAG, "Max retries reached. Disabling push notifications.")
                             preferenceManager.setPushEnabled(false)
                             preferenceManager.setFcmRetryCount(0)
-                            // We don't call syncTopicSubscription(false) here to avoid loops, 
-                            // but the user will see it disabled in UI.
                         }
                     }
                 } else {
-                    // On unsubscription we don't necessarily need retries as much, 
-                    // but we clear synced flag if it failed.
                     if (success) {
                         preferenceManager.setFcmTokenSynced(false)
                         preferenceManager.setFcmRetryCount(0)
@@ -151,6 +170,45 @@ class FirebaseMessagingInitializer @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * Detects Firebase Installations Service (FIS) authentication errors, logs diagnostic instructions,
+     * and attempts to reset stale local installation ID instances.
+     *
+     * @return `true` if an FIS authentication or installations error was identified.
+     */
+    private fun handleFirebaseInstallationsError(exception: Exception?): Boolean {
+        if (exception == null) return false
+        val message = exception.message ?: ""
+        val cause = exception.cause
+        val causeMessage = cause?.message ?: ""
+
+        val isFisError = exception is FirebaseInstallationsException ||
+                cause is FirebaseInstallationsException ||
+                message.contains("FIS", ignoreCase = true) ||
+                message.contains("FirebaseInstallations", ignoreCase = true) ||
+                message.contains("API_KEY_ANDROID_APP_BLOCKED", ignoreCase = true) ||
+                causeMessage.contains("FIS", ignoreCase = true) ||
+                causeMessage.contains("API_KEY_ANDROID_APP_BLOCKED", ignoreCase = true)
+
+        if (isFisError) {
+            AppLogger.w(
+                TAG,
+                "FIS auth token failure detected (API_KEY_ANDROID_APP_BLOCKED / PERMISSION_DENIED). " +
+                        "In Google Cloud Console, allow 'com.martinrevert.latorrentola.debug' and its SHA-1 under API Key restrictions for 'firebaseinstallations.googleapis.com'."
+            )
+            try {
+                FirebaseInstallations.getInstance().delete().addOnCompleteListener { task ->
+                    if (!task.isSuccessful) {
+                        Log.w(TAG, "Asynchronous FirebaseInstallations reset failed: ${task.exception?.message}", task.exception)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to reset stale FirebaseInstallations instance", e)
+            }
+        }
+        return isFisError
     }
 
     /** Checks app preference and platform permission state before allowing notifications. */

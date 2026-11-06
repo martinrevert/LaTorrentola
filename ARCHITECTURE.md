@@ -318,6 +318,14 @@ The repository uses Git Submodules to manage native external libraries and AI Ag
 * **Unit Tests (`app/src/test/`)**: Mirror the application package structure. Powered by **JUnit4**, **MockK**, **Turbine** (for Kotlin Flow state verification), and **Google Truth**.
 * **Zero APK Building Mandate for AI Agents**: In development and CI environments, running `testDebugUnitTest` is the mandatory verification step to confirm zero regressions across ViewModels, Repositories, and Utility classes.
 
+### 3.5 Build Variants & Package ID Co-existence (Debug vs Release)
+* **Application Package Separation**:
+  * **Release**: `com.martinrevert.latorrentola` (Launcher title: `La Torrentola`)
+  * **Debug**: `com.martinrevert.latorrentola.debug` (Launcher title: `Debug`) via `applicationIdSuffix ".debug"` in `app/build.gradle`.
+* **Co-existence**: Both Release and Debug variants can be installed and operated simultaneously on the exact same Android device without package conflicts.
+* **Firebase & Google Services Configuration**: `app/google-services.json` contains entries for both `com.martinrevert.latorrentola` and `com.martinrevert.latorrentola.debug` so Google Auth and Firebase Messaging function seamlessly in both build types.
+* **Variant-Specific Resources**: Debug icon label is customized via `app/src/debug/res/values/strings.xml` and `values-es/strings.xml` (`app_name = "Debug"`).
+
 ---
 
 ## 4. UI Architecture & Surface Design

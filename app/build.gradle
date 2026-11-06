@@ -217,6 +217,7 @@ android {
 
     buildTypes {
         debug {
+            applicationIdSuffix ".debug"
             versionNameSuffix = "-${safeBranch}-debug"
             enableUnitTestCoverage = true
             signingConfig = signingConfigs.debug
