@@ -38,7 +38,11 @@ class PublicTrackersRepository @Inject constructor(
         if (!cached.isNullOrBlank()) {
             val list = cached.lines()
                 .map { it.trim() }
-                .filter { it.startsWith("udp://", ignoreCase = true) || it.startsWith("http://", ignoreCase = true) }
+                .filter {
+                    it.startsWith("udp://", ignoreCase = true) ||
+                        it.startsWith("http://", ignoreCase = true) ||
+                        it.startsWith("https://", ignoreCase = true)
+                }
             if (list.size >= MIN_VALID_TRACKERS) {
                 activeTrackers = list
             }

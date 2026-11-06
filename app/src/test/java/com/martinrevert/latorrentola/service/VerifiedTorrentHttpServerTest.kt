@@ -150,4 +150,12 @@ class VerifiedTorrentHttpServerTest {
             server.stop()
         }
     }
+
+    @Test
+    fun `verified chunk constants allow fast 256KB minimum reads and 1MB opportunistic extension`() {
+        assertThat(VerifiedTorrentHttpServer.MIN_VERIFIED_READ_BYTES).isEqualTo(256L * 1024L)
+        assertThat(VerifiedTorrentHttpServer.VERIFIED_CHUNK_BYTES).isEqualTo(1024L * 1024L)
+        assertThat(VerifiedTorrentHttpServer.VERIFIED_CHUNK_BYTES)
+            .isGreaterThan(VerifiedTorrentHttpServer.MIN_VERIFIED_READ_BYTES)
+    }
 }

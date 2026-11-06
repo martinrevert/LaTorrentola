@@ -238,7 +238,7 @@ class VerifiedTorrentHttpServer(
             TAG,
             "Streaming GET $uri -> range $start-$end / $expectedLength (MIME: $httpMimeType, file: ${activeFile.name})"
         )
-        val body = VerifiedRangeInputStream(activeFile, start, end, ::awaitVerified)
+        val body = VerifiedRangeInputStream(activeFile, start, end, ::awaitVerified, isRangeVerified)
         val response = newFixedLengthResponse(status, httpMimeType, body, length)
         response.addHeader("Accept-Ranges", "bytes")
         response.addHeader("Content-Length", length.toString())
@@ -343,30 +343,42 @@ class VerifiedTorrentHttpServer(
 
     /**
      * Streams only bounded chunks after their backing torrent pieces have been hash-verified.
-     * Uses RandomAccessFile to seek to arbitrary offsets without allocating or skipping intermediate bytes.
+     * Uses RandomAccessFile to seek to arbitrary offsets without allocating or skipping intermediate bytes,
+     * and tracks the file pointer (`rafPosition`) to avoid redundant `lseek64` syscalls during sequential streaming.
      *
      * @param file Backing media file on disk.
      * @param start Inclusive absolute offset of the HTTP range.
      * @param end Inclusive absolute offset of the HTTP range.
      * @param waitForRangeVerified Waits until complete torrent pieces cover a byte interval.
+     * @param isRangeImmediatelyVerified Non-blocking check used to opportunistically extend the verified window.
      */
     private class VerifiedRangeInputStream(
         private val file: File,
         private val start: Long,
         private val end: Long,
-        private val waitForRangeVerified: (Long, Long) -> Boolean
+        private val waitForRangeVerified: (Long, Long) -> Boolean,
+        private val isRangeImmediatelyVerified: (Long, Long) -> Boolean
     ) : InputStream() {
         private var currentOffset = start
         private var verifiedThrough = start - 1L
         private var raf: RandomAccessFile? = null
+        private var rafPosition: Long = -1L
 
         private fun getOrOpenRaf(): RandomAccessFile {
             var r = raf
             if (r == null) {
                 r = RandomAccessFile(file, "r")
                 raf = r
+                rafPosition = 0L
             }
             return r
+        }
+
+        private fun seekIfNeeded(r: RandomAccessFile, targetOffset: Long) {
+            if (rafPosition != targetOffset) {
+                r.seek(targetOffset)
+                rafPosition = targetOffset
+            }
         }
 
         /** Reads one byte after verifying the bounded piece range containing it. */
@@ -374,7 +386,7 @@ class VerifiedTorrentHttpServer(
             if (currentOffset > end) return -1
             ensureVerified()
             var r = getOrOpenRaf()
-            r.seek(currentOffset)
+            seekIfNeeded(r, currentOffset)
             var value = r.read()
             if (value < 0 && currentOffset <= end) {
                 for (retry in 1..10) {
@@ -382,14 +394,21 @@ class VerifiedTorrentHttpServer(
                     if (retry == 5) {
                         try { raf?.close() } catch (_: Exception) {}
                         raf = null
+                        rafPosition = -1L
                     }
                     r = getOrOpenRaf()
                     r.seek(currentOffset)
+                    rafPosition = currentOffset
                     value = r.read()
                     if (value >= 0) break
                 }
             }
-            if (value >= 0) currentOffset++
+            if (value >= 0) {
+                currentOffset++
+                rafPosition = currentOffset
+            } else {
+                rafPosition = -1L
+            }
             return value
         }
 
@@ -403,7 +422,7 @@ class VerifiedTorrentHttpServer(
                 end - currentOffset + 1L
             ).toInt()
             var r = getOrOpenRaf()
-            r.seek(currentOffset)
+            seekIfNeeded(r, currentOffset)
             var count = r.read(buffer, offset, safeLength)
             if (count < 0 && currentOffset <= end) {
                 for (retry in 1..10) {
@@ -411,30 +430,46 @@ class VerifiedTorrentHttpServer(
                     if (retry == 5) {
                         try { raf?.close() } catch (_: Exception) {}
                         raf = null
+                        rafPosition = -1L
                     }
                     r = getOrOpenRaf()
                     r.seek(currentOffset)
+                    rafPosition = currentOffset
                     count = r.read(buffer, offset, safeLength)
                     if (count > 0) break
                 }
             }
-            if (count > 0) currentOffset += count
+            if (count > 0) {
+                currentOffset += count
+                rafPosition = currentOffset
+            } else {
+                rafPosition = -1L
+            }
             return count
         }
 
-        /** Waits for the next bounded byte interval before exposing it to the socket. */
+        /**
+         * Waits for the minimum bounded byte interval (`MIN_VERIFIED_READ_BYTES`) before exposing it to the socket,
+         * then opportunistically extends `verifiedThrough` up to `VERIFIED_CHUNK_BYTES` if already verified in memory.
+         */
         private fun ensureVerified() {
             if (currentOffset <= verifiedThrough) return
-            val nextChunkEnd =
-                minOf(end, currentOffset + VerifiedTorrentHttpServer.VERIFIED_CHUNK_BYTES - 1L)
-            if (!waitForRangeVerified(currentOffset, nextChunkEnd)) {
+            val minChunkEnd =
+                minOf(end, currentOffset + VerifiedTorrentHttpServer.MIN_VERIFIED_READ_BYTES - 1L)
+            if (!waitForRangeVerified(currentOffset, minChunkEnd)) {
                 Log.w(
                     TAG,
-                    "Range $currentOffset-$nextChunkEnd not verified within timeout (${RANGE_WAIT_TIMEOUT_MS}ms). Closing stream chunk; client will retry."
+                    "Range $currentOffset-$minChunkEnd not verified within timeout (${RANGE_WAIT_TIMEOUT_MS}ms). Closing stream chunk; client will retry."
                 )
                 throw IOException("Torrent pieces did not verify before the stream timed out")
             }
-            verifiedThrough = nextChunkEnd
+            var verifiedEnd = minChunkEnd
+            val maxChunkEnd =
+                minOf(end, currentOffset + VerifiedTorrentHttpServer.VERIFIED_CHUNK_BYTES - 1L)
+            if (maxChunkEnd > minChunkEnd && isRangeImmediatelyVerified(minChunkEnd + 1L, maxChunkEnd)) {
+                verifiedEnd = maxChunkEnd
+            }
+            verifiedThrough = verifiedEnd
         }
 
         override fun close() {
@@ -442,6 +477,7 @@ class VerifiedTorrentHttpServer(
                 raf?.close()
             } catch (_: Exception) {}
             raf = null
+            rafPosition = -1L
         }
     }
 
@@ -454,8 +490,11 @@ class VerifiedTorrentHttpServer(
         /** Maximum timeout in ms to wait for a requested piece range to verify before failing. */
         const val RANGE_WAIT_TIMEOUT_MS = 30_000L
 
-        /** Maximum byte interval verified before the response stream advances. */
-        const val VERIFIED_CHUNK_BYTES = 256L * 1024L
+        /** Minimum byte interval required to unblock a stream read immediately. */
+        const val MIN_VERIFIED_READ_BYTES = 256L * 1024L
+
+        /** Maximum opportunistic byte interval verified in a single pass before re-checking. */
+        const val VERIFIED_CHUNK_BYTES = 1024L * 1024L
 
         fun getLanIpAddress(): String? {
             return try {

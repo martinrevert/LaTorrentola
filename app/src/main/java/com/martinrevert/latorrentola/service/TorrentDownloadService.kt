@@ -1015,7 +1015,11 @@ class TorrentDownloadService : Service() {
         }
 
         val isTv = isTvDevice()
-        val sessionParams = TorrentSessionConfig.buildSessionParams(isTv = isTv)
+        val sessionStateFile = TorrentSessionConfig.resolveSessionStateFile(filesDir)
+        val sessionParams = TorrentSessionConfig.buildSessionParams(
+            isTv = isTv,
+            sessionStateFile = sessionStateFile
+        )
         val manager = SessionManager()
         var pieceTracker: VerifiedPieceTracker? = null
         var piecePlanner: StreamingPiecePlanner? = null
@@ -1054,6 +1058,13 @@ class TorrentDownloadService : Service() {
         synchronized(sessionLock) {
             sessionManager = manager
             manager.start(sessionParams)
+            // CRITICAL: SessionManager.start(SessionParams) internally resets alert_mask to all_categories.
+            // Re-apply our Scudo-safe alert mask and unthrottled upload settings immediately.
+            TorrentSessionConfig.applyRuntimeOptimizations(
+                manager = manager,
+                isPlaybackActive = false,
+                isTv = isTv
+            )
             manager.download(
                 effectiveMagnetUri,
                 downloadDirectory,
@@ -1131,53 +1142,67 @@ class TorrentDownloadService : Service() {
                                             )
                                         }
 
+                                        // Unset global SEQUENTIAL_DOWNLOAD now that metadata is resolved so pieces
+                                        // outside our sliding sequential window use rarest-first swarm optimization.
+                                        try {
+                                            handle.unsetFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
+                                        } catch (_: Throwable) {}
+
                                         val resumePiece = planner.calculateResumePiece(request.resumePositionMs, request.durationMs)
                                         val startupBytes = planner.startupBufferBytes
+                                        val startupLookahead = (planner.startupPieceEnd - target.firstPiece).coerceAtLeast(0)
                                         val initialPlan = planner.planForRange(
                                             requestedStart = 0L,
                                             requestedEnd = minOf(target.length - 1, startupBytes),
-                                            tracker = tracker
+                                            tracker = tracker,
+                                            lookaheadPieces = startupLookahead
                                         )
 
-                                        // 1. Immediately prioritize startup head pieces WITH tight deadlines
+                                        // 1. Immediately prioritize startup head pieces with staggered staircase deadlines
                                         for (p in initialPlan.piecesToPrioritize) {
-                                            handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                            try { handle.setPieceDeadline(p, 150) } catch (_: Exception) {}
+                                            val priority = initialPlan.piecePriorities[p] ?: Priority.TOP_PRIORITY
+                                            val deadline = initialPlan.deadlines[p] ?: StreamingPiecePlanner.IMMEDIATE_DEADLINE_MS
+                                            handle.piecePriority(p, priority)
+                                            try { handle.setPieceDeadline(p, deadline) } catch (_: Exception) {}
                                         }
 
-                                        // 2. Immediately prioritize container tail pieces (MKV Cues / MP4 moov) WITH tight deadlines
+                                        // 2. Immediately prioritize initial 1 MB container tail probe (MKV Cues / MP4 moov)
                                         val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
                                             target.file.extension.equals("webm", ignoreCase = true) ||
                                             target.file.extension.equals("mp4", ignoreCase = true)
                                         if (isIndexedContainer) {
-                                            val tailBytes = planner.tailBytes
-                                            val tailPieceStart = ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
-                                            for (p in tailPieceStart..target.lastPiece) {
+                                            var tailRank = 0
+                                            for (p in planner.initialTailPieceStart..target.lastPiece) {
                                                 if (!tracker.isPieceVerified(p)) {
                                                     handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                                    try { handle.setPieceDeadline(p, 150) } catch (_: Exception) {}
+                                                    val deadline = minOf(StreamingPiecePlanner.IMMEDIATE_DEADLINE_MS + (tailRank * 75), 900)
+                                                    try { handle.setPieceDeadline(p, deadline) } catch (_: Exception) {}
+                                                    tailRank++
                                                 }
                                             }
                                         }
 
                                         // 3. Immediately prioritize resume pieces if starting mid-video
                                         if (resumePiece > target.firstPiece) {
-                                            for (p in resumePiece..minOf(resumePiece + 3, target.lastPiece)) {
+                                            var resumeRank = 0
+                                            for (p in resumePiece..minOf(resumePiece + 2, target.lastPiece)) {
                                                 if (!tracker.isPieceVerified(p)) {
                                                     handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                                    try { handle.setPieceDeadline(p, 150) } catch (_: Exception) {}
+                                                    val deadline = StreamingPiecePlanner.IMMEDIATE_DEADLINE_MS + (resumeRank * 50)
+                                                    try { handle.setPieceDeadline(p, deadline) } catch (_: Exception) {}
+                                                    resumeRank++
                                                 }
                                             }
                                         }
 
-                                        // 4. Bound initial sequential download range strictly to the first 32 pieces during buffering
-                                        // so that connected peers do NOT scatter bandwidth to the end of the movie!
-                                        val initialSeqEnd = if (resumePiece > target.firstPiece) {
-                                            minOf(resumePiece + 32, target.lastPiece)
-                                        } else {
-                                            minOf(target.firstPiece + 32, target.lastPiece)
-                                        }
-                                        handle.setSequentialRange(resumePiece, initialSeqEnd)
+                                        // 4. Bound initial sequential download range strictly to the active window during buffering
+                                        // while peers beyond the window contribute via rarest-first.
+                                        val initialSeqStart = if (resumePiece > target.firstPiece) resumePiece else target.firstPiece
+                                        val initialSeqEnd = minOf(
+                                            initialSeqStart + StreamingPiecePlanner.SEQUENTIAL_WINDOW_PIECES,
+                                            target.lastPiece
+                                        )
+                                        handle.setSequentialRange(initialSeqStart, initialSeqEnd)
                                     }
                                 }
                             }
@@ -1200,36 +1225,44 @@ class TorrentDownloadService : Service() {
                                 synchronized(sessionLock) {
                                     if (sessionManager === manager && handle.isValid) {
                                         val startupBytes = planner.startupBufferBytes
+                                        val startupLookahead = (planner.startupPieceEnd - target.firstPiece).coerceAtLeast(0)
                                         val initialPlan = planner.planForRange(
                                             requestedStart = 0L,
                                             requestedEnd = minOf(target.length - 1, startupBytes),
-                                            tracker = tracker
+                                            tracker = tracker,
+                                            lookaheadPieces = startupLookahead
                                         )
                                         for (p in initialPlan.piecesToPrioritize) {
-                                            handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                            try { handle.setPieceDeadline(p, 150) } catch (_: Exception) {}
+                                            val priority = initialPlan.piecePriorities[p] ?: Priority.TOP_PRIORITY
+                                            val deadline = initialPlan.deadlines[p] ?: StreamingPiecePlanner.IMMEDIATE_DEADLINE_MS
+                                            handle.piecePriority(p, priority)
+                                            try { handle.setPieceDeadline(p, deadline) } catch (_: Exception) {}
                                         }
 
                                         val isIndexedContainer = target.file.extension.equals("mkv", ignoreCase = true) ||
                                             target.file.extension.equals("webm", ignoreCase = true) ||
                                             target.file.extension.equals("mp4", ignoreCase = true)
                                         if (isIndexedContainer) {
-                                            val tailBytes = planner.tailBytes
-                                            val tailPieceStart = ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
-                                            for (p in tailPieceStart..target.lastPiece) {
+                                            var tailRank = 0
+                                            for (p in planner.initialTailPieceStart..target.lastPiece) {
                                                 if (!tracker.isPieceVerified(p)) {
                                                     handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                                    try { handle.setPieceDeadline(p, 150) } catch (_: Exception) {}
+                                                    val deadline = minOf(StreamingPiecePlanner.IMMEDIATE_DEADLINE_MS + (tailRank * 75), 900)
+                                                    try { handle.setPieceDeadline(p, deadline) } catch (_: Exception) {}
+                                                    tailRank++
                                                 }
                                             }
                                         }
 
                                         val resumeP = planner.calculateResumePiece(request.resumePositionMs, request.durationMs)
                                         if (resumeP > target.firstPiece) {
-                                            for (p in resumeP..minOf(resumeP + 3, target.lastPiece)) {
+                                            var resumeRank = 0
+                                            for (p in resumeP..minOf(resumeP + 2, target.lastPiece)) {
                                                 if (!tracker.isPieceVerified(p)) {
                                                     handle.piecePriority(p, Priority.TOP_PRIORITY)
-                                                    try { handle.setPieceDeadline(p, 150) } catch (_: Exception) {}
+                                                    val deadline = StreamingPiecePlanner.IMMEDIATE_DEADLINE_MS + (resumeRank * 50)
+                                                    try { handle.setPieceDeadline(p, deadline) } catch (_: Exception) {}
+                                                    resumeRank++
                                                 }
                                             }
                                         }
@@ -1243,7 +1276,7 @@ class TorrentDownloadService : Service() {
                         if (sessionManager === manager && handle.isValid) handle.status() else null
                     }
                     if (status == null) {
-                        delay(500L)
+                        delay(200L)
                         continue
                     }
                     val progress = (status.progress() * 100).toInt().coerceIn(0, 100)
@@ -1289,43 +1322,30 @@ class TorrentDownloadService : Service() {
                             target.file.extension.equals("webm", ignoreCase = true) ||
                             target.file.extension.equals("mp4", ignoreCase = true)
                         val tailBytes = if (isIndexedContainer) {
-                            piecePlanner?.tailBytes ?: StreamingPiecePlanner.calculateTailBytes(target.length, true)
+                            piecePlanner?.initialTailBytes ?: StreamingPiecePlanner.calculateInitialTailBytes(target.length)
                         } else {
                             0L
                         }
                         val tailPieceStart = if (isIndexedContainer && tailBytes > 0L) {
-                            ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
+                            piecePlanner?.initialTailPieceStart
+                                ?: ((target.fileOffset + maxOf(0L, target.length - tailBytes)) / target.pieceLength).toInt().coerceIn(target.firstPiece, target.lastPiece)
                         } else {
                             target.lastPiece + 1
                         }
                         val resumePiece = piecePlanner?.calculateResumePiece(request.resumePositionMs, request.durationMs) ?: target.firstPiece
                         val resumePiecesEnd = if (resumePiece > target.firstPiece) minOf(resumePiece + 3, target.lastPiece + 1) else resumePiece
 
-                        var totalRequiredPieces = 0
-                        var verifiedRequiredPieces = 0
-
-                        for (p in target.firstPiece..headPieces) {
-                            totalRequiredPieces++
-                            if (tracker.isPieceVerified(p)) {
-                                verifiedRequiredPieces++
+                        val requiredPieces = buildSet {
+                            addAll(target.firstPiece..headPieces)
+                            if (tailPieceStart <= target.lastPiece) {
+                                addAll(tailPieceStart..target.lastPiece)
+                            }
+                            if (resumePiecesEnd > resumePiece) {
+                                addAll(resumePiece until resumePiecesEnd)
                             }
                         }
-                        if (tailPieceStart <= target.lastPiece) {
-                            for (p in tailPieceStart..target.lastPiece) {
-                                totalRequiredPieces++
-                                if (tracker.isPieceVerified(p)) {
-                                    verifiedRequiredPieces++
-                                }
-                            }
-                        }
-                        if (resumePiecesEnd > resumePiece) {
-                            for (p in resumePiece until resumePiecesEnd) {
-                                totalRequiredPieces++
-                                if (tracker.isPieceVerified(p)) {
-                                    verifiedRequiredPieces++
-                                }
-                            }
-                        }
+                        val totalRequiredPieces = requiredPieces.size
+                        val verifiedRequiredPieces = requiredPieces.count { tracker.isPieceVerified(it) }
 
                         if (totalRequiredPieces > 0) {
                             0.15f + 0.85f * (verifiedRequiredPieces.toFloat() / totalRequiredPieces.toFloat()).coerceIn(0f, 1f)
@@ -1359,7 +1379,7 @@ class TorrentDownloadService : Service() {
                             target.file.extension.equals("webm", ignoreCase = true) ||
                             target.file.extension.equals("mp4", ignoreCase = true)
                         val tailBytes = if (isIndexedContainer) {
-                            piecePlanner?.tailBytes ?: StreamingPiecePlanner.calculateTailBytes(target.length, true)
+                            piecePlanner?.initialTailBytes ?: StreamingPiecePlanner.calculateInitialTailBytes(target.length)
                         } else {
                             0L
                         }
@@ -1392,52 +1412,64 @@ class TorrentDownloadService : Service() {
                             accessToken = infoHash,
                             onRangeRequested = { start, end ->
                                 if (!completed.get()) {
-                                    val plan = piecePlanner?.planForRange(
-                                        requestedStart = start,
-                                        requestedEnd = end,
-                                        tracker = tracker
-                                    )
-                                    if (plan != null) {
-                                        val windowStart = plan.sequentialRangeStart
+                                    val planner = piecePlanner
+                                    if (planner != null) {
                                         val nowMs = System.currentTimeMillis()
+                                        val currentPiece = ((target.fileOffset + start) / target.pieceLength).toInt()
+                                            .coerceIn(target.firstPiece, target.lastPiece)
+                                        val isTail = planner.isTailProbe(start, end)
+                                        val isUnverified = !tracker.isRangeVerified(start, end)
 
-                                        val (shouldUpdate, isSeek, windowRange) = synchronized(priorityLock) {
-                                            val isSeek = plan.isSeekJump
+                                        val updateAction = synchronized(priorityLock) {
                                             val isFirst = lastPrioritizedWindowStart == -1
-                                            val windowMovedFar = lastPrioritizedWindowStart != -1 && (windowStart - lastPrioritizedWindowStart) >= 4
-                                            val timeElapsed = nowMs - lastPriorityUpdateTimeMs >= 1500L
+                                            val delta = if (isFirst) 0 else currentPiece - lastPrioritizedWindowStart
+                                            val isSeek = !isFirst && !isTail && (delta < 0 || delta > StreamingPiecePlanner.SEEK_JUMP_THRESHOLD_PIECES)
+                                            val windowMovedFar = !isFirst && !isTail && delta >= 2
+                                            val timeElapsed = nowMs - lastPriorityUpdateTimeMs >= 750L
 
-                                            if (isSeek || isFirst || (windowMovedFar && timeElapsed)) {
+                                            if (isSeek || isFirst || isTail || isUnverified || (windowMovedFar && timeElapsed)) {
+                                                val plan = planner.planForRange(
+                                                    requestedStart = start,
+                                                    requestedEnd = end,
+                                                    tracker = tracker
+                                                )
                                                 val oldStart = lastPrioritizedWindowStart
                                                 val oldEnd = lastPrioritizedWindowEnd
-                                                lastPrioritizedWindowStart = windowStart
-                                                lastPrioritizedWindowEnd = windowStart + 32
-                                                lastPriorityUpdateTimeMs = nowMs
-                                                Triple(true, isSeek, oldStart to oldEnd)
+                                                if (!plan.isTailProbe) {
+                                                    lastPrioritizedWindowStart = plan.sequentialRangeStart
+                                                    lastPrioritizedWindowEnd = plan.sequentialRangeEnd
+                                                    lastPriorityUpdateTimeMs = nowMs
+                                                }
+                                                Pair(plan, oldStart to oldEnd)
                                             } else {
-                                                Triple(false, false, -1 to -1)
+                                                null
                                             }
                                         }
 
-                                        if (shouldUpdate) {
+                                        if (updateAction != null) {
+                                            val (plan, windowRange) = updateAction
                                             val (oldWindowStart, oldWindowEnd) = windowRange
+                                            val newPrioritizedSet = plan.piecesToPrioritize.toHashSet()
 
                                             synchronized(sessionLock) {
                                                 if (sessionManager === manager && handle.isValid) {
                                                     try {
-                                                        if (isSeek) {
-                                                            if (oldWindowStart != -1) {
-                                                                // Only reset deadlines on the previously prioritized window, NOT all pieces
-                                                                for (p in oldWindowStart..minOf(oldWindowEnd, target.lastPiece)) {
+                                                        if (!plan.isTailProbe && oldWindowStart != -1 && oldWindowStart != plan.sequentialRangeStart) {
+                                                            for (p in oldWindowStart..minOf(oldWindowEnd, target.lastPiece)) {
+                                                                if (p !in newPrioritizedSet && !tracker.isPieceVerified(p)) {
                                                                     try { handle.resetPieceDeadline(p) } catch (_: Throwable) {}
+                                                                    try { handle.piecePriority(p, Priority.DEFAULT) } catch (_: Throwable) {}
                                                                 }
                                                             }
+                                                        }
+                                                        if (!plan.isTailProbe) {
                                                             try {
-                                                                handle.setSequentialRange(plan.sequentialRangeStart, target.lastPiece)
+                                                                handle.setSequentialRange(plan.sequentialRangeStart, plan.sequentialRangeEnd)
                                                             } catch (_: Throwable) {}
                                                         }
                                                         for (p in plan.piecesToPrioritize) {
-                                                            try { handle.piecePriority(p, Priority.TOP_PRIORITY) } catch (_: Throwable) {}
+                                                            val priority = plan.piecePriorities[p] ?: Priority.TOP_PRIORITY
+                                                            try { handle.piecePriority(p, priority) } catch (_: Throwable) {}
                                                             val deadline = plan.deadlines[p] ?: 1000
                                                             try {
                                                                 handle.setPieceDeadline(p, deadline)
@@ -1456,17 +1488,22 @@ class TorrentDownloadService : Service() {
                                 if (completed.get()) {
                                     true
                                 } else {
-                                    val bitfield = synchronized(sessionLock) {
-                                        if (sessionManager === manager && handle.isValid) {
-                                            try {
-                                                handle.status(TorrentHandle.QUERY_PIECES)?.pieces()
-                                            } catch (_: Throwable) {
-                                                null
-                                            }
-                                        } else null
-                                    }
+                                    var cachedBitfield: PieceIndexBitfield? = null
+                                    var bitfieldQueried = false
                                     tracker.isRangeVerified(start, end) { p ->
-                                        bitfield.hasPiece(p)
+                                        if (!bitfieldQueried) {
+                                            bitfieldQueried = true
+                                            cachedBitfield = synchronized(sessionLock) {
+                                                if (sessionManager === manager && handle.isValid) {
+                                                    try {
+                                                        handle.status(TorrentHandle.QUERY_PIECES)?.pieces()
+                                                    } catch (_: Throwable) {
+                                                        null
+                                                    }
+                                                } else null
+                                            }
+                                        }
+                                        cachedBitfield.hasPiece(p)
                                     }
                                 }
                             },
@@ -1508,12 +1545,14 @@ class TorrentDownloadService : Service() {
                         streamServers[infoHash]?.stop()
                         streamServers[infoHash] = server
 
-                        // Now that initial buffer is verified and ready, unlock sequential download across the entire media file
+                        // Now that initial buffer is verified and ready, advance the sliding sequential window
+                        // while leaving pieces beyond the window to rarest-first swarm optimization.
                         synchronized(sessionLock) {
                             if (sessionManager === manager && handle.isValid) {
                                 val resumePiece = piecePlanner?.calculateResumePiece(request.resumePositionMs, request.durationMs) ?: target.firstPiece
+                                val seqEnd = minOf(resumePiece + StreamingPiecePlanner.SEQUENTIAL_WINDOW_PIECES, target.lastPiece)
                                 try {
-                                    handle.setSequentialRange(resumePiece, target.lastPiece)
+                                    handle.setSequentialRange(resumePiece, seqEnd)
                                 } catch (_: Throwable) {}
                             }
                         }
@@ -1608,7 +1647,7 @@ class TorrentDownloadService : Service() {
                         return
                     }
                 }
-                val pollDelay = if (!readyNotified) 500L else 1000L
+                val pollDelay = if (!readyNotified) 200L else 1000L
                 val step = 100L
                 var elapsed = 0L
                 while (elapsed < pollDelay) {
@@ -1820,7 +1859,7 @@ class TorrentDownloadService : Service() {
         }
     }
 
-    /** Stops and clears the active native session without racing service teardown. */
+    /** Stops and clears the active native session without racing service teardown, persisting warm DHT state. */
     private suspend fun stopSessionManager() {
         withContext(Dispatchers.IO) {
             val manager = synchronized(sessionLock) {
@@ -1828,6 +1867,14 @@ class TorrentDownloadService : Service() {
                 sessionManager = null
                 m
             } ?: return@withContext
+            try {
+                TorrentSessionConfig.saveSessionState(
+                    manager = manager,
+                    sessionStateFile = TorrentSessionConfig.resolveSessionStateFile(filesDir)
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Error saving SessionManager state", e)
+            }
             try {
                 manager.stop()
             } catch (e: Exception) {
@@ -1906,6 +1953,14 @@ class TorrentDownloadService : Service() {
             sessionManager = null
             m
         } ?: return
+        try {
+            TorrentSessionConfig.saveSessionState(
+                manager = manager,
+                sessionStateFile = TorrentSessionConfig.resolveSessionStateFile(filesDir)
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Error saving SessionManager state during destroy", e)
+        }
         try {
             manager.stop()
         } catch (e: Exception) {

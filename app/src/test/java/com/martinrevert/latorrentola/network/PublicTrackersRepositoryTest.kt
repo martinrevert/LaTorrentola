@@ -150,4 +150,23 @@ class PublicTrackersRepositoryTest {
         assertThat(refreshed).isFalse()
         assertThat(PublicTrackersRepository.getActiveTrackers()).contains("udp://tracker.opentrackr.org:1337/announce")
     }
+
+    @Test
+    fun `loadCachedTrackers retains https trackers from SharedPreferences`() {
+        val cachedList = """
+            udp://tracker.one:1337/announce
+            https://tracker.secure.two:443/announce
+            http://tracker.three:80/announce
+            https://tracker.secure.four:443/announce
+            udp://tracker.five:6969/announce
+        """.trimIndent()
+        every { sharedPreferences.getString("cached_trackers", null) } returns cachedList
+
+        PublicTrackersRepository(context, okHttpClient)
+
+        val active = PublicTrackersRepository.getActiveTrackers()
+        assertThat(active).contains("https://tracker.secure.two:443/announce")
+        assertThat(active).contains("https://tracker.secure.four:443/announce")
+        assertThat(active).hasSize(5)
+    }
 }

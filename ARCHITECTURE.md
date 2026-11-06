@@ -385,12 +385,20 @@ if (context.isTvDevice()) {
 * Supports sorting by popularity, release date, and user ratings with seamless navigation directly to movie or TV detail screens.
 
 ### 5.3 In-App Torrent Streaming & Verified HTTP Server
-The application features a robust in-app streaming pipeline that eliminates the need for full pre-downloads:
-1. `TorrentDownloadService` starts a foreground service managing a native `libtorrent4j` session.
-2. `StreamingPiecePlanner` prioritizes sequential pieces: the first 2% of the file (container header, index, and metadata) and the current playback head are requested with top priority.
-3. `VerifiedPieceTracker` listens to libtorrent piece-finished events and validates piece hashes, querying `TorrentStatus.pieces()` bitfield in memory to avoid native C++ IPC thread stalls.
-4. `VerifiedTorrentHttpServer` (embedded NanoHTTPD) serves HTTP range requests (`206 Partial Content`). **Crucial Guardrail**: A byte range is ONLY served once every overlapping torrent piece has passed its cryptographic SHA-1 hash check. Unverified ranges are held until verified, preventing player decoder corruption.
-5. `PublicTrackersRepository` dynamically fetches live public tracker lists from GitHub (`ngosang/trackerslist`) to maximize DHT peer discovery.
+The application features a high-throughput, hybrid sequential + rarest-first in-app streaming pipeline that eliminates the need for full pre-downloads while maximizing swarm bandwidth:
+1. **`TorrentDownloadService` & `TorrentSessionConfig`**:
+   * Manages a native `libtorrent4j` session restored from and saved to a warm persisted DHT/session state file (`libtorrent_session_state.dat`) for near-instant peer discovery across restarts.
+   * Immediately invokes `TorrentSessionConfig.applyRuntimeOptimizations` after `manager.start(sessionParams)` to override `libtorrent4j`'s internal `alert.all_categories` reset with a Scudo-safe alert mask (`status_notification | piece_progress_notification | error_notification | storage_notification`), eliminating JNI alert floods from 16 KB block notifications while keeping `hashing_threads = 1` and `aio_threads = 2`.
+   * Tunes `SettingsPack` for high-BDP Wi-Fi/broadband streaming: parallel multi-tracker announces (`announce_to_all_tiers = true`, `announce_to_all_trackers = true`), TCP preference in mixed-mode congestion control (`bandwidth_mixed_algo_t.prefer_tcp`), deep block request queues (`max_out_request_queue = 1500`), anti-head-of-line-blocking timeouts (`request_timeout = 10s`, `piece_timeout = 10s`, `prioritize_partial_pieces = true`), and expanded 1 MB send buffer watermarks.
+2. **Hybrid Sliding-Window Piece Planner (`StreamingPiecePlanner`)**:
+   * Once torrent metadata resolves, global `TorrentFlags.SEQUENTIAL_DOWNLOAD` is unset and replaced with a bounded 48-piece sliding sequential window (`setSequentialRange(windowStart, windowEnd)`) ahead of the active playhead. Pieces outside the immediate window remain governed by `libtorrent`'s native rarest-first picker so peers with later pieces contribute full aggregate bandwidth and unchoke reciprocity.
+   * Assigns staggered staircase deadlines (`150ms` -> `3000ms`) and tiered priorities (`Priority.TOP_PRIORITY` for the first 4 critical head pieces, `Priority.SIX` for lookahead) to prevent piece-picker deadline starvation.
+   * Uses a fast 1 MB initial container tail probe (`INITIAL_TAIL_PROBE_BYTES`) before launching the player to minimize Time-To-First-Frame (TTFF) on 4K remuxes, fetching any additional MKV `Cues` or MP4 `moov` index pieces on-demand when requested by ExoPlayer or Cast.
+3. **`VerifiedPieceTracker`**: Listens to `PieceFinishedAlert` events (`piece_progress_notification`) and validates piece hashes in memory, querying `TorrentHandle.QUERY_PIECES` bitfields with bounds-safe `hasPiece(p)` checks to avoid native C++ IPC thread stalls.
+4. **`VerifiedTorrentHttpServer` (Embedded NanoHTTPD)**:
+   * Serves HTTP byte-range requests (`206 Partial Content`) only after every overlapping torrent piece passes its cryptographic SHA-1 hash check.
+   * Unblocks socket reads as soon as `MIN_VERIFIED_READ_BYTES` (256 KB) is verified, opportunistically extending the verified read horizon up to `VERIFIED_CHUNK_BYTES` (1 MB) when pieces are already verified in memory, and tracks the `RandomAccessFile` file pointer (`rafPosition`) to eliminate redundant `lseek64` syscalls during sequential streaming.
+5. **`PublicTrackersRepository`**: Dynamically fetches and caches live public tracker lists (`udp://`, `http://`, and `https://`) from GitHub (`ngosang/trackerslist`) to maximize peer discovery alongside DHT, PEX, and LSD.
 
 ### 5.4 High-Performance Network Storage (SMB & NFS)
 Direct playback of high-bitrate 1080p and 4K media from local home servers without local file copying:
