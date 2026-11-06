@@ -276,15 +276,29 @@ object TorrentCardActionHandler {
                 )
 
                 val readyIntent = TorrentDownloadService.getReadyPlayerIntent(releaseHash)
-                val completedFile = download?.mediaPath?.let(::File)?.takeIf { it.isFile && it.canRead() }
+                val completedFile = download?.takeIf { it.state == TorrentDownloadService.STATE_COMPLETED }
+                    ?.mediaPath?.let(::File)?.takeIf { it.isFile && it.canRead() }
 
                 if (isCurrentPlayerItem) {
                     mediaController?.play()
                     if (!LocalPlayerActivity.isPlayerForeground) {
+                        val activeStreamUrl = curMedia?.localConfiguration?.uri?.toString()
+                            ?: curMedia?.mediaMetadata?.extras?.getString(LocalPlayerActivity.EXTRA_STREAM_URL)
+                        val isPartial = curMedia?.mediaMetadata?.extras?.getBoolean(
+                            LocalPlayerActivity.EXTRA_PARTIAL_TORRENT_STREAM,
+                            false
+                        ) == true || (activeStreamUrl?.startsWith("http://127.0.0.1", ignoreCase = true) == true)
                         val launchIntent = Intent(context, LocalPlayerActivity::class.java).apply {
+                            putExtra(LocalPlayerActivity.EXTRA_FROM_PIP, true)
                             putExtra(LocalPlayerActivity.EXTRA_INFO_HASH, releaseHash)
                             putExtra(LocalPlayerActivity.EXTRA_TITLE, releaseTitle)
                             putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, posterUrl)
+                            if (!activeStreamUrl.isNullOrBlank()) {
+                                putExtra(LocalPlayerActivity.EXTRA_STREAM_URL, activeStreamUrl)
+                            }
+                            if (isPartial) {
+                                putExtra(LocalPlayerActivity.EXTRA_PARTIAL_TORRENT_STREAM, true)
+                            }
                             if (seriesId > 0) putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, seriesId)
                             if (seriesId > 0 && seasonNumber >= 0) putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, seasonNumber)
                             if (episodeNumber > 0) putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, episodeNumber)

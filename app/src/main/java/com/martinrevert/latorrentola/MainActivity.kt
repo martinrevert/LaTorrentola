@@ -23,7 +23,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentSanitizer
 import androidx.media3.session.MediaController
-import androidx.media3.session.SessionToken
 import com.martinrevert.latorrentola.utils.MediaControllerHelper
 import com.google.common.util.concurrent.ListenableFuture
 import com.martinrevert.latorrentola.network.FirebaseMessagingConfig
@@ -109,11 +108,14 @@ class MainActivity : FragmentActivity() {
                         streamControllerFuture = controllerFuture
                         controllerFuture.addListener({
                             try {
+                                if (isFinishing || isDestroyed) return@addListener
                                 val controller = controllerFuture.get()
-                                val mediaItem = PlayerIntentUtils.buildMediaItem(intent)
-                                controller.setMediaItem(mediaItem)
-                                controller.prepare()
-                                controller.play()
+                                if (!LocalPlayerActivity.isPlayerActivityForeground()) {
+                                    val mediaItem = PlayerIntentUtils.buildMediaItem(intent)
+                                    controller.setMediaItem(mediaItem)
+                                    controller.prepare()
+                                    controller.play()
+                                }
                             } catch (_: Exception) {}
                         }, ContextCompat.getMainExecutor(this@MainActivity))
                     }

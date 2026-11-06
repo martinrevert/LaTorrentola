@@ -502,4 +502,48 @@ class TorrentCardActionHandlerTest {
             unmockkConstructor(Intent::class)
         }
     }
+
+    @Test
+    fun `performCardClick in PLAY_MEDIA dispatches ACTION_PLAY_STREAM instead of opening sparse file directly when download is STATE_READY`() {
+        TorrentCardActionHandler.resetDebounceForTesting()
+        val tempFile = File.createTempFile("sparse_partial_", ".mkv").apply {
+            writeBytes(byteArrayOf(0, 0, 0, 0))
+            deleteOnExit()
+        }
+        mockkConstructor(Intent::class)
+        try {
+            val context = mockk<Context>(relaxed = true)
+            val readyDownloadWithFile = createDownload(
+                infoHash = "hash_ready_sparse",
+                title = "Stranger Things S01E01",
+                state = TorrentDownloadService.STATE_READY,
+                progressPercent = 18,
+                mediaPath = tempFile.absolutePath
+            )
+
+            val started = TorrentCardActionHandler.performCardClick(
+                context = context,
+                releaseHash = "hash_ready_sparse",
+                releaseTitle = "Stranger Things S01E01",
+                releaseMagnetUri = "magnet:?xt=urn:btih:hash_ready_sparse",
+                releaseSizeBytes = 1_500_000_000L,
+                download = readyDownloadWithFile,
+                activeBuffer = null,
+                mediaController = null,
+                isTv = false,
+                torrentHandlingMode = TorrentHandlingMode.LOCAL_PLAYBACK,
+                seriesId = 66732,
+                seasonNumber = 1,
+                episodeNumber = 1,
+                imdbId = "tt4574334"
+            )
+
+            assertThat(started).isTrue()
+            verify(exactly = 1) { context.startService(any()) }
+            verify(exactly = 0) { context.startActivity(any()) }
+        } finally {
+            unmockkConstructor(Intent::class)
+            tempFile.delete()
+        }
+    }
 }

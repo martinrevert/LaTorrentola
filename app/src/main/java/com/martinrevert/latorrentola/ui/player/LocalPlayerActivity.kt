@@ -457,6 +457,7 @@ class LocalPlayerActivity : FragmentActivity() {
     private var lastKnownPlaybackPositionMs = 0L
     private var lastStreamRecoveryAttemptMillis = 0L
     private var localStreamRecoveryAttempts = 0
+    private var hasClearedVideoSurfaceForExit = false
 
     private fun buildEnrichedMediaMetadata(
         title: String,
@@ -511,6 +512,11 @@ class LocalPlayerActivity : FragmentActivity() {
 
         val itemBundle = Bundle().apply {
             putBoolean(PlaybackService.EXTRA_IS_EPISODE, isEpisode)
+            val isLoopbackStream = localStreamUrl.startsWith("http://127.0.0.1", ignoreCase = true) ||
+                localStreamUrl.startsWith("http://localhost", ignoreCase = true)
+            if (intent.getBooleanExtra(EXTRA_PARTIAL_TORRENT_STREAM, false) || (isLoopbackStream && file != null)) {
+                putBoolean(EXTRA_PARTIAL_TORRENT_STREAM, true)
+            }
             if (castStreamUrl.isNotBlank()) {
                 putString(PlaybackService.EXTRA_CAST_URL, castStreamUrl)
             }
@@ -574,7 +580,18 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     private fun refreshMediaItem(mediaUri: Uri?, file: File?) {
-        val updatedItem = buildPendingMediaItem(mediaUri, file) ?: return
+        val activeControllerUri = mediaController?.currentMediaItem?.localConfiguration?.uri
+        val effectiveUri = if (
+            (intent.getBooleanExtra(EXTRA_FROM_PIP, false) ||
+                activeControllerUri?.toString()?.startsWith("http://127.0.0.1", ignoreCase = true) == true ||
+                activeControllerUri?.toString()?.startsWith("http://localhost", ignoreCase = true) == true) &&
+            activeControllerUri != null
+        ) {
+            activeControllerUri
+        } else {
+            mediaUri
+        }
+        val updatedItem = buildPendingMediaItem(effectiveUri, file) ?: return
         val oldMediaId = currentMediaItem?.mediaId ?: pendingMediaItem?.mediaId
         pendingMediaItem = updatedItem
         currentMediaItem = updatedItem
@@ -582,7 +599,10 @@ class LocalPlayerActivity : FragmentActivity() {
             if (controller.currentMediaItem?.mediaId == oldMediaId || controller.currentMediaItem == null) {
                 val idx = controller.currentMediaItemIndex
                 if (idx >= 0 && controller.mediaItemCount > idx) {
-                    controller.replaceMediaItem(idx, updatedItem)
+                    val currentUri = controller.currentMediaItem?.localConfiguration?.uri
+                    if (currentUri == null || currentUri == updatedItem.localConfiguration?.uri) {
+                        controller.replaceMediaItem(idx, updatedItem)
+                    }
                 }
             }
         }
@@ -590,6 +610,7 @@ class LocalPlayerActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        hasClearedVideoSurfaceForExit = false
         activeActivityRef = java.lang.ref.WeakReference(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, android.R.anim.fade_in, android.R.anim.fade_out)
@@ -1151,6 +1172,7 @@ class LocalPlayerActivity : FragmentActivity() {
             return
         }
         isDeletingMedia = false
+        hasClearedVideoSurfaceForExit = false
         setIntent(intent)
         metadataRecoveryJob?.cancel()
         metadataRecoveryJob = null
@@ -1184,8 +1206,13 @@ class LocalPlayerActivity : FragmentActivity() {
         localStreamUrl = intent.getStringExtra(EXTRA_STREAM_URL).orEmpty()
         castStreamUrl = intent.getStringExtra(EXTRA_CAST_URL).orEmpty()
         val file = intent.getStringExtra(EXTRA_FILE_PATH)?.let(::File)
-        val isPartialStream = intent.getBooleanExtra(EXTRA_PARTIAL_TORRENT_STREAM, false)
-        val mediaUri = if (file != null && file.isFile && file.canRead() && !isPartialStream) {
+        val isLoopbackStream = localStreamUrl.startsWith("http://127.0.0.1", ignoreCase = true) ||
+            localStreamUrl.startsWith("http://localhost", ignoreCase = true)
+        val isPartialStream = intent.getBooleanExtra(EXTRA_PARTIAL_TORRENT_STREAM, false) ||
+            (isLoopbackStream && file != null)
+        val mediaUri = if (isPartialStream && localStreamUrl.isNotBlank()) {
+            Uri.parse(localStreamUrl)
+        } else if (file != null && file.isFile && file.canRead() && !isPartialStream) {
             Uri.fromFile(file)
         } else {
             localStreamUrl.takeIf(String::isNotBlank)?.let(Uri::parse)
@@ -1196,7 +1223,7 @@ class LocalPlayerActivity : FragmentActivity() {
 
         var remoteServerConfigToStart: com.martinrevert.latorrentola.service.storage.remote.RemoteServerConfig? = null
         var remoteFileItemToStart: com.martinrevert.latorrentola.service.storage.remote.RemoteFileItem? = null
-        if (castStreamUrl.isBlank() && file != null && file.isFile && file.canRead()) {
+        if (castStreamUrl.isBlank() && file != null && file.isFile && file.canRead() && !isPartialStream) {
             try {
                 val server = VerifiedTorrentHttpServer(file, file.length()) { _, _ -> true }
                 server.startServer()
@@ -1750,6 +1777,14 @@ class LocalPlayerActivity : FragmentActivity() {
 
                     val itemBundle = Bundle().apply {
                         putBoolean(PlaybackService.EXTRA_IS_EPISODE, resolved.isEpisode)
+                        val isLoopbackStream = localStreamUrl.startsWith("http://127.0.0.1", ignoreCase = true) ||
+                            localStreamUrl.startsWith("http://localhost", ignoreCase = true)
+                        val wasPartial = intent.getBooleanExtra(EXTRA_PARTIAL_TORRENT_STREAM, false) ||
+                            itemToConfigure.mediaMetadata.extras?.getBoolean(EXTRA_PARTIAL_TORRENT_STREAM, false) == true ||
+                            isLoopbackStream
+                        if (wasPartial) {
+                            putBoolean(EXTRA_PARTIAL_TORRENT_STREAM, true)
+                        }
                         if (castStreamUrl.isNotBlank()) {
                             putString(PlaybackService.EXTRA_CAST_URL, castStreamUrl)
                         }
@@ -1776,6 +1811,9 @@ class LocalPlayerActivity : FragmentActivity() {
                         }
                         if (resolved.episodeNumber > 0) {
                             putInt(EXTRA_EPISODE_NUMBER, resolved.episodeNumber)
+                        }
+                        if (!currentImdbId.isNullOrBlank()) {
+                            putString(EXTRA_IMDB_ID, currentImdbId)
                         }
                         val nextEpInfo = intent.getStringArrayListExtra(EXTRA_NEXT_EPISODE_INFO)
                             ?: itemToConfigure.mediaMetadata.extras?.getStringArrayList(EXTRA_NEXT_EPISODE_INFO)
@@ -3127,11 +3165,13 @@ class LocalPlayerActivity : FragmentActivity() {
 
     override fun onStart() {
         super.onStart()
+        hasClearedVideoSurfaceForExit = false
         isPlayerForeground = true
     }
 
     override fun onResume() {
         super.onResume()
+        hasClearedVideoSurfaceForExit = false
         isPlayerForeground = true
         if (isTvDevice()) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -3145,15 +3185,23 @@ class LocalPlayerActivity : FragmentActivity() {
         super.onPause()
     }
 
-    override fun onStop() {
+    private fun releaseVideoSurfaceForPipHandoff() {
+        if (!hasClearedVideoSurfaceForExit) {
+            hasClearedVideoSurfaceForExit = true
+            mediaController?.clearVideoSurface()
+            pipSurfaceHandoffTick++
+        }
         isPlayerForeground = false
+    }
+
+    override fun onStop() {
         if (shouldPauseOnTvExit(isTvDevice())) {
             try {
                 mediaController?.pause()
             } catch (_: Exception) {}
         }
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        mediaController?.clearVideoSurface()
+        releaseVideoSurfaceForPipHandoff()
         dtsHdStallWatchdogJob = cancelDtsHdStallWatchdog(dtsHdStallWatchdogJob)
         saveCurrentProgress(mediaController)
         super.onStop()
@@ -3489,9 +3537,8 @@ class LocalPlayerActivity : FragmentActivity() {
         mediaControllerListener = null
         playbackCompletionListener?.let { mediaController?.removeListener(it) }
         playbackCompletionListener = null
-        isPlayerForeground = false
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        mediaController?.clearVideoSurface()
+        releaseVideoSurfaceForPipHandoff()
         progressTickerJob?.cancel()
         progressTickerJob = null
         dtsHdStallWatchdogJob = cancelDtsHdStallWatchdog(dtsHdStallWatchdogJob)
@@ -3511,14 +3558,13 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     override fun finish() {
-        isPlayerForeground = false
         if (shouldPauseOnTvExit(isTvDevice())) {
             try {
                 mediaController?.pause()
             } catch (_: Exception) {}
         }
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        mediaController?.clearVideoSurface()
+        releaseVideoSurfaceForPipHandoff()
         if (activeActivityRef?.get() == this) {
             activeActivityRef = null
         }
@@ -3586,6 +3632,9 @@ class LocalPlayerActivity : FragmentActivity() {
         }
 
         var isPlayerForeground by mutableStateOf(false)
+            internal set
+
+        var pipSurfaceHandoffTick by mutableIntStateOf(0)
             internal set
 
         private var activeActivityRef: java.lang.ref.WeakReference<LocalPlayerActivity>? = null

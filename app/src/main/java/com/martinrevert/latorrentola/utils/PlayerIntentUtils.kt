@@ -25,8 +25,13 @@ object PlayerIntentUtils {
         val streamUrl = intent.getStringExtra(LocalPlayerActivity.EXTRA_STREAM_URL).orEmpty()
         val filePath = intent.getStringExtra(LocalPlayerActivity.EXTRA_FILE_PATH)
         val file = filePath?.let(::File)
-        val isPartialStream = intent.getBooleanExtra(LocalPlayerActivity.EXTRA_PARTIAL_TORRENT_STREAM, false)
-        val mediaUri = if (file != null && file.isFile && file.canRead() && !isPartialStream) {
+        val isLoopbackStream = streamUrl.startsWith("http://127.0.0.1", ignoreCase = true) ||
+            streamUrl.startsWith("http://localhost", ignoreCase = true)
+        val isPartialStream = intent.getBooleanExtra(LocalPlayerActivity.EXTRA_PARTIAL_TORRENT_STREAM, false) ||
+            (isLoopbackStream && !filePath.isNullOrBlank())
+        val mediaUri = if (isPartialStream && streamUrl.isNotBlank()) {
+            Uri.parse(streamUrl)
+        } else if (file != null && file.isFile && file.canRead() && !isPartialStream) {
             Uri.fromFile(file)
         } else {
             streamUrl.takeIf(String::isNotBlank)?.let(Uri::parse)
@@ -61,6 +66,9 @@ object PlayerIntentUtils {
 
         val itemBundle = Bundle().apply {
             putBoolean(PlaybackService.EXTRA_IS_EPISODE, isEpisode)
+            if (isPartialStream) {
+                putBoolean(LocalPlayerActivity.EXTRA_PARTIAL_TORRENT_STREAM, true)
+            }
             val castUrl = intent.getStringExtra(LocalPlayerActivity.EXTRA_CAST_URL)
             if (!castUrl.isNullOrBlank()) {
                 putString(PlaybackService.EXTRA_CAST_URL, castUrl)

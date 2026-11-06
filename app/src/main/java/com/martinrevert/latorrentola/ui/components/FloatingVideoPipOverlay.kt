@@ -2,7 +2,6 @@
 
 package com.martinrevert.latorrentola.ui.components
 
-import android.content.ComponentName
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -14,7 +13,6 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -63,9 +61,7 @@ import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
-import androidx.media3.session.SessionToken
 import com.martinrevert.latorrentola.utils.MediaControllerHelper
-import android.graphics.SurfaceTexture
 import android.view.TextureView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.mediarouter.media.MediaRouteSelector
@@ -158,6 +154,7 @@ fun FloatingVideoPipOverlay(
 
     // Should the PIP be displayed?
     val isPlayerForeground = LocalPlayerActivity.isPlayerForeground
+    val handoffTick = LocalPlayerActivity.pipSurfaceHandoffTick
     val shouldShow = !isCasting &&
         !isPlayerForeground &&
         currentItem != null &&
@@ -183,10 +180,17 @@ fun FloatingVideoPipOverlay(
     var offsetY by remember { mutableFloatStateOf(0f) }
 
     var isExpanding by remember { mutableStateOf(false) }
+    var activeTextureView by remember { mutableStateOf<TextureView?>(null) }
 
-    LaunchedEffect(isPlayerForeground) {
+    LaunchedEffect(isPlayerForeground, handoffTick, controller) {
         if (!isPlayerForeground) {
             isExpanding = false
+            activeTextureView?.let { view ->
+                if (view.isAvailable) {
+                    controller.clearVideoTextureView(view)
+                }
+                controller.setVideoTextureView(view)
+            }
         }
     }
 
@@ -203,6 +207,7 @@ fun FloatingVideoPipOverlay(
 
     val expandToFullScreen: () -> Unit = {
         isExpanding = true
+        activeTextureView?.surfaceTextureListener = null
         val item = currentItem
         val intent = Intent(context, LocalPlayerActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
@@ -212,12 +217,22 @@ fun FloatingVideoPipOverlay(
                 putExtra(LocalPlayerActivity.EXTRA_TITLE, item.mediaMetadata.title?.toString())
                 putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, item.mediaMetadata.artworkUri?.toString())
                 putExtra(LocalPlayerActivity.EXTRA_MEDIA_ID, item.mediaId)
+                val activeUriStr = item.localConfiguration?.uri?.toString().orEmpty()
+                val isLoopbackUri = activeUriStr.startsWith("http://127.0.0.1", ignoreCase = true) ||
+                    activeUriStr.startsWith("http://localhost", ignoreCase = true)
                 item.mediaMetadata.extras?.let { extras ->
                     extras.getString(LocalPlayerActivity.EXTRA_STREAM_URL)?.takeIf(String::isNotBlank)?.let {
                         putExtra(LocalPlayerActivity.EXTRA_STREAM_URL, it)
                     }
+                    extras.getString(PlaybackService.EXTRA_CAST_URL)?.takeIf(String::isNotBlank)?.let {
+                        putExtra(LocalPlayerActivity.EXTRA_CAST_URL, it)
+                    }
                     extras.getString(LocalPlayerActivity.EXTRA_FILE_PATH)?.takeIf(String::isNotBlank)?.let {
                         putExtra(LocalPlayerActivity.EXTRA_FILE_PATH, it)
+                    }
+                    val partialExtra = extras.getBoolean(LocalPlayerActivity.EXTRA_PARTIAL_TORRENT_STREAM, false)
+                    if (partialExtra || isLoopbackUri) {
+                        putExtra(LocalPlayerActivity.EXTRA_PARTIAL_TORRENT_STREAM, true)
                     }
                     extras.getString(LocalPlayerActivity.EXTRA_INFO_HASH)?.takeIf(String::isNotBlank)?.let {
                         putExtra(LocalPlayerActivity.EXTRA_INFO_HASH, it)
@@ -230,12 +245,21 @@ fun FloatingVideoPipOverlay(
                     if (sNum > 0) putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, sNum)
                     val eNum = extras.getInt(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, 0)
                     if (eNum > 0) putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, eNum)
+                    extras.getString(LocalPlayerActivity.EXTRA_IMDB_ID)?.takeIf(String::isNotBlank)?.let {
+                        putExtra(LocalPlayerActivity.EXTRA_IMDB_ID, it)
+                    }
+                    extras.getStringArrayList(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO)?.takeIf { it.isNotEmpty() }?.let {
+                        putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, it)
+                    }
                     extras.getString(LocalPlayerActivity.EXTRA_MIME_TYPE)?.takeIf(String::isNotBlank)?.let {
                         putExtra(LocalPlayerActivity.EXTRA_MIME_TYPE, it)
                     }
                 }
-                item.localConfiguration?.uri?.toString()?.takeIf(String::isNotBlank)?.let {
-                    putExtra(LocalPlayerActivity.EXTRA_STREAM_URL, it)
+                if (activeUriStr.isNotBlank()) {
+                    putExtra(LocalPlayerActivity.EXTRA_STREAM_URL, activeUriStr)
+                    if (isLoopbackUri) {
+                        putExtra(LocalPlayerActivity.EXTRA_PARTIAL_TORRENT_STREAM, true)
+                    }
                 }
                 item.localConfiguration?.mimeType?.takeIf(String::isNotBlank)?.let {
                     putExtra(LocalPlayerActivity.EXTRA_MIME_TYPE, it)
@@ -281,39 +305,31 @@ fun FloatingVideoPipOverlay(
                     .fillMaxSize()
                     .clip(RoundedCornerShape(12.dp))
             ) {
-                // Video rendering surface via TextureView
+                // Video rendering surface via TextureView managed directly by MediaController
                 AndroidView(
                     factory = { ctx ->
-                        TextureView(ctx).apply {
-                            surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-                                override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
-                                    if (!isExpanding && !isPlayerForeground) {
-                                        controller.setVideoTextureView(this@apply)
-                                    }
-                                }
-                                override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
-                                override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
-                                    if (!isExpanding && !isPlayerForeground) {
-                                        controller.clearVideoTextureView(this@apply)
-                                    }
-                                    return true
-                                }
-                                override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
-                            }
-                            if (isAvailable && !isExpanding && !isPlayerForeground) {
-                                controller.setVideoTextureView(this)
-                            }
-                        }
-                    },
-                    update = { textureView ->
-                        if (!isExpanding && !isPlayerForeground) {
-                            if (textureView.isAvailable) {
+                        TextureView(ctx).also { textureView ->
+                            activeTextureView = textureView
+                            if (!isExpanding && !LocalPlayerActivity.isPlayerForeground) {
+                                controller.clearVideoTextureView(textureView)
                                 controller.setVideoTextureView(textureView)
                             }
                         }
                     },
+                    update = { textureView ->
+                        activeTextureView = textureView
+                        if (!isExpanding && !LocalPlayerActivity.isPlayerForeground) {
+                            controller.setVideoTextureView(textureView)
+                        }
+                    },
                     onRelease = { textureView ->
-                        if (!isPlayerForeground) {
+                        if (activeTextureView === textureView) {
+                            activeTextureView = null
+                        }
+                        if (isExpanding || LocalPlayerActivity.isPlayerForeground) {
+                            // Detach listener without sending a null surface IPC that would clobber fullscreen LocalPlayerActivity
+                            textureView.surfaceTextureListener = null
+                        } else {
                             controller.clearVideoTextureView(textureView)
                         }
                     },

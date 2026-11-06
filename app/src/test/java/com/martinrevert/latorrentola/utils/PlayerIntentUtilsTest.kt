@@ -172,4 +172,29 @@ class PlayerIntentUtilsTest {
         assertEquals("tt11280740_s1_e1", mediaItem.mediaId)
         assertNotNull(mediaItem.mediaMetadata.extras)
     }
+
+    @Test
+    fun `buildMediaItem prioritizes HTTP streamUrl over existing local file when partial torrent stream is active`() {
+        val tempFile = File.createTempFile("partial_torrent_", ".mkv").apply {
+            writeBytes(byteArrayOf(0, 0, 0, 0))
+            deleteOnExit()
+        }
+        try {
+            val intent = mockk<Intent>(relaxed = true)
+            every { intent.getStringExtra(LocalPlayerActivity.EXTRA_STREAM_URL) } returns "http://127.0.0.1:42100/Stranger%20Things.mkv"
+            every { intent.getStringExtra(LocalPlayerActivity.EXTRA_FILE_PATH) } returns tempFile.absolutePath
+            every { intent.getBooleanExtra(LocalPlayerActivity.EXTRA_PARTIAL_TORRENT_STREAM, false) } returns false
+            every { intent.getStringExtra(LocalPlayerActivity.EXTRA_TITLE) } returns "Stranger Things S01E01"
+            every { intent.getIntExtra(LocalPlayerActivity.EXTRA_SERIES_ID, 0) } returns 66732
+            every { intent.getIntExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, 0) } returns 1
+            every { intent.getIntExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, 0) } returns 1
+            every { intent.getStringExtra(LocalPlayerActivity.EXTRA_IMDB_ID) } returns "tt4574334"
+
+            val mediaItem = PlayerIntentUtils.buildMediaItem(intent)
+
+            assertEquals("http://127.0.0.1:42100/Stranger%20Things.mkv", mediaItem.localConfiguration?.uri?.toString())
+        } finally {
+            tempFile.delete()
+        }
+    }
 }
