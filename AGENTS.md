@@ -124,11 +124,22 @@ Whenever a regression, bug, edge-case failure, race condition, build error, or a
 
 ## 🚫 6. ZERO TOLERANCE CONSTRAINTS (DO NOT VIOLATE)
 
-### A. Theming & Hardcoded Values
-- **NEVER** use explicit colors (e.g., `Color.Black`, `Color(0xFF...)`).
-- **ALWAYS** extract colors from `MaterialTheme.colorScheme` (Mobile) or `TvMaterialTheme.colorScheme` (TV).
-- **EXCEPCIÓN EXPLÍCITA DE COLOR (BARRAS Y SCRUBBERS DE PROGRESO DE HISTORIAL)**: Las barras y líneas de progreso de la historia de reproducción (`watch progress` en pósters de películas, fichas de episodios, miniaturas de catálogo, indicadores de salto rápido `quickSeek`), y los scrubbers/sliders de línea de tiempo de los reproductores (`WatchProgressSlider`, `Slider` en `PlayerControlsOverlay` y `RemoteCastCanvas`) DEBEN ser rojas (estándar de la industria / rojo streaming: `Color(0xFFE50914)`). Esta es una excepción formal y mandatoria para respetar el estándar visual de plataformas de streaming.
-- **NEVER** hardcode strings. **ALWAYS** use the `UiText` wrapper or `strings.xml`.
+### A. Material Design 3 (M3) & Material 3 Expressive (M3E) UI Mandate
+- **ABSOLUTE ZERO-TOLERANCE FOR MATERIAL 2 (M2)** 
+ - ❌ **STRICTLY FORBIDDEN IMPORTS**: Never import `androidx.compose.material.*` (Legacy Compose M2). 
+ - ❌ **BANNED M2 COMPONENTS/TOKENS**: `BottomNavigation`, `BottomNavigationItem`, `FlatButton`, `ModalDrawerLayout`, `MaterialTheme.colors`, `ContentAlpha`, `LocalContentAlpha`. 
+ - ✅ **MANDATORY M3 IMPORTS**: Always use `androidx.compose.material3.*` for Handheld UI and `androidx.tv.material3.*` for TV UI.
+- **THEMING & COLOR SCHEME**
+ - ALWAYS extract colors from `MaterialTheme.colorScheme` (Mobile) or `TvMaterialTheme.colorScheme` (TV). 
+ - **EXCEPCIÓN EXPLÍCITA DE COLOR (STREAMING RED)**: Las barras/líneas de progreso de historia de reproducción y scrubbers/sliders de línea de tiempo DEBEN ser rojas: `Color(0xFFE50914)`. Esta es la única excepción formal autorizada a los tokens de color dinámicos de M3. 
+ - NEVER hardcode strings. ALWAYS use the `UiText` wrapper or `strings.xml`. 
+- **PROACTIVE MATERIAL 3 EXPRESSIVE (M3E) RECOMMENDATIONS (HANDHELD ONLY)**:
+ When refactoring or creating Handheld Compose UI (`!context.isTvDevice()`), proactively suggest and apply M3 Expressive tactics: 
+ - **Hero Moments & High-Impact Actions**: Suggest `SplitButton`, `FABMenu`, or `FloatingToolbar` for quick actions.
+ - **Dynamic Shapes & Morphing**: Suggest M3E expanded shapes (35 new geometric shapes) and shape-morphing transitions for selected/active states. 
+ - **Spring Physics Motion**: Prefer spring-based motion (`spring()`) over fixed linear durations for fluid gesture-driven UI. 
+ - **Containment & High-Contrast Hierarchy**: Group related content inside explicit rounded containers (`surfaceContainer`) to eliminate click uncertainty and improve scanning speed. 
+ - **PROHIBITION FOR TV**: DO NOT apply touch-centric M3 Expressive floating toolbars or gesture springs to Android TV layouts (`isTvDevice() == true`), as they break D-pad focus routing.
 
 ### B. TV & UI Branching and Theme Mode Propagation (STRICT MANDATE)
 - **MANDATORY THEME MODE PROPAGATION**: Every Compose entry point (`setContent`), `Dialog`, `BottomSheet`, `@Preview`, or isolated Window MUST explicitly resolve and pass `themeMode` from `PreferenceManager` to BOTH theme wrappers:
@@ -487,7 +498,7 @@ To eliminate runaway cloud billing, prevent broken season completion counters, a
 Before marking a task complete, verify:
 1. [ ] Did I ask the user if this applies to Mobile, TV, or both? (If ambiguous).
 2. [ ] Are Unit Tests written, updated, and passing?
-3. [ ] Are there ZERO hardcoded colors, strings, or dimensions?
+3. [ ] Are there ZERO hardcoded colors (except `Color(0xFFE50914)` on progress bars/scrubbers), strings, or dimensions?
 4. [ ] Is TypeSafe serialization fully intact (both annotations present)?
 5. [ ] Is TV logic securely sandboxed behind `isTvDevice()`?
 6. [ ] Did I pass `themeMode` from `PreferenceManager` to `TvLaTorrentolaTheme(themeMode = ...)` and `LaTorrentolaTheme(themeMode = ...)` in every Dialog, BottomSheet, and Compose entry point to prevent Dark Mode regressions on Android TV?
@@ -516,3 +527,6 @@ Before marking a task complete, verify:
 29. [ ] Did I verify that constrained foldable handheld screens (< 360dp) use `FlowRow` for metadata badges and action buttons, decouple action buttons below poster rows, use adaptive padding, enforce `softWrap = false` on badge chips, and maintain 100% data and feature parity without clipping or vertical letter breakage?
 30. [ ] If modifying `PlayerControlsOverlay`, did I keep portrait handheld controls anchored to the video frame (top bar with Back + visible title + ≤ 3 actions, overflow sheet for the rest, timestamps/fullscreen/scrubber on the video's bottom edge) while leaving TV and landscape layouts and D-pad focus untouched?
 31. [ ] Did I ensure `AuthViewModel.savedAccounts` initializes with `null` so `LoginScreenContent` never flashes `WelcomeLoginBody` before `ProfileSelectorBody`, `AppNavigation` starts at `Route.Login` on cold start, and handheld profile selection always requires `BiometricAuthHelper.authenticate` when biometrics are available?
+32. [ ] Did I verify that NO `androidx.compose.material.*` (M2) imports were introduced?
+33. [ ] Are all mobile components using `androidx.compose.material3.*` and TV components using `androidx.tv.material3.*`? 
+34. [ ] For Handheld UI, did I evaluate if an M3 Expressive tactic (e.g., spring motion, shape morphing, or expressive containers) elevates the experience?
