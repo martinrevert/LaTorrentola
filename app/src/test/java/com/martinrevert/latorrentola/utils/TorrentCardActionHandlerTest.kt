@@ -1,6 +1,7 @@
 package com.martinrevert.latorrentola.utils
 
 import android.content.Context
+import android.content.Intent
 import androidx.media3.common.MediaItem
 import androidx.media3.session.MediaController
 import com.google.common.truth.Truth.assertThat
@@ -8,12 +9,16 @@ import com.martinrevert.latorrentola.model.torrent.TorrentDownload
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.service.TorrentBufferState
 import com.martinrevert.latorrentola.service.TorrentDownloadService
+import com.martinrevert.latorrentola.ui.player.LocalPlayerActivity
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkConstructor
 import io.mockk.mockkObject
+import io.mockk.unmockkConstructor
 import io.mockk.unmockkObject
 import io.mockk.verify
 import org.junit.Test
+import java.io.File
 
 class TorrentCardActionHandlerTest {
 
@@ -371,6 +376,130 @@ class TorrentCardActionHandlerTest {
             verify(exactly = 2) { context.startService(any()) }
         } finally {
             unmockkObject(TorrentLaunchHelper)
+        }
+    }
+
+    @Test
+    fun `performCardClick in PLAY_MEDIA launches LocalPlayerActivity with extras on both handheld and TV`() {
+        val tempFile = File.createTempFile("torrent_test_", ".mp4").apply {
+            writeBytes(byteArrayOf(1, 2, 3, 4))
+            deleteOnExit()
+        }
+        mockkConstructor(Intent::class)
+        try {
+            val nextEpisodeInfo = arrayListOf("1399", "Game of Thrones", "1", "3")
+            every {
+                anyConstructed<Intent>().putStringArrayListExtra(
+                    LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO,
+                    nextEpisodeInfo
+                )
+            } returns mockk(relaxed = true)
+            every {
+                anyConstructed<Intent>().putExtra(
+                    LocalPlayerActivity.EXTRA_IMDB_ID,
+                    "tt0944947"
+                )
+            } returns mockk(relaxed = true)
+
+            val completedDownload = createDownload(
+                infoHash = "hash123",
+                title = "Episode Release",
+                state = TorrentDownloadService.STATE_COMPLETED,
+                progressPercent = 100,
+                mediaPath = tempFile.absolutePath
+            )
+
+            for (isTvMode in listOf(false, true)) {
+                TorrentCardActionHandler.resetDebounceForTesting()
+                val context = mockk<Context>(relaxed = true)
+
+                val started = TorrentCardActionHandler.performCardClick(
+                    context = context,
+                    releaseHash = "hash123",
+                    releaseTitle = "Game of Thrones S01E02",
+                    releaseMagnetUri = "magnet:?xt=urn:btih:hash123",
+                    releaseSizeBytes = 1000L,
+                    download = completedDownload,
+                    activeBuffer = null,
+                    mediaController = null,
+                    isTv = isTvMode,
+                    torrentHandlingMode = TorrentHandlingMode.LOCAL_PLAYBACK,
+                    seriesId = 1399,
+                    seasonNumber = 1,
+                    episodeNumber = 2,
+                    nextEpisodeInfo = nextEpisodeInfo,
+                    imdbId = "tt0944947"
+                )
+
+                assertThat(started).isTrue()
+                verify(exactly = 1) { context.startActivity(any()) }
+            }
+            verify(exactly = 2) {
+                anyConstructed<Intent>().putStringArrayListExtra(
+                    LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO,
+                    nextEpisodeInfo
+                )
+            }
+            verify(exactly = 2) {
+                anyConstructed<Intent>().putExtra(
+                    LocalPlayerActivity.EXTRA_IMDB_ID,
+                    "tt0944947"
+                )
+            }
+        } finally {
+            unmockkConstructor(Intent::class)
+            tempFile.delete()
+        }
+    }
+
+    @Test
+    fun `performCardClick in PLAY_MEDIA preserves Season 0 special seasonNumber in dispatched intent`() {
+        TorrentCardActionHandler.resetDebounceForTesting()
+        mockkConstructor(Intent::class)
+        try {
+            every {
+                anyConstructed<Intent>().putExtra(
+                    TorrentDownloadService.EXTRA_SEASON_NUMBER,
+                    0
+                )
+            } returns mockk(relaxed = true)
+
+            val context = mockk<Context>(relaxed = true)
+            val readyDownload = createDownload(
+                infoHash = "hash_s0",
+                title = "Special Episode",
+                state = TorrentDownloadService.STATE_READY,
+                progressPercent = 25,
+                mediaPath = null
+            )
+
+            val started = TorrentCardActionHandler.performCardClick(
+                context = context,
+                releaseHash = "hash_s0",
+                releaseTitle = "Series S00E01",
+                releaseMagnetUri = "magnet:?xt=urn:btih:hash_s0",
+                releaseSizeBytes = 500L,
+                download = readyDownload,
+                activeBuffer = null,
+                mediaController = null,
+                isTv = false,
+                torrentHandlingMode = TorrentHandlingMode.LOCAL_PLAYBACK,
+                seriesId = 1399,
+                seasonNumber = 0,
+                episodeNumber = 1,
+                imdbId = "tt0944947"
+            )
+
+            assertThat(started).isTrue()
+            verify(exactly = 1) { context.startService(any()) }
+            verify(exactly = 1) {
+                anyConstructed<Intent>().putExtra(
+                    TorrentDownloadService.EXTRA_SEASON_NUMBER,
+                    0
+                )
+            }
+        } finally {
+            unmockkConstructor(Intent::class)
         }
     }
 }

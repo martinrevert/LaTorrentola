@@ -3,10 +3,6 @@
 package com.martinrevert.latorrentola.ui.home
 
 import android.content.res.Configuration
-import android.os.Build
-import androidx.compose.animation.core.EaseInOutCubic
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -25,21 +21,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.martinrevert.latorrentola.R
@@ -69,8 +60,6 @@ import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
-import dev.chrisbanes.haze.HazeInput
-import dev.chrisbanes.haze.glass.hazeGlass
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.launch
@@ -106,16 +95,16 @@ fun HomeScreen(
     onOttClick: (isTvMode: Boolean) -> Unit = {},
     themeMode: Int? = null
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val topGenres by viewModel.topGenres.collectAsState()
-    val lastVisitDate by viewModel.lastVisitDate.collectAsState()
-    val isRefreshing by viewModel.isRefreshing.collectAsState()
-    val isLoadingMore by viewModel.isLoadingMore.collectAsState()
-    val favoritesCount by viewModel.favoritesCount.collectAsState()
-    val selectedQuality by viewModel.selectedQuality.collectAsState()
-    val lastClickedMovieId by viewModel.lastClickedMovieId.collectAsState()
-    val downloadedMovieIds by viewModel.downloadedMovieIds.collectAsState()
-    val watchHistoryMap by viewModel.watchHistoryMap.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val topGenres by viewModel.topGenres.collectAsStateWithLifecycle()
+    val lastVisitDate by viewModel.lastVisitDate.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val isLoadingMore by viewModel.isLoadingMore.collectAsStateWithLifecycle()
+    val favoritesCount by viewModel.favoritesCount.collectAsStateWithLifecycle()
+    val selectedQuality by viewModel.selectedQuality.collectAsStateWithLifecycle()
+    val lastClickedMovieId by viewModel.lastClickedMovieId.collectAsStateWithLifecycle()
+    val downloadedMovieIds by viewModel.downloadedMovieIds.collectAsStateWithLifecycle()
+    val watchHistoryMap by viewModel.watchHistoryMap.collectAsStateWithLifecycle()
     val qualityOptions = viewModel.qualityOptions
     val allGenres = viewModel.allGenres
     val context = LocalContext.current
@@ -123,11 +112,11 @@ fun HomeScreen(
         themeMode ?: PreferenceManager(context).getTheme()
     }
     val isTv = remember(context) { context.isTvDevice() }
-    val focusedMovie by viewModel.focusedMovie.collectAsState()
-    val focusedMovieBackdrop by viewModel.focusedMovieBackdrop.collectAsState()
-    val focusedMovieLogo by viewModel.focusedMovieLogo.collectAsState()
-    val isFocusedMovieLogoLoading by viewModel.isFocusedMovieLogoLoading.collectAsState()
-    val focusedMovieTmdb by viewModel.focusedMovieTmdb.collectAsState()
+    val focusedMovie by viewModel.focusedMovie.collectAsStateWithLifecycle()
+    val focusedMovieBackdrop by viewModel.focusedMovieBackdrop.collectAsStateWithLifecycle()
+    val focusedMovieLogo by viewModel.focusedMovieLogo.collectAsStateWithLifecycle()
+    val isFocusedMovieLogoLoading by viewModel.isFocusedMovieLogoLoading.collectAsStateWithLifecycle()
+    val focusedMovieTmdb by viewModel.focusedMovieTmdb.collectAsStateWithLifecycle()
     var selectedMovieForDialog by remember { mutableStateOf<Movie?>(null) }
 
     HomeScreenContent(
@@ -177,7 +166,8 @@ fun HomeScreen(
             option2Text = stringResource(R.string.mark_movie_uncompleted),
             onOption1Selected = { viewModel.markMovieAsCompleted(movie) },
             onOption2Selected = { viewModel.markMovieAsUncompleted(movie) },
-            onDismissRequest = { selectedMovieForDialog = null }
+            onDismissRequest = { selectedMovieForDialog = null },
+            themeMode = effectiveThemeMode
         )
     }
 }
@@ -236,18 +226,18 @@ private fun HomeScreenContent(
     // 1. Properly save and restore scroll state across configuration changes (rotation)
     val gridState = rememberLazyGridState()
     val tvGridState = rememberLazyGridState()
-    val tvUiState = tvHomeViewModel?.uiState?.collectAsState()?.value ?: TvHomeUiState.Loading
-    val tvGenres = tvHomeViewModel?.tvGenres?.collectAsState()?.value.orEmpty()
-    val tvGenreError = tvHomeViewModel?.genreError?.collectAsState()?.value
-    val selectedTvFeed = tvHomeViewModel?.selectedFeed?.collectAsState()?.value ?: TmdbTvFeed.ON_THE_AIR
-    val tvIsRefreshing = tvHomeViewModel?.isRefreshing?.collectAsState()?.value ?: false
-    val tvIsLoadingMore = tvHomeViewModel?.isLoadingMore?.collectAsState()?.value ?: false
-    val lastClickedSeriesId = tvHomeViewModel?.lastClickedSeriesId?.collectAsState()?.value
-    val downloadedSeriesIds = tvHomeViewModel?.downloadedSeriesIds?.collectAsState()?.value.orEmpty()
-    val focusedSeries = tvHomeViewModel?.focusedSeries?.collectAsState()?.value
-    val focusedSeriesBackdrop = tvHomeViewModel?.focusedSeriesBackdrop?.collectAsState()?.value
-    val focusedSeriesLogo = tvHomeViewModel?.focusedSeriesLogo?.collectAsState()?.value
-    val isFocusedSeriesLogoLoading = tvHomeViewModel?.isFocusedSeriesLogoLoading?.collectAsState()?.value ?: false
+    val tvUiState = tvHomeViewModel?.uiState?.collectAsStateWithLifecycle()?.value ?: TvHomeUiState.Loading
+    val tvGenres = tvHomeViewModel?.tvGenres?.collectAsStateWithLifecycle()?.value.orEmpty()
+    val tvGenreError = tvHomeViewModel?.genreError?.collectAsStateWithLifecycle()?.value
+    val selectedTvFeed = tvHomeViewModel?.selectedFeed?.collectAsStateWithLifecycle()?.value ?: TmdbTvFeed.ON_THE_AIR
+    val tvIsRefreshing = tvHomeViewModel?.isRefreshing?.collectAsStateWithLifecycle()?.value ?: false
+    val tvIsLoadingMore = tvHomeViewModel?.isLoadingMore?.collectAsStateWithLifecycle()?.value ?: false
+    val lastClickedSeriesId = tvHomeViewModel?.lastClickedSeriesId?.collectAsStateWithLifecycle()?.value
+    val downloadedSeriesIds = tvHomeViewModel?.downloadedSeriesIds?.collectAsStateWithLifecycle()?.value.orEmpty()
+    val focusedSeries = tvHomeViewModel?.focusedSeries?.collectAsStateWithLifecycle()?.value
+    val focusedSeriesBackdrop = tvHomeViewModel?.focusedSeriesBackdrop?.collectAsStateWithLifecycle()?.value
+    val focusedSeriesLogo = tvHomeViewModel?.focusedSeriesLogo?.collectAsStateWithLifecycle()?.value
+    val isFocusedSeriesLogoLoading = tvHomeViewModel?.isFocusedSeriesLogoLoading?.collectAsStateWithLifecycle()?.value ?: false
     val scope = rememberCoroutineScope()
     /** Switches catalogs and starts the selected catalog at its first poster. */
     fun selectMediaMode(tvMode: Boolean) {
@@ -524,7 +514,7 @@ private fun HomeScreenContent(
                 val pullRefreshState = rememberPullRefreshState(
                     tvIsRefreshing,
                     onRefresh = {
-                        onSetLastClickedMovieId(null)
+                        tvHomeViewModel?.clearLastClickedSeriesId()
                         tvHomeViewModel?.refresh(showIndicator = true)
                         scope.launch { tvGridState.scrollToItem(0) }
                     }
@@ -536,7 +526,7 @@ private fun HomeScreenContent(
                     isLogoLoading = isFocusedSeriesLogoLoading,
                     onDetailsClick = {
                         focusedSeries?.let { series ->
-                            tvHomeViewModel?.setLastClickedSeriesId(series.id)
+                            tvHomeViewModel.setLastClickedSeriesId(series.id)
                             onTvSeriesClick(series)
                         }
                     },
@@ -601,7 +591,7 @@ private fun HomeScreenContent(
                             watchHistoryMap = watchHistoryMap,
                             onSeriesClick = { series ->
                                 if (focusedSeries?.id == series.id) {
-                                    tvHomeViewModel?.setLastClickedSeriesId(series.id)
+                                    tvHomeViewModel.setLastClickedSeriesId(series.id)
                                     onTvSeriesClick(series)
                                 } else {
                                     tvHomeViewModel?.onSeriesFocused(series)
@@ -644,7 +634,8 @@ private fun HomeScreenContent(
                 showTvGenreSheet = false
             },
             onDismiss = { showTvGenreSheet = false },
-            sheetState = tvGenreSheetState
+            sheetState = tvGenreSheetState,
+            themeMode = themeMode
         )
     }
     if (showGenreSheet) {
@@ -656,7 +647,8 @@ private fun HomeScreenContent(
             },
             onDismiss = { showGenreSheet = false },
             sheetState = sheetState,
-            hazeState = hazeState
+            hazeState = hazeState,
+            themeMode = themeMode
         )
     }
 }

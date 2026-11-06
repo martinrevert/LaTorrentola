@@ -154,6 +154,7 @@ object TorrentCardActionHandler {
     /**
      * Executes the tap action for a card according to its resolved state.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun performCardClick(
         context: Context,
         releaseHash: String,
@@ -277,39 +278,15 @@ object TorrentCardActionHandler {
                 val readyIntent = TorrentDownloadService.getReadyPlayerIntent(releaseHash)
                 val completedFile = download?.mediaPath?.let(::File)?.takeIf { it.isFile && it.canRead() }
 
-                if (isTv) {
-                    if (isCurrentPlayerItem) {
-                        mediaController?.play()
-                        if (!LocalPlayerActivity.isPlayerForeground) {
-                            val launchIntent = Intent(context, LocalPlayerActivity::class.java).apply {
-                                putExtra(LocalPlayerActivity.EXTRA_INFO_HASH, releaseHash)
-                                putExtra(LocalPlayerActivity.EXTRA_TITLE, releaseTitle)
-                                putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, posterUrl)
-                                if (seriesId > 0) putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, seriesId)
-                                if (seasonNumber > 0) putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, seasonNumber)
-                                if (episodeNumber > 0) putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, episodeNumber)
-                                if (movieId > 0) putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, movieId)
-                                if (!imdbId.isNullOrBlank()) putExtra(LocalPlayerActivity.EXTRA_IMDB_ID, imdbId)
-                                if (nextEpisodeInfo != null) putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            context.startActivity(launchIntent)
-                        }
-                    } else if (readyIntent != null) {
-                        val launchIntent = Intent(readyIntent).apply {
-                            if (!imdbId.isNullOrBlank()) putExtra(LocalPlayerActivity.EXTRA_IMDB_ID, imdbId)
-                            if (nextEpisodeInfo != null) putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                        context.startActivity(launchIntent)
-                    } else if (completedFile != null) {
+                if (isCurrentPlayerItem) {
+                    mediaController?.play()
+                    if (!LocalPlayerActivity.isPlayerForeground) {
                         val launchIntent = Intent(context, LocalPlayerActivity::class.java).apply {
-                            putExtra(LocalPlayerActivity.EXTRA_FILE_PATH, completedFile.absolutePath)
                             putExtra(LocalPlayerActivity.EXTRA_INFO_HASH, releaseHash)
                             putExtra(LocalPlayerActivity.EXTRA_TITLE, releaseTitle)
                             putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, posterUrl)
                             if (seriesId > 0) putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, seriesId)
-                            if (seasonNumber > 0) putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, seasonNumber)
+                            if (seriesId > 0 && seasonNumber >= 0) putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, seasonNumber)
                             if (episodeNumber > 0) putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, episodeNumber)
                             if (movieId > 0) putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, movieId)
                             if (!imdbId.isNullOrBlank()) putExtra(LocalPlayerActivity.EXTRA_IMDB_ID, imdbId)
@@ -317,51 +294,45 @@ object TorrentCardActionHandler {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         }
                         context.startActivity(launchIntent)
-                    } else {
-                        val serviceIntent = Intent(context, TorrentDownloadService::class.java).apply {
-                            action = TorrentDownloadService.ACTION_PLAY_STREAM
-                            putExtra(TorrentDownloadService.EXTRA_INFO_HASH, releaseHash)
-                            putExtra(TorrentDownloadService.EXTRA_TITLE, releaseTitle)
-                            if (seriesId > 0) putExtra(TorrentDownloadService.EXTRA_SERIES_ID, seriesId)
-                            if (seasonNumber > 0) putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, seasonNumber)
-                            if (episodeNumber > 0) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, episodeNumber)
-                            if (movieId > 0) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, movieId)
-                            if (!imdbId.isNullOrBlank()) putExtra(TorrentDownloadService.EXTRA_IMDB_ID, imdbId)
-                            if (!posterUrl.isNullOrBlank()) putExtra(TorrentDownloadService.EXTRA_POSTER_URL, posterUrl)
-                            if (nextEpisodeInfo != null) putStringArrayListExtra(TorrentDownloadService.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
-                        }
-                        context.startService(serviceIntent)
                     }
+                } else if (readyIntent != null) {
+                    val launchIntent = Intent(readyIntent).apply {
+                        if (seriesId > 0 && seasonNumber >= 0) putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, seasonNumber)
+                        if (!imdbId.isNullOrBlank()) putExtra(LocalPlayerActivity.EXTRA_IMDB_ID, imdbId)
+                        if (nextEpisodeInfo != null) putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(launchIntent)
+                } else if (completedFile != null) {
+                    val launchIntent = Intent(context, LocalPlayerActivity::class.java).apply {
+                        putExtra(LocalPlayerActivity.EXTRA_FILE_PATH, completedFile.absolutePath)
+                        putExtra(LocalPlayerActivity.EXTRA_INFO_HASH, releaseHash)
+                        putExtra(LocalPlayerActivity.EXTRA_TITLE, releaseTitle)
+                        putExtra(LocalPlayerActivity.EXTRA_POSTER_URL, posterUrl ?: download.posterUrl)
+                        if (seriesId > 0) putExtra(LocalPlayerActivity.EXTRA_SERIES_ID, seriesId)
+                        if (seriesId > 0 && seasonNumber >= 0) putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, seasonNumber)
+                        if (episodeNumber > 0) putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, episodeNumber)
+                        if (movieId > 0) putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, movieId)
+                        val effectiveImdbId = imdbId?.takeIf { it.isNotBlank() } ?: download.imdbId
+                        if (!effectiveImdbId.isNullOrBlank()) putExtra(LocalPlayerActivity.EXTRA_IMDB_ID, effectiveImdbId)
+                        if (nextEpisodeInfo != null) putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(launchIntent)
                 } else {
-                    if (isCurrentPlayerItem) {
-                        mediaController?.play()
-                    } else if (readyIntent != null) {
-                        if (!imdbId.isNullOrBlank()) readyIntent.putExtra(LocalPlayerActivity.EXTRA_IMDB_ID, imdbId)
-                        if (nextEpisodeInfo != null) readyIntent.putStringArrayListExtra(LocalPlayerActivity.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
-                        val mediaItem = PlayerIntentUtils.buildMediaItem(readyIntent)
-                        mediaController?.setMediaItem(mediaItem)
-                        mediaController?.prepare()
-                        mediaController?.play()
-                    } else if (completedFile != null && download != null) {
-                        val mediaItem = PlayerIntentUtils.buildMediaItem(download, completedFile)
-                        mediaController?.setMediaItem(mediaItem)
-                        mediaController?.prepare()
-                        mediaController?.play()
-                    } else {
-                        val serviceIntent = Intent(context, TorrentDownloadService::class.java).apply {
-                            action = TorrentDownloadService.ACTION_PLAY_STREAM
-                            putExtra(TorrentDownloadService.EXTRA_INFO_HASH, releaseHash)
-                            putExtra(TorrentDownloadService.EXTRA_TITLE, releaseTitle)
-                            if (seriesId > 0) putExtra(TorrentDownloadService.EXTRA_SERIES_ID, seriesId)
-                            if (seasonNumber > 0) putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, seasonNumber)
-                            if (episodeNumber > 0) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, episodeNumber)
-                            if (movieId > 0) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, movieId)
-                            if (!imdbId.isNullOrBlank()) putExtra(TorrentDownloadService.EXTRA_IMDB_ID, imdbId)
-                            if (!posterUrl.isNullOrBlank()) putExtra(TorrentDownloadService.EXTRA_POSTER_URL, posterUrl)
-                            if (nextEpisodeInfo != null) putStringArrayListExtra(TorrentDownloadService.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
-                        }
-                        context.startService(serviceIntent)
+                    val serviceIntent = Intent(context, TorrentDownloadService::class.java).apply {
+                        action = TorrentDownloadService.ACTION_PLAY_STREAM
+                        putExtra(TorrentDownloadService.EXTRA_INFO_HASH, releaseHash)
+                        putExtra(TorrentDownloadService.EXTRA_TITLE, releaseTitle)
+                        if (seriesId > 0) putExtra(TorrentDownloadService.EXTRA_SERIES_ID, seriesId)
+                        if (seriesId > 0 && seasonNumber >= 0) putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, seasonNumber)
+                        if (episodeNumber > 0) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, episodeNumber)
+                        if (movieId > 0) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, movieId)
+                        if (!imdbId.isNullOrBlank()) putExtra(TorrentDownloadService.EXTRA_IMDB_ID, imdbId)
+                        if (!posterUrl.isNullOrBlank()) putExtra(TorrentDownloadService.EXTRA_POSTER_URL, posterUrl)
+                        if (nextEpisodeInfo != null) putStringArrayListExtra(TorrentDownloadService.EXTRA_NEXT_EPISODE_INFO, nextEpisodeInfo)
                     }
+                    context.startService(serviceIntent)
                 }
                 true
             }
