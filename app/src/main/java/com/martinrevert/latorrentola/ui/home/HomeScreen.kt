@@ -92,6 +92,7 @@ fun HomeScreen(
     onActorSearchClick: () -> Unit = {},
     onFavoritesClick: () -> Unit,
     onGenreClick: (String) -> Unit,
+    onWatchingTvClick: () -> Unit = {},
     onOttClick: (isTvMode: Boolean) -> Unit = {},
     themeMode: Int? = null
 ) {
@@ -155,6 +156,7 @@ fun HomeScreen(
         tvHomeViewModel = tvHomeViewModel,
         onTvSeriesClick = onTvSeriesClick,
         onTvGenreClick = onTvGenreClick,
+        onWatchingTvClick = onWatchingTvClick,
         onOttClick = onOttClick,
         themeMode = effectiveThemeMode
     )
@@ -213,6 +215,7 @@ private fun HomeScreenContent(
     tvHomeViewModel: TvHomeViewModel? = null,
     onTvSeriesClick: (TmdbTvSummary) -> Unit = {},
     onTvGenreClick: (TmdbTvGenre) -> Unit = {},
+    onWatchingTvClick: () -> Unit = {},
     onOttClick: (isTvMode: Boolean) -> Unit = {},
     themeMode: Int? = null
 ) {
@@ -320,7 +323,8 @@ private fun HomeScreenContent(
                                         onTvGenreClick(it)
                                     },
                                     onAllGenresClick = { showTvGenreSheet = true },
-                                    onOttClick = { onOttClick(true) }
+                                    onOttClick = { onOttClick(true) },
+                                    onWatchingClick = onWatchingTvClick
                                 )
                             }
                         }
@@ -572,7 +576,8 @@ private fun HomeScreenContent(
                                     onTvGenreClick(it)
                                 },
                                 onAllGenresClick = { showTvGenreSheet = true },
-                                onOttClick = { onOttClick(true) }
+                                onOttClick = { onOttClick(true) },
+                                onWatchingClick = onWatchingTvClick
                             )
                         }
                     }

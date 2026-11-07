@@ -329,6 +329,9 @@ fun AppNavigation(
                     onTvGenreClick = { genre ->
                         backStack.add(Route.TvGenre(genre.id, genre.name))
                     },
+                    onWatchingTvClick = {
+                        backStack.add(Route.Search(genre = "watching", isTvMode = true))
+                    },
                     onOttClick = { isTv ->
                         backStack.add(Route.OttProviders(isTvMode = isTv))
                     }

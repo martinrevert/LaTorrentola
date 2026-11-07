@@ -266,6 +266,20 @@ fun GenreChips(
         item {
             AdaptiveChip(
                 selected = false,
+                onClick = { onGenreClick("watching") },
+                label = { Text(stringResource(R.string.favorites_filter_watching)) },
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.PlayCircle,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            )
+        }
+        item {
+            AdaptiveChip(
+                selected = false,
                 onClick = { onGenreClick("nuevas") },
                 label = { Text(stringResource(R.string.new_movies)) },
                 leadingIcon = {

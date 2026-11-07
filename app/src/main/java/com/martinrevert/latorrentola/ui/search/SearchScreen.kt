@@ -154,7 +154,8 @@ fun SearchScreen(
     val isShowingFavorites = initialGenre == "milista" || initialGenre == "favorites"
     val isShowingDownloads = initialGenre == "ya_vistas"
     val isShowingNew = initialGenre == "nuevas"
-    val isShowingGenre = initialGenre != null && !isShowingFavorites && !isShowingDownloads && !isShowingNew
+    val isShowingWatching = initialGenre == "watching"
+    val isShowingGenre = initialGenre != null && !isShowingFavorites && !isShowingDownloads && !isShowingNew && !isShowingWatching
 
     val context = LocalContext.current
     val effectiveThemeMode = remember(context, themeMode) {
@@ -180,7 +181,7 @@ fun SearchScreen(
         viewModel.initializeIfNeeded(
             initialGenre = initialGenre,
             initialQuery = initialQuery,
-            initialTvMode = initialTvMode && initialGenre == null,
+            initialTvMode = initialTvMode,
             initialActorMode = initialActorMode
         )
 
@@ -191,7 +192,7 @@ fun SearchScreen(
             initialTvMode -> tvUiState is SearchTvUiState.Idle
             else -> uiState is SearchUiState.Idle
         }
-        if (isTv && !isShowingFavorites && !isShowingDownloads && !isShowingGenre && !isShowingNew && isIdle && hasNoPendingItemFocus) {
+        if (isTv && !isShowingFavorites && !isShowingDownloads && !isShowingGenre && !isShowingNew && !isShowingWatching && isIdle && hasNoPendingItemFocus) {
             try {
                 focusRequester.requestFocus()
             } catch (_: Exception) {
@@ -227,6 +228,7 @@ fun SearchScreen(
         isShowingFavorites = isShowingFavorites,
         isShowingDownloads = isShowingDownloads,
         isShowingNew = isShowingNew,
+        isShowingWatching = isShowingWatching,
         isShowingGenre = isShowingGenre,
         initialGenre = initialGenre,
         isTv = isTv,
@@ -331,6 +333,7 @@ private fun SearchScreenContent(
     isShowingFavorites: Boolean,
     isShowingDownloads: Boolean,
     isShowingNew: Boolean,
+    isShowingWatching: Boolean = false,
     isShowingGenre: Boolean,
     initialGenre: String?,
     isTv: Boolean,
@@ -346,7 +349,7 @@ private fun SearchScreenContent(
     onSearchQueryChange: (String) -> Unit,
     onVoiceSearchClick: () -> Unit,
     onQualityClick: (String) -> Unit,
-    selectedFavoritesFilter: FavoritesFilter = FavoritesFilter.ALL,
+    selectedFavoritesFilter: FavoritesFilter = FavoritesFilter.IN_PROGRESS,
     onFavoritesFilterClick: (FavoritesFilter) -> Unit = {},
     onActorSelect: (TmdbPersonResult) -> Unit = {},
     onActorCreditClick: (TmdbCastCredit) -> Unit = {},
@@ -427,6 +430,8 @@ private fun SearchScreenContent(
                             Text(stringResource(R.string.already_seen))
                         } else if (isShowingNew) {
                             Text(stringResource(R.string.new_movies))
+                        } else if (isShowingWatching) {
+                            Text(stringResource(R.string.favorites_filter_watching))
                         } else if (isShowingGenre && initialGenre != null) {
                             Text(GenreTranslation.getGenreText(initialGenre).asString())
                         } else {
@@ -502,6 +507,8 @@ private fun SearchScreenContent(
                                     Text(stringResource(R.string.already_seen))
                                 } else if (isShowingNew) {
                                     Text(stringResource(R.string.new_movies))
+                                } else if (isShowingWatching) {
+                                    Text(stringResource(R.string.favorites_filter_watching))
                                 } else if (isShowingGenre && initialGenre != null) {
                                     Text(GenreTranslation.getGenreText(initialGenre).asString())
                                 } else {
@@ -564,7 +571,7 @@ private fun SearchScreenContent(
                                 isLoadingMore = isLoadingMore,
                                 onMovieClick = onMovieClick,
                                 onLongClick = { id -> uiState.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick) },
-                                onLoadMore = { if (!uiState.isDownloads && !uiState.isNew) onLoadMore() },
+                                onLoadMore = { if (!uiState.isDownloads && !uiState.isNew && !isShowingWatching) onLoadMore() },
                                 initialFocusId = lastClickedMovieId,
                                 onFocusRestored = onFocusRestored,
                                 onMovieFocus = onMovieFocus,
@@ -733,7 +740,7 @@ private fun SearchScreenContent(
                                         isLoadingMore = isLoadingMore,
                                         onMovieClick = onMovieClick,
                                         onLongClick = { id -> uiState.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick) },
-                                        onLoadMore = { if (!uiState.isDownloads && !uiState.isNew) onLoadMore() },
+                                        onLoadMore = { if (!uiState.isDownloads && !uiState.isNew && !isShowingWatching) onLoadMore() },
                                         initialFocusId = lastClickedMovieId,
                                         onFocusRestored = onFocusRestored,
                                         onMovieFocus = onMovieFocus,
@@ -773,6 +780,8 @@ private fun SearchScreenContent(
                                 Text(stringResource(R.string.already_seen))
                             } else if (isShowingNew) {
                                 Text(stringResource(R.string.new_movies))
+                            } else if (isShowingWatching) {
+                                Text(stringResource(R.string.favorites_filter_watching))
                             } else if (isShowingGenre && initialGenre != null) {
                                 Text(GenreTranslation.getGenreText(initialGenre).asString())
                             } else {
@@ -835,7 +844,7 @@ private fun SearchScreenContent(
                                 uiState.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick)
                             },
                             onLoadMore = {
-                                if (!uiState.isDownloads && !uiState.isNew) onLoadMore()
+                                if (!uiState.isDownloads && !uiState.isNew && !isShowingWatching) onLoadMore()
                             },
                             initialFocusId = lastClickedMovieId,
                             onFocusRestored = onFocusRestored,
@@ -967,7 +976,7 @@ private fun SearchScreenContent(
                                 isLoadingMore = isLoadingMore,
                                 onMovieClick = onMovieClick,
                                 onLongClick = { id -> uiState.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick) },
-                                onLoadMore = { if (!uiState.isDownloads && !uiState.isNew) onLoadMore() },
+                                onLoadMore = { if (!uiState.isDownloads && !uiState.isNew && !isShowingWatching) onLoadMore() },
                                 initialFocusId = lastClickedMovieId,
                                 onFocusRestored = onFocusRestored,
                                 contentPadding = searchContentPadding
@@ -1679,6 +1688,7 @@ fun SearchScreenTvPreview() {
             isShowingFavorites = false,
             isShowingDownloads = false,
             isShowingNew = false,
+            isShowingWatching = false,
             isShowingGenre = false,
             initialGenre = null,
             isTv = true,
@@ -1718,6 +1728,7 @@ fun SearchScreenPreview() {
             isShowingFavorites = false,
             isShowingDownloads = false,
             isShowingNew = false,
+            isShowingWatching = false,
             isShowingGenre = false,
             initialGenre = null,
             isTv = false,

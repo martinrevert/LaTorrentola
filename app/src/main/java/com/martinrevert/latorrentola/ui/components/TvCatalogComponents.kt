@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Card
@@ -256,6 +257,7 @@ fun TvGenreChips(
     onGenreClick: (TmdbTvGenre) -> Unit,
     onAllGenresClick: () -> Unit,
     onOttClick: () -> Unit = {},
+    onWatchingClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     LazyRow(
@@ -281,6 +283,20 @@ fun TvGenreChips(
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.LiveTv,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            )
+        }
+        item(key = "watching-tv-series") {
+            AdaptiveChip(
+                selected = false,
+                onClick = onWatchingClick,
+                label = { Text(stringResource(R.string.favorites_filter_watching)) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.PlayCircle,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )

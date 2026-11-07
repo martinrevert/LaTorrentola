@@ -116,6 +116,7 @@ class SearchViewModelTest {
         val favorites = listOf(Movie(id = 1, title = "Favorite 1", rating = "7"))
         every { repository.getFavoriteMovies() } returns flowOf(favorites)
 
+        viewModel.setFavoritesFilter(FavoritesFilter.ALL)
         viewModel.showFavorites()
 
         val state = viewModel.uiState.value
@@ -135,6 +136,7 @@ class SearchViewModelTest {
         every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(unenrichedSeries))
         coEvery { tmdbRepository.getTvDetails(50) } returns enrichedSeries
 
+        viewModel.setFavoritesFilter(FavoritesFilter.ALL)
         viewModel.showFavorites()
 
         val state = viewModel.uiState.value as SearchUiState.Success
@@ -245,6 +247,7 @@ class SearchViewModelTest {
         val tvSeries = TmdbTvSummary(id = 10, name = "Series 1")
         every { repository.getFavoriteMovies() } returns flowOf(listOf(movie))
         every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(tvSeries))
+        viewModel.setFavoritesFilter(FavoritesFilter.ALL)
         viewModel.showFavorites()
 
         viewModel.toggleFavoriteSelection(1)
@@ -315,6 +318,11 @@ class SearchViewModelTest {
     }
 
     @Test
+    fun `default selectedFavoritesFilter should be IN_PROGRESS`() = runTest {
+        assertThat(viewModel.selectedFavoritesFilter.value).isEqualTo(FavoritesFilter.IN_PROGRESS)
+    }
+
+    @Test
     fun `setFavoritesFilter should update selectedFavoritesFilter state`() = runTest {
         viewModel.setFavoritesFilter(FavoritesFilter.MOVIES)
         assertThat(viewModel.selectedFavoritesFilter.value).isEqualTo(FavoritesFilter.MOVIES)
@@ -380,6 +388,230 @@ class SearchViewModelTest {
         val state = vm.uiState.value as SearchUiState.Success
         assertThat(state.movies).containsExactly(inProgressMovie)
         assertThat(vm.favoriteTvSeries.value).containsExactly(inProgressSeries)
+    }
+
+    @Test
+    fun `showWatchingMovies should only display uncompleted in-progress movies`() = runTest {
+        val inProgressMovie = Movie(id = 1, imdbCode = "tt0000001", title = "In Progress Movie", rating = "8")
+        val completedMovie = Movie(id = 2, imdbCode = "tt0000002", title = "Completed Movie", rating = "8")
+        val movieProgress = com.martinrevert.latorrentola.model.user.PlaybackProgress(
+            mediaId = "tt0000001", title = "In Progress Movie", positionMs = 500000L, durationMs = 1000000L, isEpisode = false
+        )
+        val completedProgress = com.martinrevert.latorrentola.model.user.PlaybackProgress(
+            mediaId = "tt0000002", title = "Completed Movie", positionMs = 990000L, durationMs = 1000000L, isEpisode = false
+        )
+
+        every { repository.getFavoriteMovies() } returns flowOf(listOf(inProgressMovie, completedMovie))
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(movieProgress, completedProgress))
+        every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
+        vm.showWatchingMovies()
+        testScheduler.advanceUntilIdle()
+
+        val state = vm.uiState.value as SearchUiState.Success
+        assertThat(state.movies).containsExactly(inProgressMovie)
+    }
+
+    @Test
+    fun `showWatchingTvSeries should display in-progress uncompleted TV series`() = runTest {
+        val inProgressSeries = TmdbTvSummary(id = 10, imdbId = "tt0000010", name = "Series 1", numberOfEpisodes = 10)
+        val episodeProgress = com.martinrevert.latorrentola.model.user.PlaybackProgress(
+            mediaId = "tt0000010_s1_e1", title = "Series 1 - S01E01", positionMs = 500000L, durationMs = 1000000L, isEpisode = true
+        )
+
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(inProgressSeries))
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(episodeProgress))
+        every { userLibraryRepository.getDownloadedEpisodes() } returns flowOf(emptyList())
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
+        vm.showWatchingTvSeries()
+        testScheduler.advanceUntilIdle()
+
+        val state = vm.tvUiState.value as SearchTvUiState.Success
+        assertThat(state.series).containsExactly(inProgressSeries)
+    }
+
+    @Test
+    fun `showWatchingMovies should transition to Empty when in-progress movie cannot be found on YTS`() = runTest {
+        val movieProgress = PlaybackProgress(
+            mediaId = "tt9999999",
+            title = "Unindexed Movie",
+            positionMs = 500000L,
+            durationMs = 1000000L,
+            isEpisode = false
+        )
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(movieProgress))
+        every { repository.getFavoriteMovies() } returns flowOf(emptyList())
+        every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
+        coEvery { repository.searchMovies("tt9999999", 1) } returns MovieDetails(data = Data(movies = emptyList()))
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
+        vm.showWatchingMovies()
+        testScheduler.advanceUntilIdle()
+
+        assertThat(vm.uiState.value).isEqualTo(SearchUiState.Empty)
+    }
+
+    @Test
+    fun `showWatchingTvSeries does not flash Empty while metadata queries are active`() = runTest {
+        val episodeProgress = PlaybackProgress(
+            mediaId = "tt0000099_s1_e1",
+            title = "Series 99 - S01E01",
+            positionMs = 500000L,
+            durationMs = 1000000L,
+            isEpisode = true
+        )
+        val series99 = TmdbTvSummary(
+            id = 99,
+            imdbId = "tt0000099",
+            name = "Series 99",
+            numberOfEpisodes = 10,
+            seasons = listOf(TmdbTvSeason(id = 1, seasonNumber = 1, episodeCount = 10))
+        )
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(emptyList())
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(episodeProgress))
+        coEvery { tmdbRepository.getTvDetails(99) } returns series99
+
+        coEvery { tmdbRepository.findTvSeriesByImdbId("tt0000099") } coAnswers {
+            kotlinx.coroutines.delay(1000)
+            series99
+        }
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
+        vm.tvUiState.test {
+            assertThat(awaitItem()).isEqualTo(SearchTvUiState.Idle)
+
+            vm.showWatchingTvSeries()
+            assertThat(awaitItem()).isEqualTo(SearchTvUiState.Loading)
+
+            testScheduler.advanceTimeBy(500)
+            assertThat(vm.tvUiState.value).isEqualTo(SearchTvUiState.Loading)
+
+            testScheduler.advanceUntilIdle()
+            val finalState = awaitItem()
+            assertThat(finalState).isInstanceOf(SearchTvUiState.Success::class.java)
+            assertThat((finalState as SearchTvUiState.Success).series.map { it.id }).containsExactly(99)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `showWatchingTvSeries preserves canonical imdbId when series is resolved via findTvSeriesByImdbId`() = runTest {
+        val episodeProgress = PlaybackProgress(
+            mediaId = "tt0000055_s1_e1",
+            title = "Episode 1",
+            positionMs = 500000L,
+            durationMs = 1000000L,
+            isEpisode = true
+        )
+        val tmdbResultWithoutImdb = TmdbTvSummary(
+            id = 55,
+            imdbId = null,
+            name = "Different Name",
+            numberOfEpisodes = 10,
+            seasons = listOf(TmdbTvSeason(id = 2, seasonNumber = 1, episodeCount = 10))
+        )
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(emptyList())
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(episodeProgress))
+        coEvery { tmdbRepository.findTvSeriesByImdbId("tt0000055") } returns tmdbResultWithoutImdb
+        coEvery { tmdbRepository.getTvDetails(55) } returns tmdbResultWithoutImdb
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
+        vm.showWatchingTvSeries()
+        testScheduler.advanceUntilIdle()
+
+        val state = vm.tvUiState.value as SearchTvUiState.Success
+        assertThat(state.series).hasSize(1)
+        val series = state.series.first()
+        assertThat(series.id).isEqualTo(55)
+        assertThat(series.effectiveImdbId).isEqualTo("tt0000055")
+    }
+
+    @Test
+    fun `showWatchingMovies caches resolved movies in memory across flow emissions`() = runTest {
+        val movieProgress = PlaybackProgress(
+            mediaId = "tt0000077",
+            title = "Cached Movie",
+            positionMs = 500000L,
+            durationMs = 1000000L,
+            isEpisode = false
+        )
+        val resolvedMovie = Movie(id = 77, imdbCode = "tt0000077", title = "Cached Movie", rating = "8")
+        val watchHistoryFlow = MutableStateFlow(listOf(movieProgress))
+
+        every { userLibraryRepository.getWatchHistory() } returns watchHistoryFlow
+        every { repository.getFavoriteMovies() } returns flowOf(emptyList())
+        every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
+        coEvery { repository.searchMovies("tt0000077", 1) } returns MovieDetails(data = Data(movies = listOf(resolvedMovie)))
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
+        vm.showWatchingMovies()
+        testScheduler.advanceUntilIdle()
+
+        val state1 = vm.uiState.value as SearchUiState.Success
+        assertThat(state1.movies).containsExactly(resolvedMovie)
+        coVerify(exactly = 1) { repository.searchMovies("tt0000077", 1) }
+
+        watchHistoryFlow.value = listOf(movieProgress.copy(positionMs = 600000L))
+        testScheduler.advanceUntilIdle()
+
+        val state2 = vm.uiState.value as SearchUiState.Success
+        assertThat(state2.movies).containsExactly(resolvedMovie)
+        coVerify(exactly = 1) { repository.searchMovies("tt0000077", 1) }
+    }
+
+    @Test
+    fun `showWatchingTvSeries with force true clears attempted lookup IDs and re-queries`() = runTest {
+        val episodeProgress = PlaybackProgress(
+            mediaId = "tt0000088_s1_e1",
+            title = "Series 88 - S01E01",
+            positionMs = 500000L,
+            durationMs = 1000000L,
+            isEpisode = true
+        )
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(emptyList())
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(episodeProgress))
+
+        coEvery { tmdbRepository.findTvSeriesByImdbId("tt0000088") } returns null
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
+        vm.showWatchingTvSeries()
+        testScheduler.advanceUntilIdle()
+
+        assertThat(vm.tvUiState.value).isEqualTo(SearchTvUiState.Empty)
+        coVerify(exactly = 1) { tmdbRepository.findTvSeriesByImdbId("tt0000088") }
+
+        val series = TmdbTvSummary(
+            id = 88,
+            imdbId = "tt0000088",
+            name = "Series 88",
+            numberOfEpisodes = 10,
+            seasons = listOf(TmdbTvSeason(id = 3, seasonNumber = 1, episodeCount = 10))
+        )
+        coEvery { tmdbRepository.findTvSeriesByImdbId("tt0000088") } returns series
+        coEvery { tmdbRepository.getTvDetails(88) } returns series
+
+        vm.showWatchingTvSeries(force = true)
+        testScheduler.advanceUntilIdle()
+
+        val state = vm.tvUiState.value as SearchTvUiState.Success
+        assertThat(state.series).containsExactly(series)
+        coVerify(exactly = 2) { tmdbRepository.findTvSeriesByImdbId("tt0000088") }
+    }
+
+    @Test
+    fun `showWatchingTvSeries short-circuits to Empty when episodeProgress is empty even with favorites present`() = runTest {
+        val favoriteSeries = TmdbTvSummary(id = 10, imdbId = "tt0000010", name = "Unwatched Fav Series", seasons = null)
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(favoriteSeries))
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(emptyList())
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
+        vm.showWatchingTvSeries()
+        testScheduler.advanceUntilIdle()
+
+        assertThat(vm.tvUiState.value).isEqualTo(SearchTvUiState.Empty)
+        coVerify(exactly = 0) { tmdbRepository.getTvDetails(10) }
     }
 
     @Test
