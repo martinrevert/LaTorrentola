@@ -524,6 +524,20 @@ To eliminate runaway cloud billing, prevent broken season completion counters, a
        3. All static `FirebaseMessaging.getInstance()` calls MUST be wrapped in defensive `try-catch` blocks to prevent unhandled crashes.
    - **PROHIBITION: NEVER omit `com.martinrevert.latorrentola.debug` configuration from `app/google-services.json`, NEVER trigger redundant token fetches after an FIS authentication failure, and NEVER invoke static `FirebaseMessaging.getInstance()` without defensive error handling.**
 
+19. **In-Progress "Watching" Feeds, Metadata Enrichment & Zero-Flicker State Lifecycle Contract (STRICT)**:
+   - **The Asynchronous Resolution Hang, Empty-State Flash & Dropped Canonical IMDb ID Trap**:
+     - *Root Cause / Failure Trap*:
+       1. In `SearchViewModel.showWatchingMovies()`, `updateState()` checked `missingMovieImdbIds.isEmpty()` where `missingMovieImdbIds` was an unmutated captured list from `combine`. If an in-progress movie could not be resolved on YTS, `_uiState.value` remained permanently stuck on `SearchUiState.Loading` instead of transitioning to `SearchUiState.Empty`. Furthermore, omitting in-memory caching caused redundant YTS network calls on every flow emission.
+       2. In `SearchViewModel.showWatchingTvSeries()`, `combine` emitted `inProgressSeries = emptyList()` on its first pass while asynchronous TMDB lookups were in-flight, immediately setting `_tvUiState.value = SearchTvUiState.Empty` and creating a jarring empty-state flash ("fogonazo") before switching to `Success`.
+       3. Resolving a series via `tmdbRepository.findTvSeriesByImdbId(imdbId)` returns summary metadata omitting external IDs. Storing `fullDetails` directly into cache without copying `imdbId = fullDetails.effectiveImdbId ?: imdbId` dropped the canonical IMDb ID, breaking recency sorting and title heuristic matching in `TvSeriesProgressCalculator`.
+       4. Combining `getDownloadedEpisodes()` without populating `seriesMap` and failing to short-circuit when `episodeProgress.isEmpty()` triggered useless TMDB network calls for missing seasons of favorited series when no episodes had ever been watched. Mixing IMDb hash codes with TMDB series integer IDs in `attemptedSeriesDetailIds` risked key collision and failed to clear on force refresh.
+     - *Mandatory Architectural Contract*:
+       1. `showWatchingMovies()` MUST track resolution completion via `isComplete: Boolean` on `updateState` and transition cleanly to `SearchUiState.Empty` when no movies are resolved or match filters. Resolved movies MUST be cached in memory (`watchingMoviesCache`) to prevent duplicate YTS network calls.
+       2. `showWatchingTvSeries()` MUST track active background lookups (`hasPendingFetches = missingImdbIds.isNotEmpty() || missingSeasons.isNotEmpty() || activeFetches > 0`) and preserve `SearchTvUiState.Loading` while fetches are in flight, eliminating empty-state flashes.
+       3. Series resolved by IMDb ID MUST preserve `imdbId` via `fullDetails.copy(imdbId = fullDetails.effectiveImdbId ?: found.effectiveImdbId ?: imdbId)` when stored in `seriesDetailsCacheFlow`.
+       4. `showWatchingTvSeries()` MUST short-circuit to `SearchTvUiState.Empty` immediately when `episodeProgress.isEmpty()`, without querying TMDB for seasons of favorites. Tracking sets for TMDB series IDs (`attemptedSeriesDetailIds: Set<Int>`) and external IMDb lookups (`attemptedImdbSeriesLookupIds: Set<String>`) MUST be decoupled and cleared when `force = true`.
+   - **PROHIBITION: NEVER leave `SearchUiState.Loading` permanently active when external movie lookups fail, NEVER emit `SearchTvUiState.Empty` while background TMDB fetches are in-flight, NEVER drop canonical `imdbId` when caching TMDB series summaries, and NEVER trigger series season enrichment when `episodeProgress` is empty.**
+
 ### Previews
 - Every UI Component MUST include `@Preview` functions covering: Light Mode, Dark Mode, Mobile form-factor, and TV form-factor (using appropriate theme wrappers).
 
@@ -569,3 +583,4 @@ Before marking a task complete, verify:
 36. [ ] For Handheld UI, did I evaluate if an M3 Expressive tactic (e.g., spring motion, shape morphing, or expressive containers) elevates the experience?
 37. [ ] Did I verify that `app/google-services.json` includes client configurations for both `com.martinrevert.latorrentola` (Release) and `com.martinrevert.latorrentola.debug` (Debug), allowing both variants to build and co-exist on the same device?
 38. [ ] Did I verify that `FirebaseMessagingInitializer` handles FIS authentication errors (`FirebaseInstallationsException`), purges stale installation tokens via `FirebaseInstallations.getInstance().delete()`, logs diagnostic instructions, and wraps `FirebaseMessaging` calls in `try-catch` blocks?
+39. [ ] Did I verify that in `SearchViewModel`, `showWatchingMovies` and `showWatchingTvSeries` cleanly transition to `Empty` upon resolution completion without hanging on `Loading`, preserve `Loading` while background lookups are active (zero empty-state flash), cache resolved movies in memory, preserve canonical `imdbId` on TMDB lookups, and short-circuit when `episodeProgress` is empty?
