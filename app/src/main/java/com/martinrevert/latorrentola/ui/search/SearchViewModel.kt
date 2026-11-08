@@ -15,6 +15,7 @@ import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.TmdbTvFeed
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
+import com.martinrevert.latorrentola.utils.AppLogger
 import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.utils.MovieFilter
 import com.martinrevert.latorrentola.utils.PreferenceManager
@@ -421,8 +422,10 @@ class SearchViewModel @Inject constructor(
     /** Reactive cache of enriched TV series details used in Favorites without triggering Loading resets. */
     private val seriesDetailsCacheFlow = MutableStateFlow<Map<Int, TmdbTvSummary>>(emptyMap())
     private val attemptedSeriesDetailIds = ConcurrentHashMap.newKeySet<Int>()
+    private val failedSeriesDetailIds = ConcurrentHashMap.newKeySet<Int>()
     private val attemptedImdbSeriesLookupIds = ConcurrentHashMap.newKeySet<String>()
     private val activeTvWatchingFetchesFlow = MutableStateFlow(0)
+    private val activeFavoritesFetchesFlow = MutableStateFlow(0)
 
     /** In-memory cache of resolved movies for Watching feed to prevent duplicate YTS network calls. */
     private val watchingMoviesCache = ConcurrentHashMap<String, Movie>()
@@ -949,7 +952,7 @@ class SearchViewModel @Inject constructor(
                     return@combine emptyList<TmdbTvSummary>() to false
                 }
 
-                val watchMap = MediaIdHelper.buildWatchHistoryMap(watchHistory)
+                val progressIndex = TvSeriesProgressCalculator.buildEpisodeProgressIndex(watchHistory)
                 val seriesMap = mutableMapOf<Int, TmdbTvSummary>()
                 favorites.forEach { seriesMap[it.id] = it }
 
@@ -1006,7 +1009,21 @@ class SearchViewModel @Inject constructor(
                     }
                 }
 
-                detailsCache.values.forEach { seriesMap[it.id] = it }
+                detailsCache.values.forEach { cached ->
+                    val existing = seriesMap[cached.id]
+                    seriesMap[cached.id] = if (existing != null) {
+                        existing.copy(
+                            seasons = cached.seasons?.takeIf { it.isNotEmpty() } ?: existing.seasons,
+                            lastEpisodeToAir = cached.lastEpisodeToAir ?: existing.lastEpisodeToAir,
+                            nextEpisodeToAir = cached.nextEpisodeToAir ?: existing.nextEpisodeToAir,
+                            numberOfSeasons = cached.numberOfSeasons?.takeIf { it > 0 } ?: existing.numberOfSeasons,
+                            numberOfEpisodes = cached.numberOfEpisodes?.takeIf { it > 0 } ?: existing.numberOfEpisodes,
+                            status = cached.status?.takeIf { it.isNotBlank() } ?: existing.status,
+                            inProduction = cached.inProduction ?: existing.inProduction,
+                            imdbId = existing.effectiveImdbId ?: cached.effectiveImdbId
+                        )
+                    } else cached
+                }
 
                 val missingSeasons = seriesMap.values.filter {
                     it.seasons.isNullOrEmpty() &&
@@ -1051,7 +1068,7 @@ class SearchViewModel @Inject constructor(
                             imdbId = series.effectiveImdbId ?: cached.effectiveImdbId
                         )
                     } ?: series
-                    TvSeriesProgressCalculator.isSeriesInProgress(enriched, watchMap)
+                    TvSeriesProgressCalculator.isSeriesInProgress(enriched, progressIndex)
                 }.sortedByDescending { series ->
                     val normImdb = MediaIdHelper.normalizeImdbId(series.effectiveImdbId)
                     (normImdb?.let { imdbLastWatched[it] } ?: 0L)
@@ -1189,7 +1206,9 @@ class SearchViewModel @Inject constructor(
         if (force) {
             attemptedSeriesDetailIds.clear()
             attemptedImdbSeriesLookupIds.clear()
+            failedSeriesDetailIds.clear()
         }
+        activeFavoritesFetchesFlow.value = 0
         isShowingFavorites = true
         isShowingDownloads = false
         isShowingNew = false
@@ -1206,44 +1225,57 @@ class SearchViewModel @Inject constructor(
             if (currentSuccess?.isFavorites != true) {
                 _uiState.value = SearchUiState.Loading
             }
+            val favoritesDetailsStateFlow = combine(
+                seriesDetailsCacheFlow,
+                activeFavoritesFetchesFlow
+            ) { cache, active -> cache to active }
+
             combine(
                 ytsRepository.getFavoriteMovies(),
                 userLibraryRepository.getFavoriteTvSeries(),
                 userLibraryRepository.getWatchHistory(),
                 _selectedFavoritesFilter,
-                seriesDetailsCacheFlow
-            ) { favorites, series, watchHistory, filter, detailsCache ->
+                favoritesDetailsStateFlow
+            ) { favorites, series, watchHistory, filter, (detailsCache, activeFetches) ->
                 val watchMap = MediaIdHelper.buildWatchHistoryMap(watchHistory)
+                val progressIndex = TvSeriesProgressCalculator.buildEpisodeProgressIndex(watchHistory)
 
                 val missingSeriesIds = series.filter {
                     it.seasons.isNullOrEmpty() &&
                         !detailsCache.containsKey(it.id) &&
-                        !attemptedSeriesDetailIds.contains(it.id)
+                        tmdbRepository.getCachedTvDetails(it.id) == null &&
+                        !attemptedSeriesDetailIds.contains(it.id) &&
+                        !failedSeriesDetailIds.contains(it.id)
                 }.map { it.id }
 
                 if (missingSeriesIds.isNotEmpty()) {
                     attemptedSeriesDetailIds.addAll(missingSeriesIds)
+                    activeFavoritesFetchesFlow.update { it + 1 }
                     viewModelScope.launch(defaultDispatcher) {
-                        val fetched = mutableMapOf<Int, TmdbTvSummary>()
-                        missingSeriesIds.forEach { seriesId ->
-                            try {
-                                val details = tmdbRepository.getTvDetails(seriesId)
-                                if (details.id == seriesId) {
-                                    fetched[seriesId] = details
+                        try {
+                            val fetched = mutableMapOf<Int, TmdbTvSummary>()
+                            missingSeriesIds.forEach { seriesId ->
+                                try {
+                                    val details = tmdbRepository.getTvDetails(seriesId)
+                                    fetched[seriesId] = if (details.id == seriesId) details else details.copy(id = seriesId)
+                                } catch (e: Exception) {
+                                    if (e is CancellationException) throw e
+                                    AppLogger.w("SearchViewModel", "Failed enriching series $seriesId: ${e.message}")
+                                    failedSeriesDetailIds.add(seriesId)
+                                    attemptedSeriesDetailIds.remove(seriesId)
                                 }
-                            } catch (e: Exception) {
-                                if (e is CancellationException) throw e
-                                attemptedSeriesDetailIds.remove(seriesId)
                             }
-                        }
-                        if (fetched.isNotEmpty()) {
-                            seriesDetailsCacheFlow.update { it + fetched }
+                            if (fetched.isNotEmpty()) {
+                                seriesDetailsCacheFlow.update { it + fetched }
+                            }
+                        } finally {
+                            activeFavoritesFetchesFlow.update { (it - 1).coerceAtLeast(0) }
                         }
                     }
                 }
 
                 val enrichedSeries = series.map { s ->
-                    val cached = detailsCache[s.id]
+                    val cached = detailsCache[s.id] ?: tmdbRepository.getCachedTvDetails(s.id)
                     if (cached != null) {
                         s.copy(
                             seasons = cached.seasons?.takeIf { it.isNotEmpty() } ?: s.seasons,
@@ -1258,13 +1290,19 @@ class SearchViewModel @Inject constructor(
                     } else s
                 }
 
+                val isFilterProgressDependent = filter == FavoritesFilter.WATCHED ||
+                    filter == FavoritesFilter.UNWATCHED ||
+                    filter == FavoritesFilter.IN_PROGRESS
+
+                val hasPendingFetches = isFilterProgressDependent && (activeFetches > 0 || missingSeriesIds.isNotEmpty())
+
                 val (filteredMovies, filteredSeries) = when (filter) {
                     FavoritesFilter.ALL -> favorites to enrichedSeries
                     FavoritesFilter.MOVIES -> favorites to emptyList()
                     FavoritesFilter.TV_SERIES -> emptyList<Movie>() to enrichedSeries
                     FavoritesFilter.WATCHED -> {
                         favorites.filter { isMovieWatched(it, watchMap) } to enrichedSeries.filter {
-                            TvSeriesProgressCalculator.isSeriesWatched(it, watchMap)
+                            TvSeriesProgressCalculator.isSeriesWatched(it, progressIndex)
                         }
                     }
 
@@ -1272,7 +1310,7 @@ class SearchViewModel @Inject constructor(
                         favorites.filter {
                             isMovieUnwatched(it, watchMap)
                         } to enrichedSeries.filter {
-                            TvSeriesProgressCalculator.isSeriesUnwatched(it, watchMap)
+                            TvSeriesProgressCalculator.isSeriesUnwatched(it, progressIndex)
                         }
                     }
 
@@ -1280,7 +1318,7 @@ class SearchViewModel @Inject constructor(
                         favorites.filter {
                             isMovieInProgress(it, watchMap)
                         } to enrichedSeries.filter {
-                            TvSeriesProgressCalculator.isSeriesInProgress(it, watchMap)
+                            TvSeriesProgressCalculator.isSeriesInProgress(it, progressIndex)
                         }
                     }
                 }
@@ -1292,27 +1330,31 @@ class SearchViewModel @Inject constructor(
                     _selectedQuality.value
                 ).distinctBy { it.id }
 
-                finalMovies to filteredSeries
+                Triple(finalMovies, filteredSeries, hasPendingFetches)
             }.flowOn(defaultDispatcher)
-            .collect { (filteredMovies, filteredSeries) ->
+            .collect { (filteredMovies, filteredSeries, hasPendingFetches) ->
                 if (isShowingFavorites) {
-                    _favoriteTvSeries.value = filteredSeries
-                    allResults.clear()
-                    seenMovieIds.clear()
-                    for (movie in filteredMovies) {
-                        if (seenMovieIds.add(movie.id)) {
-                            allResults.add(movie)
-                        }
-                    }
-
-                    if (allResults.isEmpty() && filteredSeries.isEmpty()) {
-                        _uiState.value = SearchUiState.Empty
+                    if (hasPendingFetches) {
+                        _uiState.value = SearchUiState.Loading
                     } else {
-                        _uiState.value = SearchUiState.Success(
-                            movies = allResults.toList(),
-                            isFavorites = true,
-                            favoriteSeries = filteredSeries
-                        )
+                        _favoriteTvSeries.value = filteredSeries
+                        allResults.clear()
+                        seenMovieIds.clear()
+                        for (movie in filteredMovies) {
+                            if (seenMovieIds.add(movie.id)) {
+                                allResults.add(movie)
+                            }
+                        }
+
+                        if (allResults.isEmpty() && filteredSeries.isEmpty()) {
+                            _uiState.value = SearchUiState.Empty
+                        } else {
+                            _uiState.value = SearchUiState.Success(
+                                movies = allResults.toList(),
+                                isFavorites = true,
+                                favoriteSeries = filteredSeries
+                            )
+                        }
                     }
                 }
             }

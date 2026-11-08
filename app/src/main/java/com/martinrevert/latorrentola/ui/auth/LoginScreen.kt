@@ -27,6 +27,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -103,6 +104,12 @@ fun LoginScreen(
         }
     }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.resetAuthState()
+        }
+    }
+
     val biometricTitle = stringResource(R.string.biometric_prompt_title)
     val biometricSubtitleTemplate = stringResource(R.string.biometric_prompt_subtitle)
 
@@ -175,7 +182,7 @@ private fun LoginScreenContent(
                 containerColor = TvMaterialTheme.colorScheme.background
             )
         ) {
-            if (savedAccounts != null) {
+            if (savedAccounts != null && authState !is AuthState.Success) {
                 if (savedAccounts.isNotEmpty()) {
                     ProfileSelectorBody(
                         authState = authState,
@@ -202,7 +209,7 @@ private fun LoginScreenContent(
                 .safeDrawingPadding(),
             color = MaterialTheme.colorScheme.background
         ) {
-            if (savedAccounts != null) {
+            if (savedAccounts != null && authState !is AuthState.Success) {
                 if (savedAccounts.isNotEmpty()) {
                     ProfileSelectorBody(
                         authState = authState,

@@ -452,6 +452,9 @@ class TmdbRepository @Inject constructor(
         return response.results.orEmpty().sortedBy { it.displayPriority }
     }
 
+    /** Returns cached TV series summary if already fetched into memory. */
+    fun getCachedTvDetails(seriesId: Int): TmdbTvSummary? = tvDetailsCache[seriesId]
+
     /**
      * Loads a series with its seasons and aggregate cast, caching the result in memory.
      *

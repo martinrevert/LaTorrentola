@@ -635,4 +635,39 @@ class TvSeriesProgressCalculatorTest {
         val progress = TvSeriesProgressCalculator.calculateProgressPercent(series, history)
         assertEquals(10, progress)
     }
+
+    @Test
+    fun `inferImdbIdForSeries resolves IMDb ID when progress isEpisode is false but mediaId is canonical`() {
+        val epId = "tt0903747_s1_e1"
+        val progress = PlaybackProgress(
+            mediaId = epId,
+            title = "Breaking Bad - S01E01",
+            positionMs = 1000L,
+            durationMs = 1000L,
+            isEpisode = false
+        )
+        val index = TvSeriesProgressCalculator.buildEpisodeProgressIndex(listOf(progress))
+        val inferred = index.inferImdbIdForSeries("Breaking Bad")
+        assertEquals("tt0903747", inferred)
+    }
+
+    @Test
+    fun `TvSeriesProgressIndex finds episodes for series using index and supports non-standard IDs`() {
+        val epId = "tt0903747_s1_e2"
+        val progress = PlaybackProgress(
+            mediaId = epId,
+            title = "Breaking Bad - S01E02",
+            positionMs = 1000L,
+            durationMs = 1000L,
+            isEpisode = true
+        )
+        val index = TvSeriesProgressCalculator.buildEpisodeProgressIndex(listOf(progress))
+        val series = createSeries(id = 500, name = "Breaking Bad", numberOfEpisodes = 10, imdbId = "tt0903747")
+
+        val pct = TvSeriesProgressCalculator.calculateProgressPercent(series, index)
+        assertEquals(10, pct)
+        assertEquals(true, TvSeriesProgressCalculator.isSeriesInProgress(series, index))
+        assertEquals(false, TvSeriesProgressCalculator.isSeriesWatched(series, index))
+        assertEquals(false, TvSeriesProgressCalculator.isSeriesUnwatched(series, index))
+    }
 }

@@ -119,65 +119,80 @@ object TvSeriesProgressCalculator {
     }
 
     /**
-     * Evaluates all regular episode progress records associated with [series] in [watchHistoryMap]
+     * Builds a pre-indexed episode progress structure from watch history for fast series lookups.
+     */
+    fun buildEpisodeProgressIndex(
+        watchHistory: Collection<PlaybackProgress>
+    ): TvSeriesProgressIndex {
+        if (watchHistory.isEmpty()) return TvSeriesProgressIndex(emptyMap(), emptyList())
+        val byImdb = HashMap<String, MutableList<Pair<EpisodeComponents, PlaybackProgress>>>()
+        val allEpisodes = ArrayList<Pair<EpisodeComponents, PlaybackProgress>>()
+        val seenMediaIds = HashSet<String>()
+
+        for (progress in watchHistory) {
+            if (!seenMediaIds.add(progress.mediaId)) continue
+            val isEp = progress.isEpisode || MediaIdHelper.isCanonicalEpisodeId(progress.mediaId)
+            if (!isEp) continue
+
+            val parsed = MediaIdHelper.parseCanonicalEpisode(progress.mediaId) ?: continue
+            val pair = Pair(parsed, progress)
+            allEpisodes.add(pair)
+
+            val normImdb = MediaIdHelper.normalizeImdbId(parsed.imdbId) ?: parsed.imdbId.lowercase()
+            byImdb.getOrPut(normImdb) { ArrayList() }.add(pair)
+        }
+        return TvSeriesProgressIndex(byImdb, allEpisodes)
+    }
+
+    /**
+     * Evaluates all regular episode progress records associated with [series] using [index]
      * and computes the true overall progress percentage relative to available regular episodes.
      * Season 0 specials are excluded.
      *
      * @param series TMDB TV summary metadata.
-     * @param watchHistoryMap Active watch progress map keyed by canonical media ID or title.
+     * @param index Pre-indexed episode progress index.
      * @return Overall progress percentage in range `1..100`, or `null` if unwatched.
      */
     fun calculateProgressPercent(
         series: TmdbTvSummary,
-        watchHistoryMap: Map<String, PlaybackProgress>
+        index: TvSeriesProgressIndex
     ): Int? {
         val seriesId = series.id
         var imdbId = series.effectiveImdbId
         val seriesName = series.name?.trim().orEmpty()
 
-        // Infer missing IMDb ID from watchHistoryMap if episode titles match series name
-        if (imdbId.isNullOrBlank() && seriesName.isNotBlank() && watchHistoryMap.isNotEmpty()) {
-            for ((_, progress) in watchHistoryMap) {
-                if (progress.isEpisode && isEpisodeTitleMatchingSeries(progress.title, seriesName)) {
-                    val candidate = MediaIdHelper.parseCanonicalEpisode(progress.mediaId)?.imdbId
-                    if (!candidate.isNullOrBlank()) {
-                        imdbId = candidate
-                        break
-                    }
-                }
+        if (imdbId.isNullOrBlank() && seriesName.isNotBlank() && !index.isEmpty) {
+            val candidate = index.inferImdbIdForSeries(seriesName)
+            if (!candidate.isNullOrBlank()) {
+                imdbId = candidate
             }
         }
 
-        if ((seriesId <= 0 && imdbId.isNullOrBlank() && seriesName.isBlank()) || watchHistoryMap.isEmpty()) return null
+        if ((seriesId <= 0 && imdbId.isNullOrBlank() && seriesName.isBlank()) || index.isEmpty) return null
 
-        val normImdbId = MediaIdHelper.normalizeImdbId(imdbId)
+        val normImdbId = MediaIdHelper.normalizeImdbId(imdbId) ?: imdbId?.trim()?.lowercase()
+        val episodes = index.findEpisodesForSeries(normImdbId, seriesName)
+        if (episodes.isEmpty()) return null
+
         val episodeEntries = mutableMapOf<Pair<Int, Int>, Float>()
+        for ((parsed, progress) in episodes) {
+            val sNum = parsed.seasonNumber
+            val eNum = parsed.episodeNumber
 
-        watchHistoryMap.forEach { (mediaId, progress) ->
-            val parsed = MediaIdHelper.parseCanonicalEpisode(mediaId) ?: return@forEach
+            // Season 0 specials are excluded from series overall progress calculation
+            if (sNum <= 0) continue
 
-            val matchesSeries = parsed.matchesSeries(targetImdbId = imdbId, normTarget = normImdbId) ||
-                (seriesName.isNotBlank() && isEpisodeTitleMatchingSeries(progress.title, seriesName))
+            val epKey = Pair(sNum, eNum)
 
-            if (matchesSeries) {
-                val sNum = parsed.seasonNumber
-                val eNum = parsed.episodeNumber
+            val weight = if (progress.isCompleted || progress.progressPercent >= 95) {
+                1.0f
+            } else {
+                (progress.progressPercent.coerceIn(0, 100) / 100.0f)
+            }
 
-                // Season 0 specials are excluded from series overall progress calculation
-                if (sNum <= 0) return@forEach
-
-                val epKey = Pair(sNum, eNum)
-
-                val weight = if (progress.isCompleted || progress.progressPercent >= 95) {
-                    1.0f
-                } else {
-                    (progress.progressPercent.coerceIn(0, 100) / 100.0f)
-                }
-
-                val currentWeight = episodeEntries[epKey] ?: 0f
-                if (weight > currentWeight) {
-                    episodeEntries[epKey] = weight
-                }
+            val currentWeight = episodeEntries[epKey] ?: 0f
+            if (weight > currentWeight) {
+                episodeEntries[epKey] = weight
             }
         }
 
@@ -200,6 +215,35 @@ object TvSeriesProgressCalculator {
     }
 
     /**
+     * Evaluates all regular episode progress records associated with [series] in [watchHistoryMap]
+     * and computes the true overall progress percentage relative to available regular episodes.
+     * Season 0 specials are excluded.
+     *
+     * @param series TMDB TV summary metadata.
+     * @param watchHistoryMap Active watch progress map keyed by canonical media ID or title.
+     * @return Overall progress percentage in range `1..100`, or `null` if unwatched.
+     */
+    fun calculateProgressPercent(
+        series: TmdbTvSummary,
+        watchHistoryMap: Map<String, PlaybackProgress>
+    ): Int? {
+        if (watchHistoryMap.isEmpty()) return null
+        val index = buildEpisodeProgressIndex(watchHistoryMap.values)
+        return calculateProgressPercent(series, index)
+    }
+
+    /**
+     * Determines whether [series] is considered fully watched (100% progress) using [index].
+     */
+    fun isSeriesWatched(
+        series: TmdbTvSummary,
+        index: TvSeriesProgressIndex
+    ): Boolean {
+        val pct = calculateProgressPercent(series, index) ?: return false
+        return pct >= 100
+    }
+
+    /**
      * Determines whether [series] is considered fully watched (100% progress).
      * Unified single source of truth aligning with [calculateProgressPercent].
      */
@@ -209,6 +253,17 @@ object TvSeriesProgressCalculator {
     ): Boolean {
         val pct = calculateProgressPercent(series, watchHistoryMap) ?: return false
         return pct >= 100
+    }
+
+    /**
+     * Determines whether [series] is in progress (partially watched, 1..99%) using [index].
+     */
+    fun isSeriesInProgress(
+        series: TmdbTvSummary,
+        index: TvSeriesProgressIndex
+    ): Boolean {
+        val pct = calculateProgressPercent(series, index) ?: return false
+        return pct in 1..99
     }
 
     /**
@@ -224,6 +279,17 @@ object TvSeriesProgressCalculator {
     }
 
     /**
+     * Determines whether [series] is unwatched (0% progress or null) using [index].
+     */
+    fun isSeriesUnwatched(
+        series: TmdbTvSummary,
+        index: TvSeriesProgressIndex
+    ): Boolean {
+        val pct = calculateProgressPercent(series, index)
+        return pct == null || pct == 0
+    }
+
+    /**
      * Determines whether [series] is unwatched (0% progress or null).
      * Unified single source of truth aligning with [calculateProgressPercent].
      */
@@ -234,4 +300,42 @@ object TvSeriesProgressCalculator {
         val pct = calculateProgressPercent(series, watchHistoryMap)
         return pct == null || pct == 0
     }
+}
+
+/**
+ * Lightweight, pre-indexed episode progress index for fast O(1) series progress lookups.
+ */
+class TvSeriesProgressIndex(
+    private val byImdb: Map<String, List<Pair<EpisodeComponents, PlaybackProgress>>>,
+    private val allEpisodes: List<Pair<EpisodeComponents, PlaybackProgress>>
+) {
+    fun findEpisodesForSeries(
+        normImdbId: String?,
+        seriesName: String
+    ): List<Pair<EpisodeComponents, PlaybackProgress>> {
+        if (!normImdbId.isNullOrBlank()) {
+            val byId = byImdb[normImdbId]
+            if (!byId.isNullOrEmpty()) {
+                return byId
+            }
+        }
+        if (seriesName.isNotBlank()) {
+            return allEpisodes.filter { (_, progress) ->
+                TvSeriesProgressCalculator.isEpisodeTitleMatchingSeries(progress.title, seriesName)
+            }
+        }
+        return emptyList()
+    }
+
+    fun inferImdbIdForSeries(seriesName: String): String? {
+        if (seriesName.isBlank()) return null
+        for ((parsed, progress) in allEpisodes) {
+            if (TvSeriesProgressCalculator.isEpisodeTitleMatchingSeries(progress.title, seriesName)) {
+                if (parsed.imdbId.isNotBlank()) return parsed.imdbId
+            }
+        }
+        return null
+    }
+
+    val isEmpty: Boolean get() = allEpisodes.isEmpty()
 }

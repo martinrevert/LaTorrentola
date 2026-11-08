@@ -50,6 +50,8 @@ class SearchViewModelTest {
         every { userLibraryRepository.getDownloadedMovies() } returns flowOf(emptyList())
         every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(emptyList())
         every { userLibraryRepository.getWatchHistory() } returns flowOf(emptyList())
+        every { tmdbRepository.getCachedTvDetails(any()) } returns null
+        coEvery { tmdbRepository.getTvDetails(any()) } answers { TmdbTvSummary(id = firstArg()) }
         every { preferenceManager.getFilteredLanguages() } returns ""
         every { preferenceManager.filteredLanguagesFlow } returns MutableStateFlow("")
         every { preferenceManager.getMinimumRating() } returns 6f
@@ -146,6 +148,94 @@ class SearchViewModelTest {
         // Must only subscribe to getFavoriteMovies once (no recursive showFavorites(force = true) restart)
         coVerify(exactly = 1) { repository.getFavoriteMovies() }
         coVerify(exactly = 1) { tmdbRepository.getTvDetails(50) }
+    }
+
+    @Test
+    fun `showFavorites with progress-dependent filter should hold Loading state while seasons are pending, then transition to Success once enriched`() = runTest {
+        val unenrichedSeries = TmdbTvSummary(
+            id = 50,
+            name = "Unenriched Series",
+            imdbId = "tt0050000",
+            seasons = null,
+            numberOfEpisodes = null
+        )
+        val enrichedSeries = unenrichedSeries.copy(
+            seasons = listOf(
+                TmdbTvSeason(id = 101, seasonNumber = 1, episodeCount = 10, airDate = "2020-01-01")
+            ),
+            numberOfSeasons = 1,
+            numberOfEpisodes = 10
+        )
+        val inProgressEpisode = PlaybackProgress(
+            mediaId = "tt0050000_s1_e1",
+            title = "Unenriched Series - S01E01",
+            positionMs = 500L,
+            durationMs = 1000L,
+            isEpisode = true
+        )
+
+        every { repository.getFavoriteMovies() } returns flowOf(emptyList())
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(unenrichedSeries))
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(inProgressEpisode))
+        coEvery { tmdbRepository.getTvDetails(50) } returns enrichedSeries
+
+        viewModel.setFavoritesFilter(FavoritesFilter.IN_PROGRESS)
+        viewModel.showFavorites()
+
+        val state = viewModel.uiState.value
+        assertThat(state).isInstanceOf(SearchUiState.Success::class.java)
+        val success = state as SearchUiState.Success
+        assertThat(success.isFavorites).isTrue()
+        assertThat(success.favoriteSeries).hasSize(1)
+        assertThat(success.favoriteSeries.single().id).isEqualTo(50)
+    }
+
+    @Test
+    fun `showFavorites when getTvDetails fails should transition out of Loading and allow retry on force`() = runTest {
+        val unenrichedSeries = TmdbTvSummary(
+            id = 51,
+            name = "Failing Series",
+            imdbId = "tt0051000",
+            seasons = null,
+            numberOfEpisodes = null
+        )
+        val inProgressEpisode = PlaybackProgress(
+            mediaId = "tt0051000_s1_e1",
+            title = "Failing Series - S01E01",
+            positionMs = 500L,
+            durationMs = 1000L,
+            isEpisode = true
+        )
+
+        every { repository.getFavoriteMovies() } returns flowOf(emptyList())
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(unenrichedSeries))
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(inProgressEpisode))
+        coEvery { tmdbRepository.getTvDetails(51) } throws java.io.IOException("Network down")
+
+        viewModel.setFavoritesFilter(FavoritesFilter.IN_PROGRESS)
+        viewModel.showFavorites()
+
+        // Should not remain stuck on Loading
+        val stateAfterFailure = viewModel.uiState.value
+        assertThat(stateAfterFailure).isNotEqualTo(SearchUiState.Loading)
+
+        // Force reload after network recovers
+        val recoveredSeries = unenrichedSeries.copy(
+            seasons = listOf(
+                TmdbTvSeason(id = 102, seasonNumber = 1, episodeCount = 10, airDate = "2020-01-01")
+            ),
+            numberOfSeasons = 1,
+            numberOfEpisodes = 10
+        )
+        coEvery { tmdbRepository.getTvDetails(51) } returns recoveredSeries
+
+        viewModel.showFavorites(force = true)
+
+        val stateAfterRetry = viewModel.uiState.value
+        assertThat(stateAfterRetry).isInstanceOf(SearchUiState.Success::class.java)
+        val success = stateAfterRetry as SearchUiState.Success
+        assertThat(success.favoriteSeries).hasSize(1)
+        assertThat(success.favoriteSeries.single().seasons).isNotEmpty()
     }
 
     @Test

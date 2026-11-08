@@ -288,7 +288,6 @@ fun AppNavigation(
                     viewModel = authViewModel,
                     themeMode = themeMode,
                     onLoginSuccess = {
-                        authViewModel.resetAuthState()
                         if (backStack.firstOrNull() == Route.Login) {
                             if (pendingMovieRoute != null) {
                                 NavBackStackHandler.resetToWithTop(backStack, Route.Home, pendingMovieRoute)

@@ -138,7 +138,6 @@ fun SearchScreen(
     val tvUiState by viewModel.tvUiState.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val downloadedSeriesIds by viewModel.downloadedSeriesIds.collectAsStateWithLifecycle()
-    val favoriteTvSeries by viewModel.favoriteTvSeries.collectAsStateWithLifecycle()
     val tvGenres by viewModel.tvGenres.collectAsStateWithLifecycle()
     val lastClickedSeriesId by viewModel.lastClickedSeriesId.collectAsStateWithLifecycle()
     val lastClickedCreditKey by viewModel.lastClickedCreditKey.collectAsStateWithLifecycle()
@@ -214,7 +213,6 @@ fun SearchScreen(
         actorUiState = actorUiState,
         tvUiState = tvUiState,
         downloadedSeriesIds = downloadedSeriesIds,
-        favoriteTvSeries = favoriteTvSeries,
         tvGenres = tvGenres,
         lastClickedSeriesId = lastClickedSeriesId,
         lastClickedCreditKey = lastClickedCreditKey,
@@ -319,7 +317,6 @@ private fun SearchScreenContent(
     actorUiState: SearchActorUiState = SearchActorUiState.Idle,
     tvUiState: SearchTvUiState = SearchTvUiState.Idle,
     downloadedSeriesIds: Set<Int> = emptySet(),
-    favoriteTvSeries: List<TmdbTvSummary> = emptyList(),
     tvGenres: List<TmdbTvGenre> = emptyList(),
     lastClickedSeriesId: Int? = null,
     lastClickedCreditKey: String? = null,
@@ -711,7 +708,7 @@ private fun SearchScreenContent(
                                 is SearchUiState.Success -> if (uiState.isFavorites) {
                                     FavoriteItemsGrid(
                                         movies = uiState.movies,
-                                        series = uiState.favoriteSeries.ifEmpty { favoriteTvSeries },
+                                        series = uiState.favoriteSeries,
                                         tvGenres = tvGenres,
                                         state = gridState,
                                         downloadedMovieIds = downloadedMovieIds,
@@ -949,7 +946,7 @@ private fun SearchScreenContent(
                             is SearchUiState.Success -> if (uiState.isFavorites) {
                                 FavoriteItemsGrid(
                                     movies = uiState.movies,
-                                    series = uiState.favoriteSeries.ifEmpty { favoriteTvSeries },
+                                    series = uiState.favoriteSeries,
                                     tvGenres = tvGenres,
                                     state = gridState,
                                     downloadedMovieIds = downloadedMovieIds,
@@ -1498,8 +1495,9 @@ private fun FavoriteItemsGrid(
     val seriesProgressPercentMap = remember(series, watchHistoryMap) {
         if (watchHistoryMap.isEmpty()) emptyMap<Int, Int?>()
         else {
+            val progressIndex = TvSeriesProgressCalculator.buildEpisodeProgressIndex(watchHistoryMap.values)
             series.associate { item ->
-                item.id to TvSeriesProgressCalculator.calculateProgressPercent(item, watchHistoryMap)
+                item.id to TvSeriesProgressCalculator.calculateProgressPercent(item, progressIndex)
             }
         }
     }
