@@ -243,6 +243,9 @@ graph TD
   * **NFS**: Native C [libnfs](https://github.com/sahlberg/libnfs) JNI bindings (`LibNfsNative.kt`) supporting NFSv3 and NFSv4.
 * **Networking & Web APIs**:
   * [Retrofit 3.0](https://square.github.io/retrofit/) with [OkHttp 5](https://square.github.io/okhttp/) and Kotlin Coroutines `Flow`.
+  * **Compression & Transport Optimization**: Integrated `okhttp-brotli` (`BrotliInterceptor`) negotiating `Accept-Encoding: br, gzip` across all Retrofit services and OpenSubtitles client. Delivers 15–25% smaller JSON payloads on Brotli-capable CDNs (Cloudflare on TMDB, Torrentio, OpenSubtitles, GitHub) with automatic, transparent fallback to `gzip`.
+  * **HTTP Disk Cache**: Dedicated 30 MB on-disk `okhttp3.Cache` resolving `Cache-Control` and HTTP `304 Not Modified` headers for instant UI lookups and zero-byte revalidations.
+  * **Unified Socket & HTTP/2 Multiplexing**: Reuses base `OkHttpClient` (`okHttpClient.newBuilder()`) across YTS fallback interceptors (prepended to capture fallback logs) and Coil 3 `ImageLoader` (`OkHttpNetworkFetcherFactory`), sharing connection pools, TLS sessions, and HTTP/2 multiplexing while isolating image disk storage to Coil's dedicated disk cache (`.cache(null)`).
   * [NanoHTTPD](https://github.com/NanoHttpd/nanohttpd) embedded micro-servers for loopback byte-range delivery and Cast LAN streaming.
 * **Cloud & Persistence**:
   * [Room 2.6+](https://developer.android.com/training/data-storage/room) as the fast, reactive Single Source of Truth for local state.

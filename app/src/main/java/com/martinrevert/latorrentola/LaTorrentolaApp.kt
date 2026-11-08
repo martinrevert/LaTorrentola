@@ -4,6 +4,7 @@ import android.app.Application
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.svg.SvgDecoder
 import com.martinrevert.latorrentola.network.CrashlyticsManager
 import com.martinrevert.latorrentola.network.FirebaseMessagingInitializer
@@ -12,6 +13,7 @@ import com.martinrevert.latorrentola.utils.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -31,9 +33,16 @@ class LaTorrentolaApp : Application(), SingletonImageLoader.Factory {
 	@Inject
 	lateinit var publicTrackersRepository: PublicTrackersRepository
 
+	/** Provides the shared OkHttp client with Brotli and HTTP cache for image loading. */
+	@Inject
+	lateinit var okHttpClient: dagger.Lazy<OkHttpClient>
+
 	override fun newImageLoader(context: PlatformContext): ImageLoader {
 		return ImageLoader.Builder(context)
 			.components {
+				add(OkHttpNetworkFetcherFactory(callFactory = {
+					okHttpClient.get().newBuilder().cache(null).build()
+				}))
 				add(SvgDecoder.Factory())
 			}
 			.build()

@@ -1,18 +1,24 @@
 package com.martinrevert.latorrentola.di
 
+import android.content.Context
 import com.martinrevert.latorrentola.BuildConfig
 import com.martinrevert.latorrentola.constants.Constants
 import com.martinrevert.latorrentola.network.EztvService
 import com.martinrevert.latorrentola.network.FcmService
 import com.martinrevert.latorrentola.network.OpenSubtitlesService
 import com.martinrevert.latorrentola.network.TmdbService
+import com.martinrevert.latorrentola.network.YtsFallbackInterceptor
 import com.martinrevert.latorrentola.network.YtsService
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import java.io.File
 import java.net.ProtocolException
+import okhttp3.Cache
 import okhttp3.OkHttpClient
+import okhttp3.brotli.BrotliInterceptor
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -22,6 +28,16 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
+
+    private const val HTTP_CACHE_SIZE_BYTES = 30L * 1024L * 1024L // 30 MB
+
+    /** Provides an on-disk HTTP cache for API responses respecting cache headers and 304 Not Modified. */
+    @Provides
+    @Singleton
+    fun provideHttpCache(@ApplicationContext context: Context): Cache {
+        val cacheDir = File(context.cacheDir, "http_cache")
+        return Cache(cacheDir, HTTP_CACHE_SIZE_BYTES)
+    }
 
     /** Provides an HTTP logging interceptor with bodies logged only in debug builds. */
     @Provides
@@ -36,27 +52,31 @@ object NetworkModule {
         }
     }
 
-    /** Provides the shared OkHttp client used by all Retrofit instances. */
+    /** Provides the shared OkHttp client used by all Retrofit instances with Brotli and Gzip compression. */
     @Provides
     @Singleton
-    fun provideOkHttpClient(loggingInterceptor: HttpLoggingInterceptor): OkHttpClient {
+    fun provideOkHttpClient(
+        loggingInterceptor: HttpLoggingInterceptor,
+        cache: Cache
+    ): OkHttpClient {
         return OkHttpClient.Builder()
             .addInterceptor(loggingInterceptor)
+            .addInterceptor(BrotliInterceptor)
+            .cache(cache)
             .build()
     }
 
-    /** Creates a Retrofit instance for the YTS API with automatic alternative base URL fallback. */
+    /** Creates a Retrofit instance for the YTS API reusing the base OkHttpClient with fallback support. */
     @Provides
     @Singleton
     @YtsRetrofit
     fun provideRetrofit(
-        loggingInterceptor: HttpLoggingInterceptor,
-        fallbackInterceptor: com.martinrevert.latorrentola.network.YtsFallbackInterceptor
+        okHttpClient: OkHttpClient,
+        fallbackInterceptor: YtsFallbackInterceptor
     ): Retrofit {
-        val ytsClient = OkHttpClient.Builder()
-            .addInterceptor(fallbackInterceptor)
-            .addInterceptor(loggingInterceptor)
-            .build()
+        val ytsClient = okHttpClient.newBuilder().apply {
+            interceptors().add(0, fallbackInterceptor)
+        }.build()
         return Retrofit.Builder()
             .baseUrl(Constants.YTS_BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
@@ -148,13 +168,14 @@ object NetworkModule {
     }
 
     /**
-     * Provides an isolated HTTPS-only OpenSubtitles client with an explicit host allowlist.
+     * Provides an isolated HTTPS-only OpenSubtitles client with an explicit host allowlist and Brotli support.
      */
     @Provides
     @Singleton
     @OpenSubtitlesHttpClient
     fun provideOpenSubtitlesHttpClient(): OkHttpClient {
         return OkHttpClient.Builder()
+            .addInterceptor(BrotliInterceptor)
             .followRedirects(true)
             .followSslRedirects(false)
             .addNetworkInterceptor { chain ->
