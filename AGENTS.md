@@ -85,6 +85,7 @@ This repository integrates two official Agent Skills submodules following the op
 - Wear OS -> **LOAD:** `wear-compose-m3`, `wear-widgets`
 - LiteRT / On-device ML -> **LOAD:** `litert-runtime`, `litert-lm`
 - ML Kit GenAI Agent / Prompt API -> **LOAD:** `ml-kit-genai-prompt-api`, `mlkit-agent-api`
+- Haze, Glassy Blur, hazeSource, hazeGlass, Frosted Glass, dev.chrisbanes.haze -> **LOAD:** `.agents/haze-skills/SKILL.md` AND `jetpack-compose-performance`
 
 ---
 
@@ -560,6 +561,17 @@ To eliminate runaway cloud billing, prevent broken season completion counters, a
        3. In `SearchScreen.kt`, `FavoriteItemsGrid` MUST receive `uiState.favoriteSeries` directly (NEVER falling back to unfiltered `favoriteTvSeries`), and `seriesProgressPercentMap` MUST index watch history once via `TvSeriesProgressCalculator.buildEpisodeProgressIndex(watchHistoryMap.values)`.
    - **PROHIBITION: NEVER call `authViewModel.resetAuthState()` inside `onLoginSuccess` in navigation entries, NEVER render `ProfileSelectorBody` when `authState is AuthState.Success`, NEVER display partial/premature posters in Favorites before asynchronous TMDB season enrichment finishes when progress-dependent filters are active, and NEVER use `.ifEmpty { favoriteTvSeries }` to bypass filtered `uiState.favoriteSeries`.**
 
+19. **Haze 2.1 Glassmorphism, Material 3 Glass & Android TV D-Pad Focus Mandate (STRICT - ZERO REGRESSION)**:
+   - **The Entire-Composable `graphicsLayer { alpha }` Dimming Trap**: Applying `.graphicsLayer { alpha = hazeAlpha }` to a parent container (`TopAppBar` or chips `Column`) to control glass transparency dims the ENTIRE composable tree (including titles, icons, and filter chips) to near invisibility (e.g. 15% opacity on scroll).
+   - **The Opaque Container & Dead Glass Traps**:
+     - Passing opaque colors (such as `surfaceContainerHigh` or `surface`) to composables using `hazeGlass` blocks the underlying blurred render buffer completely. On Android 12+, `containerColor` MUST be `Color.Transparent`, falling back to `surface.copy(alpha = 0.85f)` only on pre-Android 12 (`Build.VERSION.SDK_INT < Build.VERSION_CODES.S`).
+     - Content outer padding outside scrollable columns clips content before it can pass underneath top bars, leaving `hazeGlass` with nothing to blur.
+   - **Android TV Performance & D-Pad Focus Contract**:
+     - Android TV GPUs cannot handle unconstrained full-screen RenderEffect blurs. When `isTvDevice() == true`, `rememberHazeState()` must be disabled (`if (!isTv) rememberHazeState() else null`), OR if glass effects are explicitly used on TV, the composition MUST be wrapped in `CompositionLocalProvider(LocalHazePerformanceMode provides HazePerformanceMode.Performance)`.
+     - In Android TV, glass styles MUST respond to D-Pad focus via `onFocusChanged` rather than touch/press states, updating `GlassStyle` dynamically.
+     - Contiguous TV elements (such as carousel cards or navigation rails) can leverage `hazeGlassContainer(mergeDistance = ...)` for seamless visual fusion.
+   - **PROHIBITION: NEVER use `graphicsLayer { alpha }` to modulate glass background transparency on composables containing text or interactive content, NEVER apply `hazeGlass` over an opaque containerColor, and NEVER execute unconstrained Haze blur on Android TV without `LocalHazePerformanceMode provides HazePerformanceMode.Performance` or disabling via `!isTv`**.
+
 ### Previews
 - Every UI Component MUST include `@Preview` functions covering: Light Mode, Dark Mode, Mobile form-factor, and TV form-factor (using appropriate theme wrappers).
 
@@ -605,6 +617,7 @@ Before marking a task complete, verify:
 36. [ ] For Handheld UI, did I evaluate if an M3 Expressive tactic (e.g., spring motion, shape morphing, or expressive containers) elevates the experience?
 37. [ ] Did I verify that `app/google-services.json` includes client configurations for both `com.martinrevert.latorrentola` (Release) and `com.martinrevert.latorrentola.debug` (Debug), allowing both variants to build and co-exist on the same device?
 38. [ ] Did I verify that `FirebaseMessagingInitializer` handles FIS authentication errors (`FirebaseInstallationsException`), purges stale installation tokens via `FirebaseInstallations.getInstance().delete()`, logs diagnostic instructions, and wraps `FirebaseMessaging` calls in `try-catch` blocks?
+39. [ ] Did I verify that any Haze 2.1 glass usage follows `.agents/haze-skills/SKILL.md` (no `graphicsLayer { alpha }` dimming text/icons, `Color.Transparent` containers on Android 12+, pre-Android 12 fallback, disabled or gated under `LocalHazePerformanceMode provides HazePerformanceMode.Performance` on Android TV, and no opaque containers covering blur)?
 39. [ ] Did I verify that in `SearchViewModel`, `showWatchingMovies` and `showWatchingTvSeries` cleanly transition to `Empty` upon resolution completion without hanging on `Loading`, preserve `Loading` while background lookups are active (zero empty-state flash), cache resolved movies in memory, preserve canonical `imdbId` on TMDB lookups, and short-circuit when `episodeProgress` is empty?
 40. [ ] Did I verify that `HttpLoggingInterceptor` precedes `BrotliInterceptor` on `OkHttpClient`, that on-disk `okhttp3.Cache` is attached for API metadata, that YTS client prepends `fallbackInterceptor` at index 0 via `okHttpClient.newBuilder().apply { interceptors().add(0, ...) }`, and that Coil 3 uses `OkHttpNetworkFetcherFactory` with `.cache(null)` to preserve image isolation?
 41. [ ] Did I verify that `LoginScreen` resets auth state exclusively `onDispose` (never prematurely in `onLoginSuccess`), guards against rendering profiles when `authState is AuthState.Success`, that `SearchViewModel.showFavorites` retains `SearchUiState.Loading` (placeholders) until TMDB seasons enrich for progress-dependent filters, and that `FavoriteItemsGrid` uses `TvSeriesProgressIndex` without bypassing `uiState.favoriteSeries`?
