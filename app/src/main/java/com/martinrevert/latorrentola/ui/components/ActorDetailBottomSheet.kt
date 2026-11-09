@@ -2,6 +2,9 @@
 
 package com.martinrevert.latorrentola.ui.components
 
+import android.os.Build
+import androidx.compose.ui.platform.LocalInspectionMode
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
@@ -44,7 +47,9 @@ import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.glass.GlassStyle
 import dev.chrisbanes.haze.glass.hazeGlass
+import dev.chrisbanes.haze.glass.material3.material3
 
 /**
  * Displays actor biography and filmography in an adaptive modal sheet.
@@ -74,11 +79,17 @@ fun ActorDetailBottomSheet(
     }
     val configuration = LocalConfiguration.current
     val isWideScreen = configuration.screenWidthDp >= 600 || isTv
+    val isInspection = LocalInspectionMode.current
+    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
 
-    val sheetContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val sheetContainerColor = if (hazeState != null && !isPreAndroid12) {
+        Color.Transparent
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    }
 
     val sheetModifier = if (hazeState != null) {
-        Modifier.hazeGlass(input = HazeInput.Sources(hazeState))
+        Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3())
     } else {
         Modifier
     }

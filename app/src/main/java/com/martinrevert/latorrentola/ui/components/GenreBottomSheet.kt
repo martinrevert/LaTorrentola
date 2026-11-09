@@ -1,11 +1,13 @@
 package com.martinrevert.latorrentola.ui.components
 
+import android.os.Build
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.martinrevert.latorrentola.R
@@ -14,10 +16,12 @@ import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.glass.GlassStyle
 import dev.chrisbanes.haze.glass.hazeGlass
+import dev.chrisbanes.haze.glass.material3.material3
 
 /** Presents a localized, alphabetized genre picker in a modal bottom sheet. */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GenreBottomSheet(
     genres: List<String>,
@@ -34,10 +38,16 @@ fun GenreBottomSheet(
     val sortedGenres = remember(genres) {
         genres.sortedBy { GenreTranslation.getGenreText(it).asString(context) }
     }
-    val sheetContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val isInspection = LocalInspectionMode.current
+    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+    val sheetContainerColor = if (hazeState != null && !isPreAndroid12) {
+        Color.Transparent
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    }
 
     val sheetModifier = if (hazeState != null) {
-        Modifier.hazeGlass(input = HazeInput.Sources(hazeState))
+        Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3())
     } else {
         Modifier
     }

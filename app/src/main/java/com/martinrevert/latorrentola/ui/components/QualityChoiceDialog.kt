@@ -2,6 +2,7 @@
 
 package com.martinrevert.latorrentola.ui.components
 
+import android.os.Build
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -67,6 +68,7 @@ import com.martinrevert.latorrentola.utils.TorrentCardActionHandler
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
+import androidx.compose.ui.platform.LocalInspectionMode
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 
@@ -154,6 +156,9 @@ fun NextEpisodeTorrentDialog(
     val isStatusOnlyMode = !isLoading && !hasReleases && evaluation != null &&
         evaluation.state != SeriesContinuationState.NEXT_EPISODE_READY
 
+    val isInspection = LocalInspectionMode.current
+    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
@@ -162,7 +167,7 @@ fun NextEpisodeTorrentDialog(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.8f))
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = if (isPreAndroid12) 0.8f else 0.65f))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,

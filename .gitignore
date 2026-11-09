@@ -42,6 +42,7 @@ captures/
 /.agents/*
 !/.agents/skills
 !/.agents/firebase-skills
+!/.agents/haze-skills
 .android-studio/
 .artifacts/
 

@@ -2,6 +2,7 @@
 
 package com.martinrevert.latorrentola.ui.home
 
+import android.os.Build
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -62,6 +63,11 @@ import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.glass.GlassStyle
+import dev.chrisbanes.haze.glass.hazeGlass
+import dev.chrisbanes.haze.glass.material3.material3
+import androidx.compose.ui.platform.LocalInspectionMode
 import kotlinx.coroutines.launch
 
 /**
@@ -449,7 +455,8 @@ private fun HomeScreenContent(
                             onTvClick = { selectMediaMode(true) },
                             focusDownRequester = homeControlsFocusRequester,
                             containerColor = Color.Transparent,
-                            isTv = false
+                            isTv = false,
+                            modifier = if (hazeState != null) Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3()) else Modifier
                         )
                     },
                     chips = {
@@ -548,7 +555,8 @@ private fun HomeScreenContent(
                             onTvClick = { selectMediaMode(true) },
                             focusDownRequester = homeControlsFocusRequester,
                             containerColor = Color.Transparent,
-                            isTv = false
+                            isTv = false,
+                            modifier = if (hazeState != null) Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3()) else Modifier
                         )
                     },
                     chips = {
@@ -732,10 +740,17 @@ private fun HomeTopAppBar(
 ) {
     val configuration = LocalConfiguration.current
     val showTitleText = isTv || configuration.screenWidthDp >= 480
+    val isInspection = LocalInspectionMode.current
+    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+    val effectiveContainerColor = if (!isTv && isPreAndroid12) {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
+    } else {
+        containerColor
+    }
 
     TopAppBar(
         modifier = modifier,
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = containerColor),
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = effectiveContainerColor),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(

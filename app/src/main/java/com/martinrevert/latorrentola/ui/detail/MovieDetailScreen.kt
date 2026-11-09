@@ -63,7 +63,9 @@ import dev.chrisbanes.haze.rememberHazeState
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.glass.GlassStyle
 import dev.chrisbanes.haze.glass.hazeGlass
+import dev.chrisbanes.haze.glass.material3.material3
 import coil3.compose.AsyncImage
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -266,7 +268,7 @@ private fun MovieDetailScreenContent(
     onRetry: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val hazeState = rememberHazeState()
+    val hazeState = if (!isTv) rememberHazeState() else null
     val scrollState = rememberScrollState()
     val insufficientStorageState = remember { mutableStateOf<Pair<Long, Long>?>(null) }
     var torrentToDelete by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -502,6 +504,7 @@ private fun MovieDetailScreenContent(
  * rich OMDb ratings (IMDb, Rotten Tomatoes, Metacritic), studio/director row, action buttons,
  * modal trailer dialog, cast section, and quality-grouped torrent releases.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HandheldMovieDetailContent(
     movie: Movie,
@@ -530,7 +533,7 @@ private fun HandheldMovieDetailContent(
     onAddLanguageToFilter: (String) -> Unit,
     onCastClick: (String) -> Unit,
     onInsufficientStorage: (Long, Long) -> Unit,
-    hazeState: HazeState,
+    hazeState: HazeState? = null,
     scrollState: ScrollState = rememberScrollState(),
     modifier: Modifier = Modifier
 ) {
@@ -589,10 +592,14 @@ private fun HandheldMovieDetailContent(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .hazeSource(state = hazeState)
             .background(MaterialTheme.colorScheme.surface)
     ) {
-        // 1. Dynamic TMDB Backdrop with Directional Scrims
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
+        ) {
+            // 1. Dynamic TMDB Backdrop with Directional Scrims
         if (!backdropUrl.isNullOrEmpty()) {
             val backdropHeight = if (isWideScreen) 380.dp else 260.dp
             Box(
@@ -968,56 +975,62 @@ private fun HandheldMovieDetailContent(
                 }
             }
         }
+        }
 
-        // 3. Floating Modern Top Bar (statusBars padded)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = onBackClick,
-                modifier = Modifier
-                    .size(42.dp)
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.back_desc),
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // 3. Floating Glass Top Navigation Bar with Actions
+        val isInspection = LocalInspectionMode.current
+        val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+        TopAppBar(
+            title = {},
+            navigationIcon = {
                 IconButton(
-                    onClick = onShareClick,
-                    modifier = Modifier
-                        .size(42.dp)
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+                    onClick = onBackClick,
+                    modifier = Modifier.padding(start = 8.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Share,
-                        contentDescription = stringResource(R.string.share_desc),
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.back_desc),
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
-                IconButton(
-                    onClick = onFavoriteToggle,
-                    modifier = Modifier
-                        .size(42.dp)
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+            },
+            actions = {
+                Row(
+                    modifier = Modifier.padding(end = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = stringResource(R.string.favorite_desc),
-                        tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                    )
+                    IconButton(
+                        onClick = onShareClick
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = stringResource(R.string.share_desc),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    IconButton(
+                        onClick = onFavoriteToggle
+                    ) {
+                        Icon(
+                            imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = stringResource(R.string.favorite_desc),
+                            tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
-            }
-        }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = if (isPreAndroid12) MaterialTheme.colorScheme.surface.copy(alpha = 0.85f) else Color.Transparent
+            ),
+            modifier = Modifier
+                .then(
+                    if (hazeState != null) {
+                        Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3())
+                    } else {
+                        Modifier
+                    }
+                )
+        )
 
         // 4. Modal YouTube Trailer Dialog
         if (showTrailerDialog && !movie.ytTrailerCode.isNullOrEmpty()) {

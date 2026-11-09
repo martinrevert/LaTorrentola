@@ -9,9 +9,7 @@ import android.os.Build
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.EaseInOutCubic
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -45,7 +43,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -97,7 +95,9 @@ import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TvSeriesProgressCalculator
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.glass.GlassStyle
 import dev.chrisbanes.haze.glass.hazeGlass
+import dev.chrisbanes.haze.glass.material3.material3
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import java.util.Locale
@@ -379,21 +379,6 @@ private fun SearchScreenContent(
         Color.Transparent
     }
 
-    val isScrolled by remember {
-        derivedStateOf {
-            gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 10
-        }
-    }
-
-    val hazeAlpha by animateFloatAsState(
-        targetValue = if (isScrolled) 0.15f else 1f,
-        animationSpec = tween(
-            durationMillis = 600,
-            easing = EaseInOutCubic
-        ),
-        label = "hazeAlpha"
-    )
-
     val hasTopChips = isShowingFavorites || (!isTvMode && !isActorMode) ||
         (isActorMode && actorUiState is SearchActorUiState.Success)
     val isTvMoviesSearch = isTv && !isTvMode && !isActorMode && !isShowingFavorites
@@ -410,9 +395,7 @@ private fun SearchScreenContent(
                         }
                         .then(
                             if (hazeState != null) {
-                                Modifier
-                                    .graphicsLayer { alpha = hazeAlpha }
-                                    .hazeGlass(input = HazeInput.Sources(hazeState))
+                                Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3())
                             } else Modifier
                         ),
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
@@ -996,9 +979,7 @@ private fun SearchScreenContent(
                         .padding(top = padding.calculateTopPadding())
                         .then(
                             if (hazeState != null) {
-                                Modifier
-                                    .graphicsLayer { alpha = hazeAlpha }
-                                    .hazeGlass(input = HazeInput.Sources(hazeState))
+                                Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3())
                             } else Modifier
                         )
                 ) {

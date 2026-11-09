@@ -76,7 +76,9 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import dev.chrisbanes.haze.rememberHazeState
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.glass.GlassStyle
 import dev.chrisbanes.haze.glass.hazeGlass
+import dev.chrisbanes.haze.glass.material3.material3
 import dev.chrisbanes.haze.ExperimentalHazeApi
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.tv.material3.Button
@@ -185,10 +187,12 @@ private fun SettingsScreenContent(
     val configuration = LocalConfiguration.current
     val isWideScreen = configuration.screenWidthDp >= 600 || isTv
     val scrollState = rememberScrollState()
-    val hazeState = rememberHazeState()
+    val hazeState = if (!isTv) rememberHazeState() else null
     val isInspection = LocalInspectionMode.current
     val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
-    val topBarContainerColor = if (isPreAndroid12) {
+    val topBarContainerColor = if (isTv) {
+        TvMaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+    } else if (isPreAndroid12) {
         MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
     } else {
         Color.Transparent
@@ -198,7 +202,7 @@ private fun SettingsScreenContent(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
-                modifier = Modifier.hazeGlass(input = HazeInput.Sources(hazeState)),
+                modifier = if (hazeState != null) Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3()) else Modifier,
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
                 title = {
                     if (isTv) {
@@ -244,7 +248,7 @@ private fun SettingsScreenContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .hazeSource(state = hazeState)
+                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
                 .consumeWindowInsets(padding)
         ) {
         if (isWideScreen) {
@@ -260,7 +264,6 @@ private fun SettingsScreenContent(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(
-                        top = topPadding,
                         bottom = bottomPadding,
                         start = startPadding,
                         end = endPadding
@@ -272,7 +275,8 @@ private fun SettingsScreenContent(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .verticalScroll(leftScrollState),
+                        .verticalScroll(leftScrollState)
+                        .padding(top = topPadding),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     if (userPhotoUrl != null || userName != null) {
@@ -309,7 +313,8 @@ private fun SettingsScreenContent(
                     modifier = Modifier
                         .weight(1.2f)
                         .fillMaxHeight()
-                        .verticalScroll(rightScrollState),
+                        .verticalScroll(rightScrollState)
+                        .padding(top = topPadding),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     SettingsToggle(

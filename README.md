@@ -12,7 +12,7 @@ Whether on your phone's touchscreen, your tablet, a foldable device, or comforta
 
 * 🚀 **Instant Streaming**: Forget waiting hours for a complete download. The app prioritizes and verifies the initial file segments so your movie or TV episode starts playing in seconds.
 * 📺 **Built for Your Television (100% Android TV & Google TV Ready)**: Say goodbye to clumsy virtual cursors. The user interface navigates naturally with your TV remote (D-pad), featuring interactive card scaling, high-contrast focus rings, and large-screen optimized layouts.
-* 💎 **Modern "Frosted Glass" Aesthetic**: Experience a premium visual presentation powered by real-time translucent frosted glass blur, smooth scrolling animations, and adaptive Material 3 styling.
+* 💎 **Modern Haze 2.1 "Frosted Glass" Aesthetic**: Experience a premium visual presentation powered by real-time hardware-accelerated frosted glass blur (Haze 2.1) across Top App Bars, Bottom Sheets, and Quality Dialogs, with adaptive Material 3 styling and TV GPU sandboxing.
 * 📡 **Your Home Cloud (NAS, PC, SMB & NFS)**: Connect directly to shared folders on your Windows PC, Linux home servers, or NAS appliances (Synology, QNAP, TrueNAS, Unraid). Stream your home video collection over Wi-Fi without stuttering!
 * ☁️ **Full Google Cloud Synchronization**: Sign in with a single tap. Your favorite movies, followed TV shows, and exact playback progress synchronize across all your phones, tablets, and TVs.
 * 🏷️ **Quick Progress Marking**: Finished an episode or movie? Long-press its poster to instantly mark it as "Completed" or "Uncompleted", complete with the streaming industry-standard red progress bar.

@@ -349,11 +349,13 @@ dependencies {
     implementation libs.play.services.cast.framework
     implementation libs.androidx.mediarouter
 
-    // Haze 2.0 Visual Effects
+    // Haze 2.1 Visual Effects & Material 3 Integration
     implementation libs.haze
     implementation libs.haze.blur
     implementation libs.haze.glass
     implementation libs.haze.blur.materials
+    implementation libs.haze.blur.material3
+    implementation libs.haze.glass.material3
 
     // SMB & NFS Network Storage Clients (NFS is native via libnfs NDK)
     implementation libs.smbj

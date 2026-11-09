@@ -133,7 +133,9 @@ import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.glass.GlassStyle
 import dev.chrisbanes.haze.glass.hazeGlass
+import dev.chrisbanes.haze.glass.material3.material3
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.launch
@@ -1521,8 +1523,7 @@ private fun HandheldTvSeriesDetailContent(
                 containerColor = if (isPreAndroid12) MaterialTheme.colorScheme.surface.copy(alpha = 0.85f) else Color.Transparent
             ),
             modifier = Modifier
-                .statusBarsPadding()
-                .hazeGlass(input = HazeInput.Sources(hazeState))
+                .hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3())
         )
     }
 }

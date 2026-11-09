@@ -118,6 +118,8 @@ haze = { group = "dev.chrisbanes.haze", name = "haze", version.ref = "haze" }
 haze-blur = { group = "dev.chrisbanes.haze", name = "haze-blur", version.ref = "haze" }
 haze-glass = { group = "dev.chrisbanes.haze", name = "haze-glass", version.ref = "haze" }
 haze-blur-materials = { group = "dev.chrisbanes.haze", name = "haze-blur-materials", version.ref = "haze" }
+haze-blur-material3 = { group = "dev.chrisbanes.haze", name = "haze-blur-material3", version.ref = "haze" }
+haze-glass-material3 = { group = "dev.chrisbanes.haze", name = "haze-glass-material3", version.ref = "haze" }
 dokka-gradle-plugin = { group = "org.jetbrains.dokka", name = "dokka-gradle-plugin", version.ref = "dokka" }
 
 # Testing

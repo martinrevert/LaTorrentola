@@ -229,7 +229,7 @@ graph TD
 * **UI Framework**:
   * **Handheld / Foldables / Tablets**: Jetpack Compose with Material 3 (`androidx.compose.material3`).
   * **Android TV & Google TV**: Jetpack Compose for TV (`androidx.tv.material3`, `androidx.tv.foundation`).
-  * **Visual Polish**: [Haze 2.0](https://github.com/chrisbanes/haze) hardware-accelerated frosted glass blur using `RenderEffect` on Android 12+ (API 31+).
+  * **Visual Polish**: [Haze 2.1](https://github.com/chrisbanes/haze) hardware-accelerated frosted glass blur using `RenderEffect` on Android 12+ (API 31+), with TV GPU sandboxing and legacy fallback.
 * **Dependency Injection**: [Hilt](https://developer.android.com/training/dependency-injection/hilt-android) with `@HiltViewModel` lifecycle scoping.
 * **Navigation**: [AndroidX Navigation 3](https://developer.android.com/jetpack/androidx/releases/navigation) Compose-first backstack with polymorphic `@Serializable` `Route` contracts.
 * **Media & Audio Subsystem**:
@@ -353,10 +353,13 @@ if (context.isTvDevice()) {
 }
 ```
 
-### 4.3 Haze 2.0 Real-Time Blur System
-* **Hardware Acceleration**: Powered by Skia `RenderEffect` on Android 12+ (API 31+).
-* **Graceful Degradation**: On devices running API < 31 or during IDE Compose Previews, the app falls back to a solid translucent container (`surface.copy(alpha = 0.90f)`).
-* **Scroll-Driven Interpolation**: `hazeAlpha` dynamically interpolates between `1.0f` (at rest at the top) and `0.15f` (when scrolled) over 600 ms via `EaseInOutCubic`.
+### 4.3 Haze 2.1 Real-Time Frosted Glass Blur Architecture
+* **Library Standard (`dev.chrisbanes.haze:2.1.0`)**: Employs stable Haze 2.1 modules (`haze`, `haze-blur`, `haze-glass`, `haze-blur-material3`, `haze-glass-material3`) across handheld and tablet surfaces with strict Material 3 integration (`androidx.compose.material3`), binding surfaces to design tokens via `GlassStyle.material3()` and `HazeBlurStyle.Material3()`.
+* **Hardware Acceleration**: Powered by Skia `RenderEffect` on Android 12+ (API 31+) through `Modifier.hazeSource` on scrollable roots/backdrops and `Modifier.hazeGlass` on floating headers, top app bars, sheets, and dialog surfaces.
+* **Prohibition of the `graphicsLayer { alpha }` Dimming Trap**: Never modulate outer composable alpha to fade glass. Text, icons, and interactive elements remain at 100% opacity, while the blurred background is rendered via `hazeGlass` with transparent container color (`Color.Transparent`).
+* **Graceful Degradation**: On devices running API < 31 (`Build.VERSION.SDK_INT < Build.VERSION_CODES.S`) or during IDE Compose Previews, the app falls back to a solid translucent container (`surface.copy(alpha = 0.85f)`).
+* **Android TV GPU Sandboxing & D-Pad Focus Protocol**: Android TV GPUs cannot handle unconstrained full-screen RenderEffect blurs. Top-level screens sandbox Haze with `val hazeState = if (!isTv) rememberHazeState() else null`, or wrap compositions with `LocalHazePerformanceMode provides HazePerformanceMode.Performance`. On TV, interactive glass surfaces react to D-Pad focus changes via `onFocusChanged` rather than touch, updating `GlassStyle` dynamically.
+* **Cross-Screen Parity**: Standardized frosted glass across `HomeScreen`, `SearchScreen`, `MovieDetailScreen`, `SettingsScreen`, `QualityChoiceDialog`, `ActorDetailBottomSheet`, and `GenreBottomSheet`.
 
 ### 4.4 Android TV Focus Trapping & D-Pad Navigation
 * **Single Vertical Column Tree**: Eliminates focus search dead zones between sticky headers, chips, and grid items.
