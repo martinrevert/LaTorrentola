@@ -203,6 +203,15 @@ import androidx.media3.ui.SubtitleView
 import androidx.media3.ui.compose.modifiers.resizeWithContentScale
 import androidx.media3.ui.compose.state.rememberPresentationState
 import androidx.media3.ui.compose.PlayerSurface
+import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
+import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.glass.GlassStyle
+import dev.chrisbanes.haze.glass.hazeGlass
+import dev.chrisbanes.haze.glass.material3.material3
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.CastConnected
 import com.martinrevert.latorrentola.ui.components.CastBottomSheet
@@ -662,6 +671,7 @@ class LocalPlayerActivity : FragmentActivity() {
         setContent {
             val themeMode = preferenceManager.getTheme()
             val isTv = isTvDevice()
+            val playerHazeState = if (!isTv) rememberHazeState() else null
 
             val content = @Composable {
                 val controller = mediaController
@@ -755,7 +765,10 @@ class LocalPlayerActivity : FragmentActivity() {
                             androidx.compose.runtime.key(surfaceRebindKey) {
                                 PlayerSurface(
                                     player = controller,
-                                    modifier = videoModifier
+                                    surfaceType = if (!isTv) SURFACE_TYPE_TEXTURE_VIEW else SURFACE_TYPE_SURFACE_VIEW,
+                                    modifier = videoModifier.then(
+                                        if (playerHazeState != null) Modifier.hazeSource(state = playerHazeState) else Modifier
+                                    )
                                 )
                             }
 
@@ -831,7 +844,8 @@ class LocalPlayerActivity : FragmentActivity() {
                                 videoAspectRatio = PlayerPortraitLayout.resolveAspectRatio(
                                     presentationState.videoSizeDp?.width,
                                     presentationState.videoSizeDp?.height
-                                )
+                                ),
+                                hazeState = playerHazeState
                             )
                         }
 
@@ -939,7 +953,8 @@ class LocalPlayerActivity : FragmentActivity() {
                                 mediaTitle = mediaTitle,
                                 mediaSubtitle = sheetSubtitle,
                                 posterUrl = posterUrl ?: controller.currentMediaItem?.mediaMetadata?.artworkUri?.toString(),
-                                player = controller
+                                player = controller,
+                                hazeState = playerHazeState
                             )
                         }
 
@@ -1151,7 +1166,8 @@ class LocalPlayerActivity : FragmentActivity() {
                         PlayerBottomSheetContent(
                             state = state,
                             onDismiss = { playerBottomSheetState = null },
-                            themeMode = themeMode
+                            themeMode = themeMode,
+                            hazeState = playerHazeState
                         )
                     }
                 }
@@ -4094,7 +4110,8 @@ fun PlayerControlsOverlay(
     onShowAudioTracks: () -> Unit,
     onShowCast: () -> Unit,
     onBack: () -> Unit = {},
-    videoAspectRatio: Float = PlayerPortraitLayout.DEFAULT_ASPECT_RATIO
+    videoAspectRatio: Float = PlayerPortraitLayout.DEFAULT_ASPECT_RATIO,
+    hazeState: HazeState? = null
 ) {
     var controlsVisible by remember { mutableStateOf(true) }
     var showMoreOptionsSheet by remember { mutableStateOf(false) }
@@ -4116,6 +4133,8 @@ fun PlayerControlsOverlay(
     val isOrientationPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
     // YouTube-style vertical layout only applies to handhelds held in portrait (never on Android TV)
     val isPortrait = !isTv && isOrientationPortrait
+    val activeHaze = hazeState
+    val useGlass = activeHaze != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val hostActivity = remember(context) { context.findActivity() }
 
     // Release the orientation forced by the fullscreen toggle once the device physically matches it
@@ -4426,7 +4445,23 @@ fun PlayerControlsOverlay(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .align(Alignment.TopCenter),
+                        .align(Alignment.TopCenter)
+                        .then(
+                            if (useGlass && activeHaze != null) {
+                                Modifier
+                                    .hazeGlass(
+                                        input = HazeInput.Sources(activeHaze),
+                                        style = GlassStyle.material3()
+                                    )
+                                    .background(
+                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+                                        CircleShape
+                                    )
+                                    .padding(horizontal = if (isPortrait) 8.dp else 16.dp, vertical = 4.dp)
+                            } else {
+                                Modifier
+                            }
+                        ),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -4562,7 +4597,23 @@ fun PlayerControlsOverlay(
                 Row(
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .padding(bottom = if (isPortrait) 16.dp else 0.dp),
+                        .padding(bottom = if (isPortrait) 16.dp else 0.dp)
+                        .then(
+                            if (useGlass && activeHaze != null) {
+                                Modifier
+                                    .hazeGlass(
+                                        input = HazeInput.Sources(activeHaze),
+                                        style = GlassStyle.material3()
+                                    )
+                                    .background(
+                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.40f),
+                                        CircleShape
+                                    )
+                                    .padding(horizontal = if (isPortrait) 20.dp else 28.dp, vertical = if (isPortrait) 8.dp else 12.dp)
+                            } else {
+                                Modifier
+                            }
+                        ),
                     horizontalArrangement = Arrangement.spacedBy(if (isPortrait) 40.dp else 32.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -4609,6 +4660,22 @@ fun PlayerControlsOverlay(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
+                        .then(
+                            if (useGlass && activeHaze != null) {
+                                Modifier
+                                    .hazeGlass(
+                                        input = HazeInput.Sources(activeHaze),
+                                        style = GlassStyle.material3()
+                                    )
+                                    .background(
+                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+                                        RoundedCornerShape(20.dp)
+                                    )
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            } else {
+                                Modifier
+                            }
+                        )
                 ) {
                     val dur = duration.coerceAtLeast(1L)
                     val currentFraction = (currentPosition.coerceAtLeast(0L).toFloat() / dur.toFloat()).coerceIn(0f, 1f)
@@ -4683,9 +4750,24 @@ fun PlayerControlsOverlay(
         ) {
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
+                color = if (useGlass) {
+                    MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.70f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f)
+                },
                 tonalElevation = 6.dp,
-                modifier = Modifier.widthIn(min = 280.dp, max = 400.dp)
+                modifier = Modifier
+                    .widthIn(min = 280.dp, max = 400.dp)
+                    .then(
+                        if (useGlass && activeHaze != null) {
+                            Modifier.hazeGlass(
+                                input = HazeInput.Sources(activeHaze),
+                                style = GlassStyle.material3()
+                            )
+                        } else {
+                            Modifier
+                        }
+                    )
             ) {
                 Column(
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
@@ -4737,8 +4819,22 @@ fun PlayerControlsOverlay(
         ) {
             Surface(
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f),
-                tonalElevation = 6.dp
+                color = if (useGlass) {
+                    MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.60f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f)
+                },
+                tonalElevation = 6.dp,
+                modifier = Modifier.then(
+                    if (useGlass && activeHaze != null) {
+                        Modifier.hazeGlass(
+                            input = HazeInput.Sources(activeHaze),
+                            style = GlassStyle.material3()
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -4778,8 +4874,22 @@ fun PlayerControlsOverlay(
                 lastInteractionTime = System.currentTimeMillis()
             },
             sheetState = sheetState,
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = MaterialTheme.colorScheme.onSurface
+            containerColor = if (useGlass) {
+                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            },
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.then(
+                if (useGlass && activeHaze != null) {
+                    Modifier.hazeGlass(
+                        input = HazeInput.Sources(activeHaze),
+                        style = GlassStyle.material3()
+                    )
+                } else {
+                    Modifier
+                }
+            )
         ) {
             Column(modifier = Modifier.padding(bottom = 16.dp)) {
                 PlayerMoreOptionRow(
@@ -5775,7 +5885,8 @@ fun StatsForNerdsOverlay(
 fun PlayerBottomSheetContent(
     state: PlayerBottomSheetState,
     onDismiss: () -> Unit,
-    themeMode: Int? = null
+    themeMode: Int? = null,
+    hazeState: HazeState? = null
 ) {
     val context = LocalContext.current
     val effectiveThemeMode = remember(context, themeMode) {
@@ -5811,7 +5922,7 @@ fun PlayerBottomSheetContent(
         }
     } else {
         LaTorrentolaTheme(themeMode = effectiveThemeMode) {
-            PlayerMobileBottomSheet(state = state, onDismiss = onDismiss)
+            PlayerMobileBottomSheet(state = state, onDismiss = onDismiss, hazeState = hazeState)
         }
     }
 }
@@ -5820,14 +5931,30 @@ fun PlayerBottomSheetContent(
 @Composable
 private fun PlayerMobileBottomSheet(
     state: PlayerBottomSheetState,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    hazeState: HazeState? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val useGlass = hazeState != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurface
+        containerColor = if (useGlass) {
+            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.then(
+            if (useGlass) {
+                Modifier.hazeGlass(
+                    input = HazeInput.Sources(hazeState),
+                    style = GlassStyle.material3()
+                )
+            } else {
+                Modifier
+            }
+        )
     ) {
         BottomSheetInnerContent(state = state, onDismiss = onDismiss)
     }

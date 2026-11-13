@@ -372,6 +372,7 @@ fun TvDetailScreen(
                 viewModel.clearSelectedActor()
             },
             sheetState = actorSheetState,
+            hazeState = hazeState,
             onCreditClick = { credit ->
                 showActorSheet = false
                 viewModel.clearSelectedActor()

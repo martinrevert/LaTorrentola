@@ -252,3 +252,19 @@ En aplicaciones de streaming para TV (que utilicen ExoPlayer o Media3), el video
 2. **Control por Foco**: Toda superficie interactiva en Android TV debe actualizar su `GlassStyle` mediante `onFocusChanged` y no mediante eventos de presión o toque.
 3. **Control de Memoria GPU**: Aplica siempre `HazePerformanceMode.Performance` en vistas de TV para mantener el presupuesto de fotogramas a 60 Hz (16.6 ms por fotograma).
 4. **Fusión Responsiva**: Utiliza `hazeGlassContainer` únicamente en filas o grillas con número limitado de elementos enfocables para evitar sobrecargar los cálculos de textura de la GPU.
+
+---
+
+## 8. Arquitectura Coherente de Cristal en Dos Niveles (Tier 1 vs. Tier 2)
+
+Para garantizar consistencia visual y máxima legibilidad (cumplimiento estricto de WCAG AAA), la aplicación implementa una arquitectura en dos niveles para todos los componentes de cristal:
+
+### 8.1 Tier 1: Controles Flotantes y Barras de Navegación Transitorias
+- **Componentes**: `TopAppBar`, barras de navegación y controles flotantes de reproducción en ExoPlayer (`LocalPlayerActivity`: Top Bar pill, Center HUD capsule, Bottom Bar card, Quick Seek pill).
+- **Contenedor**: En Android 12+, las barras fijas usan `Color.Transparent` (dejando que `GlassStyle.material3()` maneje el tinte y el desenfoque), mientras que los controles flotantes sobre video usan `surfaceContainerHigh.copy(alpha = 0.40f - 0.50f)`.
+- **Pipeline de Media3**: Para muestrear video en tiempo real sin romper el árbol de renderizado de Compose, `PlayerSurface` debe instanciarse con `surfaceType = SURFACE_TYPE_TEXTURE_VIEW` en Handheld con `Modifier.hazeSource(playerHazeState)`. En Android TV se preserva `SURFACE_TYPE_SURFACE_VIEW` sin desenfoque pesado para proteger la GPU.
+
+### 8.2 Tier 2: Superposiciones Densas de Contenido y Bottom Sheets Modales
+- **Componentes**: `ActorDetailBottomSheet`, `GenreBottomSheet`, `CastBottomSheet`, `PlayerMobileBottomSheet` y menú de opciones de reproducción.
+- **Anti-Patrón Prohibido**: Usar `Color.Transparent` en bottom sheets con texto denso provoca colisión visual con imágenes cortadas en el fondo (como backdrops de 260dp en `MovieDetailScreen`).
+- **Contrato Normativo**: Todo bottom sheet debe usar `containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f)` combinado con `Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3())`. Esto otorga refracción y desenfoque suave mientras garantiza un fondo uniforme y contraste de texto perfecto.

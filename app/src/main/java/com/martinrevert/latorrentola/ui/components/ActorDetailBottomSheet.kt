@@ -83,7 +83,7 @@ fun ActorDetailBottomSheet(
     val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
 
     val sheetContainerColor = if (hazeState != null && !isPreAndroid12) {
-        Color.Transparent
+        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f)
     } else {
         MaterialTheme.colorScheme.surfaceContainerHigh
     }

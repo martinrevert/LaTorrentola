@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
@@ -41,7 +40,7 @@ fun GenreBottomSheet(
     val isInspection = LocalInspectionMode.current
     val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
     val sheetContainerColor = if (hazeState != null && !isPreAndroid12) {
-        Color.Transparent
+        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f)
     } else {
         MaterialTheme.colorScheme.surfaceContainerHigh
     }

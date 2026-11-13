@@ -41,6 +41,13 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import android.os.Build
+import androidx.compose.ui.platform.LocalInspectionMode
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.glass.GlassStyle
+import dev.chrisbanes.haze.glass.hazeGlass
+import dev.chrisbanes.haze.glass.material3.material3
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -96,7 +103,8 @@ fun CastBottomSheet(
     mediaSubtitle: String = "",
     posterUrl: String? = null,
     player: Player? = null,
-    themeMode: Int? = null
+    themeMode: Int? = null,
+    hazeState: HazeState? = null
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
@@ -535,11 +543,25 @@ fun CastBottomSheet(
         }
     }
 
+    val isInspection = LocalInspectionMode.current
+    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+    val sheetModifier = if (hazeState != null && !isPreAndroid12) {
+        Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3())
+    } else {
+        Modifier
+    }
+    val sheetContainerColor = if (hazeState != null && !isPreAndroid12) {
+        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f)
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurface
+        containerColor = sheetContainerColor,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        modifier = sheetModifier
     ) {
         if (isTv) {
             TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
