@@ -56,7 +56,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,14 +74,17 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.martinrevert.latorrentola.utils.LocalNetworkPermissionHelper
 import com.martinrevert.latorrentola.utils.MediaControllerHelper
-import androidx.mediarouter.media.MediaRouteSelector
 import androidx.mediarouter.media.MediaRouter
-import com.google.android.gms.cast.CastMediaControlIntent
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.IconButton as TvIconButton
 import androidx.tv.material3.Icon as TvIcon
@@ -117,7 +119,7 @@ fun TorrentDownloadsScreen(
     viewModel: TorrentDownloadsViewModel = hiltViewModel(),
     onBackClick: () -> Unit
 ) {
-    val downloads by viewModel.downloads.collectAsState()
+    val downloads by viewModel.downloads.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val isTv = context.isTvDevice()
     val hazeState = rememberHandheldHazeState(isTv)
@@ -165,17 +167,34 @@ fun TorrentDownloadsScreen(
         }
     }
 
-    // Observe Cast connection state via MediaRouter
+    // Observe Cast connection state via MediaRouter (gated on Android 17 ACCESS_LOCAL_NETWORK)
+    val lifecycleOwner = LocalLifecycleOwner.current
     val mediaRouter = remember { MediaRouter.getInstance(context) }
-    val selector = remember {
-        MediaRouteSelector.Builder()
-            .addControlCategory(CastMediaControlIntent.categoryForCast(CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID))
-            .build()
+    val selector = remember { LocalNetworkPermissionHelper.buildCastMediaRouteSelector() }
+    var hasLocalNetworkPermission by remember {
+        mutableStateOf(LocalNetworkPermissionHelper.hasLocalNetworkPermission(context))
     }
     var selectedRoute by remember { mutableStateOf(mediaRouter.selectedRoute) }
     var isCasting by remember { mutableStateOf(!mediaRouter.selectedRoute.isDefault) }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasLocalNetworkPermission = LocalNetworkPermissionHelper.hasLocalNetworkPermission(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    DisposableEffect(hasLocalNetworkPermission) {
+        if (!hasLocalNetworkPermission) {
+            selectedRoute = mediaRouter.selectedRoute
+            isCasting = !mediaRouter.selectedRoute.isDefault
+            return@DisposableEffect onDispose {}
+        }
         val callback = object : MediaRouter.Callback() {
             override fun onRouteSelected(router: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) {
                 selectedRoute = route
@@ -190,7 +209,11 @@ fun TorrentDownloadsScreen(
                 isCasting = !router.selectedRoute.isDefault
             }
         }
-        mediaRouter.addCallback(selector, callback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY)
+        val flags = LocalNetworkPermissionHelper.resolveDiscoveryCallbackFlags(
+            hasPermission = true,
+            activeScan = false
+        )
+        mediaRouter.addCallback(selector, callback, flags)
         selectedRoute = mediaRouter.selectedRoute
         isCasting = !mediaRouter.selectedRoute.isDefault
         onDispose {

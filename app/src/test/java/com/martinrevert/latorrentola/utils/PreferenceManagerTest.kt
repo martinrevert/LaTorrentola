@@ -93,4 +93,15 @@ class PreferenceManagerTest {
         preferenceManager.setDecodeDtsHdToPcm(true)
         verify { editor.putBoolean("decode_dts_hd_to_pcm", true) }
     }
+
+    @Test
+    fun `local network permission requested flag defaults to false and persists state`() {
+        every { sharedPreferences.getBoolean("local_network_permission_requested", false) } returns false
+
+        val preferenceManager = PreferenceManager(context)
+        assertThat(preferenceManager.getLocalNetworkPermissionRequested()).isFalse()
+
+        preferenceManager.setLocalNetworkPermissionRequested(true)
+        verify { editor.putBoolean("local_network_permission_requested", true) }
+    }
 }

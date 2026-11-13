@@ -58,15 +58,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
+import com.martinrevert.latorrentola.utils.LocalNetworkPermissionHelper
 import com.martinrevert.latorrentola.utils.MediaControllerHelper
 import android.view.TextureView
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.mediarouter.media.MediaRouteSelector
 import androidx.mediarouter.media.MediaRouter
-import com.google.android.gms.cast.CastMediaControlIntent
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.service.PlaybackService
 import com.martinrevert.latorrentola.ui.player.LocalPlayerActivity
@@ -99,16 +101,32 @@ fun FloatingVideoPipOverlay(
         }
     }
 
-    // MediaRouter state for Cast detection
+    // MediaRouter state for Cast detection (gated on Android 17 ACCESS_LOCAL_NETWORK)
+    val lifecycleOwner = LocalLifecycleOwner.current
     val mediaRouter = remember { MediaRouter.getInstance(context) }
-    val selector = remember {
-        MediaRouteSelector.Builder()
-            .addControlCategory(CastMediaControlIntent.categoryForCast(CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID))
-            .build()
+    val selector = remember { LocalNetworkPermissionHelper.buildCastMediaRouteSelector() }
+    var hasLocalNetworkPermission by remember {
+        mutableStateOf(LocalNetworkPermissionHelper.hasLocalNetworkPermission(context))
     }
     var isCasting by remember { mutableStateOf(!mediaRouter.selectedRoute.isDefault) }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasLocalNetworkPermission = LocalNetworkPermissionHelper.hasLocalNetworkPermission(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    DisposableEffect(hasLocalNetworkPermission) {
+        if (!hasLocalNetworkPermission) {
+            isCasting = !mediaRouter.selectedRoute.isDefault
+            return@DisposableEffect onDispose {}
+        }
         val callback = object : MediaRouter.Callback() {
             override fun onRouteSelected(router: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) {
                 isCasting = !route.isDefault
@@ -120,7 +138,11 @@ fun FloatingVideoPipOverlay(
                 isCasting = !router.selectedRoute.isDefault
             }
         }
-        mediaRouter.addCallback(selector, callback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY)
+        val flags = LocalNetworkPermissionHelper.resolveDiscoveryCallbackFlags(
+            hasPermission = true,
+            activeScan = false
+        )
+        mediaRouter.addCallback(selector, callback, flags)
         isCasting = !mediaRouter.selectedRoute.isDefault
         onDispose {
             mediaRouter.removeCallback(callback)

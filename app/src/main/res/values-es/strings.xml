@@ -377,6 +377,13 @@
     <string name="cast_connecting_banner">Conectando a %1$s…</string>
     <string name="cast_connection_failed">No se pudo conectar a %1$s. Verifica que esté conectado a la misma red Wi-Fi.</string>
     <string name="cast_connecting_device">Conectando…</string>
+    <string name="local_network_permission_cast_title">Acceso a la red local requerido</string>
+    <string name="local_network_permission_cast_desc">Android 17+ requiere permiso de red local para detectar dispositivos Chromecast y Smart TV en tu Wi-Fi.</string>
+    <string name="local_network_permission_network_desc">Android 17+ requiere permiso de red local para detectar y reproducir desde servidores SMB y NFS en tu Wi-Fi.</string>
+    <string name="local_network_permission_grant_button">Permitir acceso</string>
+    <string name="local_network_permission_settings_button">Abrir ajustes</string>
+    <string name="cast_rescan_devices">Volver a buscar</string>
+    <string name="cast_no_devices_found_hint">Aún no se encontraron dispositivos. Verifica que tu TV esté en la misma red Wi-Fi o vuelve a buscar.</string>
     <string name="player_rewind_10">Retroceder 10 segundos</string>
     <string name="player_forward_10">Adelantar 10 segundos</string>
     <string name="player_stats_nerds">Estadísticas avanzadas</string>

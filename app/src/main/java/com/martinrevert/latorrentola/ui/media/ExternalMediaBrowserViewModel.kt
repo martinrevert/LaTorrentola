@@ -21,6 +21,7 @@ import com.martinrevert.latorrentola.service.storage.remote.SmbCredentials
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.martinrevert.latorrentola.R
+import com.martinrevert.latorrentola.utils.LocalNetworkPermissionHelper
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -107,7 +108,6 @@ class ExternalMediaBrowserViewModel @Inject constructor(
         loadUsbLocations()
         observeRemoteServers()
         observeStorageLocation()
-        scanNetworkShares()
         observeStorageEvents()
         registerStorageVolumeCallback()
     }
@@ -339,6 +339,10 @@ class ExternalMediaBrowserViewModel @Inject constructor(
     }
 
     fun scanNetworkShares() {
+        if (!LocalNetworkPermissionHelper.hasLocalNetworkPermission(context)) {
+            _uiState.update { it.copy(isScanningNetwork = false) }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isScanningNetwork = true) }
             try {

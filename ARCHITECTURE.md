@@ -474,6 +474,12 @@ To ensure optimal audio fidelity and prevent silent stereo downmixes:
 * **Zero Speculative State Toggling**: Transport controls command explicit target states (`shouldPause ? pause() : play()`) to prevent race conditions.
 * **Direct State Authority (`RemoteCastCanvas`)**: Listens to `RemoteMediaClient.Callback.onStatusUpdated()` as the single source of truth during Cast sessions, polling at 250 ms intervals for automatic self-healing.
 * **Clean Cast Transition**: Device selection sheets dismiss immediately without artificial delays to eliminate UI flickering.
+* **Android 17 (API 37) `ACCESS_LOCAL_NETWORK` & `MediaRouter2` (`Issue #581018323`) Discovery Gating**:
+  * Apps targeting API 37 (`CINNAMON_BUN`) require the runtime `android.permission.ACCESS_LOCAL_NETWORK` permission (`AndroidManifest.xml`) to reach LAN Cast receivers (mDNS/SSDP/sockets) and SMB/NFS servers.
+  * In Android 17, declaring `MediaTransferReceiver` activates `MediaRoute2Provider`. If `MediaRouter.addCallback` is registered before `ACCESS_LOCAL_NETWORK` is granted, `MediaRouter2ServiceImpl.onPermissionsChanged()` can fail to push routes after runtime grant without restarting discovery.
+  * `LocalNetworkPermissionHelper` centralizes API 37+ checks, rationale vs. App Settings fallback resolution (`shouldOpenAppSettings`), active-scan `MediaRouter` callback flags (`resolveDiscoveryCallbackFlags`), and `CastMediaControlIntent` selector creation.
+  * `CastBottomSheet`, `FloatingVideoPipOverlay`, and `TorrentDownloadsScreen` strictly gate `MediaRouter.addCallback` behind `hasLocalNetworkPermission == true` and refresh on `Lifecycle.Event.ON_RESUME`. When permission is granted or a manual **Scan again** is triggered, `CastBottomSheet` unregisters active callbacks for 150 ms so `MediaRoute2Provider` resets global callback count to 0 before re-registering with `CALLBACK_FLAG_REQUEST_DISCOVERY | CALLBACK_FLAG_PERFORM_ACTIVE_SCAN`.
+  * `ExternalMediaBrowserScreen` exposes the same runtime prompt and App Settings fallback banner on the Network (SMB/NFS) tab for both Mobile and Android TV.
 
 ### 5.8 Canonical Watch History, Cost-Optimized Sync & Completion Authority
 To guarantee seamless watch history parity and minimal cloud consumption across Torrents, Local files, and Network Storage (SMB/NFS):

@@ -299,6 +299,15 @@ class PreferenceManager @Inject constructor(
     /** Returns whether DTS-HD to multichannel PCM decoding is enabled (defaults to false). */
     fun getDecodeDtsHdToPcm(): Boolean = sharedPreferences.getBoolean(KEY_DECODE_DTS_HD_TO_PCM, false)
 
+    /** Persists whether the Android 17 local network permission has already been requested. */
+    fun setLocalNetworkPermissionRequested(requested: Boolean) {
+        sharedPreferences.edit { putBoolean(KEY_LOCAL_NETWORK_PERMISSION_REQUESTED, requested) }
+    }
+
+    /** Returns whether the Android 17 local network permission was previously requested. */
+    fun getLocalNetworkPermissionRequested(): Boolean =
+        sharedPreferences.getBoolean(KEY_LOCAL_NETWORK_PERMISSION_REQUESTED, false)
+
     companion object {
         /** Preference key controlling general voice guidance. */
         private const val KEY_VOICE_SYSTEM = "voice_system"
@@ -345,6 +354,8 @@ class PreferenceManager @Inject constructor(
         private const val KEY_SUBTITLE_EDGE_TYPE = "subtitle_edge_type"
         private const val KEY_SUBTITLE_BOTTOM_OFFSET = "subtitle_bottom_offset"
         private const val KEY_SUBTITLES_ENABLED = "subtitles_enabled"
+        /** Preference key tracking whether Android 17 local network permission was requested. */
+        private const val KEY_LOCAL_NETWORK_PERMISSION_REQUESTED = "local_network_permission_requested"
 
         /** Follow the system theme. */
         const val THEME_SYSTEM = 0

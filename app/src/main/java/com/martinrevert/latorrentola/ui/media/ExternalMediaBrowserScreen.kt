@@ -66,6 +66,13 @@ import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
 import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
 import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.martinrevert.latorrentola.utils.LocalNetworkPermissionHelper
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dev.chrisbanes.haze.hazeSource
@@ -133,18 +140,64 @@ fun ExternalMediaBrowserScreen(
 ) {
     val context = LocalContext.current
     val preferenceManager = remember(context) { PreferenceManager(context) }
-    val currentObservedTheme by preferenceManager.themeFlow.collectAsState(initial = preferenceManager.getTheme())
+    val currentObservedTheme by preferenceManager.themeFlow.collectAsStateWithLifecycle()
     val effectiveThemeMode = remember(context, themeMode, currentObservedTheme) {
         themeMode ?: currentObservedTheme
     }
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val isTv = remember(context) { context.isTvDevice() }
 
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var hasLocalNetworkPermission by remember {
+        mutableStateOf(LocalNetworkPermissionHelper.hasLocalNetworkPermission(context))
+    }
+    var hasRequestedLocalNetworkBefore by remember {
+        mutableStateOf(preferenceManager.getLocalNetworkPermissionRequested())
+    }
+    var shouldShowRationale by remember {
+        mutableStateOf(LocalNetworkPermissionHelper.shouldShowRationale(context))
+    }
+    val localNetworkPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val grantedNow = granted || LocalNetworkPermissionHelper.hasLocalNetworkPermission(context)
+        preferenceManager.setLocalNetworkPermissionRequested(!grantedNow)
+        hasRequestedLocalNetworkBefore = !grantedNow
+        shouldShowRationale = LocalNetworkPermissionHelper.shouldShowRationale(context)
+        val wasMissing = !hasLocalNetworkPermission
+        hasLocalNetworkPermission = grantedNow
+        if (grantedNow && wasMissing) {
+            viewModel.scanNetworkShares()
+        }
+    }
+    val shouldOpenLocalNetworkSettings = LocalNetworkPermissionHelper.shouldOpenAppSettings(
+        hasRequestedBefore = hasRequestedLocalNetworkBefore,
+        shouldShowRationale = shouldShowRationale
+    )
+    val onRequestLocalNetworkPermission = {
+        if (shouldOpenLocalNetworkSettings) {
+            LocalNetworkPermissionHelper.openAppSettings(context)
+        } else {
+            localNetworkPermissionLauncher.launch(LocalNetworkPermissionHelper.PERMISSION_ACCESS_LOCAL_NETWORK)
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.refreshUsbLocations()
+                val grantedNow = LocalNetworkPermissionHelper.hasLocalNetworkPermission(context)
+                if (grantedNow) {
+                    preferenceManager.setLocalNetworkPermissionRequested(false)
+                    hasRequestedLocalNetworkBefore = false
+                }
+                shouldShowRationale = LocalNetworkPermissionHelper.shouldShowRationale(context)
+                if (grantedNow != hasLocalNetworkPermission) {
+                    hasLocalNetworkPermission = grantedNow
+                    if (grantedNow && viewModel.uiState.value.selectedTab == ExternalMediaTab.NETWORK) {
+                        viewModel.scanNetworkShares()
+                    }
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -195,6 +248,9 @@ fun ExternalMediaBrowserScreen(
             TvExternalMediaContent(
                 uiState = uiState,
                 themeMode = effectiveThemeMode,
+                hasLocalNetworkPermission = hasLocalNetworkPermission,
+                shouldOpenLocalNetworkSettings = shouldOpenLocalNetworkSettings,
+                onRequestLocalNetworkPermission = onRequestLocalNetworkPermission,
                 onBackClick = onBackClick,
                 onSelectTab = { viewModel.selectTab(it) },
                 onRefreshUsb = { viewModel.refreshUsbLocations() },
@@ -204,7 +260,13 @@ fun ExternalMediaBrowserScreen(
                 onSelectServer = { viewModel.selectServer(it) },
                 onNavigateUpRemote = { viewModel.navigateUpRemote() },
                 onAddServerClick = { viewModel.openServerDialog(null) },
-                onScanNetworkClick = { viewModel.scanNetworkShares() },
+                onScanNetworkClick = {
+                    if (hasLocalNetworkPermission) {
+                        viewModel.scanNetworkShares()
+                    } else {
+                        onRequestLocalNetworkPermission()
+                    }
+                },
                 onEditServerClick = { viewModel.openServerDialog(it) },
                 onDeleteServerClick = { viewModel.deleteServer(it.id) },
                 onFileItemClicked = { viewModel.onFileItemClicked(it) }
@@ -215,6 +277,9 @@ fun ExternalMediaBrowserScreen(
             MobileExternalMediaContent(
                 uiState = uiState,
                 themeMode = effectiveThemeMode,
+                hasLocalNetworkPermission = hasLocalNetworkPermission,
+                shouldOpenLocalNetworkSettings = shouldOpenLocalNetworkSettings,
+                onRequestLocalNetworkPermission = onRequestLocalNetworkPermission,
                 onBackClick = onBackClick,
                 onSelectTab = { viewModel.selectTab(it) },
                 onRefreshUsb = { viewModel.refreshUsbLocations() },
@@ -224,7 +289,13 @@ fun ExternalMediaBrowserScreen(
                 onSelectServer = { viewModel.selectServer(it) },
                 onNavigateUpRemote = { viewModel.navigateUpRemote() },
                 onAddServerClick = { viewModel.openServerDialog(null) },
-                onScanNetworkClick = { viewModel.scanNetworkShares() },
+                onScanNetworkClick = {
+                    if (hasLocalNetworkPermission) {
+                        viewModel.scanNetworkShares()
+                    } else {
+                        onRequestLocalNetworkPermission()
+                    }
+                },
                 onEditServerClick = { viewModel.openServerDialog(it) },
                 onDeleteServerClick = { viewModel.deleteServer(it.id) },
                 onFileItemClicked = { viewModel.onFileItemClicked(it) }
@@ -495,6 +566,9 @@ fun ActiveStorageBanner(
 private fun MobileExternalMediaContent(
     uiState: ExternalMediaUiState,
     themeMode: Int? = null,
+    hasLocalNetworkPermission: Boolean = true,
+    shouldOpenLocalNetworkSettings: Boolean = false,
+    onRequestLocalNetworkPermission: () -> Unit = {},
     onBackClick: () -> Unit,
     onSelectTab: (ExternalMediaTab) -> Unit,
     onRefreshUsb: () -> Unit = {},
@@ -643,6 +717,9 @@ private fun MobileExternalMediaContent(
                         ExternalMediaTab.NETWORK -> {
                             NetworkMediaView(
                                 uiState = uiState,
+                                hasLocalNetworkPermission = hasLocalNetworkPermission,
+                                shouldOpenLocalNetworkSettings = shouldOpenLocalNetworkSettings,
+                                onRequestLocalNetworkPermission = onRequestLocalNetworkPermission,
                                 onSelectServer = onSelectServer,
                                 onNavigateUp = onNavigateUpRemote,
                                 onAddServerClick = onAddServerClick,
@@ -876,6 +953,9 @@ private fun UsbMediaView(
 @Composable
 private fun NetworkMediaView(
     uiState: ExternalMediaUiState,
+    hasLocalNetworkPermission: Boolean,
+    shouldOpenLocalNetworkSettings: Boolean,
+    onRequestLocalNetworkPermission: () -> Unit,
     onSelectServer: (RemoteServerConfig) -> Unit,
     onNavigateUp: () -> Unit,
     onAddServerClick: () -> Unit,
@@ -888,29 +968,42 @@ private fun NetworkMediaView(
 ) {
     if (uiState.selectedServer == null) {
         if (uiState.remoteServers.isEmpty() && !uiState.isLoading && !uiState.isScanningNetwork) {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(
-                        start = 32.dp,
-                        top = topPadding + 32.dp,
-                        end = 32.dp,
-                        bottom = bottomPadding + 32.dp
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = stringResource(R.string.external_media_empty_network_auto),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        start = 16.dp,
+                        top = topPadding + 12.dp,
+                        end = 16.dp,
+                        bottom = bottomPadding + 16.dp
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedButton(onClick = onAddServerClick) {
-                        Icon(Icons.Default.Add, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.external_media_add_server))
+            ) {
+                if (!hasLocalNetworkPermission) {
+                    MobileLocalNetworkPermissionBanner(
+                        shouldOpenSettings = shouldOpenLocalNetworkSettings,
+                        onGrantClick = onRequestLocalNetworkPermission
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = stringResource(R.string.external_media_empty_network_auto),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedButton(onClick = onAddServerClick) {
+                            Icon(Icons.Default.Add, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.external_media_add_server))
+                        }
                     }
                 }
             }
@@ -925,6 +1018,14 @@ private fun NetworkMediaView(
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                if (!hasLocalNetworkPermission) {
+                    item(key = "network_local_permission_banner") {
+                        MobileLocalNetworkPermissionBanner(
+                            shouldOpenSettings = shouldOpenLocalNetworkSettings,
+                            onGrantClick = onRequestLocalNetworkPermission
+                        )
+                    }
+                }
                 if (uiState.isScanningNetwork) {
                     item(key = "network_scanning_banner") {
                         Surface(
@@ -1011,6 +1112,67 @@ private fun NetworkMediaView(
             } else {
                 items(uiState.remoteFiles) { item ->
                     MediaFileRow(item = item, onClick = { onItemClick(item) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun MobileLocalNetworkPermissionBanner(
+    shouldOpenSettings: Boolean,
+    onGrantClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.WifiFind,
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.local_network_permission_cast_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = stringResource(R.string.local_network_permission_network_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                Button(onClick = onGrantClick) {
+                    Text(
+                        text = if (shouldOpenSettings) {
+                            stringResource(R.string.local_network_permission_settings_button)
+                        } else {
+                            stringResource(R.string.local_network_permission_grant_button)
+                        }
+                    )
                 }
             }
         }
@@ -1176,6 +1338,9 @@ private fun MediaFileRow(
 private fun TvExternalMediaContent(
     uiState: ExternalMediaUiState,
     themeMode: Int? = null,
+    hasLocalNetworkPermission: Boolean = true,
+    shouldOpenLocalNetworkSettings: Boolean = false,
+    onRequestLocalNetworkPermission: () -> Unit = {},
     onBackClick: () -> Unit,
     onSelectTab: (ExternalMediaTab) -> Unit,
     onRefreshUsb: () -> Unit = {},
@@ -1304,6 +1469,9 @@ private fun TvExternalMediaContent(
                 ExternalMediaTab.NETWORK -> {
                     TvNetworkMediaView(
                         uiState = uiState,
+                        hasLocalNetworkPermission = hasLocalNetworkPermission,
+                        shouldOpenLocalNetworkSettings = shouldOpenLocalNetworkSettings,
+                        onRequestLocalNetworkPermission = onRequestLocalNetworkPermission,
                         onSelectServer = onSelectServer,
                         onNavigateUp = onNavigateUpRemote,
                         onAddServerClick = onAddServerClick,
@@ -1610,6 +1778,9 @@ private fun TvUsbMediaView(
 @Composable
 private fun TvNetworkMediaView(
     uiState: ExternalMediaUiState,
+    hasLocalNetworkPermission: Boolean,
+    shouldOpenLocalNetworkSettings: Boolean,
+    onRequestLocalNetworkPermission: () -> Unit,
     onSelectServer: (RemoteServerConfig) -> Unit,
     onNavigateUp: () -> Unit,
     onAddServerClick: () -> Unit,
@@ -1620,6 +1791,12 @@ private fun TvNetworkMediaView(
 ) {
     if (uiState.selectedServer == null) {
         Column(modifier = Modifier.fillMaxSize()) {
+            if (!hasLocalNetworkPermission) {
+                TvLocalNetworkPermissionBanner(
+                    shouldOpenSettings = shouldOpenLocalNetworkSettings,
+                    onGrantClick = onRequestLocalNetworkPermission
+                )
+            }
             if (uiState.isScanningNetwork) {
                 TvSurface(
                     modifier = Modifier
@@ -1720,6 +1897,64 @@ private fun TvNetworkMediaView(
                         TvMediaFileRow(item = item, onClick = { onItemClick(item) })
                     }
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun TvLocalNetworkPermissionBanner(
+    shouldOpenSettings: Boolean,
+    onGrantClick: () -> Unit
+) {
+    TvSurface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
+        shape = RoundedCornerShape(10.dp),
+        colors = TvSurfaceDefaults.colors(
+            containerColor = TvMaterialTheme.colorScheme.surfaceVariant,
+            contentColor = TvMaterialTheme.colorScheme.onSurfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TvIcon(
+                imageVector = Icons.Default.WifiFind,
+                contentDescription = null,
+                modifier = Modifier.size(28.dp),
+                tint = TvMaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                TvText(
+                    text = stringResource(R.string.local_network_permission_cast_title),
+                    style = TvMaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = TvMaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                TvText(
+                    text = stringResource(R.string.local_network_permission_network_desc),
+                    style = TvMaterialTheme.typography.bodySmall,
+                    color = TvMaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            TvButton(
+                onClick = onGrantClick,
+                modifier = Modifier.focusHighlight(shape = RoundedCornerShape(8.dp))
+            ) {
+                TvText(
+                    text = if (shouldOpenSettings) {
+                        stringResource(R.string.local_network_permission_settings_button)
+                    } else {
+                        stringResource(R.string.local_network_permission_grant_button)
+                    }
+                )
             }
         }
     }
@@ -1913,7 +2148,7 @@ fun ServerConfigDialog(
 ) {
     val context = LocalContext.current
     val preferenceManager = remember(context) { PreferenceManager(context) }
-    val currentObservedTheme by preferenceManager.themeFlow.collectAsState(initial = preferenceManager.getTheme())
+    val currentObservedTheme by preferenceManager.themeFlow.collectAsStateWithLifecycle()
     val effectiveThemeMode = remember(context, themeMode, currentObservedTheme) {
         themeMode ?: currentObservedTheme
     }
@@ -2108,7 +2343,7 @@ fun AuthenticationPromptDialog(
 ) {
     val context = LocalContext.current
     val preferenceManager = remember(context) { PreferenceManager(context) }
-    val currentObservedTheme by preferenceManager.themeFlow.collectAsState(initial = preferenceManager.getTheme())
+    val currentObservedTheme by preferenceManager.themeFlow.collectAsStateWithLifecycle()
     val effectiveThemeMode = remember(context, themeMode, currentObservedTheme) {
         themeMode ?: currentObservedTheme
     }
@@ -2578,6 +2813,17 @@ private fun AuthPromptDialogTvDarkPreview() {
             onClearCredentials = {},
             onDismiss = {},
             onSubmit = { _, _, _, _ -> }
+        )
+    }
+}
+
+@Preview(name = "Network Permission Banner Narrow Light", showBackground = true, widthDp = 320)
+@Composable
+private fun MobileLocalNetworkPermissionBannerNarrowLightPreview() {
+    LaTorrentolaTheme(themeMode = PreferenceManager.THEME_LIGHT) {
+        MobileLocalNetworkPermissionBanner(
+            shouldOpenSettings = false,
+            onGrantClick = {}
         )
     }
 }

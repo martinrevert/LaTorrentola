@@ -13,6 +13,7 @@ import com.martinrevert.latorrentola.service.storage.remote.RemoteServerConfig
 import com.martinrevert.latorrentola.service.storage.remote.RemoteServerRepository
 import com.martinrevert.latorrentola.service.storage.remote.RemoteServerType
 import com.martinrevert.latorrentola.service.storage.remote.RemoteStorageManager
+import com.martinrevert.latorrentola.utils.LocalNetworkPermissionHelper
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import io.mockk.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -771,6 +772,50 @@ class ExternalMediaBrowserViewModelTest {
             assertThat(viewModel.uiState.value.selectedUsbLocation?.id).isEqualTo(usbLoc2.id)
         } finally {
             unmockkObject(TorrentStorageResolver)
+        }
+    }
+
+    @Test
+    fun `init on USB tab does not invoke networkScanner scanNetwork`() = runTest {
+        advanceUntilIdle()
+        coVerify(exactly = 0) { networkScanner.scanNetwork() }
+    }
+
+    @Test
+    fun `scanNetworkShares skips scanning when local network permission is denied`() = runTest {
+        mockkObject(LocalNetworkPermissionHelper)
+        try {
+            every { LocalNetworkPermissionHelper.hasLocalNetworkPermission(any(), any()) } returns false
+
+            viewModel.scanNetworkShares()
+            advanceUntilIdle()
+
+            assertThat(viewModel.uiState.value.isScanningNetwork).isFalse()
+            coVerify(exactly = 0) { networkScanner.scanNetwork() }
+        } finally {
+            unmockkObject(LocalNetworkPermissionHelper)
+        }
+    }
+
+    @Test
+    fun `selectTab NETWORK skips scanning when permission is missing and scans when granted`() = runTest {
+        mockkObject(LocalNetworkPermissionHelper)
+        try {
+            every { LocalNetworkPermissionHelper.hasLocalNetworkPermission(any(), any()) } returns false
+            viewModel.selectTab(ExternalMediaTab.NETWORK)
+            advanceUntilIdle()
+
+            assertThat(viewModel.uiState.value.selectedTab).isEqualTo(ExternalMediaTab.NETWORK)
+            assertThat(viewModel.uiState.value.isScanningNetwork).isFalse()
+            coVerify(exactly = 0) { networkScanner.scanNetwork() }
+
+            every { LocalNetworkPermissionHelper.hasLocalNetworkPermission(any(), any()) } returns true
+            viewModel.selectTab(ExternalMediaTab.NETWORK)
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) { networkScanner.scanNetwork() }
+        } finally {
+            unmockkObject(LocalNetworkPermissionHelper)
         }
     }
 }

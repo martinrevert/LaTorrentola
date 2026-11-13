@@ -116,15 +116,17 @@ Have a personal movie collection stored on your computer or home server? La Torr
 
 ### How to connect your home NAS or PC (SMB / NFS)
 1. Go to **Settings** ➔ **External media / Network storage** (or tap the storage icon on the top app bar).
-2. Tap **Scan Network** to automatically detect local SMB and NFS servers, or tap **Add Server** to manually enter the IP address (e.g. `192.168.1.100`).
-3. Choose the protocol (**SMB** for Windows/Samba or **NFS** for Linux/NAS) and enter credentials if your share is password-protected.
-4. Browse your shared folders and tap any video file to start streaming.
+2. On **Android 17+**, tap **Allow Access** when prompted to grant **Local Network access** so the app can discover and stream from servers on your Wi-Fi.
+3. Tap **Scan Network** to automatically detect local SMB and NFS servers, or tap **Add Server** to manually enter the IP address (e.g. `192.168.1.100`).
+4. Choose the protocol (**SMB** for Windows/Samba or **NFS** for Linux/NAS) and enter credentials if your share is password-protected.
+5. Browse your shared folders and tap any video file to start streaming.
 
 ### How to cast content to your Smart TV / Chromecast
 1. Make sure your phone/tablet and your Chromecast/Android TV are connected to the **same Wi-Fi network**.
-2. While playing any video in the app (or from the detail screen), tap the **Cast** icon.
-3. Select your TV from the device list.
-4. Video and subtitles transfer to the big screen, turning your phone into a remote control with play/pause, seek, and volume adjustments.
+2. While playing any video in the app (or from the downloads screen), tap the **Cast** icon.
+3. On **Android 17+**, grant **Local Network access** (`Allow Access` in the Cast sheet, or via System App Settings if previously denied) so Chromecast and Smart TV devices can be discovered.
+4. Select your TV from the device list (or tap **Scan again** if your TV wakes up after opening the sheet).
+5. Video and subtitles transfer to the big screen, turning your phone into a remote control with play/pause, seek, and volume adjustments.
 
 ### How to mark movies or episodes as watched
 * **On mobile/touchscreen**: Long-press any movie poster, season chip, or episode card for one second. From the dialog menu, select **"Mark as completed"**.

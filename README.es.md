@@ -116,15 +116,17 @@ Elige en los **Ajustes** de la app el modo que mejor se adapte a tu manera de ve
 
 ### Cómo conectar tu servidor doméstico o PC (NAS / SMB / NFS)
 1. Ve a **Ajustes** ➔ **Almacenamiento de red / Medios externos** (o pulsa el icono de almacenamiento en la barra superior).
-2. Toca **Escanear Red** para que la app detecte automáticamente los servidores de tu casa, o toca **Añadir Servidor** para escribir la dirección IP manualmente (por ejemplo: `192.168.1.50`).
-3. Elige el tipo de conexión (**SMB** para Windows/Samba o **NFS** para Linux/NAS) e introduce el usuario y contraseña si tu carpeta protegida los requiere.
-4. ¡Listo! Ya puedes entrar en tus carpetas compartidas y reproducir cualquier película o serie.
+2. En **Android 17+**, pulsa **Permitir acceso** si aparece el aviso de **Acceso a la red local** para que la app pueda detectar y reproducir servidores de tu Wi-Fi.
+3. Toca **Escanear Red** para que la app detecte automáticamente los servidores de tu casa, o toca **Añadir Servidor** para escribir la dirección IP manualmente (por ejemplo: `192.168.1.50`).
+4. Elige el tipo de conexión (**SMB** para Windows/Samba o **NFS** para Linux/NAS) e introduce el usuario y contraseña si tu carpeta protegida los requiere.
+5. ¡Listo! Ya puedes entrar en tus carpetas compartidas y reproducir cualquier película o serie.
 
 ### Cómo enviar contenido a tu Smart TV / Chromecast
 1. Asegúrate de que tu móvil y tu televisor o Chromecast están conectados a la **misma red Wi-Fi**.
-2. Mientras reproduces cualquier vídeo en la app (o desde la ficha del contenido), pulsa el icono de **Cast** (pantalla con ondas Wi-Fi).
-3. Selecciona tu televisor en la lista.
-4. El vídeo y los subtítulos comenzarán a reproducirse en la pantalla grande, y tu teléfono se convertirá en un cómodo mando a distancia con controles de pausa, avance y volumen.
+2. Mientras reproduces cualquier vídeo en la app (o desde la pantalla de descargas), pulsa el icono de **Cast** (pantalla con ondas Wi-Fi).
+3. En **Android 17+**, concede el permiso de **Acceso a la red local** (`Permitir acceso` en la hoja de Cast o desde Ajustes del sistema si se rechazó antes) para detectar dispositivos Chromecast y Smart TV.
+4. Selecciona tu televisor en la lista (o pulsa **Volver a buscar** si tu TV acaba de encenderse).
+5. El vídeo y los subtítulos comenzarán a reproducirse en la pantalla grande, y tu teléfono se convertirá en un cómodo mando a distancia con controles de pausa, avance y volumen.
 
 ### Cómo marcar películas o episodios como vistos
 * **En el móvil**: Mantén pulsado durante un segundo el póster de la película, temporada o episodio. En el menú que aparece, selecciona **"Marcar como completado"**.
