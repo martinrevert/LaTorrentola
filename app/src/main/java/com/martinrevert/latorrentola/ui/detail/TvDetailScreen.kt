@@ -3,12 +3,10 @@
 package com.martinrevert.latorrentola.ui.detail
 
 import android.content.Intent
-import android.os.Build
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -91,7 +89,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -129,15 +126,14 @@ import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
+import com.martinrevert.latorrentola.ui.theme.hazeSheetBackdropBlur
+import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
-import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.glass.GlassStyle
-import dev.chrisbanes.haze.glass.hazeGlass
-import dev.chrisbanes.haze.glass.material3.material3
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -181,7 +177,7 @@ fun TvDetailScreen(
         themeMode ?: PreferenceManager(context).getTheme()
     }
     val isTv = remember(context) { context.isTvDevice() }
-    val hazeState = if (!isTv) rememberHazeState() else null
+    val hazeState = rememberHandheldHazeState(isTv)
 
     var showActorSheet by remember { mutableStateOf(false) }
     val actorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -205,55 +201,136 @@ fun TvDetailScreen(
                 val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
                 val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                 val topPadding = if (isTv) 48.dp else statusBarHeight + 72.dp
-                Box(modifier = Modifier.fillMaxSize()) {
-                    MovieDetailPlaceholder(
-                        contentPadding = PaddingValues(
-                            top = topPadding,
-                            start = if (isTv) 48.dp else 16.dp,
-                            end = if (isTv) 48.dp else 16.dp,
-                            bottom = 16.dp + navBarHeight
+                if (isTv) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        MovieDetailPlaceholder(
+                            contentPadding = PaddingValues(
+                                top = topPadding,
+                                start = 48.dp,
+                                end = 48.dp,
+                                bottom = 16.dp + navBarHeight
+                            )
                         )
-                    )
-                    IconButton(
-                        onClick = onBackClick,
+                        IconButton(
+                            onClick = onBackClick,
+                            modifier = Modifier
+                                .statusBarsPadding()
+                                .padding(16.dp)
+                                .size(42.dp)
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.back_desc),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                } else {
+                    Box(
                         modifier = Modifier
-                            .statusBarsPadding()
-                            .padding(16.dp)
-                            .size(42.dp)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surface)
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back_desc),
-                            tint = MaterialTheme.colorScheme.onSurface
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
+                        ) {
+                            MovieDetailPlaceholder(
+                                contentPadding = PaddingValues(
+                                    top = topPadding,
+                                    start = 16.dp,
+                                    end = 16.dp,
+                                    bottom = 16.dp + navBarHeight
+                                )
+                            )
+                        }
+                        TopAppBar(
+                            title = {},
+                            navigationIcon = {
+                                IconButton(
+                                    onClick = onBackClick,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = stringResource(R.string.back_desc),
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = hazeAppBarContainerColor(hazeState != null, 0.85f)
+                            ),
+                            modifier = Modifier.hazeAppBarGlass(hazeState)
                         )
                     }
                 }
             }
 
             is TvDetailUiState.Error -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surface)
-                ) {
-                    ApiErrorView(
-                        errorMessage = state.message,
-                        onRetry = { viewModel.load(seriesId) },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    IconButton(
-                        onClick = onBackClick,
+                if (isTv) {
+                    Box(
                         modifier = Modifier
-                            .statusBarsPadding()
-                            .padding(16.dp)
-                            .size(42.dp)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surface)
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back_desc),
-                            tint = MaterialTheme.colorScheme.onSurface
+                        ApiErrorView(
+                            errorMessage = state.message,
+                            onRetry = { viewModel.load(seriesId) },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        IconButton(
+                            onClick = onBackClick,
+                            modifier = Modifier
+                                .statusBarsPadding()
+                                .padding(16.dp)
+                                .size(42.dp)
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.back_desc),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surface)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
+                        ) {
+                            ApiErrorView(
+                                errorMessage = state.message,
+                                onRetry = { viewModel.load(seriesId) },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        TopAppBar(
+                            title = {},
+                            navigationIcon = {
+                                IconButton(
+                                    onClick = onBackClick,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = stringResource(R.string.back_desc),
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = hazeAppBarContainerColor(hazeState != null, 0.85f)
+                            ),
+                            modifier = Modifier.hazeAppBarGlass(hazeState)
                         )
                     }
                 }
@@ -322,7 +399,7 @@ fun TvDetailScreen(
                         seasonState = seasonState,
                         downloadedEpisodes = downloadedEpisodes,
                         watchHistoryMap = watchHistoryMap,
-                        hazeState = hazeState ?: rememberHazeState(),
+                        hazeState = hazeState,
                         onWatchTrailer = { showTrailerDialog = true },
                         onSeasonSelected = viewModel::selectSeason,
                         onSeasonLongClick = { selectedSeasonForDialog = it },
@@ -354,7 +431,13 @@ fun TvDetailScreen(
     } else {
         LaTorrentolaTheme(themeMode = effectiveThemeMode) {
             Box(modifier = Modifier.fillMaxSize()) {
-                content()
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .hazeSheetBackdropBlur(isSheetVisible = showActorSheet)
+                ) {
+                    content()
+                }
                 SnackbarHost(
                     hostState = favoriteSnackbarHostState,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)
@@ -372,12 +455,12 @@ fun TvDetailScreen(
                 viewModel.clearSelectedActor()
             },
             sheetState = actorSheetState,
-            hazeState = hazeState,
             onCreditClick = { credit ->
                 showActorSheet = false
                 viewModel.clearSelectedActor()
                 onFilmographyCreditClick(credit)
-            }
+            },
+            themeMode = effectiveThemeMode
         )
     }
 
@@ -991,7 +1074,7 @@ private fun HandheldTvSeriesDetailContent(
     seasonState: TvSeasonUiState,
     downloadedEpisodes: List<DownloadedEpisode>,
     watchHistoryMap: Map<String, PlaybackProgress>,
-    hazeState: HazeState,
+    hazeState: HazeState? = null,
     onWatchTrailer: () -> Unit,
     onSeasonSelected: (TmdbTvSeason) -> Unit,
     onSeasonLongClick: (TmdbTvSeason) -> Unit,
@@ -1053,9 +1136,13 @@ private fun HandheldTvSeriesDetailContent(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .hazeSource(state = hazeState)
             .background(MaterialTheme.colorScheme.surface)
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
+        ) {
         // 1. Dynamic TMDB Backdrop with Directional Scrims
         if (!backdropUrl.isNullOrEmpty()) {
             val backdropHeight = if (isWideScreen) 380.dp else 260.dp
@@ -1496,22 +1583,15 @@ private fun HandheldTvSeriesDetailContent(
                 }
             }
         }
+        }
 
         // 3. Floating Glass Top Navigation Bar (Back button only; actions relocated to action buttons row)
-        val isInspection = LocalInspectionMode.current
-        val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
         TopAppBar(
             title = {},
             navigationIcon = {
                 IconButton(
                     onClick = onBackClick,
-                    modifier = Modifier
-                        .padding(start = 8.dp)
-                        .size(40.dp)
-                        .background(
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.65f),
-                            CircleShape
-                        )
+                    modifier = Modifier.padding(start = 8.dp)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -1521,10 +1601,9 @@ private fun HandheldTvSeriesDetailContent(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = if (isPreAndroid12) MaterialTheme.colorScheme.surface.copy(alpha = 0.85f) else Color.Transparent
+                containerColor = hazeAppBarContainerColor(hazeState != null, 0.85f)
             ),
-            modifier = Modifier
-                .hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3())
+            modifier = Modifier.hazeAppBarGlass(hazeState)
         )
     }
 }

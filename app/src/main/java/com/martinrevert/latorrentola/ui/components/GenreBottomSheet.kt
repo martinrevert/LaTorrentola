@@ -1,23 +1,16 @@
 package com.martinrevert.latorrentola.ui.components
 
-import android.os.Build
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.PreferenceManager
-import dev.chrisbanes.haze.HazeInput
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.glass.GlassStyle
-import dev.chrisbanes.haze.glass.hazeGlass
-import dev.chrisbanes.haze.glass.material3.material3
 
 /** Presents a localized, alphabetized genre picker in a modal bottom sheet. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -27,7 +20,6 @@ fun GenreBottomSheet(
     onGenreClick: (String) -> Unit,
     onDismiss: () -> Unit,
     sheetState: SheetState,
-    hazeState: HazeState? = null,
     themeMode: Int? = null
 ) {
     val context = LocalContext.current
@@ -37,28 +29,14 @@ fun GenreBottomSheet(
     val sortedGenres = remember(genres) {
         genres.sortedBy { GenreTranslation.getGenreText(it).asString(context) }
     }
-    val isInspection = LocalInspectionMode.current
-    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
-    val sheetContainerColor = if (hazeState != null && !isPreAndroid12) {
-        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f)
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHigh
-    }
 
-    val sheetModifier = if (hazeState != null) {
-        Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3())
-    } else {
-        Modifier
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = sheetContainerColor,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        modifier = sheetModifier
-    ) {
-        LaTorrentolaTheme(themeMode = effectiveThemeMode) {
+    LaTorrentolaTheme(themeMode = effectiveThemeMode) {
+        ModalBottomSheet(
+            onDismissRequest = onDismiss,
+            sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()

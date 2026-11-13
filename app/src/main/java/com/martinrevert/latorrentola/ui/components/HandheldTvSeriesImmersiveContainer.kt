@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +43,8 @@ import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import java.util.Locale
 
 /**
@@ -69,6 +72,7 @@ fun HandheldTvSeriesImmersiveContainer(
     isLogoLoading: Boolean,
     onDetailsClick: () -> Unit,
     modifier: Modifier = Modifier,
+    hazeState: HazeState? = null,
     topBar: @Composable (() -> Unit)? = null,
     chips: @Composable (() -> Unit)? = null,
     content: @Composable () -> Unit
@@ -86,6 +90,24 @@ fun HandheldTvSeriesImmersiveContainer(
             .fillMaxSize()
             .background(surfaceColor)
     ) {
+        SubcomposeLayout(modifier = Modifier.fillMaxSize()) { constraints ->
+            val topBarPlaceables = if (topBar != null) {
+                subcompose("topBar") {
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        topBar()
+                    }
+                }.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
+            } else {
+                emptyList()
+            }
+            val topBarHeightDp = (topBarPlaceables.maxOfOrNull { it.height } ?: 0).toDp()
+
+            val scenePlaceables = subcompose("scene") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
+                ) {
         // 1. Dynamic high-resolution backdrop with smooth crossfade
         Crossfade(
             targetState = backdropUrl,
@@ -156,16 +178,18 @@ fun HandheldTvSeriesImmersiveContainer(
                 )
         )
 
-        // 5. Foreground layout: Top Bar -> Chips -> Hero Pane -> Scrollable Catalog
+        // 5. Foreground layout: Chips -> Hero Pane -> Scrollable Catalog (Top Bar floats above hazeSource)
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
+                .then(
+                    if (topBar != null) {
+                        Modifier.padding(top = topBarHeightDp)
+                    } else {
+                        Modifier.statusBarsPadding()
+                    }
+                )
         ) {
-            if (topBar != null) {
-                topBar()
-            }
-
             if (chips != null) {
                 chips()
             }
@@ -285,6 +309,14 @@ fun HandheldTvSeriesImmersiveContainer(
                     .fillMaxWidth()
             ) {
                 content()
+            }
+        }
+                }
+            }.map { it.measure(constraints) }
+
+            layout(constraints.maxWidth, constraints.maxHeight) {
+                scenePlaceables.forEach { it.placeRelative(0, 0) }
+                topBarPlaceables.forEach { it.placeRelative(0, 0) }
             }
         }
     }

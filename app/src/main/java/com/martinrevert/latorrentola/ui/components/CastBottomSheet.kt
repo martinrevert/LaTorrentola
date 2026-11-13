@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,13 +42,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import android.os.Build
-import androidx.compose.ui.platform.LocalInspectionMode
-import dev.chrisbanes.haze.HazeInput
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.glass.GlassStyle
-import dev.chrisbanes.haze.glass.hazeGlass
-import dev.chrisbanes.haze.glass.material3.material3
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -103,8 +97,7 @@ fun CastBottomSheet(
     mediaSubtitle: String = "",
     posterUrl: String? = null,
     player: Player? = null,
-    themeMode: Int? = null,
-    hazeState: HazeState? = null
+    themeMode: Int? = null
 ) {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTvDevice() }
@@ -176,6 +169,7 @@ fun CastBottomSheet(
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
@@ -543,32 +537,25 @@ fun CastBottomSheet(
         }
     }
 
-    val isInspection = LocalInspectionMode.current
-    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
-    val sheetModifier = if (hazeState != null && !isPreAndroid12) {
-        Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3())
-    } else {
-        Modifier
-    }
-    val sheetContainerColor = if (hazeState != null && !isPreAndroid12) {
-        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f)
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHigh
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismissRequest,
-        sheetState = sheetState,
-        containerColor = sheetContainerColor,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        modifier = sheetModifier
-    ) {
-        if (isTv) {
-            TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
+    if (isTv) {
+        TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
+            ModalBottomSheet(
+                onDismissRequest = onDismissRequest,
+                sheetState = sheetState,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ) {
                 sheetBody()
             }
-        } else {
-            LaTorrentolaTheme(themeMode = effectiveThemeMode) {
+        }
+    } else {
+        LaTorrentolaTheme(themeMode = effectiveThemeMode) {
+            ModalBottomSheet(
+                onDismissRequest = onDismissRequest,
+                sheetState = sheetState,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ) {
                 sheetBody()
             }
         }

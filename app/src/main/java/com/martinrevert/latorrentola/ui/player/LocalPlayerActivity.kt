@@ -178,6 +178,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.annotation.VisibleForTesting
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.cast.DefaultMediaItemConverter
@@ -205,13 +206,11 @@ import androidx.media3.ui.compose.state.rememberPresentationState
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
-import dev.chrisbanes.haze.HazeInput
+import com.martinrevert.latorrentola.ui.theme.hazePillGlass
+import com.martinrevert.latorrentola.ui.theme.hazeSheetBackdropBlur
+import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.glass.GlassStyle
-import dev.chrisbanes.haze.glass.hazeGlass
-import dev.chrisbanes.haze.glass.material3.material3
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.CastConnected
 import com.martinrevert.latorrentola.ui.components.CastBottomSheet
@@ -671,16 +670,32 @@ class LocalPlayerActivity : FragmentActivity() {
         setContent {
             val themeMode = preferenceManager.getTheme()
             val isTv = isTvDevice()
-            val playerHazeState = if (!isTv) rememberHazeState() else null
+            val playerHazeState = rememberHandheldHazeState(isTv)
 
             val content = @Composable {
                 val controller = mediaController
+                var showCastBottomSheet by remember { mutableStateOf(false) }
+                var showMoreOptionsSheet by remember { mutableStateOf(false) }
+                LaunchedEffect(controller) {
+                    if (controller == null) {
+                        showCastBottomSheet = false
+                        showMoreOptionsSheet = false
+                    }
+                }
+                val isAnySheetVisible = resolvePlayerAnySheetVisible(
+                    hasController = controller != null,
+                    showCastBottomSheet = showCastBottomSheet,
+                    showMoreOptionsSheet = showMoreOptionsSheet,
+                    hasPlayerBottomSheet = playerBottomSheetState != null
+                )
                 Box(
-                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.scrim)
+                        .hazeSheetBackdropBlur(isSheetVisible = isAnySheetVisible, enabled = !isTv),
                     contentAlignment = Alignment.Center
                 ) {
                     if (controller != null) {
-                        var showCastBottomSheet by remember { mutableStateOf(false) }
 
                         var deviceInfo by remember(controller) { mutableStateOf(controller.deviceInfo) }
                         var playbackState by remember(controller) { mutableIntStateOf(controller.playbackState) }
@@ -709,6 +724,9 @@ class LocalPlayerActivity : FragmentActivity() {
                                 playbackDecodingError = null
                                 if (showCastBottomSheet) {
                                     showCastBottomSheet = false
+                                }
+                                if (showMoreOptionsSheet) {
+                                    showMoreOptionsSheet = false
                                 }
                                 try {
                                     controller.trackSelectionParameters = controller.trackSelectionParameters
@@ -845,7 +863,9 @@ class LocalPlayerActivity : FragmentActivity() {
                                     presentationState.videoSizeDp?.width,
                                     presentationState.videoSizeDp?.height
                                 ),
-                                hazeState = playerHazeState
+                                hazeState = playerHazeState,
+                                showMoreOptionsSheet = showMoreOptionsSheet,
+                                onShowMoreOptionsSheetChange = { showMoreOptionsSheet = it }
                             )
                         }
 
@@ -953,8 +973,7 @@ class LocalPlayerActivity : FragmentActivity() {
                                 mediaTitle = mediaTitle,
                                 mediaSubtitle = sheetSubtitle,
                                 posterUrl = posterUrl ?: controller.currentMediaItem?.mediaMetadata?.artworkUri?.toString(),
-                                player = controller,
-                                hazeState = playerHazeState
+                                player = controller
                             )
                         }
 
@@ -1166,8 +1185,7 @@ class LocalPlayerActivity : FragmentActivity() {
                         PlayerBottomSheetContent(
                             state = state,
                             onDismiss = { playerBottomSheetState = null },
-                            themeMode = themeMode,
-                            hazeState = playerHazeState
+                            themeMode = themeMode
                         )
                     }
                 }
@@ -3594,7 +3612,18 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     companion object {
-        @androidx.annotation.VisibleForTesting
+        @VisibleForTesting
+        internal fun resolvePlayerAnySheetVisible(
+            hasController: Boolean,
+            showCastBottomSheet: Boolean,
+            showMoreOptionsSheet: Boolean,
+            hasPlayerBottomSheet: Boolean
+        ): Boolean {
+            return (hasController && (showCastBottomSheet || showMoreOptionsSheet)) ||
+                hasPlayerBottomSheet
+        }
+
+        @VisibleForTesting
         internal fun isDtsHdStallCondition(
             playWhenReady: Boolean,
             playbackState: Int,
@@ -4111,10 +4140,11 @@ fun PlayerControlsOverlay(
     onShowCast: () -> Unit,
     onBack: () -> Unit = {},
     videoAspectRatio: Float = PlayerPortraitLayout.DEFAULT_ASPECT_RATIO,
-    hazeState: HazeState? = null
+    hazeState: HazeState? = null,
+    showMoreOptionsSheet: Boolean = false,
+    onShowMoreOptionsSheetChange: (Boolean) -> Unit = {}
 ) {
     var controlsVisible by remember { mutableStateOf(true) }
-    var showMoreOptionsSheet by remember { mutableStateOf(false) }
     var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var isScrubbing by remember { mutableStateOf(false) }
     var isSliderFocused by remember { mutableStateOf(false) }
@@ -4259,7 +4289,7 @@ fun PlayerControlsOverlay(
 
     LaunchedEffect(isPortrait) {
         if (!isPortrait && showMoreOptionsSheet) {
-            showMoreOptionsSheet = false
+            onShowMoreOptionsSheetChange(false)
         }
     }
 
@@ -4267,7 +4297,7 @@ fun PlayerControlsOverlay(
     LaunchedEffect(controlsVisible, lastInteractionTime, isScrubbing, isSliderFocused, showMoreOptionsSheet) {
         if (controlsVisible && !isScrubbing && !isSliderFocused && !showMoreOptionsSheet) {
             delay(6.seconds)
-            if (!isScrubbing && !isSliderFocused && !showMoreOptionsSheet) {
+            if (!isScrubbing && !isSliderFocused) {
                 controlsVisible = false
             }
         }
@@ -4447,14 +4477,13 @@ fun PlayerControlsOverlay(
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
                         .then(
-                            if (useGlass && activeHaze != null) {
+                            if (activeHaze != null) {
                                 Modifier
-                                    .hazeGlass(
-                                        input = HazeInput.Sources(activeHaze),
-                                        style = GlassStyle.material3()
-                                    )
+                                    .hazePillGlass(activeHaze, CircleShape)
                                     .background(
-                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(
+                                            alpha = if (useGlass) 0.45f else 0.78f
+                                        ),
                                         CircleShape
                                     )
                                     .padding(horizontal = if (isPortrait) 8.dp else 16.dp, vertical = 4.dp)
@@ -4505,7 +4534,7 @@ fun PlayerControlsOverlay(
                         ControlButton(
                             onClick = {
                                 lastInteractionTime = System.currentTimeMillis()
-                                showMoreOptionsSheet = true
+                                onShowMoreOptionsSheetChange(true)
                             },
                             icon = Icons.Default.MoreVert,
                             contentDescription = stringResource(R.string.player_more_options)
@@ -4599,14 +4628,13 @@ fun PlayerControlsOverlay(
                         .align(Alignment.Center)
                         .padding(bottom = if (isPortrait) 16.dp else 0.dp)
                         .then(
-                            if (useGlass && activeHaze != null) {
+                            if (activeHaze != null) {
                                 Modifier
-                                    .hazeGlass(
-                                        input = HazeInput.Sources(activeHaze),
-                                        style = GlassStyle.material3()
-                                    )
+                                    .hazePillGlass(activeHaze, CircleShape)
                                     .background(
-                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.40f),
+                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(
+                                            alpha = if (useGlass) 0.40f else 0.75f
+                                        ),
                                         CircleShape
                                     )
                                     .padding(horizontal = if (isPortrait) 20.dp else 28.dp, vertical = if (isPortrait) 8.dp else 12.dp)
@@ -4661,14 +4689,13 @@ fun PlayerControlsOverlay(
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
                         .then(
-                            if (useGlass && activeHaze != null) {
+                            if (activeHaze != null) {
                                 Modifier
-                                    .hazeGlass(
-                                        input = HazeInput.Sources(activeHaze),
-                                        style = GlassStyle.material3()
-                                    )
+                                    .hazePillGlass(activeHaze, RoundedCornerShape(20.dp))
                                     .background(
-                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(
+                                            alpha = if (useGlass) 0.45f else 0.78f
+                                        ),
                                         RoundedCornerShape(20.dp)
                                     )
                                     .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -4750,20 +4777,15 @@ fun PlayerControlsOverlay(
         ) {
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = if (useGlass) {
-                    MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.70f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f)
-                },
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(
+                    alpha = if (useGlass) 0.70f else 0.95f
+                ),
                 tonalElevation = 6.dp,
                 modifier = Modifier
                     .widthIn(min = 280.dp, max = 400.dp)
                     .then(
-                        if (useGlass && activeHaze != null) {
-                            Modifier.hazeGlass(
-                                input = HazeInput.Sources(activeHaze),
-                                style = GlassStyle.material3()
-                            )
+                        if (activeHaze != null) {
+                            Modifier.hazePillGlass(activeHaze, RoundedCornerShape(12.dp))
                         } else {
                             Modifier
                         }
@@ -4819,22 +4841,15 @@ fun PlayerControlsOverlay(
         ) {
             Surface(
                 shape = CircleShape,
-                color = if (useGlass) {
-                    MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.60f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f)
-                },
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(
+                    alpha = if (useGlass) 0.60f else 0.85f
+                ),
                 tonalElevation = 6.dp,
-                modifier = Modifier.then(
-                    if (useGlass && activeHaze != null) {
-                        Modifier.hazeGlass(
-                            input = HazeInput.Sources(activeHaze),
-                            style = GlassStyle.material3()
-                        )
-                    } else {
-                        Modifier
-                    }
-                )
+                modifier = if (activeHaze != null) {
+                    Modifier.hazePillGlass(activeHaze, CircleShape)
+                } else {
+                    Modifier
+                }
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -4864,32 +4879,18 @@ fun PlayerControlsOverlay(
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         val hasAudioTracks = playbackTracks.groups.any { it.type == C.TRACK_TYPE_AUDIO }
         val dismissThen: (() -> Unit) -> Unit = { action ->
-            showMoreOptionsSheet = false
+            onShowMoreOptionsSheetChange(false)
             lastInteractionTime = System.currentTimeMillis()
             action()
         }
         ModalBottomSheet(
             onDismissRequest = {
-                showMoreOptionsSheet = false
+                onShowMoreOptionsSheetChange(false)
                 lastInteractionTime = System.currentTimeMillis()
             },
             sheetState = sheetState,
-            containerColor = if (useGlass) {
-                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f)
-            } else {
-                MaterialTheme.colorScheme.surfaceContainerHigh
-            },
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.then(
-                if (useGlass && activeHaze != null) {
-                    Modifier.hazeGlass(
-                        input = HazeInput.Sources(activeHaze),
-                        style = GlassStyle.material3()
-                    )
-                } else {
-                    Modifier
-                }
-            )
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface
         ) {
             Column(modifier = Modifier.padding(bottom = 16.dp)) {
                 PlayerMoreOptionRow(
@@ -5885,8 +5886,7 @@ fun StatsForNerdsOverlay(
 fun PlayerBottomSheetContent(
     state: PlayerBottomSheetState,
     onDismiss: () -> Unit,
-    themeMode: Int? = null,
-    hazeState: HazeState? = null
+    themeMode: Int? = null
 ) {
     val context = LocalContext.current
     val effectiveThemeMode = remember(context, themeMode) {
@@ -5922,7 +5922,7 @@ fun PlayerBottomSheetContent(
         }
     } else {
         LaTorrentolaTheme(themeMode = effectiveThemeMode) {
-            PlayerMobileBottomSheet(state = state, onDismiss = onDismiss, hazeState = hazeState)
+            PlayerMobileBottomSheet(state = state, onDismiss = onDismiss)
         }
     }
 }
@@ -5931,30 +5931,14 @@ fun PlayerBottomSheetContent(
 @Composable
 private fun PlayerMobileBottomSheet(
     state: PlayerBottomSheetState,
-    onDismiss: () -> Unit,
-    hazeState: HazeState? = null
+    onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val useGlass = hazeState != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = if (useGlass) {
-            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f)
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        },
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.then(
-            if (useGlass) {
-                Modifier.hazeGlass(
-                    input = HazeInput.Sources(hazeState),
-                    style = GlassStyle.material3()
-                )
-            } else {
-                Modifier
-            }
-        )
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface
     ) {
         BottomSheetInnerContent(state = state, onDismiss = onDismiss)
     }

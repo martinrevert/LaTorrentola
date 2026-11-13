@@ -33,10 +33,11 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -89,6 +90,9 @@ import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
+import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import java.util.Locale
@@ -145,6 +149,8 @@ fun OttCatalogScreen(
         val coroutineScope = rememberCoroutineScope()
         val isTvMoviesCatalog = isTv && !isTvMode
         val isHandheldMoviesCatalog = !isTv && !isTvMode
+        val hazeState = rememberHandheldHazeState(isTv)
+        val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
         LaunchedEffect(providerId, isTvMode) {
             viewModel.setProvider(providerId, isTvMode)
@@ -263,8 +269,10 @@ fun OttCatalogScreen(
                     isLogoLoading = isFocusedMovieLogoLoading,
                     onDetailsClick = { focusedMovie?.let(onMovieClick) },
                     modifier = Modifier.fillMaxSize(),
+                    hazeState = hazeState,
                     topBar = {
                         TopAppBar(
+                            modifier = Modifier.hazeAppBarGlass(hazeState),
                             title = {
                                 Text(
                                     text = providerName,
@@ -280,7 +288,12 @@ fun OttCatalogScreen(
                                     )
                                 }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = hazeAppBarContainerColor(
+                                    hasGlass = hazeState != null,
+                                    fallbackAlpha = 0.85f
+                                )
+                            )
                         )
                     },
                     chips = {
@@ -308,7 +321,14 @@ fun OttCatalogScreen(
                 ) {
                     when (val state = uiState) {
                         OttCatalogUiState.Loading -> {
-                            MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                            MovieListPlaceholder(
+                                contentPadding = PaddingValues(
+                                    top = 8.dp,
+                                    bottom = navBarHeight + 16.dp,
+                                    start = 16.dp,
+                                    end = 16.dp
+                                )
+                            )
                         }
                         is OttCatalogUiState.SuccessMovies -> {
                             if (state.movies.isEmpty()) {
@@ -342,7 +362,12 @@ fun OttCatalogScreen(
                                     initialFocusId = lastClickedId,
                                     onFocusRestored = { viewModel.clearLastClickedId() },
                                     onMovieFocus = viewModel::onMovieFocused,
-                                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 8.dp)
+                                    contentPadding = PaddingValues(
+                                        start = 16.dp,
+                                        end = 16.dp,
+                                        bottom = navBarHeight + 16.dp,
+                                        top = 8.dp
+                                    )
                                 )
                             }
                         }
@@ -468,8 +493,10 @@ fun OttCatalogScreen(
                     isLogoLoading = isFocusedMovieLogoLoading,
                     onDetailsClick = { focusedSeries?.let(onTvSeriesClick) },
                     modifier = Modifier.fillMaxSize(),
+                    hazeState = hazeState,
                     topBar = {
                         TopAppBar(
+                            modifier = Modifier.hazeAppBarGlass(hazeState),
                             title = {
                                 Text(
                                     text = providerName,
@@ -485,7 +512,12 @@ fun OttCatalogScreen(
                                     )
                                 }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = hazeAppBarContainerColor(
+                                    hasGlass = hazeState != null,
+                                    fallbackAlpha = 0.85f
+                                )
+                            )
                         )
                     },
                     chips = {
@@ -513,7 +545,14 @@ fun OttCatalogScreen(
                 ) {
                     when (val state = uiState) {
                         OttCatalogUiState.Loading -> {
-                            MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                            MovieListPlaceholder(
+                                contentPadding = PaddingValues(
+                                    top = 8.dp,
+                                    bottom = navBarHeight + 16.dp,
+                                    start = 16.dp,
+                                    end = 16.dp
+                                )
+                            )
                         }
                         is OttCatalogUiState.SuccessTv -> {
                             if (state.series.isEmpty()) {
@@ -548,7 +587,12 @@ fun OttCatalogScreen(
                                     initialFocusId = lastClickedId,
                                     onFocusRestored = { viewModel.clearLastClickedId() },
                                     onSeriesFocus = viewModel::onSeriesFocused,
-                                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 8.dp)
+                                    contentPadding = PaddingValues(
+                                        start = 16.dp,
+                                        end = 16.dp,
+                                        bottom = navBarHeight + 16.dp,
+                                        top = 8.dp
+                                    )
                                 )
                             }
                         }

@@ -4,7 +4,6 @@ package com.martinrevert.latorrentola.ui.detail
 
 import android.content.Intent
 import android.content.res.Configuration
-import android.os.Build
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.compose.foundation.ScrollState
@@ -58,14 +57,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalInspectionMode
-import dev.chrisbanes.haze.rememberHazeState
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
+import com.martinrevert.latorrentola.ui.theme.hazeSheetBackdropBlur
+import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.HazeInput
-import dev.chrisbanes.haze.glass.GlassStyle
-import dev.chrisbanes.haze.glass.hazeGlass
-import dev.chrisbanes.haze.glass.material3.material3
 import coil3.compose.AsyncImage
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -268,7 +265,7 @@ private fun MovieDetailScreenContent(
     onRetry: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val hazeState = if (!isTv) rememberHazeState() else null
+    val hazeState = rememberHandheldHazeState(isTv)
     val scrollState = rememberScrollState()
     val insufficientStorageState = remember { mutableStateOf<Pair<Long, Long>?>(null) }
     var torrentToDelete by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -347,6 +344,11 @@ private fun MovieDetailScreenContent(
             }
         }
     } else {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .hazeSheetBackdropBlur(isSheetVisible = showActorSheet)
+        ) {
         when (uiState) {
             is DetailUiState.Loading, is DetailUiState.OpenTvDetail -> {
                 val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -357,22 +359,37 @@ private fun MovieDetailScreenContent(
                     start = 16.dp,
                     end = 16.dp
                 )
-                Box(modifier = Modifier.fillMaxSize()) {
-                    MovieDetailPlaceholder(contentPadding = detailContentPadding)
-                    IconButton(
-                        onClick = onBackClick,
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surface)
+                ) {
+                    Box(
                         modifier = Modifier
-                            .statusBarsPadding()
-                            .padding(16.dp)
-                            .size(42.dp)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+                            .fillMaxSize()
+                            .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back_desc),
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
+                        MovieDetailPlaceholder(contentPadding = detailContentPadding)
                     }
+                    TopAppBar(
+                        title = {},
+                        navigationIcon = {
+                            IconButton(
+                                onClick = onBackClick,
+                                modifier = Modifier.padding(start = 8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(R.string.back_desc),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = hazeAppBarContainerColor(hazeState != null, 0.85f)
+                        ),
+                        modifier = Modifier.hazeAppBarGlass(hazeState)
+                    )
                 }
             }
             is DetailUiState.Success -> {
@@ -436,29 +453,44 @@ private fun MovieDetailScreenContent(
                 )
             }
             is DetailUiState.Error -> {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    ApiErrorView(
-                        error = uiState.message,
-                        onRetry = onRetry,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    IconButton(
-                        onClick = onBackClick,
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surface)
+                ) {
+                    Box(
                         modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .statusBarsPadding()
-                            .padding(16.dp)
-                            .size(42.dp)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
+                            .fillMaxSize()
+                            .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back_desc),
-                            tint = MaterialTheme.colorScheme.onSurface
+                        ApiErrorView(
+                            error = uiState.message,
+                            onRetry = onRetry,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
+                    TopAppBar(
+                        title = {},
+                        navigationIcon = {
+                            IconButton(
+                                onClick = onBackClick,
+                                modifier = Modifier.padding(start = 8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(R.string.back_desc),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = hazeAppBarContainerColor(hazeState != null, 0.85f)
+                        ),
+                        modifier = Modifier.hazeAppBarGlass(hazeState)
+                    )
                 }
             }
+        }
         }
     }
 
@@ -468,7 +500,6 @@ private fun MovieDetailScreenContent(
             isLoading = isActorLoading,
             onDismiss = onDismissActorSheet,
             sheetState = actorSheetState,
-            hazeState = hazeState,
             onCreditClick = onActorCreditClick,
             themeMode = themeMode
         )
@@ -978,8 +1009,6 @@ private fun HandheldMovieDetailContent(
         }
 
         // 3. Floating Glass Top Navigation Bar with Actions
-        val isInspection = LocalInspectionMode.current
-        val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
         TopAppBar(
             title = {},
             navigationIcon = {
@@ -1020,16 +1049,9 @@ private fun HandheldMovieDetailContent(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = if (isPreAndroid12) MaterialTheme.colorScheme.surface.copy(alpha = 0.85f) else Color.Transparent
+                containerColor = hazeAppBarContainerColor(hazeState != null, 0.85f)
             ),
-            modifier = Modifier
-                .then(
-                    if (hazeState != null) {
-                        Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3())
-                    } else {
-                        Modifier
-                    }
-                )
+            modifier = Modifier.hazeAppBarGlass(hazeState)
         )
 
         // 4. Modal YouTube Trailer Dialog

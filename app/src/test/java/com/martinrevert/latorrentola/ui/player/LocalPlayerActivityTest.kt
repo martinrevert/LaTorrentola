@@ -706,6 +706,63 @@ class LocalPlayerActivityTest {
         assertThat(LocalPlayerActivity.shouldFinishOnPlaybackEnded(isTvEpisode = true, autoPlayMode = AutoPlayQualitySelectionMethod.BY_QUALITY)).isFalse()
         assertThat(LocalPlayerActivity.shouldFinishOnPlaybackEnded(isTvEpisode = true, autoPlayMode = AutoPlayQualitySelectionMethod.BY_SEED_PEERS)).isFalse()
     }
+
+    @Test
+    fun `resolvePlayerAnySheetVisible ignores controller-scoped sheets when controller is null`() {
+        assertThat(
+            LocalPlayerActivity.resolvePlayerAnySheetVisible(
+                hasController = false,
+                showCastBottomSheet = true,
+                showMoreOptionsSheet = false,
+                hasPlayerBottomSheet = false
+            )
+        ).isFalse()
+
+        assertThat(
+            LocalPlayerActivity.resolvePlayerAnySheetVisible(
+                hasController = false,
+                showCastBottomSheet = false,
+                showMoreOptionsSheet = true,
+                hasPlayerBottomSheet = false
+            )
+        ).isFalse()
+
+        assertThat(
+            LocalPlayerActivity.resolvePlayerAnySheetVisible(
+                hasController = true,
+                showCastBottomSheet = true,
+                showMoreOptionsSheet = false,
+                hasPlayerBottomSheet = false
+            )
+        ).isTrue()
+
+        assertThat(
+            LocalPlayerActivity.resolvePlayerAnySheetVisible(
+                hasController = true,
+                showCastBottomSheet = false,
+                showMoreOptionsSheet = true,
+                hasPlayerBottomSheet = false
+            )
+        ).isTrue()
+
+        assertThat(
+            LocalPlayerActivity.resolvePlayerAnySheetVisible(
+                hasController = false,
+                showCastBottomSheet = false,
+                showMoreOptionsSheet = false,
+                hasPlayerBottomSheet = true
+            )
+        ).isTrue()
+
+        assertThat(
+            LocalPlayerActivity.resolvePlayerAnySheetVisible(
+                hasController = true,
+                showCastBottomSheet = false,
+                showMoreOptionsSheet = false,
+                hasPlayerBottomSheet = false
+            )
+        ).isFalse()
+    }
 }
 
 

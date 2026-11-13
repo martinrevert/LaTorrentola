@@ -2,9 +2,6 @@
 
 package com.martinrevert.latorrentola.ui.components
 
-import android.os.Build
-import androidx.compose.ui.platform.LocalInspectionMode
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
@@ -45,11 +42,6 @@ import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeInput
-import dev.chrisbanes.haze.glass.GlassStyle
-import dev.chrisbanes.haze.glass.hazeGlass
-import dev.chrisbanes.haze.glass.material3.material3
 
 /**
  * Displays actor biography and filmography in an adaptive modal sheet.
@@ -58,7 +50,6 @@ import dev.chrisbanes.haze.glass.material3.material3
  * @param isLoading Whether the profile request is in progress.
  * @param onDismiss Closes the sheet.
  * @param sheetState Material bottom-sheet state used on handhelds.
- * @param hazeState Optional glass source used behind the handheld sheet.
  * @param onCreditClick Opens the selected TMDB movie or TV credit.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -68,7 +59,6 @@ fun ActorDetailBottomSheet(
     isLoading: Boolean,
     onDismiss: () -> Unit,
     sheetState: SheetState,
-    hazeState: HazeState? = null,
     onCreditClick: ((TmdbCastCredit) -> Unit)? = null,
     themeMode: Int? = null
 ) {
@@ -79,20 +69,6 @@ fun ActorDetailBottomSheet(
     }
     val configuration = LocalConfiguration.current
     val isWideScreen = configuration.screenWidthDp >= 600 || isTv
-    val isInspection = LocalInspectionMode.current
-    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
-
-    val sheetContainerColor = if (hazeState != null && !isPreAndroid12) {
-        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f)
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHigh
-    }
-
-    val sheetModifier = if (hazeState != null) {
-        Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3())
-    } else {
-        Modifier
-    }
 
     if (isTv) {
         Dialog(
@@ -134,16 +110,16 @@ fun ActorDetailBottomSheet(
             }
         }
     } else {
-        ModalBottomSheet(
-            onDismissRequest = onDismiss,
-            sheetState = sheetState,
-            containerColor = sheetContainerColor,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            modifier = sheetModifier
-                .fillMaxWidth()
-                .widthIn(max = 1200.dp)
-        ) {
-            LaTorrentolaTheme(themeMode = effectiveThemeMode) {
+        LaTorrentolaTheme(themeMode = effectiveThemeMode) {
+            ModalBottomSheet(
+                onDismissRequest = onDismiss,
+                sheetState = sheetState,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 1200.dp)
+            ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()

@@ -6,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import android.content.res.Configuration
-import android.os.Build
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -55,7 +54,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -72,14 +70,10 @@ import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.platform.LocalInspectionMode
-import dev.chrisbanes.haze.rememberHazeState
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
+import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.HazeInput
-import dev.chrisbanes.haze.glass.GlassStyle
-import dev.chrisbanes.haze.glass.hazeGlass
-import dev.chrisbanes.haze.glass.material3.material3
-import dev.chrisbanes.haze.ExperimentalHazeApi
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.tv.material3.Button
 import com.martinrevert.latorrentola.service.storage.StorageLocation
@@ -187,22 +181,18 @@ private fun SettingsScreenContent(
     val configuration = LocalConfiguration.current
     val isWideScreen = configuration.screenWidthDp >= 600 || isTv
     val scrollState = rememberScrollState()
-    val hazeState = if (!isTv) rememberHazeState() else null
-    val isInspection = LocalInspectionMode.current
-    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+    val hazeState = rememberHandheldHazeState(isTv)
     val topBarContainerColor = if (isTv) {
         TvMaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
-    } else if (isPreAndroid12) {
-        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
     } else {
-        Color.Transparent
+        hazeAppBarContainerColor(hazeState != null, 0.90f)
     }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
-                modifier = if (hazeState != null) Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3()) else Modifier,
+                modifier = Modifier.hazeAppBarGlass(hazeState),
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
                 title = {
                     if (isTv) {

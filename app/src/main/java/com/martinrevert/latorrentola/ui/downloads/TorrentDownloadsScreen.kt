@@ -10,6 +10,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,6 +52,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -94,8 +96,13 @@ import com.martinrevert.latorrentola.ui.components.CastBottomSheet
 import com.martinrevert.latorrentola.ui.components.CastCodecWarningObserver
 import com.martinrevert.latorrentola.ui.player.LocalPlayerActivity
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
+import com.martinrevert.latorrentola.ui.theme.hazeSheetBackdropBlur
+import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import com.martinrevert.latorrentola.utils.PlayerIntentUtils
 import com.martinrevert.latorrentola.utils.isTvDevice
+import dev.chrisbanes.haze.hazeSource
 import java.io.File
 
 /**
@@ -113,6 +120,7 @@ fun TorrentDownloadsScreen(
     val downloads by viewModel.downloads.collectAsState()
     val context = LocalContext.current
     val isTv = context.isTvDevice()
+    val hazeState = rememberHandheldHazeState(isTv)
     var showCastBottomSheet by remember { mutableStateOf(false) }
 
     // Connect to MediaController to track active playback
@@ -205,6 +213,7 @@ fun TorrentDownloadsScreen(
     }
 
     Scaffold(
+        modifier = Modifier.hazeSheetBackdropBlur(isSheetVisible = showCastBottomSheet, enabled = !isTv),
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.torrent_downloads_title)) },
@@ -231,19 +240,29 @@ fun TorrentDownloadsScreen(
                             contentDescription = stringResource(R.string.back_desc)
                         )
                     }
-                }
+                },
+                colors = if (isTv) {
+                    TopAppBarDefaults.topAppBarColors()
+                } else {
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = hazeAppBarContainerColor(hazeState != null, 0.90f)
+                    )
+                },
+                modifier = Modifier.hazeAppBarGlass(hazeState)
             )
         }
     ) { padding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .then(if (isTv) Modifier.padding(padding) else Modifier)
+                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
         ) {
             if (downloads.isEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .then(if (!isTv) Modifier.padding(padding) else Modifier)
                         .padding(24.dp),
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally
@@ -258,7 +277,17 @@ fun TorrentDownloadsScreen(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = if (isTv) 48.dp else 16.dp),
+                        .then(if (isTv) Modifier.padding(horizontal = 48.dp) else Modifier),
+                    contentPadding = if (!isTv) {
+                        PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = padding.calculateTopPadding() + 8.dp,
+                            bottom = padding.calculateBottomPadding() + 16.dp
+                        )
+                    } else {
+                        PaddingValues(0.dp)
+                    },
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(downloads, key = TorrentDownload::infoHash) { download ->
@@ -500,7 +529,7 @@ fun TorrentDownloadsScreen(
                 streamUrl = downloads.firstOrNull { it.infoHash == activeMediaId }?.mediaPath,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 16.dp)
+                    .padding(bottom = if (!isTv) padding.calculateBottomPadding() + 16.dp else 16.dp)
             )
         }
     }

@@ -29,12 +29,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -60,8 +63,12 @@ import com.martinrevert.latorrentola.ui.player.LocalPlayerActivity
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
+import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
+import dev.chrisbanes.haze.hazeSource
 import java.io.File
 import java.util.Locale
 
@@ -502,6 +509,8 @@ private fun MobileExternalMediaContent(
     onDeleteServerClick: (RemoteServerConfig) -> Unit,
     onFileItemClicked: (RemoteFileItem) -> Unit
 ) {
+    val hazeState = rememberHandheldHazeState(isTv = false)
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -542,85 +551,116 @@ private fun MobileExternalMediaContent(
                             )
                         }
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = hazeAppBarContainerColor(hazeState != null, 0.90f)
+                ),
+                modifier = Modifier.hazeAppBarGlass(hazeState)
             )
         }
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            ActiveStorageBanner(
-                uiState = uiState,
-                isTv = false,
-                themeMode = themeMode,
-                onResetToInternal = { onSetActiveStorage(TorrentStorageResolver.LOCATION_INTERNAL) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-
-            PrimaryTabRow(
-                selectedTabIndex = if (uiState.selectedTab == ExternalMediaTab.USB) 0 else 1
-            ) {
-                Tab(
-                    selected = uiState.selectedTab == ExternalMediaTab.USB,
-                    onClick = { onSelectTab(ExternalMediaTab.USB) },
-                    text = { Text(stringResource(R.string.external_media_tab_usb)) },
-                    icon = { Icon(Icons.Default.Usb, contentDescription = null) }
-                )
-                Tab(
-                    selected = uiState.selectedTab == ExternalMediaTab.NETWORK,
-                    onClick = { onSelectTab(ExternalMediaTab.NETWORK) },
-                    text = { Text(stringResource(R.string.external_media_tab_network)) },
-                    icon = { Icon(Icons.Default.Dns, contentDescription = null) }
-                )
-            }
-
-            if (uiState.isLoading) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
-
-            uiState.errorMessage?.let { error ->
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        SubcomposeLayout(modifier = Modifier.fillMaxSize()) { constraints ->
+            val headerPlaceables = subcompose("header") {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(8.dp),
-                    shape = RoundedCornerShape(8.dp)
+                        .background(hazeAppBarContainerColor(hazeState != null, 0.90f))
+                        .hazeAppBarGlass(hazeState)
                 ) {
-                    Text(
-                        text = error,
-                        modifier = Modifier.padding(12.dp),
-                        style = MaterialTheme.typography.bodyMedium
+                    ActiveStorageBanner(
+                        uiState = uiState,
+                        isTv = false,
+                        themeMode = themeMode,
+                        onResetToInternal = { onSetActiveStorage(TorrentStorageResolver.LOCATION_INTERNAL) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
                     )
-                }
-            }
 
-            when (uiState.selectedTab) {
-                ExternalMediaTab.USB -> {
-                    UsbMediaView(
-                        uiState = uiState,
-                        onSelectLocation = onSelectUsbLocation,
-                        onSetActiveStorage = onSetActiveStorage,
-                        onNavigateUp = onNavigateUpUsb,
-                        onItemClick = onFileItemClicked
-                    )
+                    PrimaryTabRow(
+                        selectedTabIndex = if (uiState.selectedTab == ExternalMediaTab.USB) 0 else 1,
+                        containerColor = Color.Transparent
+                    ) {
+                        Tab(
+                            selected = uiState.selectedTab == ExternalMediaTab.USB,
+                            onClick = { onSelectTab(ExternalMediaTab.USB) },
+                            text = { Text(stringResource(R.string.external_media_tab_usb)) },
+                            icon = { Icon(Icons.Default.Usb, contentDescription = null) }
+                        )
+                        Tab(
+                            selected = uiState.selectedTab == ExternalMediaTab.NETWORK,
+                            onClick = { onSelectTab(ExternalMediaTab.NETWORK) },
+                            text = { Text(stringResource(R.string.external_media_tab_network)) },
+                            icon = { Icon(Icons.Default.Dns, contentDescription = null) }
+                        )
+                    }
+
+                    if (uiState.isLoading) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+
+                    uiState.errorMessage?.let { error ->
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = error,
+                                modifier = Modifier.padding(12.dp),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
                 }
-                ExternalMediaTab.NETWORK -> {
-                    NetworkMediaView(
-                        uiState = uiState,
-                        onSelectServer = onSelectServer,
-                        onNavigateUp = onNavigateUpRemote,
-                        onAddServerClick = onAddServerClick,
-                        onScanNetworkClick = onScanNetworkClick,
-                        onEditServerClick = onEditServerClick,
-                        onDeleteServerClick = onDeleteServerClick,
-                        onItemClick = onFileItemClicked
-                    )
+            }.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
+
+            val topBarOffsetPx = innerPadding.calculateTopPadding().roundToPx()
+            val headerHeightDp = (headerPlaceables.maxOfOrNull { it.height } ?: 0).toDp()
+            val combinedTopPadding = innerPadding.calculateTopPadding() + headerHeightDp
+
+            val contentPlaceables = subcompose("content") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
+                ) {
+                    when (uiState.selectedTab) {
+                        ExternalMediaTab.USB -> {
+                            UsbMediaView(
+                                uiState = uiState,
+                                onSelectLocation = onSelectUsbLocation,
+                                onSetActiveStorage = onSetActiveStorage,
+                                onNavigateUp = onNavigateUpUsb,
+                                onItemClick = onFileItemClicked,
+                                topPadding = combinedTopPadding,
+                                bottomPadding = innerPadding.calculateBottomPadding()
+                            )
+                        }
+                        ExternalMediaTab.NETWORK -> {
+                            NetworkMediaView(
+                                uiState = uiState,
+                                onSelectServer = onSelectServer,
+                                onNavigateUp = onNavigateUpRemote,
+                                onAddServerClick = onAddServerClick,
+                                onScanNetworkClick = onScanNetworkClick,
+                                onEditServerClick = onEditServerClick,
+                                onDeleteServerClick = onDeleteServerClick,
+                                onItemClick = onFileItemClicked,
+                                topPadding = combinedTopPadding,
+                                bottomPadding = innerPadding.calculateBottomPadding()
+                            )
+                        }
+                    }
                 }
+            }.map { it.measure(constraints) }
+
+            layout(constraints.maxWidth, constraints.maxHeight) {
+                contentPlaceables.forEach { it.placeRelative(0, 0) }
+                headerPlaceables.forEach { it.placeRelative(0, topBarOffsetPx) }
             }
         }
     }
@@ -632,188 +672,202 @@ private fun UsbMediaView(
     onSelectLocation: (StorageLocation) -> Unit,
     onSetActiveStorage: (String) -> Unit,
     onNavigateUp: () -> Unit,
-    onItemClick: (RemoteFileItem) -> Unit
+    onItemClick: (RemoteFileItem) -> Unit,
+    topPadding: Dp = 0.dp,
+    bottomPadding: Dp = 0.dp
 ) {
     val context = LocalContext.current
-    Column(modifier = Modifier.fillMaxSize()) {
+    val canNavigateUp = uiState.currentUsbFolder != null &&
+        uiState.selectedUsbLocation?.rootDirectory != null &&
+        (try { uiState.currentUsbFolder.canonicalPath } catch (_: Throwable) { uiState.currentUsbFolder.absolutePath }) !=
+        (try { uiState.selectedUsbLocation.rootDirectory.canonicalPath } catch (_: Throwable) { uiState.selectedUsbLocation.rootDirectory.absolutePath })
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            top = topPadding + 12.dp,
+            end = 16.dp,
+            bottom = bottomPadding + 16.dp
+        ),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         if (!uiState.hasAllFilesAccess) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                shape = RoundedCornerShape(10.dp),
-                color = MaterialTheme.colorScheme.tertiaryContainer,
-                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-            ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            item(key = "usb_permission_banner") {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.FolderShared,
-                        contentDescription = null,
-                        modifier = Modifier.size(28.dp),
-                        tint = MaterialTheme.colorScheme.onTertiaryContainer
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.usb_permission_banner_title),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = stringResource(R.string.usb_permission_banner_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = {
-                            launchAllFilesAccessSettings(context)
-                        }
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(stringResource(R.string.usb_permission_grant_button))
+                        Icon(
+                            imageVector = Icons.Default.FolderShared,
+                            contentDescription = null,
+                            modifier = Modifier.size(28.dp),
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.usb_permission_banner_title),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = stringResource(R.string.usb_permission_banner_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                launchAllFilesAccessSettings(context)
+                            }
+                        ) {
+                            Text(stringResource(R.string.usb_permission_grant_button))
+                        }
                     }
                 }
             }
         }
 
         if (uiState.usbLocations.isNotEmpty()) {
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(uiState.usbLocations) { loc ->
-                    val isSelected = uiState.selectedUsbLocation?.id == loc.id
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { onSelectLocation(loc) },
-                        label = { Text(loc.displayName) },
-                        leadingIcon = {
-                            Icon(
-                                if (loc.isRemovable) Icons.Default.Usb else Icons.Default.Folder,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    )
+            item(key = "usb_locations_row") {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(uiState.usbLocations) { loc ->
+                        val isSelected = uiState.selectedUsbLocation?.id == loc.id
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { onSelectLocation(loc) },
+                            label = { Text(loc.displayName) },
+                            leadingIcon = {
+                                Icon(
+                                    if (loc.isRemovable) Icons.Default.Usb else Icons.Default.Folder,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        )
+                    }
                 }
             }
 
             uiState.selectedUsbLocation?.let { loc ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (loc.isRemovable) stringResource(R.string.active_download_storage_usb_desc)
-                            else stringResource(R.string.active_download_storage_internal_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        if (loc.availableBytes > 0) {
+                item(key = "selected_usb_location_info") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = stringResource(R.string.storage_space_available, formatMediaSize(loc.availableBytes)),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Medium
+                                text = if (loc.isRemovable) stringResource(R.string.active_download_storage_usb_desc)
+                                else stringResource(R.string.active_download_storage_internal_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        }
-                    }
-                    if (uiState.activeStorageId == loc.id) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
+                            if (loc.availableBytes > 0) {
                                 Text(
-                                    stringResource(R.string.active_download_storage_badge),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    text = stringResource(R.string.storage_space_available, formatMediaSize(loc.availableBytes)),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Medium
                                 )
                             }
                         }
-                    } else {
-                        OutlinedButton(
-                            onClick = { onSetActiveStorage(loc.id) },
-                            modifier = Modifier.focusHighlight(shape = ButtonDefaults.shape)
-                        ) {
-                            Icon(Icons.Default.SaveAlt, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.active_download_storage_set_button))
+                        if (uiState.activeStorageId == loc.id) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        stringResource(R.string.active_download_storage_badge),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                        } else {
+                            OutlinedButton(
+                                onClick = { onSetActiveStorage(loc.id) },
+                                modifier = Modifier.focusHighlight(shape = ButtonDefaults.shape)
+                            ) {
+                                Icon(Icons.Default.SaveAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(stringResource(R.string.active_download_storage_set_button))
+                            }
                         }
                     }
                 }
             }
         }
 
-        val canNavigateUp = uiState.currentUsbFolder != null &&
-                uiState.selectedUsbLocation?.rootDirectory != null &&
-                (try { uiState.currentUsbFolder.canonicalPath } catch (_: Throwable) { uiState.currentUsbFolder.absolutePath }) !=
-                (try { uiState.selectedUsbLocation.rootDirectory.canonicalPath } catch (_: Throwable) { uiState.selectedUsbLocation.rootDirectory.absolutePath })
-
         if (canNavigateUp) {
-            Surface(
-                onClick = onNavigateUp,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            item(key = "usb_parent_folder") {
+                Surface(
+                    onClick = onNavigateUp,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        stringResource(R.string.external_media_parent_folder),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            stringResource(R.string.external_media_parent_folder),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
         }
 
         if (uiState.usbFiles.isEmpty() && !uiState.isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = stringResource(R.string.external_media_empty_usb),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            item(key = "usb_empty") {
+                Box(
+                    modifier = Modifier
+                        .fillParentMaxWidth()
+                        .padding(vertical = 48.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.external_media_empty_usb),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(uiState.usbFiles) { item ->
-                    MediaFileRow(item = item, onClick = { onItemClick(item) })
-                }
+            items(uiState.usbFiles) { item ->
+                MediaFileRow(item = item, onClick = { onItemClick(item) })
             }
         }
     }
@@ -828,117 +882,135 @@ private fun NetworkMediaView(
     onScanNetworkClick: () -> Unit,
     onEditServerClick: (RemoteServerConfig) -> Unit,
     onDeleteServerClick: (RemoteServerConfig) -> Unit,
-    onItemClick: (RemoteFileItem) -> Unit
+    onItemClick: (RemoteFileItem) -> Unit,
+    topPadding: Dp = 0.dp,
+    bottomPadding: Dp = 0.dp
 ) {
     if (uiState.selectedServer == null) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            if (uiState.isScanningNetwork) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = stringResource(R.string.external_media_scanning_network),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+        if (uiState.remoteServers.isEmpty() && !uiState.isLoading && !uiState.isScanningNetwork) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        start = 32.dp,
+                        top = topPadding + 32.dp,
+                        end = 32.dp,
+                        bottom = bottomPadding + 32.dp
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = stringResource(R.string.external_media_empty_network_auto),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedButton(onClick = onAddServerClick) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.external_media_add_server))
                     }
                 }
             }
-
-            if (uiState.remoteServers.isEmpty() && !uiState.isLoading && !uiState.isScanningNetwork) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = stringResource(R.string.external_media_empty_network_auto),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        OutlinedButton(onClick = onAddServerClick) {
-                            Icon(Icons.Default.Add, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.external_media_add_server))
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    top = topPadding + 12.dp,
+                    end = 16.dp,
+                    bottom = bottomPadding + 16.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (uiState.isScanningNetwork) {
+                    item(key = "network_scanning_banner") {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = stringResource(R.string.external_media_scanning_network),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(uiState.remoteServers) { server ->
-                        ServerCard(
-                            server = server,
-                            onClick = { onSelectServer(server) },
-                            onEdit = { onEditServerClick(server) },
-                            onDelete = { onDeleteServerClick(server) }
-                        )
-                    }
+                items(uiState.remoteServers) { server ->
+                    ServerCard(
+                        server = server,
+                        onClick = { onSelectServer(server) },
+                        onEdit = { onEditServerClick(server) },
+                        onDelete = { onDeleteServerClick(server) }
+                    )
                 }
             }
         }
     } else {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = topPadding + 12.dp,
+                end = 16.dp,
+                bottom = bottomPadding + 16.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            item(key = "remote_breadcrumb") {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
                 ) {
-                    IconButton(onClick = onNavigateUp, modifier = Modifier.size(24.dp)) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = onNavigateUp, modifier = Modifier.size(24.dp)) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = uiState.selectedServer.name + if (uiState.currentRemotePath.isNotBlank()) " / ${uiState.currentRemotePath}" else "",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = uiState.selectedServer.name + if (uiState.currentRemotePath.isNotBlank()) " / ${uiState.currentRemotePath}" else "",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
                 }
             }
-
             if (uiState.remoteFiles.isEmpty() && !uiState.isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = stringResource(R.string.external_media_empty_folder),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                item(key = "remote_empty") {
+                    Box(
+                        modifier = Modifier
+                            .fillParentMaxWidth()
+                            .padding(vertical = 48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.external_media_empty_folder),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(uiState.remoteFiles) { item ->
-                        MediaFileRow(item = item, onClick = { onItemClick(item) })
-                    }
+                items(uiState.remoteFiles) { item ->
+                    MediaFileRow(item = item, onClick = { onItemClick(item) })
                 }
             }
         }

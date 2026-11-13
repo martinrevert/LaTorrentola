@@ -2,7 +2,6 @@
 
 package com.martinrevert.latorrentola.ui.home
 
-import android.os.Build
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -59,15 +58,12 @@ import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
+import com.martinrevert.latorrentola.ui.theme.hazeSheetBackdropBlur
+import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
-import dev.chrisbanes.haze.HazeInput
-import dev.chrisbanes.haze.glass.GlassStyle
-import dev.chrisbanes.haze.glass.hazeGlass
-import dev.chrisbanes.haze.glass.material3.material3
-import androidx.compose.ui.platform.LocalInspectionMode
 import kotlinx.coroutines.launch
 
 /**
@@ -261,12 +257,16 @@ private fun HomeScreenContent(
         if (isTvMode) tvHomeViewModel?.activate()
     }
 
-    val hazeState = if (!isTv) rememberHazeState() else null
+    val hazeState = rememberHandheldHazeState(isTv)
 
     val configuration = LocalConfiguration.current
     val screenWidthDp = configuration.screenWidthDp
 
     Scaffold(
+        modifier = Modifier.hazeSheetBackdropBlur(
+            isSheetVisible = showGenreSheet || showTvGenreSheet,
+            enabled = !isTv
+        ),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {}
     ) { padding ->
@@ -276,7 +276,6 @@ private fun HomeScreenContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
         ) {
             if (isTv) {
                 if (isTvMode) {
@@ -442,6 +441,7 @@ private fun HomeScreenContent(
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
+                    hazeState = hazeState,
                     topBar = {
                         HomeTopAppBar(
                             userPhotoUrl = userPhotoUrl,
@@ -454,9 +454,9 @@ private fun HomeScreenContent(
                             onMoviesClick = { selectMediaMode(false) },
                             onTvClick = { selectMediaMode(true) },
                             focusDownRequester = homeControlsFocusRequester,
-                            containerColor = Color.Transparent,
+                            containerColor = hazeAppBarContainerColor(hasGlass = hazeState != null, fallbackAlpha = 0.85f),
                             isTv = false,
-                            modifier = if (hazeState != null) Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3()) else Modifier
+                            modifier = Modifier.hazeAppBarGlass(hazeState)
                         )
                     },
                     chips = {
@@ -542,6 +542,7 @@ private fun HomeScreenContent(
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
+                    hazeState = hazeState,
                     topBar = {
                         HomeTopAppBar(
                             userPhotoUrl = userPhotoUrl,
@@ -554,9 +555,9 @@ private fun HomeScreenContent(
                             onMoviesClick = { selectMediaMode(false) },
                             onTvClick = { selectMediaMode(true) },
                             focusDownRequester = homeControlsFocusRequester,
-                            containerColor = Color.Transparent,
+                            containerColor = hazeAppBarContainerColor(hasGlass = hazeState != null, fallbackAlpha = 0.85f),
                             isTv = false,
-                            modifier = if (hazeState != null) Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3()) else Modifier
+                            modifier = Modifier.hazeAppBarGlass(hazeState)
                         )
                     },
                     chips = {
@@ -660,7 +661,6 @@ private fun HomeScreenContent(
             },
             onDismiss = { showGenreSheet = false },
             sheetState = sheetState,
-            hazeState = hazeState,
             themeMode = themeMode
         )
     }
@@ -740,17 +740,10 @@ private fun HomeTopAppBar(
 ) {
     val configuration = LocalConfiguration.current
     val showTitleText = isTv || configuration.screenWidthDp >= 480
-    val isInspection = LocalInspectionMode.current
-    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
-    val effectiveContainerColor = if (!isTv && isPreAndroid12) {
-        MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
-    } else {
-        containerColor
-    }
 
     TopAppBar(
         modifier = modifier,
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = effectiveContainerColor),
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = containerColor),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(

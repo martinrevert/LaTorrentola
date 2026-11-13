@@ -33,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -70,8 +71,12 @@ import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
+import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
+import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -109,6 +114,7 @@ fun OttProvidersScreen(
         val lastClickedProviderId by viewModel.lastClickedProviderId.collectAsState()
         val gridState = rememberLazyGridState()
         val firstCardFocusRequester = remember { FocusRequester() }
+        val hazeState = rememberHandheldHazeState(isTv)
 
         Scaffold(
             topBar = {
@@ -135,10 +141,23 @@ fun OttProvidersScreen(
                                 contentDescription = stringResource(R.string.back_desc)
                             )
                         }
-                    }
+                    },
+                    colors = if (isTv) {
+                        TopAppBarDefaults.topAppBarColors()
+                    } else {
+                        TopAppBarDefaults.topAppBarColors(
+                            containerColor = hazeAppBarContainerColor(hazeState != null, 0.90f)
+                        )
+                    },
+                    modifier = Modifier.hazeAppBarGlass(hazeState)
                 )
             }
         ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
+            ) {
             when (val state = uiState) {
                 is OttProvidersUiState.Loading -> {
                     Box(
@@ -231,6 +250,7 @@ fun OttProvidersScreen(
                         }
                     }
                 }
+            }
             }
         }
     }

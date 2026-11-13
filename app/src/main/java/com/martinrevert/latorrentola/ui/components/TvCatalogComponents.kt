@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -90,6 +91,7 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.network.TmdbTvFeed
 import com.martinrevert.latorrentola.ui.home.TvGenreSort
+import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
 import com.martinrevert.latorrentola.utils.PreferenceManager
@@ -324,44 +326,62 @@ fun TvGenreBottomSheet(
     themeMode: Int? = null
 ) {
     val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
     val effectiveThemeMode = remember(context, themeMode) {
         themeMode ?: PreferenceManager(context).getTheme()
     }
     val sortedGenres = remember(genres) {
         genres.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurface
-    ) {
-        TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 32.dp)
+    val sheetContent: @Composable () -> Unit = {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.browse_by_genre),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(
-                    text = stringResource(R.string.browse_by_genre),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                androidx.compose.foundation.layout.FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    sortedGenres.forEach { genre ->
-                        AdaptiveChip(
-                            selected = false,
-                            onClick = { onGenreClick(genre) },
-                            label = { Text(genre.name) }
-                        )
-                    }
+                sortedGenres.forEach { genre ->
+                    AdaptiveChip(
+                        selected = false,
+                        onClick = { onGenreClick(genre) },
+                        label = { Text(genre.name) }
+                    )
                 }
+            }
+        }
+    }
+    if (isTv) {
+        TvLaTorrentolaTheme(themeMode = effectiveThemeMode) {
+            ModalBottomSheet(
+                onDismissRequest = onDismiss,
+                sheetState = sheetState,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ) {
+                sheetContent()
+            }
+        }
+    } else {
+        LaTorrentolaTheme(themeMode = effectiveThemeMode) {
+            ModalBottomSheet(
+                onDismissRequest = onDismiss,
+                sheetState = sheetState,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ) {
+                sheetContent()
             }
         }
     }

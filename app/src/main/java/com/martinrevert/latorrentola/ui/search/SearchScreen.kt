@@ -5,7 +5,6 @@ package com.martinrevert.latorrentola.ui.search
 import android.app.Activity
 import android.content.Intent
 import android.content.res.Configuration
-import android.os.Build
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -53,7 +52,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -89,17 +87,16 @@ import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import com.martinrevert.latorrentola.ui.components.tvGridRowDpadNavigation
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
+import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
+import com.martinrevert.latorrentola.ui.theme.hazeSheetBackdropBlur
+import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TvSeriesProgressCalculator
 import com.martinrevert.latorrentola.utils.isTvDevice
-import dev.chrisbanes.haze.HazeInput
-import dev.chrisbanes.haze.glass.GlassStyle
-import dev.chrisbanes.haze.glass.hazeGlass
-import dev.chrisbanes.haze.glass.material3.material3
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -368,16 +365,15 @@ private fun SearchScreenContent(
     val gridState = rememberLazyGridState()
     val qualityChipsFocusRequester = remember { FocusRequester() }
     val resultsFocusRequester = remember { FocusRequester() }
-    val hazeState = if (!isTv) rememberHazeState() else null
+    val hazeState = rememberHandheldHazeState(isTv)
     var showActorBioSheet by remember { mutableStateOf(false) }
     val actorBioSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val isInspection = LocalInspectionMode.current
-    val isPreAndroid12 = !isInspection && (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
-    val topBarContainerColor = if (isPreAndroid12) {
-        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-    } else {
+    val topBarContainerColor = if (isTv) {
         Color.Transparent
+    } else {
+        hazeAppBarContainerColor(hasGlass = hazeState != null, fallbackAlpha = 0.90f)
     }
+    val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     val hasTopChips = isShowingFavorites || (!isTvMode && !isActorMode) ||
         (isActorMode && actorUiState is SearchActorUiState.Success)
@@ -385,6 +381,10 @@ private fun SearchScreenContent(
     val isHandheldMoviesSearch = !isTv && !isTvMode && !isActorMode && !isShowingFavorites
 
     Scaffold(
+        modifier = Modifier.hazeSheetBackdropBlur(
+            isSheetVisible = showActorBioSheet,
+            enabled = !isTv
+        ),
         contentWindowInsets = if (isTvMoviesSearch || isHandheldMoviesSearch) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
         topBar = {
             if (!isTvMoviesSearch && !isHandheldMoviesSearch) {
@@ -393,11 +393,7 @@ private fun SearchScreenContent(
                         .focusProperties {
                             down = if (hasTopChips) qualityChipsFocusRequester else resultsFocusRequester
                         }
-                        .then(
-                            if (hazeState != null) {
-                                Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3())
-                            } else Modifier
-                        ),
+                        .hazeAppBarGlass(hazeState),
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
                     title = {
                         if (isShowingFavorites) {
@@ -752,9 +748,16 @@ private fun SearchScreenContent(
                 isLogoLoading = isFocusedMovieLogoLoading,
                 onDetailsClick = { focusedMovie?.let(onMovieClick) },
                 modifier = Modifier.fillMaxSize(),
+                hazeState = hazeState,
                 topBar = {
                     TopAppBar(
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                        modifier = Modifier.hazeAppBarGlass(hazeState),
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = hazeAppBarContainerColor(
+                                hasGlass = hazeState != null,
+                                fallbackAlpha = 0.85f
+                            )
+                        ),
                         title = {
                             if (isShowingDownloads) {
                                 Text(stringResource(R.string.already_seen))
@@ -803,7 +806,14 @@ private fun SearchScreenContent(
                     ) {
                         Text(text = stringResource(R.string.start_searching))
                     }
-                    is SearchUiState.Loading -> MovieListPlaceholder(contentPadding = PaddingValues(16.dp))
+                    is SearchUiState.Loading -> MovieListPlaceholder(
+                        contentPadding = PaddingValues(
+                            top = 8.dp,
+                            bottom = navBarHeight + 16.dp,
+                            start = 16.dp,
+                            end = 16.dp
+                        )
+                    )
                     is SearchUiState.Success -> {
                         MovieList(
                             movies = uiState.movies,
@@ -828,7 +838,12 @@ private fun SearchScreenContent(
                             },
                             initialFocusId = lastClickedMovieId,
                             onFocusRestored = onFocusRestored,
-                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 8.dp)
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                end = 16.dp,
+                                bottom = navBarHeight + 16.dp,
+                                top = 8.dp
+                            )
                         )
                     }
                     is SearchUiState.Empty -> Box(
@@ -854,165 +869,171 @@ private fun SearchScreenContent(
                 end = 16.dp
             )
 
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
-            ) {
-                when {
-                    isActorMode -> {
-                        when (actorUiState) {
-                            SearchActorUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(text = stringResource(R.string.start_searching))
-                            }
-                            SearchActorUiState.Loading -> MovieListPlaceholder(contentPadding = searchContentPadding)
-                            SearchActorUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(text = stringResource(R.string.no_results))
-                            }
-                            is SearchActorUiState.Error -> ApiErrorView(
-                                error = actorUiState.message,
-                                onRetry = onRetry,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            is SearchActorUiState.Success -> {
-                                when {
-                                    actorUiState.isLoadingCredits -> MovieListPlaceholder(contentPadding = searchContentPadding)
-                                    actorUiState.credits.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        Text(text = stringResource(R.string.no_results))
+            Box(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
+                ) {
+                    when {
+                        isActorMode -> {
+                            when (actorUiState) {
+                                SearchActorUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(text = stringResource(R.string.start_searching))
+                                }
+                                SearchActorUiState.Loading -> MovieListPlaceholder(contentPadding = searchContentPadding)
+                                SearchActorUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(text = stringResource(R.string.no_results))
+                                }
+                                is SearchActorUiState.Error -> ApiErrorView(
+                                    error = actorUiState.message,
+                                    onRetry = onRetry,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                is SearchActorUiState.Success -> {
+                                    when {
+                                        actorUiState.isLoadingCredits -> MovieListPlaceholder(contentPadding = searchContentPadding)
+                                        actorUiState.credits.isEmpty() -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            Text(text = stringResource(R.string.no_results))
+                                        }
+                                        else -> ActorCreditsGrid(
+                                            credits = actorUiState.credits,
+                                            state = gridState,
+                                            initialFocusKey = lastClickedCreditKey,
+                                            onCreditClick = onActorCreditClick,
+                                            onFocusRestored = onActorCreditFocusRestored,
+                                            contentPadding = searchContentPadding
+                                        )
                                     }
-                                    else -> ActorCreditsGrid(
-                                        credits = actorUiState.credits,
-                                        state = gridState,
-                                        initialFocusKey = lastClickedCreditKey,
-                                        onCreditClick = onActorCreditClick,
-                                        onFocusRestored = onActorCreditFocusRestored,
-                                        contentPadding = searchContentPadding
-                                    )
                                 }
                             }
                         }
-                    }
-                    isTvMode -> {
-                        when (tvUiState) {
-                            is SearchTvUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(text = stringResource(R.string.start_searching))
-                            }
-                            is SearchTvUiState.Loading -> MovieListPlaceholder(contentPadding = searchContentPadding)
-                            is SearchTvUiState.Success -> TvSeriesGrid(
-                                series = tvUiState.series,
-                                genres = tvGenres,
-                                downloadedSeriesIds = downloadedSeriesIds,
-                                state = gridState,
-                                isLoadingMore = isLoadingMore,
-                                onSeriesClick = onTvSeriesClick,
-                                onLoadMore = onLoadMore,
-                                initialFocusId = lastClickedSeriesId,
-                                onFocusRestored = onTvFocusRestored,
-                                contentPadding = searchContentPadding
-                            )
-                            is SearchTvUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(text = stringResource(R.string.no_results))
-                            }
-                            is SearchTvUiState.Error -> ApiErrorView(
-                                error = tvUiState.message,
-                                onRetry = onRetry,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-                    }
-                    else -> {
-                        when (uiState) {
-                            is SearchUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(text = stringResource(R.string.start_searching))
-                            }
-                            is SearchUiState.Loading -> MovieListPlaceholder(contentPadding = searchContentPadding)
-                            is SearchUiState.Success -> if (uiState.isFavorites) {
-                                FavoriteItemsGrid(
-                                    movies = uiState.movies,
-                                    series = uiState.favoriteSeries,
-                                    tvGenres = tvGenres,
-                                    state = gridState,
-                                    downloadedMovieIds = downloadedMovieIds,
+                        isTvMode -> {
+                            when (tvUiState) {
+                                is SearchTvUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(text = stringResource(R.string.start_searching))
+                                }
+                                is SearchTvUiState.Loading -> MovieListPlaceholder(contentPadding = searchContentPadding)
+                                is SearchTvUiState.Success -> TvSeriesGrid(
+                                    series = tvUiState.series,
+                                    genres = tvGenres,
                                     downloadedSeriesIds = downloadedSeriesIds,
-                                    watchHistoryMap = watchHistoryMap,
-                                    selectedMovieIds = selectedFavoriteIds,
-                                    lastClickedMovieId = lastClickedMovieId,
-                                    lastClickedSeriesId = lastClickedSeriesId,
-                                    onMovieClick = onMovieClick,
-                                    onTvSeriesClick = onTvSeriesClick,
-                                    onMovieLongClick = onLongClick,
-                                    onMovieFocusRestored = onFocusRestored,
-                                    onTvFocusRestored = onTvFocusRestored,
-                                    onMovieFocus = null,
-                                    onSeriesFocus = null,
+                                    state = gridState,
+                                    isLoadingMore = isLoadingMore,
+                                    onSeriesClick = onTvSeriesClick,
+                                    onLoadMore = onLoadMore,
+                                    initialFocusId = lastClickedSeriesId,
+                                    onFocusRestored = onTvFocusRestored,
                                     contentPadding = searchContentPadding
                                 )
-                            } else MovieList(
-                                movies = uiState.movies,
-                                state = gridState,
-                                downloadedMovieIds = downloadedMovieIds,
-                                watchHistoryMap = watchHistoryMap,
-                                selectedIds = selectedFavoriteIds,
-                                isLoadingMore = isLoadingMore,
-                                onMovieClick = onMovieClick,
-                                onLongClick = { id -> uiState.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick) },
-                                onLoadMore = { if (!uiState.isDownloads && !uiState.isNew && !isShowingWatching) onLoadMore() },
-                                initialFocusId = lastClickedMovieId,
-                                onFocusRestored = onFocusRestored,
-                                contentPadding = searchContentPadding
-                            )
-                            is SearchUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(text = stringResource(R.string.no_results))
+                                is SearchTvUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(text = stringResource(R.string.no_results))
+                                }
+                                is SearchTvUiState.Error -> ApiErrorView(
+                                    error = tvUiState.message,
+                                    onRetry = onRetry,
+                                    modifier = Modifier.fillMaxSize()
+                                )
                             }
-                            is SearchUiState.Error -> ApiErrorView(
-                                error = uiState.message,
-                                onRetry = onRetry,
-                                modifier = Modifier.fillMaxSize()
-                            )
+                        }
+                        else -> {
+                            when (uiState) {
+                                is SearchUiState.Idle -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(text = stringResource(R.string.start_searching))
+                                }
+                                is SearchUiState.Loading -> MovieListPlaceholder(contentPadding = searchContentPadding)
+                                is SearchUiState.Success -> if (uiState.isFavorites) {
+                                    FavoriteItemsGrid(
+                                        movies = uiState.movies,
+                                        series = uiState.favoriteSeries,
+                                        tvGenres = tvGenres,
+                                        state = gridState,
+                                        downloadedMovieIds = downloadedMovieIds,
+                                        downloadedSeriesIds = downloadedSeriesIds,
+                                        watchHistoryMap = watchHistoryMap,
+                                        selectedMovieIds = selectedFavoriteIds,
+                                        lastClickedMovieId = lastClickedMovieId,
+                                        lastClickedSeriesId = lastClickedSeriesId,
+                                        onMovieClick = onMovieClick,
+                                        onTvSeriesClick = onTvSeriesClick,
+                                        onMovieLongClick = onLongClick,
+                                        onMovieFocusRestored = onFocusRestored,
+                                        onTvFocusRestored = onTvFocusRestored,
+                                        onMovieFocus = null,
+                                        onSeriesFocus = null,
+                                        contentPadding = searchContentPadding
+                                    )
+                                } else MovieList(
+                                    movies = uiState.movies,
+                                    state = gridState,
+                                    downloadedMovieIds = downloadedMovieIds,
+                                    watchHistoryMap = watchHistoryMap,
+                                    selectedIds = selectedFavoriteIds,
+                                    isLoadingMore = isLoadingMore,
+                                    onMovieClick = onMovieClick,
+                                    onLongClick = { id -> uiState.movies.firstOrNull { it.id == id }?.let(onMovieProgressLongClick) },
+                                    onLoadMore = { if (!uiState.isDownloads && !uiState.isNew && !isShowingWatching) onLoadMore() },
+                                    initialFocusId = lastClickedMovieId,
+                                    onFocusRestored = onFocusRestored,
+                                    contentPadding = searchContentPadding
+                                )
+                                is SearchUiState.Empty -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(text = stringResource(R.string.no_results))
+                                }
+                                is SearchUiState.Error -> ApiErrorView(
+                                    error = uiState.message,
+                                    onRetry = onRetry,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
                         }
                     }
                 }
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = padding.calculateTopPadding())
-                        .then(
-                            if (hazeState != null) {
-                                Modifier.hazeGlass(input = HazeInput.Sources(hazeState), style = GlassStyle.material3())
-                            } else Modifier
-                        )
-                ) {
-                    if (isShowingFavorites) {
-                        FavoritesChips(
-                            selectedFilter = selectedFavoritesFilter,
-                            onFilterClick = onFavoritesFilterClick,
-                            modifier = Modifier.focusRequester(qualityChipsFocusRequester)
-                        )
-                    } else if (isActorMode) {
-                        if (actorUiState is SearchActorUiState.Success) {
-                            ActorChipsRow(
-                                actors = actorUiState.actors,
-                                selectedActor = actorUiState.selectedActor,
-                                hasBiography = actorUiState.actorDetail?.biography?.isNotBlank() ?: false,
-                                onActorSelect = onActorSelect,
-                                onShowBioClick = { showActorBioSheet = true },
+                if (hasTopChips) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = padding.calculateTopPadding())
+                            .background(
+                                hazeAppBarContainerColor(
+                                    hasGlass = hazeState != null,
+                                    fallbackAlpha = 0.90f
+                                )
+                            )
+                            .hazeAppBarGlass(hazeState)
+                    ) {
+                        if (isShowingFavorites) {
+                            FavoritesChips(
+                                selectedFilter = selectedFavoritesFilter,
+                                onFilterClick = onFavoritesFilterClick,
+                                modifier = Modifier.focusRequester(qualityChipsFocusRequester)
+                            )
+                        } else if (isActorMode) {
+                            if (actorUiState is SearchActorUiState.Success) {
+                                ActorChipsRow(
+                                    actors = actorUiState.actors,
+                                    selectedActor = actorUiState.selectedActor,
+                                    hasBiography = actorUiState.actorDetail?.biography?.isNotBlank() ?: false,
+                                    onActorSelect = onActorSelect,
+                                    onShowBioClick = { showActorBioSheet = true },
+                                    modifier = Modifier.focusRequester(qualityChipsFocusRequester)
+                                )
+                            }
+                        } else if (!isTvMode) {
+                            QualityChips(
+                                options = qualityOptions,
+                                selectedQuality = selectedQuality ?: "All",
+                                onQualityClick = onQualityClick,
                                 modifier = Modifier.focusRequester(qualityChipsFocusRequester)
                             )
                         }
-                    } else if (!isTvMode) {
-                        QualityChips(
-                            options = qualityOptions,
-                            selectedQuality = selectedQuality ?: "All",
-                            onQualityClick = onQualityClick,
-                            modifier = Modifier.focusRequester(qualityChipsFocusRequester)
+                        HorizontalDivider(
+                            modifier = Modifier.padding(top = 4.dp),
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                         )
                     }
-                    HorizontalDivider(
-                        modifier = Modifier.padding(top = 4.dp),
-                        thickness = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    )
                 }
             }
         }
@@ -1032,11 +1053,11 @@ private fun SearchScreenContent(
             isLoading = actorUiState.isLoadingCredits && detail == null,
             onDismiss = { showActorBioSheet = false },
             sheetState = actorBioSheetState,
-            hazeState = hazeState,
             onCreditClick = { credit ->
                 showActorBioSheet = false
                 onActorCreditClick(credit)
-            }
+            },
+            themeMode = themeMode
         )
     }
 }
