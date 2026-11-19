@@ -44,7 +44,6 @@ class SmbStorageClientTest {
         val mockFile: com.hierynomus.smbj.share.File = io.mockk.mockk(relaxed = true)
         val sampleData = "Hello Antigravity SMB High Performance Prefetch Streaming!".toByteArray(Charsets.UTF_8)
         
-        io.mockk.every { mockFile.fileName } returns "test_video.mkv"
         io.mockk.every { mockFile.path } returns "test_video.mkv"
         io.mockk.every { mockFile.read(any(), any(), any(), any()) } answers {
             val buf = firstArg<ByteArray>()

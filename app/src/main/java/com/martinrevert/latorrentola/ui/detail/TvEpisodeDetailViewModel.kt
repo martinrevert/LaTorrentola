@@ -1,16 +1,12 @@
 package com.martinrevert.latorrentola.ui.detail
 
-import androidx.annotation.VisibleForTesting
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
-import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
-import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails
 import com.martinrevert.latorrentola.model.torrent.TorrentDownload
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
-import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
@@ -18,7 +14,6 @@ import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.TvEpisodeReleasesRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.utils.PreferenceManager
-import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -72,9 +67,6 @@ class TvEpisodeDetailViewModel @Inject constructor(
     private var activeSeriesImdbId: String? = null
     private var activeSeasonNumber: Int = 0
     private var activeEpisodeNumber: Int = 0
-    private var activeSeriesName: String = ""
-    private var currentEpisode: TmdbTvEpisode? = null
-    private var currentSeasonDetails: TmdbTvSeasonDetails? = null
     private var cachedNextEpisodeInfo: List<Any>? = null
 
     /** Observes downloaded episode history and dynamically reflects download status. */
@@ -139,7 +131,6 @@ class TvEpisodeDetailViewModel @Inject constructor(
         activeSeriesId = seriesId
         activeSeasonNumber = seasonNumber
         activeEpisodeNumber = episodeNumber
-        activeSeriesName = seriesName
 
         viewModelScope.launch {
             _rawUiState.value = TvEpisodeDetailRawUiState.Loading
@@ -156,11 +147,9 @@ class TvEpisodeDetailViewModel @Inject constructor(
                     }
                 } else null
 
-                // 2. Get season details for episode resolution
-                val seasonDetails = tmdbRepository.getTvSeasonDetails(seriesId, seasonNumber)
-                currentSeasonDetails = seasonDetails
-
+                // 2. Get season details for episode resolution when episodeJson is absent or invalid
                 if (episode == null) {
+                    val seasonDetails = tmdbRepository.getTvSeasonDetails(seriesId, seasonNumber)
                     episode = seasonDetails.episodes.orEmpty().firstOrNull { it.episodeNumber == episodeNumber }
                         ?: TmdbTvEpisode(
                             id = 0,
@@ -169,7 +158,6 @@ class TvEpisodeDetailViewModel @Inject constructor(
                             seasonNumber = seasonNumber
                         )
                 }
-                currentEpisode = episode
 
                 // 3. Resolve series title and vertical poster from TMDB
                 var resolvedSeriesName = seriesName
@@ -184,7 +172,6 @@ class TvEpisodeDetailViewModel @Inject constructor(
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                 }
-                activeSeriesName = resolvedSeriesName
 
                 // 4. Resolve next episode info via unified repository
                 cachedNextEpisodeInfo = tvEpisodeReleasesRepository.resolveNextEpisodeInfo(
@@ -219,69 +206,6 @@ class TvEpisodeDetailViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Records a download entry in Firestore when the user chooses an [EztvTorrent].
-     *
-     * @param torrent EZTV torrent release selected by user.
-     */
-    @Deprecated("Retained for test compatibility; download marking on start is prohibited to prevent premature completion")
-    @VisibleForTesting
-    fun markEpisodeAsDownloaded(torrent: EztvTorrent) {
-        val episode = currentEpisode ?: return
-        viewModelScope.launch {
-            val validHash = torrent.downloadInfoHash()
-                ?: "${activeSeriesId}_s${activeSeasonNumber}_e${activeEpisodeNumber}"
-
-            userLibraryRepository.markEpisodeAsDownloaded(
-                DownloadedEpisode(
-                    seriesId = activeSeriesId,
-                    imdbId = activeSeriesImdbId,
-                    seriesName = activeSeriesName,
-                    seasonNumber = activeSeasonNumber,
-                    episodeNumber = activeEpisodeNumber,
-                    episodeName = episode.name.orEmpty(),
-                    releaseTitle = torrent.title,
-                    quality = extractQuality(torrent.title),
-                    hash = validHash,
-                    magnetUrl = torrent.magnetUrl,
-                    timestamp = System.currentTimeMillis(),
-                    stillPath = episode.stillPath
-                )
-            )
-        }
-    }
-
-    /**
-     * Records a download entry in Firestore when the user chooses a [TorrentRelease].
-     *
-     * @param release Unified torrent release selected by user.
-     */
-    @Deprecated("Retained for test compatibility; download marking on start is prohibited to prevent premature completion")
-    @VisibleForTesting
-    fun markEpisodeAsDownloaded(release: TorrentRelease) {
-        val episode = currentEpisode ?: return
-        viewModelScope.launch {
-            userLibraryRepository.markEpisodeAsDownloaded(
-                DownloadedEpisode(
-                    seriesId = activeSeriesId,
-                    imdbId = activeSeriesImdbId,
-                    seriesName = activeSeriesName,
-                    seasonNumber = activeSeasonNumber,
-                    episodeNumber = activeEpisodeNumber,
-                    episodeName = episode.name.orEmpty(),
-                    releaseTitle = release.title,
-                    quality = release.qualityGroup.name,
-                    hash = release.hash,
-                    magnetUrl = release.magnetUrl.orEmpty().ifBlank {
-                        TorrentLaunchHelper.buildMagnetUri(release.hash, release.title)
-                    },
-                    timestamp = System.currentTimeMillis(),
-                    stillPath = episode.stillPath
-                )
-            )
-        }
-    }
-
     /** Removes a downloaded episode record by its torrent hash. */
     fun removeEpisodeDownload(hash: String) {
         viewModelScope.launch {
@@ -296,18 +220,6 @@ class TvEpisodeDetailViewModel @Inject constructor(
      *         or null if there is no next episode or if information is unavailable.
      */
     fun getNextEpisodeInfo(): List<Any>? = cachedNextEpisodeInfo
-
-    /** Helper to extract a short quality label (e.g. "1080p", "720p", "2160p") from release title. */
-    private fun extractQuality(title: String): String {
-        val lower = title.lowercase()
-        return when {
-            lower.contains("2160p") || lower.contains("4k") -> "2160p"
-            lower.contains("1080p") -> "1080p"
-            lower.contains("720p") -> "720p"
-            lower.contains("hdtv") -> "HDTV"
-            else -> "SD"
-        }
-    }
 
     /** Marks the active episode as completed in Room and Firestore. */
     fun markEpisodeAsCompleted(seriesName: String, episode: TmdbTvEpisode) {
@@ -341,9 +253,6 @@ class TvEpisodeDetailViewModel @Inject constructor(
         activeSeriesId = 0
         activeSeasonNumber = 0
         activeEpisodeNumber = 0
-        activeSeriesName = ""
-        currentEpisode = null
-        currentSeasonDetails = null
         cachedNextEpisodeInfo = null
         _rawUiState.value = TvEpisodeDetailRawUiState.Loading
     }

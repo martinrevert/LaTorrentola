@@ -86,7 +86,7 @@ class RemoteMediaHttpServerTest {
         val res = httpClient.newCall(req).execute()
         assertThat(res.code).isEqualTo(200)
         assertThat(res.header("Accept-Ranges")).isEqualTo("bytes")
-        assertThat(res.body?.bytes()?.size).isEqualTo(sampleData.size)
+        assertThat(res.body.bytes().size).isEqualTo(sampleData.size)
         res.close()
     }
 
@@ -100,8 +100,8 @@ class RemoteMediaHttpServerTest {
         val res = httpClient.newCall(req).execute()
         assertThat(res.code).isEqualTo(206)
         assertThat(res.header("Content-Range")).isEqualTo("bytes 4-10/${sampleData.size}")
-        val body = res.body?.bytes()
-        assertThat(body?.size).isEqualTo(7) // 10 - 4 + 1
+        val body = res.body.bytes()
+        assertThat(body.size).isEqualTo(7) // 10 - 4 + 1
         res.close()
     }
 
@@ -115,7 +115,7 @@ class RemoteMediaHttpServerTest {
         assertThat(res.code).isEqualTo(200)
         assertThat(res.header("Content-Type")).isEqualTo("text/vtt")
         assertThat(res.header("Access-Control-Allow-Origin")).isEqualTo("*")
-        val body = res.body?.string().orEmpty()
+        val body = res.body.string()
         assertThat(body).contains("WEBVTT")
         assertThat(body).contains("Hello Remote World!")
         res.close()

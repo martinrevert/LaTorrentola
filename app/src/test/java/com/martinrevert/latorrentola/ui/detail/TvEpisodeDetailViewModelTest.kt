@@ -4,6 +4,8 @@ import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.EZTV.downloadInfoHash
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails
 import com.martinrevert.latorrentola.model.torrent.PlaybackCompatibility
 import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -72,11 +75,11 @@ class TvEpisodeDetailViewModelTest {
                 seriesId,
                 seasonNum
             )
-        } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
+        } returns TmdbTvSeasonDetails(
             id = 1,
             seasonNumber = seasonNum,
             episodes = listOf(
-                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(
+                TmdbTvEpisode(
                     id = 2,
                     episodeNumber = episodeNum,
                     seasonNumber = seasonNum,
@@ -113,32 +116,25 @@ class TvEpisodeDetailViewModelTest {
     }
 
     @Test
-    fun `markEpisodeAsDownloaded saves episode record with fallback hash if blank`() = runTest {
+    fun `markEpisodeAsCompleted delegates to repository`() = runTest {
         val seriesId = 10
         val seasonNum = 1
         val episodeNum = 2
-
-        coEvery {
-            tmdbRepository.getTvSeasonDetails(
-                seriesId,
-                seasonNum
-            )
-        } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
-            id = 1,
+        val episode = TmdbTvEpisode(
+            id = 2,
+            episodeNumber = episodeNum,
             seasonNumber = seasonNum,
-            episodes = listOf(
-                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(
-                    id = 2,
-                    episodeNumber = episodeNum,
-                    seasonNumber = seasonNum,
-                    name = "Ep 2"
-                )
-            )
+            name = "Ep 2",
+            stillPath = "/still.jpg"
         )
 
-        val job = backgroundScope.launch {
-            viewModel.uiState.collect {}
-        }
+        coEvery {
+            tmdbRepository.getTvSeasonDetails(seriesId, seasonNum)
+        } returns TmdbTvSeasonDetails(
+            id = 1,
+            seasonNumber = seasonNum,
+            episodes = listOf(episode)
+        )
 
         viewModel.loadEpisode(
             seriesId = seriesId,
@@ -148,25 +144,128 @@ class TvEpisodeDetailViewModelTest {
         )
         testScheduler.advanceUntilIdle()
 
-        val blankHashTorrent = EztvTorrent(
-            title = "Breaking.Bad.S01E02.1080p",
-            hash = "",
-            magnetUrl = "magnet:?xt=urn:btih:4f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a&dn=Test"
-        )
-
-        viewModel.markEpisodeAsDownloaded(blankHashTorrent)
+        viewModel.markEpisodeAsCompleted("Breaking Bad", episode)
         testScheduler.advanceUntilIdle()
 
         coVerify {
-            userLibraryRepository.markEpisodeAsDownloaded(
-                match {
-                    it.seriesId == seriesId &&
-                            it.seasonNumber == seasonNum &&
-                            it.episodeNumber == episodeNum &&
-                            it.hash == "4f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a"
-                }
+            userLibraryRepository.markEpisodeAsCompleted(
+                seriesId = seriesId,
+                seasonNumber = seasonNum,
+                episodeNumber = episodeNum,
+                episodeTitle = "Ep 2",
+                seriesName = "Breaking Bad",
+                stillPath = "/still.jpg"
             )
         }
+    }
+
+    @Test
+    fun `markEpisodeAsUncompleted delegates to repository`() = runTest {
+        val seriesId = 10
+        val seasonNum = 1
+        val episodeNum = 2
+        val episode = TmdbTvEpisode(
+            id = 2,
+            episodeNumber = episodeNum,
+            seasonNumber = seasonNum,
+            name = "Ep 2"
+        )
+
+        coEvery {
+            tmdbRepository.getTvSeasonDetails(seriesId, seasonNum)
+        } returns TmdbTvSeasonDetails(
+            id = 1,
+            seasonNumber = seasonNum,
+            episodes = listOf(episode)
+        )
+
+        viewModel.loadEpisode(
+            seriesId = seriesId,
+            seasonNumber = seasonNum,
+            episodeNumber = episodeNum,
+            seriesName = "Breaking Bad"
+        )
+        testScheduler.advanceUntilIdle()
+
+        viewModel.markEpisodeAsUncompleted(episode)
+        testScheduler.advanceUntilIdle()
+
+        coVerify {
+            userLibraryRepository.markEpisodeAsUncompleted(
+                seriesId = seriesId,
+                seasonNumber = seasonNum,
+                episodeNumber = episodeNum
+            )
+        }
+    }
+
+    @Test
+    fun `markEpisodeAsUncompleted without argument uses activeEpisodeNumber`() = runTest {
+        val seriesId = 10
+        val seasonNum = 1
+        val episodeNum = 2
+
+        coEvery {
+            tmdbRepository.getTvSeasonDetails(seriesId, seasonNum)
+        } returns TmdbTvSeasonDetails(
+            id = 1,
+            seasonNumber = seasonNum,
+            episodes = emptyList()
+        )
+
+        viewModel.loadEpisode(
+            seriesId = seriesId,
+            seasonNumber = seasonNum,
+            episodeNumber = episodeNum,
+            seriesName = "Breaking Bad"
+        )
+        testScheduler.advanceUntilIdle()
+
+        viewModel.markEpisodeAsUncompleted()
+        testScheduler.advanceUntilIdle()
+
+        coVerify {
+            userLibraryRepository.markEpisodeAsUncompleted(
+                seriesId = seriesId,
+                seasonNumber = seasonNum,
+                episodeNumber = episodeNum
+            )
+        }
+    }
+
+    @Test
+    fun `loadEpisode skips getTvSeasonDetails when valid episodeJson is provided`() = runTest {
+        val seriesId = 10
+        val seasonNum = 1
+        val episodeNum = 2
+        val episode = TmdbTvEpisode(
+            id = 202,
+            episodeNumber = episodeNum,
+            seasonNumber = seasonNum,
+            name = "Cat's in the Bag..."
+        )
+        val episodeJson = Json.encodeToString(TmdbTvEpisode.serializer(), episode)
+
+        coEvery {
+            tvEpisodeReleasesRepository.getEpisodeReleasesWithQualityGrouping(seriesId, seasonNum, episodeNum)
+        } returns Pair(emptyList(), emptyMap())
+
+        val job = backgroundScope.launch {
+            viewModel.uiState.collect {}
+        }
+
+        viewModel.loadEpisode(
+            seriesId = seriesId,
+            seasonNumber = seasonNum,
+            episodeNumber = episodeNum,
+            seriesName = "Breaking Bad",
+            episodeJson = episodeJson
+        )
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value as TvEpisodeDetailUiState.Success
+        assertThat(state.episode).isEqualTo(episode)
+        coVerify(exactly = 0) { tmdbRepository.getTvSeasonDetails(any(), any()) }
 
         job.cancel()
     }
@@ -186,11 +285,11 @@ class TvEpisodeDetailViewModelTest {
                 seriesId,
                 seasonNum
             )
-        } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
+        } returns TmdbTvSeasonDetails(
             id = 1,
             seasonNumber = seasonNum,
             episodes = listOf(
-                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(
+                TmdbTvEpisode(
                     id = 2,
                     episodeNumber = episodeNum,
                     seasonNumber = seasonNum,
@@ -276,18 +375,18 @@ class TvEpisodeDetailViewModelTest {
         val seasonNum = 1
         val episodeNum = 5
 
-        val mockSeasonDetails = com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
+        val mockSeasonDetails = TmdbTvSeasonDetails(
             id = 100,
             seasonNumber = 1,
             episodes = listOf(
-                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(
+                TmdbTvEpisode(
                     id = 1,
                     episodeNumber = 5,
                     seasonNumber = 1,
                     name = "Episode 5",
                     airDate = "2023-01-01"
                 ),
-                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(
+                TmdbTvEpisode(
                     id = 2,
                     episodeNumber = 6,
                     seasonNumber = 1,
@@ -376,11 +475,11 @@ class TvEpisodeDetailViewModelTest {
                 seriesId,
                 seasonNum
             )
-        } returns com.martinrevert.latorrentola.model.TMDB.TmdbTvSeasonDetails(
+        } returns TmdbTvSeasonDetails(
             id = 1,
             seasonNumber = seasonNum,
             episodes = listOf(
-                com.martinrevert.latorrentola.model.TMDB.TmdbTvEpisode(
+                TmdbTvEpisode(
                     id = 2,
                     episodeNumber = episodeNum,
                     seasonNumber = seasonNum,
