@@ -66,7 +66,7 @@ Choose the torrent handling mode in **Settings** that fits your personal workflo
 
 ### 5. 🏠 Connect Your Home Server (NAS, PC, SMB & NFS)
 Have a personal movie collection stored on your computer or home server? La Torrentola connects directly:
-* **One-Tap Network Scanner**: Automatically scans your local Wi-Fi network for active SMB (Windows/Samba) and NFS (Linux/NAS) shares.
+* **One-Tap Network Scanner**: Automatically and safely scans your local Wi-Fi network for active SMB (Windows/Samba) and NFS (Linux/NAS) shares using UDP broadcast and subnet discovery.
 * **Fast Folder Browsing**: Navigate your media folders with the same speed as local storage.
 * **Stutter-Free 4K Streaming**: Powered by our asynchronous 16 MB ring-buffer prefetch engine, eliminating Wi-Fi jitter and playback stalls even on high-bitrate 1080p and 4K media.
 * **Cast from NAS to TV**: Stream any video from your home server directly to your Chromecast with one tap.

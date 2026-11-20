@@ -10,6 +10,13 @@ object LibNfsNative {
 
     private const val TAG = "LibNfsNative"
 
+    /**
+     * Global lock for context-creating discovery and export enumeration calls
+     * ([nativeFindLocalServers], [nativeGetExports]) to prevent concurrent mutations
+     * of libnfs's static RPC XID salt and overlapping UDP broadcast sockets.
+     */
+    val discoveryLock = Any()
+
     val isAvailable: Boolean by lazy {
         try {
             System.loadLibrary("latorrentola_nfs")
@@ -21,6 +28,22 @@ object LibNfsNative {
             false
         }
     }
+
+    /**
+     * Thread-safe helper that invokes [nativeFindLocalServers] while holding [discoveryLock].
+     */
+    fun findLocalServersSynchronized(): Array<String>? =
+        synchronized(discoveryLock) {
+            nativeFindLocalServers()
+        }
+
+    /**
+     * Thread-safe helper that invokes [nativeGetExports] while holding [discoveryLock].
+     */
+    fun getExportsSynchronized(server: String): Array<String>? =
+        synchronized(discoveryLock) {
+            nativeGetExports(server)
+        }
 
     external fun nativeInitContext(nfsVersion: Int, uid: Int, gid: Int): Long
     external fun nativeMount(ctxPtr: Long, server: String, exportPath: String): Int

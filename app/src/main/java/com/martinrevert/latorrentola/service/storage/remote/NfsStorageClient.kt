@@ -41,28 +41,31 @@ class NfsStorageClient @Inject constructor() : RemoteStorageClient {
         val parsedUid = config.username?.substringBefore(':')?.toIntOrNull() ?: 1000
         val parsedGid = config.username?.substringAfter(':', "")?.toIntOrNull() ?: parsedUid
 
-        // First attempt NFSv4
-        var ctxPtr = LibNfsNative.nativeInitContext(nfsVersion = 4, uid = parsedUid, gid = parsedGid)
-        if (ctxPtr == 0L) {
-            throw IOException("No se pudo inicializar el contexto NFS")
-        }
-
-        var mountRes = LibNfsNative.nativeMount(ctxPtr, config.host, export)
-        if (mountRes != 0) {
-            // Log & retry with NFSv3 fallback
-            val err4 = LibNfsNative.nativeGetErrorMessage(ctxPtr) ?: "Error $mountRes"
-            LibNfsNative.nativeDestroyContext(ctxPtr)
-
-            ctxPtr = LibNfsNative.nativeInitContext(nfsVersion = 3, uid = parsedUid, gid = parsedGid)
-            if (ctxPtr == 0L) {
-                throw IOException("No se pudo inicializar contexto NFSv3 de fallback: $err4")
+        val ctxPtr = synchronized(LibNfsNative.discoveryLock) {
+            // First attempt NFSv4
+            var ptr = LibNfsNative.nativeInitContext(nfsVersion = 4, uid = parsedUid, gid = parsedGid)
+            if (ptr == 0L) {
+                throw IOException("No se pudo inicializar el contexto NFS")
             }
-            mountRes = LibNfsNative.nativeMount(ctxPtr, config.host, export)
+
+            var mountRes = LibNfsNative.nativeMount(ptr, config.host, export)
             if (mountRes != 0) {
-                val err3 = LibNfsNative.nativeGetErrorMessage(ctxPtr) ?: "Error $mountRes"
-                LibNfsNative.nativeDestroyContext(ctxPtr)
-                throw IOException("Fallo al montar NFS en ${config.host}:$export (v4: $err4 | v3: $err3)")
+                // Log & retry with NFSv3 fallback
+                val err4 = LibNfsNative.nativeGetErrorMessage(ptr) ?: "Error $mountRes"
+                LibNfsNative.nativeDestroyContext(ptr)
+
+                ptr = LibNfsNative.nativeInitContext(nfsVersion = 3, uid = parsedUid, gid = parsedGid)
+                if (ptr == 0L) {
+                    throw IOException("No se pudo inicializar contexto NFSv3 de fallback: $err4")
+                }
+                mountRes = LibNfsNative.nativeMount(ptr, config.host, export)
+                if (mountRes != 0) {
+                    val err3 = LibNfsNative.nativeGetErrorMessage(ptr) ?: "Error $mountRes"
+                    LibNfsNative.nativeDestroyContext(ptr)
+                    throw IOException("Fallo al montar NFS en ${config.host}:$export (v4: $err4 | v3: $err3)")
+                }
             }
+            ptr
         }
 
         val session = NfsSession(ctxPtr, config.host, export)
@@ -74,7 +77,7 @@ class NfsStorageClient @Inject constructor() : RemoteStorageClient {
         withContext(Dispatchers.IO) {
             if (LibNfsNative.isAvailable) {
                 try {
-                    val exports = LibNfsNative.nativeGetExports(config.host)
+                    val exports = LibNfsNative.getExportsSynchronized(config.host)
                     if (!exports.isNullOrEmpty()) {
                         return@withContext exports.toList().sorted()
                     }

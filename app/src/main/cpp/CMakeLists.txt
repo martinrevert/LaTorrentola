@@ -17,9 +17,17 @@ add_library(
     libnfs_jni.c
 )
 
+target_compile_definitions(
+    latorrentola_nfs
+    PRIVATE
+    HAVE_CONFIG_H
+    HAVE_NFS4_2
+)
+
 target_include_directories(
     latorrentola_nfs
     PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}/libnfs
     ${CMAKE_CURRENT_SOURCE_DIR}/libnfs/include
     ${CMAKE_CURRENT_SOURCE_DIR}/libnfs/include/nfsc
     ${CMAKE_CURRENT_SOURCE_DIR}/libnfs

@@ -240,7 +240,7 @@ graph TD
 * **P2P Torrent Engine**: [libtorrent4j](https://github.com/aldenml/libtorrent4j) (native C++ libtorrent 1.2+ bindings via JNI) with custom piece tracker (`VerifiedPieceTracker`), piece planner (`StreamingPiecePlanner`), and HTTP byte-range server (`VerifiedTorrentHttpServer`).
 * **Remote Network Storage**:
   * **SMB**: [smbj 0.15.0](https://github.com/hierynomus/smbj) with persistent session pooling and asynchronous chunk prefetching (`SmbPrefetchInputStream`).
-  * **NFS**: Native C [libnfs](https://github.com/sahlberg/libnfs) JNI bindings (`LibNfsNative.kt`) supporting NFSv3 and NFSv4.
+  * **NFS**: Native C [libnfs](https://github.com/sahlberg/libnfs) JNI bindings (`libnfs_jni.c` / `LibNfsNative.kt`) supporting NFSv3 and NFSv4, with an unmodified `libnfs` submodule and a hardened JNI broadcast UDP discovery loop (`jni_find_local_servers_safe` in `libnfs_jni.c`) that prevents `rpc->pdu` double-frees on `rpc_destroy_context`, pre-sizes `waitpdu` hash buckets (`rpc_set_hash_size(rpc, 64)`), clamps `poll()` deadlines, and serializes discovery calls via `NetworkStorageScanner.scanMutex` and `LibNfsNative.discoveryLock`.
 * **Networking & Web APIs**:
   * [Retrofit 3.0](https://square.github.io/retrofit/) with [OkHttp 5](https://square.github.io/okhttp/) and Kotlin Coroutines `Flow`.
   * **Compression & Transport Optimization**: Integrated `okhttp-brotli` (`BrotliInterceptor`) negotiating `Accept-Encoding: br, gzip` across all Retrofit services and OpenSubtitles client. Delivers 15–25% smaller JSON payloads on Brotli-capable CDNs (Cloudflare on TMDB, Torrentio, OpenSubtitles, GitHub) with automatic, transparent fallback to `gzip`.

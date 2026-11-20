@@ -7,6 +7,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -28,6 +30,8 @@ class NetworkStorageScanner @Inject constructor(
     private val smbClient: SmbStorageClient,
     private val nfsClient: NfsStorageClient
 ) {
+    private val scanMutex = Mutex()
+
     companion object {
         private const val TAG = "NetworkStorageScanner"
         private const val SMB_PORT = 445
@@ -41,13 +45,14 @@ class NetworkStorageScanner @Inject constructor(
      * and their exported shares.
      */
     suspend fun scanNetwork(): List<RemoteServerConfig> = withContext(Dispatchers.IO) {
-        val discoveredServers = mutableListOf<RemoteServerConfig>()
-        val seenHosts = mutableSetOf<String>()
+        scanMutex.withLock {
+            val discoveredServers = mutableListOf<RemoteServerConfig>()
+            val seenHosts = mutableSetOf<String>()
 
-        // 1. Native NFS server broadcast discovery (via libnfs)
-        if (LibNfsNative.isAvailable) {
-            try {
-                val nfsHosts = LibNfsNative.nativeFindLocalServers()
+            // 1. Native NFS server broadcast discovery (via libnfs)
+            if (LibNfsNative.isAvailable) {
+                try {
+                    val nfsHosts = LibNfsNative.findLocalServersSynchronized()
                 nfsHosts?.forEach { host ->
                     val cleanHost = host.trim()
                     if (cleanHost.isNotBlank() && !isVirtualOrP2pSubnet(cleanHost) && seenHosts.add("nfs:$cleanHost")) {
@@ -167,6 +172,7 @@ class NetworkStorageScanner @Inject constructor(
         }
 
         expandedServers
+        }
     }
 
     private fun isPortOpen(ip: String, port: Int, timeoutMs: Int): Boolean {

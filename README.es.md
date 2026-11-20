@@ -66,7 +66,7 @@ Elige en los **Ajustes** de la app el modo que mejor se adapte a tu manera de ve
 
 ### 5. 🏠 Conexión con tu Servidor Doméstico (NAS, PC, SMB y NFS)
 ¿Tienes una colección de películas en tu ordenador o servidor casero? La Torrentola se conecta directamente:
-* **Escaneo Automático de Red**: Con un solo toque, la app busca servidores SMB (Windows/Samba) y NFS (Linux) en tu red Wi-Fi local.
+* **Escaneo Automático de Red**: Con un solo toque, la app busca de forma segura servidores SMB (Windows/Samba) y NFS (Linux) en tu red Wi-Fi local mediante difusión UDP y detección de subred.
 * **Navegación Rápida por Carpetas**: Explora todos tus archivos compartidos como si estuvieran en tu propio teléfono.
 * **Reproducción Ultra Fluida (Incluso en 4K)**: Gracias a su sistema de precarga en memoria de 16 MB, el vídeo no sufre micro-cortes ni pausas por fluctuaciones de la red Wi-Fi.
 * **Transmisión al Televisor**: Puedes enviar cualquier archivo de tu servidor casero a tu Chromecast con un solo botón.
