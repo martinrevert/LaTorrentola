@@ -28,13 +28,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.TextObfuscationMode
+import androidx.compose.foundation.text.input.clearText
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -2163,7 +2164,7 @@ fun ServerConfigDialog(
     var share by remember { mutableStateOf(editingServer?.shareOrExport.orEmpty()) }
     var domain by remember { mutableStateOf(editingServer?.domain.orEmpty()) }
     var username by remember { mutableStateOf(editingServer?.username.orEmpty()) }
-    var password by remember { mutableStateOf(editingServer?.password.orEmpty()) }
+    val passwordState = remember(editingServer?.id) { TextFieldState(initialText = editingServer?.password.orEmpty()) }
     var passwordVisible by remember { mutableStateOf(false) }
 
     Dialog(
@@ -2267,12 +2268,18 @@ fun ServerConfigDialog(
                     )
 
                     if (selectedType == RemoteServerType.SMB) {
-                        OutlinedTextField(
-                            value = password,
-                            onValueChange = { password = it },
+                        OutlinedSecureTextField(
+                            state = passwordState,
                             label = { Text(stringResource(R.string.external_media_server_pass)) },
-                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            textObfuscationMode = if (passwordVisible) {
+                                TextObfuscationMode.Visible
+                            } else {
+                                TextObfuscationMode.Hidden
+                            },
+                            keyboardOptions = KeyboardOptions(
+                                autoCorrectEnabled = false,
+                                keyboardType = if (passwordVisible) KeyboardType.PasswordVisible else KeyboardType.Password
+                            ),
                             trailingIcon = {
                                 val image = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility
                                 val description = stringResource(if (passwordVisible) R.string.hide_password else R.string.show_password)
@@ -2294,7 +2301,6 @@ fun ServerConfigDialog(
                                     }
                                 }
                             },
-                            singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -2312,7 +2318,7 @@ fun ServerConfigDialog(
                         Button(
                             onClick = {
                                 val portInt = port.toIntOrNull() ?: if (selectedType == RemoteServerType.SMB) 445 else 2049
-                                onSave(name, selectedType, host, portInt, share, domain, username, password)
+                                onSave(name, selectedType, host, portInt, share, domain, username, passwordState.text.toString())
                             },
                             enabled = host.isNotBlank()
                         ) {
@@ -2350,7 +2356,7 @@ fun AuthenticationPromptDialog(
     val isTv = remember(context) { context.isTvDevice() }
 
     var username by remember(server) { mutableStateOf(server.username.orEmpty()) }
-    var password by remember(server) { mutableStateOf(server.password.orEmpty()) }
+    val passwordState = remember(server) { TextFieldState(initialText = server.password.orEmpty()) }
     var domain by remember(server) { mutableStateOf(server.domain.orEmpty()) }
     var rememberCredentials by remember { mutableStateOf(true) }
     var storedCredentialsPresent by remember(hasStoredCredentials) { mutableStateOf(hasStoredCredentials) }
@@ -2408,12 +2414,18 @@ fun AuthenticationPromptDialog(
                     )
 
                     if (server.type == RemoteServerType.SMB) {
-                        OutlinedTextField(
-                            value = password,
-                            onValueChange = { password = it },
+                        OutlinedSecureTextField(
+                            state = passwordState,
                             label = { Text(stringResource(R.string.external_media_server_pass)) },
-                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            textObfuscationMode = if (passwordVisible) {
+                                TextObfuscationMode.Visible
+                            } else {
+                                TextObfuscationMode.Hidden
+                            },
+                            keyboardOptions = KeyboardOptions(
+                                autoCorrectEnabled = false,
+                                keyboardType = if (passwordVisible) KeyboardType.PasswordVisible else KeyboardType.Password
+                            ),
                             trailingIcon = {
                                 val image = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility
                                 val description = stringResource(if (passwordVisible) R.string.hide_password else R.string.show_password)
@@ -2435,7 +2447,6 @@ fun AuthenticationPromptDialog(
                                     }
                                 }
                             },
-                            singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -2462,7 +2473,7 @@ fun AuthenticationPromptDialog(
                                 onClearCredentials?.invoke()
                                 storedCredentialsPresent = false
                                 username = ""
-                                password = ""
+                                passwordState.clearText()
                                 domain = ""
                                 passwordVisible = false
                             },
@@ -2497,7 +2508,7 @@ fun AuthenticationPromptDialog(
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
                             onClick = {
-                                onSubmit(username, password, domain, rememberCredentials)
+                                onSubmit(username, passwordState.text.toString(), domain, rememberCredentials)
                             }
                         ) {
                             Text(stringResource(R.string.external_media_auth_connect))

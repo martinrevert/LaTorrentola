@@ -138,7 +138,11 @@ def safeBranch = gitBranch.replaceAll(/[^A-Za-z0-9.-]/, "-")
 
 android {
     namespace = 'com.martinrevert.latorrentola'
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            it.minorApiLevel = 1
+        }
+    }
 
     def keystorePropertiesFile = rootProject.file("keystore.properties")
     def keystoreProperties = new Properties()
@@ -275,7 +279,6 @@ dependencies {
     implementation libs.androidx.ui.tooling.preview
     debugImplementation libs.androidx.ui.tooling
     implementation libs.androidx.material3
-    implementation libs.androidx.compose.material
     implementation(libs.androidx.compose.material.icons.extended)
     implementation libs.androidx.activity.compose
     implementation libs.androidx.lifecycle.runtime.ktx

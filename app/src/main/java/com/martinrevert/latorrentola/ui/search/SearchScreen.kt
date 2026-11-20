@@ -367,7 +367,10 @@ private fun SearchScreenContent(
     val resultsFocusRequester = remember { FocusRequester() }
     val hazeState = rememberHandheldHazeState(isTv)
     var showActorBioSheet by remember { mutableStateOf(false) }
-    val actorBioSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val actorBioSheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
+    )
     val topBarContainerColor = if (isTv) {
         Color.Transparent
     } else {

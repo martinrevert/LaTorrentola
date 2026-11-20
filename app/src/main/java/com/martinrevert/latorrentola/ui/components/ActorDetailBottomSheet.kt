@@ -659,7 +659,10 @@ internal fun FilmographyMetadata(credit: TmdbCastCredit, isTv: Boolean = false) 
 @Composable
 private fun ActorDetailBottomSheetPreview() {
     com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        val sheetState = rememberBottomSheetState(
+            initialValue = SheetValue.Hidden,
+            enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
+        )
         ActorDetailBottomSheet(
             actorDetailState = Result.success(
                 com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail(

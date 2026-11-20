@@ -46,15 +46,16 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,9 +67,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -119,6 +121,49 @@ internal data class CastRouteUiModel(
     val volumeMax: Int = 1,
     val hasVariableVolume: Boolean = false
 )
+
+internal fun syncCastVolumeSliderState(
+    sliderState: SliderState,
+    currentVol: Int,
+    maxVol: Int,
+    isDragging: Boolean = sliderState.isDragging
+) {
+    if (!isDragging) {
+        sliderState.value = currentVol.toFloat().coerceIn(0f, maxVol.coerceAtLeast(1).toFloat())
+    }
+}
+
+internal fun castVolumeTarget(sliderValue: Float, maxVol: Int): Int {
+    return sliderValue.roundToInt().coerceIn(0, maxVol.coerceAtLeast(1))
+}
+
+internal fun castVolumePercent(sliderValue: Float, maxVol: Int): Int {
+    val safeMax = maxVol.coerceAtLeast(1)
+    val displayedVol = castVolumeTarget(sliderValue, safeMax)
+    return ((displayedVol.toFloat() / safeMax) * 100).roundToInt()
+}
+
+internal fun handleCastVolumePreviewKeyEvent(
+    keyEvent: KeyEvent,
+    sliderState: SliderState,
+    maxVol: Int,
+    onVolumeChanged: (Int) -> Unit
+): Boolean {
+    val safeMax = maxVol.coerceAtLeast(1)
+    val volumeStep = (safeMax / 20f).coerceAtLeast(1f)
+    val delta = when (keyEvent.key) {
+        Key.DirectionLeft -> -volumeStep
+        Key.DirectionRight -> volumeStep
+        else -> return false
+    }
+    if (keyEvent.type != KeyEventType.KeyDown) {
+        return keyEvent.type == KeyEventType.KeyUp
+    }
+    val updated = (sliderState.value + delta).coerceIn(0f, safeMax.toFloat())
+    sliderState.value = updated
+    onVolumeChanged(castVolumeTarget(updated, safeMax))
+    return true
+}
 
 /**
  * YouTube Music-style Cast Bottom Sheet for discovering devices,
@@ -278,7 +323,10 @@ fun CastBottomSheet(
         }
     }
 
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
+    )
     var connectingRouteId by remember { mutableStateOf<String?>(null) }
 
     val selectedRouteUi = remember(selectedRoute, connectingRouteId) {
@@ -546,10 +594,21 @@ internal fun CastBottomSheetContent(
                         val haptic = LocalHapticFeedback.current
                         val currentVol = selectedRoute.volume
                         val maxVol = selectedRoute.volumeMax.coerceAtLeast(1)
-                        val volPct = ((currentVol.toFloat() / maxVol) * 100).toInt()
-                        var sliderValue by remember(currentVol) {
-                            mutableFloatStateOf(currentVol.toFloat())
+                        val sliderState = remember(maxVol) {
+                            SliderState(
+                                value = currentVol.toFloat().coerceIn(0f, maxVol.toFloat()),
+                                trackRange = 0f..maxVol.toFloat()
+                            )
                         }
+                        LaunchedEffect(currentVol, maxVol, sliderState.isDragging) {
+                            syncCastVolumeSliderState(
+                                sliderState = sliderState,
+                                currentVol = currentVol,
+                                maxVol = maxVol
+                            )
+                        }
+                        val displayedVol = castVolumeTarget(sliderState.value, maxVol)
+                        val volPct = castVolumePercent(sliderState.value, maxVol)
                         var lastHapticStep by remember { mutableIntStateOf(currentVol) }
                         var preMuteVolume by remember { mutableIntStateOf(if (currentVol > 0) currentVol else maxVol / 2) }
 
@@ -560,7 +619,7 @@ internal fun CastBottomSheetContent(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             val muteIcon = when {
-                                currentVol == 0 -> Icons.AutoMirrored.Filled.VolumeOff
+                                displayedVol == 0 -> Icons.AutoMirrored.Filled.VolumeOff
                                 volPct < 50 -> Icons.AutoMirrored.Filled.VolumeDown
                                 else -> Icons.AutoMirrored.Filled.VolumeUp
                             }
@@ -598,43 +657,35 @@ internal fun CastBottomSheetContent(
                                 }
                             }
 
-                            val volumeStep = (maxVol / 20f).coerceAtLeast(1f)
                             Slider(
-                                value = sliderValue,
+                                state = sliderState,
                                 onValueChange = { newValue ->
-                                    sliderValue = newValue
-                                    val targetVol = newValue.toInt()
+                                    sliderState.value = newValue
+                                    val targetVol = castVolumeTarget(newValue, maxVol)
                                     if (targetVol != lastHapticStep) {
                                         lastHapticStep = targetVol
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     }
                                     onSetVolume(targetVol)
                                 },
-                                valueRange = 0f..maxVol.toFloat(),
                                 modifier = Modifier
                                     .weight(1f)
                                     .then(
                                         if (isTv) {
                                             Modifier
                                                 .focusHighlight(shape = RoundedCornerShape(12.dp))
-                                                .onKeyEvent { keyEvent ->
-                                                    if (keyEvent.type != KeyEventType.KeyDown) {
-                                                        return@onKeyEvent false
+                                                .onPreviewKeyEvent { keyEvent ->
+                                                    handleCastVolumePreviewKeyEvent(
+                                                        keyEvent = keyEvent,
+                                                        sliderState = sliderState,
+                                                        maxVol = maxVol
+                                                    ) { targetVol ->
+                                                        if (targetVol != lastHapticStep) {
+                                                            lastHapticStep = targetVol
+                                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                        }
+                                                        onSetVolume(targetVol)
                                                     }
-                                                    val delta = when (keyEvent.key) {
-                                                        Key.DirectionLeft -> -volumeStep
-                                                        Key.DirectionRight -> volumeStep
-                                                        else -> return@onKeyEvent false
-                                                    }
-                                                    val updated = (sliderValue + delta).coerceIn(0f, maxVol.toFloat())
-                                                    sliderValue = updated
-                                                    val targetVol = updated.roundToInt()
-                                                    if (targetVol != lastHapticStep) {
-                                                        lastHapticStep = targetVol
-                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                    }
-                                                    onSetVolume(targetVol)
-                                                    true
                                                 }
                                         } else {
                                             Modifier

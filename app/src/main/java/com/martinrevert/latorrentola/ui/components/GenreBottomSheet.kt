@@ -79,7 +79,10 @@ fun GenreBottomSheet(
 @Composable
 private fun GenreBottomSheetPreview() {
     com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        val sheetState = rememberBottomSheetState(
+            initialValue = SheetValue.Hidden,
+            enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
+        )
         GenreBottomSheet(
             genres = listOf("Action", "Adventure", "Animation", "Biography", "Comedy", "Crime", "Documentary", "Drama"),
             onGenreClick = {},

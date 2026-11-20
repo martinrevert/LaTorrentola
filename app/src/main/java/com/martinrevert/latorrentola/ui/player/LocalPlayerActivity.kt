@@ -121,7 +121,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Tv
@@ -4876,7 +4877,10 @@ fun PlayerControlsOverlay(
 
     // Portrait overflow sheet: secondary actions moved out of the narrow top bar (same functionality)
     if (showMoreOptionsSheet) {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        val sheetState = rememberBottomSheetState(
+            initialValue = SheetValue.Hidden,
+            enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
+        )
         val hasAudioTracks = playbackTracks.groups.any { it.type == C.TRACK_TYPE_AUDIO }
         val dismissThen: (() -> Unit) -> Unit = { action ->
             onShowMoreOptionsSheetChange(false)
@@ -5933,7 +5937,10 @@ private fun PlayerMobileBottomSheet(
     state: PlayerBottomSheetState,
     onDismiss: () -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
+    )
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,

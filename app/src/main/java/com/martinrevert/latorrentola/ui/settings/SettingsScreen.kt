@@ -25,9 +25,10 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.TextObfuscationMode
+import androidx.compose.foundation.text.input.clearText
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.tv.material3.IconButton as TvIconButton
 import androidx.compose.material3.*
 import android.widget.Toast
@@ -1056,8 +1057,8 @@ private fun OpenSubtitlesCredentialsSetting(
     var username by remember(uiState.openSubtitlesUsername) {
         mutableStateOf(uiState.openSubtitlesUsername)
     }
-    var password by remember(uiState.openSubtitlesPassword) {
-        mutableStateOf(uiState.openSubtitlesPassword)
+    val passwordState = remember(uiState.openSubtitlesPassword) {
+        TextFieldState(initialText = uiState.openSubtitlesPassword)
     }
     var passwordVisible by remember { mutableStateOf(false) }
 
@@ -1103,15 +1104,21 @@ private fun OpenSubtitlesCredentialsSetting(
             label = { Text(stringResource(R.string.opensubtitles_username)) },
             singleLine = true
         )
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
+        OutlinedSecureTextField(
+            state = passwordState,
             modifier = Modifier
                 .fillMaxWidth()
                 .focusHighlight(shape = OutlinedTextFieldDefaults.shape),
             label = { Text(stringResource(R.string.opensubtitles_password)) },
-            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            textObfuscationMode = if (passwordVisible) {
+                TextObfuscationMode.Visible
+            } else {
+                TextObfuscationMode.Hidden
+            },
+            keyboardOptions = KeyboardOptions(
+                autoCorrectEnabled = false,
+                keyboardType = if (passwordVisible) KeyboardType.PasswordVisible else KeyboardType.Password
+            ),
             trailingIcon = {
                 val image = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility
                 val description = stringResource(if (passwordVisible) R.string.hide_password else R.string.show_password)
@@ -1132,8 +1139,7 @@ private fun OpenSubtitlesCredentialsSetting(
                         )
                     }
                 }
-            },
-            singleLine = true
+            }
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1142,9 +1148,9 @@ private fun OpenSubtitlesCredentialsSetting(
             if (isTv) {
                 androidx.tv.material3.Button(
                     onClick = {
-                        onSave(username.trim(), password)
+                        onSave(username.trim(), passwordState.text.toString())
                     },
-                    enabled = username.isNotBlank() && password.isNotBlank()
+                    enabled = username.isNotBlank() && passwordState.text.isNotBlank()
                 ) {
                     androidx.tv.material3.Text(stringResource(R.string.opensubtitles_save))
                 }
@@ -1153,7 +1159,7 @@ private fun OpenSubtitlesCredentialsSetting(
                         onClick = {
                             onClear()
                             username = ""
-                            password = ""
+                            passwordState.clearText()
                             passwordVisible = false
                         },
                         colors = androidx.tv.material3.ButtonDefaults.colors(
@@ -1169,9 +1175,9 @@ private fun OpenSubtitlesCredentialsSetting(
             } else {
                 androidx.compose.material3.Button(
                     onClick = {
-                        onSave(username.trim(), password)
+                        onSave(username.trim(), passwordState.text.toString())
                     },
-                    enabled = username.isNotBlank() && password.isNotBlank(),
+                    enabled = username.isNotBlank() && passwordState.text.isNotBlank(),
                     modifier = Modifier.focusHighlight(shape = ButtonDefaults.shape)
                 ) {
                     Text(stringResource(R.string.opensubtitles_save))
@@ -1181,7 +1187,7 @@ private fun OpenSubtitlesCredentialsSetting(
                         onClick = {
                             onClear()
                             username = ""
-                            password = ""
+                            passwordState.clearText()
                             passwordVisible = false
                         },
                         modifier = Modifier.focusHighlight(shape = ButtonDefaults.shape)

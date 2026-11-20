@@ -144,7 +144,10 @@ fun MovieDetailScreen(
     val mediaController by MediaControllerHelper.rememberMediaController()
     val activeBuffer by TorrentDownloadService.activeBufferState.collectAsState()
     var showActorSheet by remember { mutableStateOf(false) }
-    val actorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val actorSheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
+    )
 
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -2754,7 +2757,7 @@ fun MovieDetailScreenTvPreview() {
             selectedActorDetail = null,
             isActorLoading = false,
             showActorSheet = false,
-            actorSheetState = rememberModalBottomSheetState(),
+            actorSheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden),
             onBackClick = {},
             onShareClick = {},
             onFavoriteToggle = {},
@@ -2801,7 +2804,7 @@ fun MovieDetailScreenPreview() {
             selectedActorDetail = null,
             isActorLoading = false,
             showActorSheet = false,
-            actorSheetState = rememberModalBottomSheetState(),
+            actorSheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden),
             onBackClick = {},
             onShareClick = {},
             onFavoriteToggle = {},
@@ -2849,7 +2852,7 @@ fun MovieDetailScreenTabletPreview() {
             selectedActorDetail = null,
             isActorLoading = false,
             showActorSheet = false,
-            actorSheetState = rememberModalBottomSheetState(),
+            actorSheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden),
             onBackClick = {},
             onShareClick = {},
             onFavoriteToggle = {},

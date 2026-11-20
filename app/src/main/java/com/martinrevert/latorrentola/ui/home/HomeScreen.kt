@@ -7,13 +7,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.pullrefresh.PullRefreshIndicator
-import androidx.compose.material.pullrefresh.pullRefresh
-import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -179,7 +176,7 @@ fun HomeScreen(
 /**
  * Renders home feed content and controls, sizing handheld list padding to the measured header.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HomeScreenContent(
     uiState: HomeUiState,
@@ -225,8 +222,14 @@ private fun HomeScreenContent(
     var showTvGenreSheet by remember { mutableStateOf(false) }
     var isTvMode by rememberSaveable { mutableStateOf(false) }
     val homeControlsFocusRequester = remember { FocusRequester() }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val tvGenreSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
+    )
+    val tvGenreSheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
+    )
 
     // 1. Properly save and restore scroll state across configuration changes (rotation)
     val gridState = rememberLazyGridState()
@@ -420,14 +423,6 @@ private fun HomeScreenContent(
             } else if (!isTvMode) {
                 // Handheld Movies Layout (All form factors: Phones < 600dp, Foldables, Tablets):
                 // Immersive hero header with dynamic TMDB backdrop, logo, and 2-touch interactive preview
-                val pullRefreshState = rememberPullRefreshState(
-                    isRefreshing,
-                    onRefresh = {
-                        onSetLastClickedMovieId(null)
-                        onRefresh(true)
-                        scope.launch { gridState.scrollToItem(0) }
-                    }
-                )
                 HandheldMovieImmersiveContainer(
                     focusedMovie = focusedMovie,
                     focusedMovieTmdb = focusedMovieTmdb,
@@ -476,10 +471,14 @@ private fun HomeScreenContent(
                         }
                     }
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pullRefresh(pullRefreshState)
+                    PullToRefreshBox(
+                        isRefreshing = isRefreshing,
+                        onRefresh = {
+                            onSetLastClickedMovieId(null)
+                            onRefresh(true)
+                            scope.launch { gridState.scrollToItem(0) }
+                        },
+                        modifier = Modifier.fillMaxSize()
                     ) {
                         HomeContent(
                             uiState = uiState,
@@ -510,26 +509,10 @@ private fun HomeScreenContent(
                             ),
                             modifier = Modifier.fillMaxSize()
                         )
-
-                        PullRefreshIndicator(
-                            refreshing = isRefreshing,
-                            state = pullRefreshState,
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = 8.dp)
-                        )
                     }
                 }
             } else {
                 // Handheld TV Series Mode (!isTv && isTvMode)
-                val pullRefreshState = rememberPullRefreshState(
-                    tvIsRefreshing,
-                    onRefresh = {
-                        tvHomeViewModel?.clearLastClickedSeriesId()
-                        tvHomeViewModel?.refresh(showIndicator = true)
-                        scope.launch { tvGridState.scrollToItem(0) }
-                    }
-                )
                 HandheldTvSeriesImmersiveContainer(
                     focusedSeries = focusedSeries,
                     backdropUrl = focusedSeriesBackdrop,
@@ -591,10 +574,14 @@ private fun HomeScreenContent(
                         }
                     }
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pullRefresh(pullRefreshState)
+                    PullToRefreshBox(
+                        isRefreshing = tvIsRefreshing,
+                        onRefresh = {
+                            tvHomeViewModel?.clearLastClickedSeriesId()
+                            tvHomeViewModel?.refresh(showIndicator = true)
+                            scope.launch { tvGridState.scrollToItem(0) }
+                        },
+                        modifier = Modifier.fillMaxSize()
                     ) {
                         TvHomeContent(
                             uiState = tvUiState,
@@ -624,14 +611,6 @@ private fun HomeScreenContent(
                                 end = if (screenWidthDp < 600) 16.dp else 20.dp
                             ),
                             modifier = Modifier.fillMaxSize()
-                        )
-
-                        PullRefreshIndicator(
-                            refreshing = tvIsRefreshing,
-                            state = pullRefreshState,
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = 8.dp)
                         )
                     }
                 }

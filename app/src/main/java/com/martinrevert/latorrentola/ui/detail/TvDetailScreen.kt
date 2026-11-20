@@ -65,7 +65,8 @@ import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -180,7 +181,10 @@ fun TvDetailScreen(
     val hazeState = rememberHandheldHazeState(isTv)
 
     var showActorSheet by remember { mutableStateOf(false) }
-    val actorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val actorSheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
+    )
 
     var showTrailerDialog by remember { mutableStateOf(false) }
     var selectedSeasonForDialog by remember { mutableStateOf<TmdbTvSeason?>(null) }

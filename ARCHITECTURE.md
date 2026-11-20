@@ -224,10 +224,10 @@ graph TD
 
 ## 2. Tech Stack & Toolchain
 
-* **Language**: [Kotlin 2.1+](https://kotlinlang.org/) utilizing the Kotlin K2 compiler with strong skipping mode enabled for Jetpack Compose.
-* **Target SDKs**: `minSdk = 28` (Android 9.0 Pie, required for high-performance JNI and libtorrent4j), `targetSdk = 35`, `compileSdk = 35`.
+* **Language**: [Kotlin 2.4+](https://kotlinlang.org/) utilizing the Kotlin K2 compiler with strong skipping mode enabled for Jetpack Compose.
+* **Target SDKs**: `minSdk = 29` (Android 10, required for high-performance JNI, scoped storage, and libtorrent4j), `targetSdk = 37`, `compileSdk = 37.1` (Android 17 Cinnamon Bun minor API 1, required by Jetpack Compose BOM `2026.11.01`).
 * **UI Framework**:
-  * **Handheld / Foldables / Tablets**: Jetpack Compose with Material 3 (`androidx.compose.material3`).
+  * **Handheld / Foldables / Tablets**: Jetpack Compose BOM `2026.11.01` with pure Material 3 1.5 (`androidx.compose.material3`, zero Material 2 dependencies).
   * **Android TV & Google TV**: Jetpack Compose for TV (`androidx.tv.material3`, `androidx.tv.foundation`).
   * **Visual Polish**: [Haze 2.1](https://github.com/chrisbanes/haze) hardware-accelerated frosted glass blur using `RenderEffect` on Android 12+ (API 31+), with TV GPU sandboxing and legacy fallback.
 * **Dependency Injection**: [Hilt](https://developer.android.com/training/dependency-injection/hilt-android) with `@HiltViewModel` lifecycle scoping.

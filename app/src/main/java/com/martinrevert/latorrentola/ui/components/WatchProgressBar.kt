@@ -10,7 +10,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.SliderState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -76,8 +78,13 @@ fun WatchProgressSlider(
     onValueChangeFinished: (() -> Unit)? = null,
     enabled: Boolean = true
 ) {
+    val clampedValue = value.coerceIn(0f, 1f)
+    val sliderState = remember { SliderState(value = clampedValue) }
+    if (sliderState.value != clampedValue) {
+        sliderState.value = clampedValue
+    }
     Slider(
-        value = value.coerceIn(0f, 1f),
+        state = sliderState,
         onValueChange = onValueChange,
         onValueChangeFinished = onValueChangeFinished,
         enabled = enabled,
