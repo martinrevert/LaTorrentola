@@ -59,16 +59,18 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 
 /**
- * UI model representing a fatal local audio or video decoder failure in the player.
+ * UI model representing a fatal local audio or video decoder failure or stream stall in the player.
  *
  * @param isAudioError True when the failing renderer/track is audio; false when it is video.
  * @param codecSummary Optional human-readable codec description (e.g., "HEVC / H.265 10-bit").
  * @param isDtsHdError True when the error was caused by a DTS-HD bitstream passthrough failure.
+ * @param isStallError True when the error was caused by a playback or buffering stall (e.g. StuckPlayerException).
  */
 data class PlaybackDecodingError(
     val isAudioError: Boolean,
     val codecSummary: String?,
-    val isDtsHdError: Boolean = false
+    val isDtsHdError: Boolean = false,
+    val isStallError: Boolean = false
 )
 
 private val MIME_REGEX = Regex("""\b((?:video|audio)/[A-Za-z0-9.+-]+)\b""", RegexOption.IGNORE_CASE)
@@ -196,7 +198,43 @@ fun resolvePlaybackDecodingError(error: PlaybackException): PlaybackDecodingErro
 }
 
 /**
- * Modal alert dialog displayed when ExoPlayer encounters a fatal video or audio decoding error,
+ * Inspects a [PlaybackException] and returns true if the error represents a playback or buffering stall
+ * detected by Media3's [androidx.media3.common.util.StuckPlayerDetector] or custom stall watchdogs.
+ */
+@OptIn(UnstableApi::class)
+fun isStuckPlayerError(error: PlaybackException): Boolean {
+    val message = error.message.orEmpty()
+    val cause = error.cause
+    val causeMessage = cause?.message.orEmpty()
+    val causeClass = cause?.javaClass?.simpleName.orEmpty()
+    return cause is androidx.media3.common.util.StuckPlayerException ||
+        causeClass.contains("Stuck", ignoreCase = true) ||
+        message.contains("stuck buffering", ignoreCase = true) ||
+        message.contains("stuck playing", ignoreCase = true) ||
+        causeMessage.contains("stuck buffering", ignoreCase = true) ||
+        causeMessage.contains("stuck playing", ignoreCase = true)
+}
+
+/**
+ * Inspects a [PlaybackException] and returns a [PlaybackDecodingError] configured with `isStallError = true`
+ * if the player error was caused by a buffering or playback stall.
+ */
+@OptIn(UnstableApi::class)
+fun resolvePlaybackStallError(error: PlaybackException): PlaybackDecodingError? {
+    return if (isStuckPlayerError(error)) {
+        PlaybackDecodingError(
+            isAudioError = false,
+            codecSummary = null,
+            isDtsHdError = false,
+            isStallError = true
+        )
+    } else {
+        null
+    }
+}
+
+/**
+ * Modal alert dialog displayed when ExoPlayer encounters a fatal video or audio decoding error or playback stall,
  * preventing the player screen from silently stalling on an idle surface.
  */
 @Composable
@@ -205,6 +243,7 @@ fun PlaybackErrorDialog(
     onDismiss: () -> Unit,
     onChangeAudioTrack: (() -> Unit)? = null,
     onEnableDtsHdLpcm: (() -> Unit)? = null,
+    onRetry: (() -> Unit)? = null,
     themeMode: Int? = null
 ) {
     val context = LocalContext.current
@@ -237,7 +276,8 @@ fun PlaybackErrorDialog(
                         error = error,
                         onDismiss = onDismiss,
                         onChangeAudioTrack = onChangeAudioTrack,
-                        onEnableDtsHdLpcm = onEnableDtsHdLpcm
+                        onEnableDtsHdLpcm = onEnableDtsHdLpcm,
+                        onRetry = onRetry
                     )
                 }
             }
@@ -258,7 +298,8 @@ fun PlaybackErrorDialog(
                         error = error,
                         onDismiss = onDismiss,
                         onChangeAudioTrack = onChangeAudioTrack,
-                        onEnableDtsHdLpcm = onEnableDtsHdLpcm
+                        onEnableDtsHdLpcm = onEnableDtsHdLpcm,
+                        onRetry = onRetry
                     )
                 }
             }
@@ -272,14 +313,17 @@ internal fun PlaybackErrorDialogTvCard(
     onDismiss: () -> Unit,
     onChangeAudioTrack: (() -> Unit)? = null,
     onEnableDtsHdLpcm: (() -> Unit)? = null,
+    onRetry: (() -> Unit)? = null,
     closeButtonFocusRequester: FocusRequester = remember { FocusRequester() }
 ) {
     val title = when {
+        error.isStallError -> stringResource(R.string.player_error_stream_stalled_title)
         error.isDtsHdError -> stringResource(R.string.player_decoding_error_dts_hd_title)
         error.isAudioError -> stringResource(R.string.player_decoding_error_audio_title)
         else -> stringResource(R.string.player_decoding_error_video_title)
     }
     val message = when {
+        error.isStallError -> stringResource(R.string.player_error_stream_stalled_message)
         error.isDtsHdError -> stringResource(R.string.player_decoding_error_dts_hd_message)
         error.isAudioError && !error.codecSummary.isNullOrBlank() ->
             stringResource(R.string.player_decoding_error_audio_message_with_codec, error.codecSummary)
@@ -337,7 +381,17 @@ internal fun PlaybackErrorDialogTvCard(
                 horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (error.isDtsHdError && onEnableDtsHdLpcm != null) {
+                if (error.isStallError && onRetry != null) {
+                    TvButton(
+                        onClick = onRetry,
+                        modifier = Modifier.focusRequester(closeButtonFocusRequester)
+                    ) {
+                        TvText(text = stringResource(R.string.retry))
+                    }
+                    TvButton(onClick = onDismiss) {
+                        TvText(text = stringResource(R.string.player_decoding_error_close))
+                    }
+                } else if (error.isDtsHdError && onEnableDtsHdLpcm != null) {
                     TvButton(
                         onClick = onEnableDtsHdLpcm,
                         modifier = Modifier.focusRequester(closeButtonFocusRequester)
@@ -380,17 +434,20 @@ internal fun PlaybackErrorDialogMobileCard(
     error: PlaybackDecodingError,
     onDismiss: () -> Unit,
     onChangeAudioTrack: (() -> Unit)? = null,
-    onEnableDtsHdLpcm: (() -> Unit)? = null
+    onEnableDtsHdLpcm: (() -> Unit)? = null,
+    onRetry: (() -> Unit)? = null
 ) {
     val configuration = LocalConfiguration.current
     val isConstrainedWidth = configuration.screenWidthDp < 360
 
     val title = when {
+        error.isStallError -> stringResource(R.string.player_error_stream_stalled_title)
         error.isDtsHdError -> stringResource(R.string.player_decoding_error_dts_hd_title)
         error.isAudioError -> stringResource(R.string.player_decoding_error_audio_title)
         else -> stringResource(R.string.player_decoding_error_video_title)
     }
     val message = when {
+        error.isStallError -> stringResource(R.string.player_error_stream_stalled_message)
         error.isDtsHdError -> stringResource(R.string.player_decoding_error_dts_hd_message)
         error.isAudioError && !error.codecSummary.isNullOrBlank() ->
             stringResource(R.string.player_decoding_error_audio_message_with_codec, error.codecSummary)
@@ -442,7 +499,22 @@ internal fun PlaybackErrorDialogMobileCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (error.isDtsHdError && onEnableDtsHdLpcm != null) {
+                if (error.isStallError && onRetry != null) {
+                    OutlinedButton(onClick = onDismiss) {
+                        Text(
+                            text = stringResource(R.string.player_decoding_error_close),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                    Button(onClick = onRetry) {
+                        Text(
+                            text = stringResource(R.string.retry),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                } else if (error.isDtsHdError && onEnableDtsHdLpcm != null) {
                     OutlinedButton(onClick = onDismiss) {
                         Text(
                             text = stringResource(R.string.player_decoding_error_close),

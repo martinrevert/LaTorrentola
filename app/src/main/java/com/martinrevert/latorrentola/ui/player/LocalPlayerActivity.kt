@@ -251,7 +251,9 @@ import com.martinrevert.latorrentola.ui.components.PlaybackDecodingError
 import com.martinrevert.latorrentola.ui.components.PlaybackErrorDialog
 import com.martinrevert.latorrentola.ui.components.WatchProgressBar
 import com.martinrevert.latorrentola.ui.components.WatchProgressSlider
+import com.martinrevert.latorrentola.ui.components.isStuckPlayerError
 import com.martinrevert.latorrentola.ui.components.resolvePlaybackDecodingError
+import com.martinrevert.latorrentola.ui.components.resolvePlaybackStallError
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.service.storage.remote.RemoteStorageManager
@@ -1177,6 +1179,32 @@ class LocalPlayerActivity : FragmentActivity() {
                                     }
                                 }
                             } else null,
+                            onRetry = if (decodingError.isStallError) {
+                                {
+                                    playbackDecodingError = null
+                                    localStreamRecoveryAttempts = 0
+                                    val isLocalStream = localStreamUrl.contains("127.0.0.1") || localStreamUrl.contains("localhost")
+                                    if (isLocalStream && torrentInfoHash.isNotBlank()) {
+                                        val playIntent = Intent(this@LocalPlayerActivity, TorrentDownloadService::class.java).apply {
+                                            action = TorrentDownloadService.ACTION_PLAY_STREAM
+                                            putExtra(TorrentDownloadService.EXTRA_INFO_HASH, torrentInfoHash)
+                                        }
+                                        startService(playIntent)
+                                    }
+                                    mediaController?.let { controller ->
+                                        val currentPos = resolveRecoveryPlaybackPositionMs(
+                                            controllerPositionMs = controller.currentPosition,
+                                            lastKnownPositionMs = lastKnownPlaybackPositionMs
+                                        )
+                                        val currentItem = controller.currentMediaItem
+                                        if (currentItem != null) {
+                                            controller.setMediaItem(currentItem, currentPos)
+                                            controller.prepare()
+                                            controller.playWhenReady = true
+                                        }
+                                    }
+                                }
+                            } else null,
                             themeMode = themeMode
                         )
                     }
@@ -1213,9 +1241,19 @@ class LocalPlayerActivity : FragmentActivity() {
         metadataRecoveryJob = null
         showNextEpisodeDialog = false
         playbackDecodingError = null
-        localStreamRecoveryAttempts = 0
+        val previousInfoHash = torrentInfoHash
+        val previousStreamUrl = localStreamUrl
         surfaceRebindKey++
         handleIntent(intent)
+        if (shouldResetStreamRecoveryAttemptsOnNewIntent(
+                currentInfoHash = previousInfoHash,
+                incomingInfoHash = torrentInfoHash,
+                currentStreamUrl = previousStreamUrl,
+                incomingStreamUrl = localStreamUrl
+            )
+        ) {
+            localStreamRecoveryAttempts = 0
+        }
         val controller = mediaController
         if (controller != null) {
             setupControllerMedia(controller)
@@ -1725,6 +1763,7 @@ class LocalPlayerActivity : FragmentActivity() {
 
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         if (isPlaying) {
+                            localStreamRecoveryAttempts = 0
                             startProgressTicker(controller)
                         } else {
                             saveCurrentProgress(controller)
@@ -1733,6 +1772,7 @@ class LocalPlayerActivity : FragmentActivity() {
 
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_READY) {
+                            localStreamRecoveryAttempts = 0
                             if (playbackDecodingError?.isDtsHdError != true) {
                                 playbackDecodingError = null
                             }
@@ -1742,13 +1782,7 @@ class LocalPlayerActivity : FragmentActivity() {
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
-                        if (shouldIgnorePlayerError(isFinishing, isDestroyed, isDeletingMedia)) return
-                        AppLogger.e(TAG, "Player error encountered during playback: ${error.message}", error)
-                        if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_LOCAL) {
-                            resolvePlaybackDecodingError(error)?.let { decodingError ->
-                                playbackDecodingError = decodingError
-                            }
-                        }
+                        handlePlayerError(controller, error)
                     }
                 }
                 mediaControllerListener = pipListener
@@ -1999,7 +2033,8 @@ class LocalPlayerActivity : FragmentActivity() {
                 prepareSubtitleTrackIfNeeded(controller.currentTracks)
                 if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_LOCAL) {
                     controller.playerError?.let { existingError ->
-                        resolvePlaybackDecodingError(existingError)?.let { decodingError ->
+                        val decodingError = resolvePlaybackDecodingError(existingError) ?: resolvePlaybackStallError(existingError)
+                        if (decodingError != null) {
                             playbackDecodingError = decodingError
                         }
                     }
@@ -2039,66 +2074,7 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
-                    if (shouldIgnorePlayerError(isFinishing, isDestroyed, isDeletingMedia)) {
-                        Log.i(TAG, "Ignoring player error during shutdown or media deletion: ${error.message}")
-                        return
-                    }
-
-                    val isLocalStream = localStreamUrl.contains("127.0.0.1") || localStreamUrl.contains("localhost")
-                    val isLocalConnectionFailure = isLocalStream && (
-                        error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
-                        error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
-                        error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
-                    )
-
-                    if (isLocalConnectionFailure) {
-                        localStreamRecoveryAttempts++
-                        if (localStreamRecoveryAttempts <= 3) {
-                            AppLogger.w(TAG, "Transient local stream error encountered (attempt $localStreamRecoveryAttempts/3): ${error.errorCodeName} (${error.errorCode}): ${error.message}", error)
-                        } else {
-                            AppLogger.e(TAG, "Unrecoverable local stream error after $localStreamRecoveryAttempts attempts: ${error.errorCodeName} (${error.errorCode}): ${error.message}", error)
-                        }
-                    } else {
-                        AppLogger.e(TAG, "Player error encountered: ${error.errorCodeName} (${error.errorCode}): ${error.message}", error)
-                    }
-
-                    if (controller.currentPosition > 5000L) {
-                        lastKnownPlaybackPositionMs = controller.currentPosition
-                    }
-                    if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
-                        error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
-                        error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
-                        error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED ||
-                        error.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE ||
-                        error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED) {
-
-                        if (isLocalConnectionFailure && torrentInfoHash.isNotBlank()) {
-                            val now = System.currentTimeMillis()
-                            if (now - lastStreamRecoveryAttemptMillis > 3000L) {
-                                lastStreamRecoveryAttemptMillis = now
-                                Log.w(TAG, "Local stream connection failed for hash $torrentInfoHash, requesting stream server restart")
-                                val playIntent = Intent(this@LocalPlayerActivity, TorrentDownloadService::class.java).apply {
-                                    action = TorrentDownloadService.ACTION_PLAY_STREAM
-                                    putExtra(TorrentDownloadService.EXTRA_INFO_HASH, torrentInfoHash)
-                                }
-                                startService(playIntent)
-                            }
-                            return
-                        }
-
-                        lifecycleScope.launch {
-                            delay(1500.milliseconds)
-                            if (controller.playbackState == Player.STATE_IDLE) {
-                                Log.i(TAG, "Attempting auto-recovery for transient playback error")
-                                controller.prepare()
-                                controller.playWhenReady = true
-                            }
-                        }
-                    } else if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_LOCAL) {
-                        resolvePlaybackDecodingError(error)?.let { decodingError ->
-                            playbackDecodingError = decodingError
-                        }
-                    }
+                    handlePlayerError(controller, error)
                 }
             }
             mediaControllerListener = listener
@@ -2107,6 +2083,108 @@ class LocalPlayerActivity : FragmentActivity() {
             selectDefaultSubtitleIfNeeded(controller)
             selectDefaultAudioTrackIfNeeded(controller)
             prepareSubtitleTrackIfNeeded(controller.currentTracks)
+        }
+    }
+
+    private fun handlePlayerError(controller: MediaController, error: PlaybackException) {
+        if (shouldIgnorePlayerError(isFinishing, isDestroyed, isDeletingMedia)) {
+            Log.i(TAG, "Ignoring player error during shutdown or media deletion: ${error.message}")
+            return
+        }
+
+        val isLocalStream = localStreamUrl.contains("127.0.0.1") || localStreamUrl.contains("localhost")
+        val isStuck = isStuckPlayerError(error)
+        val isTransientIoError = isTransientIoPlaybackError(error.errorCode)
+        val isLocalConnectionFailure = isLocalStream && (
+            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+            error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED ||
+            error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
+        )
+
+        if (isStuck) {
+            localStreamRecoveryAttempts++
+            AppLogger.w(TAG, "Playback stall or stuck buffering detected (attempt $localStreamRecoveryAttempts): ${error.errorCodeName} (${error.errorCode}): ${error.message}", error)
+        } else if (isTransientIoError) {
+            localStreamRecoveryAttempts++
+            if (localStreamRecoveryAttempts <= 3) {
+                AppLogger.w(TAG, "Transient stream error encountered (attempt $localStreamRecoveryAttempts/3): ${error.errorCodeName} (${error.errorCode}): ${error.message}", error)
+            } else {
+                AppLogger.w(TAG, "Stream recovery attempts exhausted ($localStreamRecoveryAttempts): ${error.errorCodeName} (${error.errorCode}): ${error.message}", error)
+            }
+        } else {
+            AppLogger.e(TAG, "Player error encountered: ${error.errorCodeName} (${error.errorCode}): ${error.message}", error)
+        }
+
+        if (controller.currentPosition > 5000L) {
+            lastKnownPlaybackPositionMs = controller.currentPosition
+        }
+
+        if (isStuck) {
+            if (localStreamRecoveryAttempts <= 1) {
+                if (isLocalStream && torrentInfoHash.isNotBlank()) {
+                    val playIntent = Intent(this@LocalPlayerActivity, TorrentDownloadService::class.java).apply {
+                        action = TorrentDownloadService.ACTION_PLAY_STREAM
+                        putExtra(TorrentDownloadService.EXTRA_INFO_HASH, torrentInfoHash)
+                    }
+                    startService(playIntent)
+                }
+                lifecycleScope.launch {
+                    delay(1500.milliseconds)
+                    if (controller.playbackState == Player.STATE_IDLE) {
+                        val currentPos = resolveRecoveryPlaybackPositionMs(
+                            controllerPositionMs = controller.currentPosition,
+                            lastKnownPositionMs = lastKnownPlaybackPositionMs
+                        )
+                        val currentItem = controller.currentMediaItem
+                        if (currentItem != null) {
+                            controller.setMediaItem(currentItem, currentPos)
+                            controller.prepare()
+                            controller.playWhenReady = true
+                        }
+                    }
+                }
+            } else {
+                playbackDecodingError = resolvePlaybackStallError(error)
+            }
+            return
+        }
+
+        if (isTransientIoError) {
+            if (localStreamRecoveryAttempts > 3) {
+                if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_LOCAL) {
+                    playbackDecodingError = resolveExhaustedIoRecoveryStallError(localStreamRecoveryAttempts)
+                }
+                return
+            }
+
+            if (isLocalConnectionFailure && torrentInfoHash.isNotBlank()) {
+                val now = System.currentTimeMillis()
+                if (now - lastStreamRecoveryAttemptMillis > 3000L) {
+                    lastStreamRecoveryAttemptMillis = now
+                    Log.w(TAG, "Local stream connection failed for hash $torrentInfoHash, requesting stream server restart")
+                    val playIntent = Intent(this@LocalPlayerActivity, TorrentDownloadService::class.java).apply {
+                        action = TorrentDownloadService.ACTION_PLAY_STREAM
+                        putExtra(TorrentDownloadService.EXTRA_INFO_HASH, torrentInfoHash)
+                    }
+                    startService(playIntent)
+                    return
+                }
+            }
+
+            lifecycleScope.launch {
+                delay(1500.milliseconds)
+                if (controller.playbackState == Player.STATE_IDLE) {
+                    Log.i(TAG, "Attempting auto-recovery for transient playback error")
+                    controller.prepare()
+                    controller.playWhenReady = true
+                }
+            }
+        } else if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_LOCAL) {
+            val decodingError = resolvePlaybackDecodingError(error) ?: resolvePlaybackStallError(error)
+            if (decodingError != null) {
+                playbackDecodingError = decodingError
+            }
         }
     }
 
@@ -3644,12 +3722,58 @@ class LocalPlayerActivity : FragmentActivity() {
             return null
         }
 
-        @androidx.annotation.VisibleForTesting
+        @VisibleForTesting
         internal fun shouldIgnoreNewIntent(isFinishing: Boolean, isDestroyed: Boolean): Boolean {
             return isFinishing || isDestroyed
         }
 
-        @androidx.annotation.VisibleForTesting
+        @VisibleForTesting
+        internal fun shouldResetStreamRecoveryAttemptsOnNewIntent(
+            currentInfoHash: String,
+            incomingInfoHash: String,
+            currentStreamUrl: String,
+            incomingStreamUrl: String
+        ): Boolean {
+            val isSameRecoveringStream = (incomingInfoHash.isNotBlank() && incomingInfoHash.equals(currentInfoHash, ignoreCase = true)) ||
+                (incomingStreamUrl.isNotBlank() && incomingStreamUrl == currentStreamUrl)
+            return !isSameRecoveringStream
+        }
+
+        @VisibleForTesting
+        internal fun isTransientIoPlaybackError(errorCode: Int): Boolean {
+            return errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+                errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+                errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED ||
+                errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE ||
+                errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED
+        }
+
+        @VisibleForTesting
+        internal fun resolveExhaustedIoRecoveryStallError(
+            recoveryAttempts: Int,
+            maxRetries: Int = 3
+        ): PlaybackDecodingError? {
+            return if (recoveryAttempts > maxRetries) {
+                PlaybackDecodingError(
+                    isAudioError = false,
+                    codecSummary = "Stream Stall",
+                    isStallError = true
+                )
+            } else {
+                null
+            }
+        }
+
+        @VisibleForTesting
+        internal fun resolveRecoveryPlaybackPositionMs(
+            controllerPositionMs: Long,
+            lastKnownPositionMs: Long
+        ): Long {
+            return maxOf(controllerPositionMs, lastKnownPositionMs).coerceAtLeast(0L)
+        }
+
+        @VisibleForTesting
         internal fun shouldIgnorePlayerError(
             isFinishing: Boolean,
             isDestroyed: Boolean,

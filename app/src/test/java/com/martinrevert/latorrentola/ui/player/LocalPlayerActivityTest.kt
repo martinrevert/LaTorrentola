@@ -5,8 +5,11 @@ import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
 
 import android.util.Log
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import com.martinrevert.latorrentola.ui.components.isStuckPlayerError
 import com.martinrevert.latorrentola.ui.components.resolvePlaybackDecodingError
+import com.martinrevert.latorrentola.ui.components.resolvePlaybackStallError
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
@@ -407,6 +410,57 @@ class LocalPlayerActivityTest {
     }
 
     @Test
+    fun `isStuckPlayerError returns true for StuckPlayerException cause and stall messages`() {
+        val stuckCause = androidx.media3.common.util.StuckPlayerException(
+            androidx.media3.common.util.StuckPlayerException.STUCK_BUFFERING_NO_PROGRESS,
+            600_000
+        )
+        val stuckExoError = androidx.media3.common.PlaybackException(
+            "Unexpected runtime error",
+            stuckCause,
+            androidx.media3.common.PlaybackException.ERROR_CODE_UNSPECIFIED
+        )
+
+        assertThat(isStuckPlayerError(stuckExoError)).isTrue()
+
+        val directStuckError = androidx.media3.common.PlaybackException(
+            "Player stuck playing without progress",
+            null,
+            androidx.media3.common.PlaybackException.ERROR_CODE_UNSPECIFIED
+        )
+        assertThat(isStuckPlayerError(directStuckError)).isTrue()
+
+        val normalError = androidx.media3.common.PlaybackException(
+            "Decoder init failed",
+            null,
+            androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
+        )
+        assertThat(isStuckPlayerError(normalError)).isFalse()
+    }
+
+    @Test
+    fun `resolvePlaybackStallError creates PlaybackDecodingError with isStallError true`() {
+        val stuckCause = java.lang.IllegalStateException("Player stuck buffering with no progress for 120000 ms")
+        val stuckExoError = androidx.media3.common.PlaybackException(
+            "Unexpected runtime error",
+            stuckCause,
+            androidx.media3.common.PlaybackException.ERROR_CODE_UNSPECIFIED
+        )
+
+        val resolved = resolvePlaybackStallError(stuckExoError)
+        assertThat(resolved).isNotNull()
+        assertThat(resolved?.isStallError).isTrue()
+        assertThat(resolved?.isAudioError).isFalse()
+
+        val normalError = androidx.media3.common.PlaybackException(
+            "Network timeout",
+            null,
+            androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
+        )
+        assertThat(resolvePlaybackStallError(normalError)).isNull()
+    }
+
+    @Test
     fun `handlePlayerTvKeyEvent pauses and shows controls with single OK press while playing`() {
         var seekBackCalled = false
         var seekForwardCalled = false
@@ -763,7 +817,94 @@ class LocalPlayerActivityTest {
             )
         ).isFalse()
     }
+
+    @Test
+    fun `shouldResetStreamRecoveryAttemptsOnNewIntent preserves attempts for same infoHash or streamUrl and resets on new stream`() {
+        val hashA = "abcdef1234567890abcdef1234567890abcdef12"
+        val hashB = "9999999999999999999999999999999999999999"
+        val streamUrlA = "http://127.0.0.1:41234/stream"
+        val streamUrlB = "http://127.0.0.1:52345/stream"
+
+        // Same infoHash (e.g. ACTION_PLAY_STREAM recovery re-launching LocalPlayerActivity on a new loopback port)
+        assertThat(
+            LocalPlayerActivity.shouldResetStreamRecoveryAttemptsOnNewIntent(
+                currentInfoHash = hashA,
+                incomingInfoHash = hashA.uppercase(),
+                currentStreamUrl = streamUrlA,
+                incomingStreamUrl = streamUrlB
+            )
+        ).isFalse()
+
+        // Same streamUrl without infoHash
+        assertThat(
+            LocalPlayerActivity.shouldResetStreamRecoveryAttemptsOnNewIntent(
+                currentInfoHash = "",
+                incomingInfoHash = "",
+                currentStreamUrl = streamUrlA,
+                incomingStreamUrl = streamUrlA
+            )
+        ).isFalse()
+
+        // Switching to a different torrent/stream resets recovery attempts
+        assertThat(
+            LocalPlayerActivity.shouldResetStreamRecoveryAttemptsOnNewIntent(
+                currentInfoHash = hashA,
+                incomingInfoHash = hashB,
+                currentStreamUrl = streamUrlA,
+                incomingStreamUrl = streamUrlB
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `isTransientIoPlaybackError and resolveExhaustedIoRecoveryStallError surface stall error after 3 attempts`() {
+        assertThat(
+            LocalPlayerActivity.isTransientIoPlaybackError(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
+        ).isTrue()
+        assertThat(
+            LocalPlayerActivity.isTransientIoPlaybackError(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT)
+        ).isTrue()
+        assertThat(
+            LocalPlayerActivity.isTransientIoPlaybackError(PlaybackException.ERROR_CODE_IO_UNSPECIFIED)
+        ).isTrue()
+        assertThat(
+            LocalPlayerActivity.isTransientIoPlaybackError(PlaybackException.ERROR_CODE_DECODER_INIT_FAILED)
+        ).isFalse()
+
+        assertThat(LocalPlayerActivity.resolveExhaustedIoRecoveryStallError(recoveryAttempts = 1)).isNull()
+        assertThat(LocalPlayerActivity.resolveExhaustedIoRecoveryStallError(recoveryAttempts = 3)).isNull()
+
+        val exhaustedError = LocalPlayerActivity.resolveExhaustedIoRecoveryStallError(recoveryAttempts = 4)
+        assertThat(exhaustedError).isNotNull()
+        assertThat(exhaustedError?.isStallError).isTrue()
+        assertThat(exhaustedError?.isAudioError).isFalse()
+    }
+
+    @Test
+    fun `resolveRecoveryPlaybackPositionMs falls back to lastKnownPlaybackPositionMs when controller position resets to zero`() {
+        assertThat(
+            LocalPlayerActivity.resolveRecoveryPlaybackPositionMs(
+                controllerPositionMs = 0L,
+                lastKnownPositionMs = 125_000L
+            )
+        ).isEqualTo(125_000L)
+
+        assertThat(
+            LocalPlayerActivity.resolveRecoveryPlaybackPositionMs(
+                controllerPositionMs = 130_000L,
+                lastKnownPositionMs = 120_000L
+            )
+        ).isEqualTo(130_000L)
+
+        assertThat(
+            LocalPlayerActivity.resolveRecoveryPlaybackPositionMs(
+                controllerPositionMs = -1L,
+                lastKnownPositionMs = 0L
+            )
+        ).isEqualTo(0L)
+    }
 }
+
 
 
 

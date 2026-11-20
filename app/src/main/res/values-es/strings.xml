@@ -431,6 +431,8 @@
     <string name="player_decoding_error_dts_hd_title">Error de Passthrough DTS-HD</string>
     <string name="player_decoding_error_dts_hd_message">No se pudo reproducir la pista DTS-HD mediante passthrough bitstream (la imagen se detuvo o el receptor no admitió el flujo de alto bitrate). Se recomienda activar \"Decodificar DTS-HD a PCM multicanal\" en los Ajustes de Audio para reproducir en calidad sin pérdida (5.1/7.1).</string>
     <string name="player_decoding_error_enable_dts_hd_pcm">Activar decodificación LPCM</string>
+    <string name="player_error_stream_stalled_title">Transmisión detenida</string>
+    <string name="player_error_stream_stalled_message">La reproducción se detuvo porque no se recibieron nuevos datos durante demasiado tiempo. Comprueba la disponibilidad de semillas o tu conexión a la red.</string>
 
     <!-- OTT Streaming Providers -->
     <string name="ott_chip_label">OTT</string>

@@ -5,6 +5,7 @@ import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.ParserException
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.Renderer
@@ -13,11 +14,13 @@ import androidx.media3.exoplayer.audio.AudioRendererEventListener
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.MediaCodecAudioRenderer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.unmockkAll
+import java.io.IOException
 import org.junit.After
 import org.junit.Test
 
@@ -41,6 +44,48 @@ class PlayerStreamingConfigTest {
         val policy = PlayerStreamingConfig.buildLoadErrorHandlingPolicy()
         val retryCount = policy.getMinimumLoadableRetryCount(C.DATA_TYPE_MEDIA)
         assertThat(retryCount).isAtLeast(5)
+    }
+
+    @Test
+    fun `buildLoadErrorHandlingPolicy returns 500ms when errorCount is within maxRetries for retryable error`() {
+        val policy = PlayerStreamingConfig.buildLoadErrorHandlingPolicy(maxRetries = 6)
+        val loadErrorInfo = LoadErrorHandlingPolicy.LoadErrorInfo(
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            IOException("Socket timeout"),
+            3
+        )
+
+        val retryDelay = policy.getRetryDelayMsFor(loadErrorInfo)
+        assertThat(retryDelay).isEqualTo(500L)
+    }
+
+    @Test
+    fun `buildLoadErrorHandlingPolicy returns TIME_UNSET when errorCount exceeds maxRetries`() {
+        val policy = PlayerStreamingConfig.buildLoadErrorHandlingPolicy(maxRetries = 6)
+        val loadErrorInfo = LoadErrorHandlingPolicy.LoadErrorInfo(
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            IOException("Socket timeout"),
+            7
+        )
+
+        val retryDelay = policy.getRetryDelayMsFor(loadErrorInfo)
+        assertThat(retryDelay).isEqualTo(C.TIME_UNSET)
+    }
+
+    @Test
+    fun `buildLoadErrorHandlingPolicy returns TIME_UNSET for non-retryable error`() {
+        val policy = PlayerStreamingConfig.buildLoadErrorHandlingPolicy(maxRetries = 6)
+        val loadErrorInfo = LoadErrorHandlingPolicy.LoadErrorInfo(
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            ParserException.createForMalformedContainer("Malformed container", null),
+            1
+        )
+
+        val retryDelay = policy.getRetryDelayMsFor(loadErrorInfo)
+        assertThat(retryDelay).isEqualTo(C.TIME_UNSET)
     }
 
     @Test

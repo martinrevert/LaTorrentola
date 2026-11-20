@@ -93,11 +93,12 @@ class PlaybackService : MediaSessionService() {
                 .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                 .build()
 
-            // Build the local player
+            // Build the local player with bounded stuck buffering detection (2 minutes instead of 10-minute 600,000ms trap)
             val exoPlayer = ExoPlayer.Builder(this, renderersFactory)
                 .setLoadControl(loadControl)
                 .setMediaSourceFactory(mediaSourceFactory)
                 .setAudioAttributes(movieAudioAttributes, true)
+                .setStuckBufferingDetectionTimeoutMs(120_000)
                 .build()
 
             // Diagnostics listener for audio decoder and AudioTrack hardware output routing

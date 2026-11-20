@@ -53,17 +53,25 @@ object PlayerStreamingConfig {
 
     /**
      * Builds an error handling policy that quickly retries transient loopback connection delays
-     * without immediately declaring fatal player errors.
+     * without immediately declaring fatal player errors, while strictly bounding retries to [maxRetries]
+     * to prevent infinite retry loops in STATE_BUFFERING that trigger StuckPlayerException after 10 minutes.
      */
-    fun buildLoadErrorHandlingPolicy(): LoadErrorHandlingPolicy {
-        return object : DefaultLoadErrorHandlingPolicy() {
+    fun buildLoadErrorHandlingPolicy(maxRetries: Int = 6): LoadErrorHandlingPolicy {
+        return object : DefaultLoadErrorHandlingPolicy(maxRetries) {
             override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
-                // Quick retry for loopback HTTP socket stalls
+                if (loadErrorInfo.errorCount > maxRetries) {
+                    return C.TIME_UNSET
+                }
+                val defaultDelay = super.getRetryDelayMsFor(loadErrorInfo)
+                if (defaultDelay == C.TIME_UNSET) {
+                    return C.TIME_UNSET
+                }
+                // Quick retry for loopback HTTP socket stalls (500ms instead of exponential 1-5s backoff)
                 return 500L
             }
 
             override fun getMinimumLoadableRetryCount(dataType: Int): Int {
-                return 6 // Allow more retries for partial torrent streams
+                return maxRetries
             }
         }
     }

@@ -480,6 +480,17 @@ To ensure optimal audio fidelity and prevent silent stereo downmixes:
   * `LocalNetworkPermissionHelper` centralizes API 37+ checks, rationale vs. App Settings fallback resolution (`shouldOpenAppSettings`), active-scan `MediaRouter` callback flags (`resolveDiscoveryCallbackFlags`), and `CastMediaControlIntent` selector creation.
   * `CastBottomSheet`, `FloatingVideoPipOverlay`, and `TorrentDownloadsScreen` strictly gate `MediaRouter.addCallback` behind `hasLocalNetworkPermission == true` and refresh on `Lifecycle.Event.ON_RESUME`. When permission is granted or a manual **Scan again** is triggered, `CastBottomSheet` unregisters active callbacks for 150 ms so `MediaRoute2Provider` resets global callback count to 0 before re-registering with `CALLBACK_FLAG_REQUEST_DISCOVERY | CALLBACK_FLAG_PERFORM_ACTIVE_SCAN`.
   * `ExternalMediaBrowserScreen` exposes the same runtime prompt and App Settings fallback banner on the Network (SMB/NFS) tab for both Mobile and Android TV.
+* **Media3 Stuck Buffering Detection, Bounded Load Error Retries & Stream Stall Resilience**:
+  * **Bounded Load Error Policy (`PlayerStreamingConfig.buildLoadErrorHandlingPolicy`)**:
+    * Overriding `DefaultLoadErrorHandlingPolicy.getRetryDelayMsFor()` unconditionally with a constant delay creates infinite retry loops on stalled torrent or network streams.
+    * The bounded policy enforces `maxRetries = 6`. When `loadErrorInfo.errorCount > maxRetries`, it returns `C.TIME_UNSET` to terminate playback immediately. Furthermore, non-retryable errors (e.g. `ParserException`, `FileNotFoundException`, or cleartext denial) delegate to `super.getRetryDelayMsFor(loadErrorInfo)` returning `C.TIME_UNSET` rather than retrying.
+    * For transient loopback connection delays within bounds, it returns `500L` for rapid socket recovery without exponential backoff lag.
+  * **Bounded Stuck Buffering Detection (`PlaybackService.kt`)**:
+    * `ExoPlayer.Builder.setStuckBufferingDetectionTimeoutMs(120_000)` configures `StuckPlayerDetector.StuckBufferingDetector` to flag stuck buffering within 2 minutes (120,000 ms), completely eliminating the default 10-minute (600,000 ms) unresponsiveness trap.
+  * **Warning Logging & Actionable Recovery Dialog (`LocalPlayerActivity.kt` & `PlaybackErrorDialog.kt`)**:
+    * In `onPlayerError`, stalls detected by `isStuckPlayerError(error)` and network connection drops are logged as warnings (`AppLogger.w`) rather than fatal errors (`AppLogger.e`), preventing normal network/torrent stalls from flooding Firebase Crashlytics with Non-fatal issues.
+    * `LocalPlayerActivity` attempts a single automatic recovery before routing persistent stalls to `resolvePlaybackStallError(error)` (`isStallError = true`).
+    * `PlaybackErrorDialog` displays a localized card (`R.string.player_error_stream_stalled_title` and `R.string.player_error_stream_stalled_message`) with an actionable **Retry** button (restarting local streaming and re-preparing the player) and a **Close** button, ensuring the player never silently freezes in `STATE_IDLE` on a black screen.
 
 ### 5.8 Canonical Watch History, Cost-Optimized Sync & Completion Authority
 To guarantee seamless watch history parity and minimal cloud consumption across Torrents, Local files, and Network Storage (SMB/NFS):
