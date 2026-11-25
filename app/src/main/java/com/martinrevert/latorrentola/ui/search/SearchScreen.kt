@@ -87,16 +87,12 @@ import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import com.martinrevert.latorrentola.ui.components.tvGridRowDpadNavigation
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
 import com.martinrevert.latorrentola.ui.theme.hazeSheetBackdropBlur
-import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import com.martinrevert.latorrentola.utils.GenreTranslation
 import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TvSeriesProgressCalculator
 import com.martinrevert.latorrentola.utils.isTvDevice
-import dev.chrisbanes.haze.hazeSource
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -365,17 +361,11 @@ private fun SearchScreenContent(
     val gridState = rememberLazyGridState()
     val qualityChipsFocusRequester = remember { FocusRequester() }
     val resultsFocusRequester = remember { FocusRequester() }
-    val hazeState = rememberHandheldHazeState(isTv)
     var showActorBioSheet by remember { mutableStateOf(false) }
     val actorBioSheetState = rememberBottomSheetState(
         initialValue = SheetValue.Hidden,
         enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
     )
-    val topBarContainerColor = if (isTv) {
-        Color.Transparent
-    } else {
-        hazeAppBarContainerColor(hasGlass = hazeState != null, fallbackAlpha = 0.90f)
-    }
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     val hasTopChips = isShowingFavorites || (!isTvMode && !isActorMode) ||
@@ -392,12 +382,14 @@ private fun SearchScreenContent(
         topBar = {
             if (!isTvMoviesSearch && !isHandheldMoviesSearch) {
                 TopAppBar(
-                    modifier = Modifier
-                        .focusProperties {
-                            down = if (hasTopChips) qualityChipsFocusRequester else resultsFocusRequester
-                        }
-                        .hazeAppBarGlass(hazeState),
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
+                    modifier = Modifier.focusProperties {
+                        down = if (hasTopChips) qualityChipsFocusRequester else resultsFocusRequester
+                    },
+                    colors = if (isTv) {
+                        TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                    } else {
+                        TopAppBarDefaults.topAppBarColors()
+                    },
                     title = {
                         if (isShowingFavorites) {
                             if (selectedFavoriteIds.isNotEmpty()) {
@@ -751,16 +743,9 @@ private fun SearchScreenContent(
                 isLogoLoading = isFocusedMovieLogoLoading,
                 onDetailsClick = { focusedMovie?.let(onMovieClick) },
                 modifier = Modifier.fillMaxSize(),
-                hazeState = hazeState,
                 topBar = {
                     TopAppBar(
-                        modifier = Modifier.hazeAppBarGlass(hazeState),
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = hazeAppBarContainerColor(
-                                hasGlass = hazeState != null,
-                                fallbackAlpha = 0.85f
-                            )
-                        ),
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                         title = {
                             if (isShowingDownloads) {
                                 Text(stringResource(R.string.already_seen))
@@ -863,20 +848,57 @@ private fun SearchScreenContent(
                 }
             }
         } else {
-            // Handheld Layout: Edge-to-edge with Haze top blur and translucent bottom bar
-            val topExtraOffset = if (hasTopChips) 64.dp else 16.dp
-            val searchContentPadding = PaddingValues(
-                top = padding.calculateTopPadding() + topExtraOffset,
-                bottom = padding.calculateBottomPadding() + 16.dp,
-                start = 16.dp,
-                end = 16.dp
-            )
+            val searchContentPadding = PaddingValues(16.dp)
 
-            Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .consumeWindowInsets(padding)
+            ) {
+                if (hasTopChips) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surface)
+                    ) {
+                        if (isShowingFavorites) {
+                            FavoritesChips(
+                                selectedFilter = selectedFavoritesFilter,
+                                onFilterClick = onFavoritesFilterClick,
+                                modifier = Modifier.focusRequester(qualityChipsFocusRequester)
+                            )
+                        } else if (isActorMode) {
+                            if (actorUiState is SearchActorUiState.Success) {
+                                ActorChipsRow(
+                                    actors = actorUiState.actors,
+                                    selectedActor = actorUiState.selectedActor,
+                                    hasBiography = actorUiState.actorDetail?.biography?.isNotBlank() ?: false,
+                                    onActorSelect = onActorSelect,
+                                    onShowBioClick = { showActorBioSheet = true },
+                                    modifier = Modifier.focusRequester(qualityChipsFocusRequester)
+                                )
+                            }
+                        } else if (!isTvMode) {
+                            QualityChips(
+                                options = qualityOptions,
+                                selectedQuality = selectedQuality ?: "All",
+                                onQualityClick = onQualityClick,
+                                modifier = Modifier.focusRequester(qualityChipsFocusRequester)
+                            )
+                        }
+                        HorizontalDivider(
+                            modifier = Modifier.padding(top = 4.dp),
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
+                        .weight(1f)
+                        .fillMaxWidth()
                 ) {
                     when {
                         isActorMode -> {
@@ -990,52 +1012,6 @@ private fun SearchScreenContent(
                                 )
                             }
                         }
-                    }
-                }
-
-                if (hasTopChips) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = padding.calculateTopPadding())
-                            .background(
-                                hazeAppBarContainerColor(
-                                    hasGlass = hazeState != null,
-                                    fallbackAlpha = 0.90f
-                                )
-                            )
-                            .hazeAppBarGlass(hazeState)
-                    ) {
-                        if (isShowingFavorites) {
-                            FavoritesChips(
-                                selectedFilter = selectedFavoritesFilter,
-                                onFilterClick = onFavoritesFilterClick,
-                                modifier = Modifier.focusRequester(qualityChipsFocusRequester)
-                            )
-                        } else if (isActorMode) {
-                            if (actorUiState is SearchActorUiState.Success) {
-                                ActorChipsRow(
-                                    actors = actorUiState.actors,
-                                    selectedActor = actorUiState.selectedActor,
-                                    hasBiography = actorUiState.actorDetail?.biography?.isNotBlank() ?: false,
-                                    onActorSelect = onActorSelect,
-                                    onShowBioClick = { showActorBioSheet = true },
-                                    modifier = Modifier.focusRequester(qualityChipsFocusRequester)
-                                )
-                            }
-                        } else if (!isTvMode) {
-                            QualityChips(
-                                options = qualityOptions,
-                                selectedQuality = selectedQuality ?: "All",
-                                onQualityClick = onQualityClick,
-                                modifier = Modifier.focusRequester(qualityChipsFocusRequester)
-                            )
-                        }
-                        HorizontalDivider(
-                            modifier = Modifier.padding(top = 4.dp),
-                            thickness = 1.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        )
                     }
                 }
             }

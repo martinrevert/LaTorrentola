@@ -55,10 +55,7 @@ import com.martinrevert.latorrentola.ui.components.WatchProgressOptionDialog
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
 import com.martinrevert.latorrentola.ui.theme.hazeSheetBackdropBlur
-import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import kotlinx.coroutines.launch
@@ -260,8 +257,6 @@ private fun HomeScreenContent(
         if (isTvMode) tvHomeViewModel?.activate()
     }
 
-    val hazeState = rememberHandheldHazeState(isTv)
-
     val configuration = LocalConfiguration.current
     val screenWidthDp = configuration.screenWidthDp
 
@@ -436,7 +431,6 @@ private fun HomeScreenContent(
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
-                    hazeState = hazeState,
                     topBar = {
                         HomeTopAppBar(
                             userPhotoUrl = userPhotoUrl,
@@ -449,9 +443,8 @@ private fun HomeScreenContent(
                             onMoviesClick = { selectMediaMode(false) },
                             onTvClick = { selectMediaMode(true) },
                             focusDownRequester = homeControlsFocusRequester,
-                            containerColor = hazeAppBarContainerColor(hasGlass = hazeState != null, fallbackAlpha = 0.85f),
-                            isTv = false,
-                            modifier = Modifier.hazeAppBarGlass(hazeState)
+                            containerColor = Color.Transparent,
+                            isTv = false
                         )
                     },
                     chips = {
@@ -525,7 +518,6 @@ private fun HomeScreenContent(
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
-                    hazeState = hazeState,
                     topBar = {
                         HomeTopAppBar(
                             userPhotoUrl = userPhotoUrl,
@@ -538,9 +530,8 @@ private fun HomeScreenContent(
                             onMoviesClick = { selectMediaMode(false) },
                             onTvClick = { selectMediaMode(true) },
                             focusDownRequester = homeControlsFocusRequester,
-                            containerColor = hazeAppBarContainerColor(hasGlass = hazeState != null, fallbackAlpha = 0.85f),
-                            isTv = false,
-                            modifier = Modifier.hazeAppBarGlass(hazeState)
+                            containerColor = Color.Transparent,
+                            isTv = false
                         )
                     },
                     chips = {

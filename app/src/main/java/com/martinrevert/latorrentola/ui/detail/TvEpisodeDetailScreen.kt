@@ -94,17 +94,12 @@ import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
-import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import com.martinrevert.latorrentola.utils.MediaControllerHelper
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TorrentCardActionHandler
 import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
 import com.martinrevert.latorrentola.utils.TorrentLaunchResult
 import com.martinrevert.latorrentola.utils.isTvDevice
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
 import java.util.Locale
 
 /**
@@ -145,7 +140,6 @@ fun TvEpisodeDetailScreen(
         themeMode ?: PreferenceManager(context).getTheme()
     }
     val isTv = remember(context) { context.isTvDevice() }
-    val hazeState = rememberHandheldHazeState(isTv)
     val backButtonFocusRequester = remember { FocusRequester() }
     val firstTorrentFocusRequester = remember { FocusRequester() }
     val insufficientStorageState = remember { mutableStateOf<Pair<Long, Long>?>(null) }
@@ -210,20 +204,14 @@ fun TvEpisodeDetailScreen(
                                 .fillMaxSize()
                                 .background(MaterialTheme.colorScheme.surface)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
-                            ) {
-                                MovieDetailPlaceholder(
-                                    contentPadding = PaddingValues(
-                                        top = statusBarHeight + 64.dp,
-                                        start = 16.dp,
-                                        end = 16.dp,
-                                        bottom = 16.dp + navBarHeight
-                                    )
+                            MovieDetailPlaceholder(
+                                contentPadding = PaddingValues(
+                                    top = statusBarHeight + 64.dp,
+                                    start = 16.dp,
+                                    end = 16.dp,
+                                    bottom = 16.dp + navBarHeight
                                 )
-                            }
+                            )
                             TopAppBar(
                                 title = {},
                                 navigationIcon = {
@@ -238,10 +226,7 @@ fun TvEpisodeDetailScreen(
                                         )
                                     }
                                 },
-                                colors = TopAppBarDefaults.topAppBarColors(
-                                    containerColor = hazeAppBarContainerColor(hazeState != null, 0.85f)
-                                ),
-                                modifier = Modifier.hazeAppBarGlass(hazeState)
+                                colors = TopAppBarDefaults.topAppBarColors()
                             )
                         }
                     }
@@ -287,25 +272,19 @@ fun TvEpisodeDetailScreen(
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.surface)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
-                        ) {
-                            ApiErrorView(
-                                errorMessage = state.message,
-                                onRetry = {
-                                    viewModel.loadEpisode(
-                                        seriesId = seriesId,
-                                        seasonNumber = seasonNumber,
-                                        episodeNumber = episodeNumber,
-                                        seriesName = seriesName,
-                                        episodeJson = episodeJson
-                                    )
-                                },
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
+                        ApiErrorView(
+                            errorMessage = state.message,
+                            onRetry = {
+                                viewModel.loadEpisode(
+                                    seriesId = seriesId,
+                                    seasonNumber = seasonNumber,
+                                    episodeNumber = episodeNumber,
+                                    seriesName = seriesName,
+                                    episodeJson = episodeJson
+                                )
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
                         TopAppBar(
                             title = {},
                             navigationIcon = {
@@ -320,10 +299,7 @@ fun TvEpisodeDetailScreen(
                                     )
                                 }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = hazeAppBarContainerColor(hazeState != null, 0.85f)
-                            ),
-                            modifier = Modifier.hazeAppBarGlass(hazeState)
+                            colors = TopAppBarDefaults.topAppBarColors()
                         )
                     }
                 }
@@ -350,7 +326,6 @@ fun TvEpisodeDetailScreen(
                         downloadedHashes = state.downloadedHashes,
                         allDownloads = allDownloads,
                         mediaController = mediaController,
-                        hazeState = hazeState,
                         backButtonFocusRequester = backButtonFocusRequester,
                         firstTorrentFocusRequester = if (isTv) firstTorrentFocusRequester else null,
                         onBackClick = onBackClick,
@@ -507,7 +482,6 @@ private fun EpisodeDetailContent(
     downloadedHashes: Set<String> = emptySet(),
     allDownloads: List<TorrentDownload> = emptyList(),
     mediaController: MediaController? = null,
-    hazeState: HazeState? = null,
     backButtonFocusRequester: FocusRequester,
     firstTorrentFocusRequester: FocusRequester?,
     onBackClick: () -> Unit,
@@ -523,6 +497,10 @@ private fun EpisodeDetailContent(
     val stillUrl = episode.fullStillUrl ?: posterUrl
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val heroHeight = if (isTv) 340.dp else if (isWideScreen) 300.dp else 240.dp
+    val scrollState = rememberScrollState()
+    val topBarAlpha by remember(scrollState) {
+        androidx.compose.runtime.derivedStateOf { (scrollState.value / 160f).coerceIn(0f, 1f) }
+    }
 
     LaunchedEffect(Unit) {
         if (isTv) {
@@ -538,11 +516,7 @@ private fun EpisodeDetailContent(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
         // 1. Edge-to-Edge Episode Still Hero Banner (Fixed in background)
         Box(
             modifier = Modifier
@@ -636,7 +610,7 @@ private fun EpisodeDetailContent(
             modifier = Modifier
                 .fillMaxSize()
                 .focusGroup()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(bottom = navBarHeight + 24.dp)
         ) {
             Spacer(modifier = Modifier.height(heroHeight - 48.dp))
@@ -878,7 +852,7 @@ private fun EpisodeDetailContent(
             )
         }
     } else {
-        // 3. Floating Glass Top Navigation Bar on Handheld
+        // 3. Floating Top Navigation Bar on Handheld
         TopAppBar(
             title = {},
             navigationIcon = {
@@ -894,9 +868,8 @@ private fun EpisodeDetailContent(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = hazeAppBarContainerColor(hazeState != null, 0.85f)
-            ),
-            modifier = Modifier.hazeAppBarGlass(hazeState)
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = topBarAlpha)
+            )
         )
     }
     }

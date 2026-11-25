@@ -5,8 +5,9 @@ import android.graphics.Shader
 import android.os.Build
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -23,25 +24,27 @@ import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.glass.GlassStyle
+import dev.chrisbanes.haze.glass.OpticalSizeValue
 import dev.chrisbanes.haze.glass.hazeGlass
-import dev.chrisbanes.haze.glass.material3.material3
 import dev.chrisbanes.haze.rememberHazeState
 
-private val AppBarGlassBaseStyle = GlassStyle {
-    shape(RoundedCornerShape(0.dp))
+private val ClearPlayerGlassTint = Color.Black.copy(alpha = 0.12f)
+private val ClearPlayerGlassBorderColor = Color.White.copy(alpha = 0.22f)
+private val ClearPlayerGlassFallbackColor = Color.Black.copy(alpha = 0.42f)
+
+internal fun isClearPlayerGlassActive(
+    hasHazeState: Boolean,
+    isInspectionMode: Boolean,
+    sdkInt: Int
+): Boolean {
+    return hasHazeState && (isInspectionMode || sdkInt >= Build.VERSION_CODES.S)
 }
 
-internal fun resolveHazeAppBarContainerColor(
-    hasGlass: Boolean,
-    isApi31OrInspection: Boolean,
-    surfaceColor: Color,
-    fallbackAlpha: Float = 0.90f
+internal fun resolveClearPlayerGlassFallbackColor(
+    isGlassActive: Boolean,
+    fallbackColor: Color = ClearPlayerGlassFallbackColor
 ): Color {
-    return if (hasGlass && isApi31OrInspection) {
-        Color.Transparent
-    } else {
-        surfaceColor.copy(alpha = fallbackAlpha)
-    }
+    return if (isGlassActive) Color.Transparent else fallbackColor
 }
 
 internal fun shouldEnableSheetBackdropBlur(
@@ -70,65 +73,50 @@ fun rememberHandheldHazeState(isTv: Boolean): HazeState? {
 }
 
 /**
- * Returns [Color.Transparent] when Haze 2.1 glass is active (Android 12+ or Compose Preview),
- * or a translucent Material 3 surface fallback on pre-Android 12 devices or when glass is disabled.
+ * Applies Haze 2.1 Clear Liquid Glass (`GlassStyle.clear`) per individual player control object
+ * over live handheld video (`TextureView` + `hazeSource`).
+ *
+ * - On Android 12+ (API 31+) and Compose Preview: applies shallow 2.dp blur + edge refraction
+ *   with an ultra-light tint and NO opaque stacked background so video remains clearly visible.
+ * - On pre-Android 12 or when `hazeState` is null: falls back to a clean translucent dark fill
+ *   and subtle 1.dp rim stroke.
  */
 @Composable
-fun hazeAppBarContainerColor(
-    hasGlass: Boolean,
-    fallbackAlpha: Float = 0.90f
-): Color {
-    val isApi31OrInspection = LocalInspectionMode.current || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    return resolveHazeAppBarContainerColor(
-        hasGlass = hasGlass,
-        isApi31OrInspection = isApi31OrInspection,
-        surfaceColor = MaterialTheme.colorScheme.surface,
-        fallbackAlpha = fallbackAlpha
-    )
-}
-
-/**
- * Applies Tier 1 edge-to-edge Material 3 Haze glass styling to full-width app bars and headers.
- * Explicitly sets zero corner radius so the blur spans flush across screen edges
- * without inheriting `GlassDefaults.shape` (16.dp).
- */
-@Composable
-fun Modifier.hazeAppBarGlass(hazeState: HazeState?): Modifier {
-    val isApi31OrInspection = LocalInspectionMode.current || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    return if (hazeState != null && isApi31OrInspection) {
-        this.hazeGlass(
-            input = HazeInput.Sources(hazeState),
-            style = AppBarGlassBaseStyle.material3()
-        )
-    } else {
-        this
-    }
-}
-
-/**
- * Applies Tier 1 Material 3 Haze glass styling to floating pills, capsules, and player HUD cards,
- * keeping clip and glass shader geometry strictly synchronized.
- */
-@Composable
-fun Modifier.hazePillGlass(
+fun Modifier.hazeClearPlayerGlass(
     hazeState: HazeState?,
     shape: Shape
 ): Modifier {
-    val isApi31OrInspection = LocalInspectionMode.current || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val glassActive = isClearPlayerGlassActive(
+        hasHazeState = hazeState != null,
+        isInspectionMode = LocalInspectionMode.current,
+        sdkInt = Build.VERSION.SDK_INT
+    )
     val clipped = this.clip(shape)
-    return if (hazeState != null && isApi31OrInspection) {
-        val baseStyle = remember(shape) {
-            when (shape) {
-                is RoundedCornerShape -> GlassStyle { shape(shape) }
-                else -> AppBarGlassBaseStyle
+    return if (glassActive && hazeState != null) {
+        val style = remember(shape) {
+            GlassStyle.clear.then {
+                if (shape is RoundedCornerShape) {
+                    shape(shape)
+                }
+                tint(ClearPlayerGlassTint)
+                optics {
+                    copy(blurRadius = OpticalSizeValue.Fixed(2.dp))
+                }
             }
         }
-        clipped.hazeGlass(
-            input = HazeInput.Sources(hazeState),
-            style = baseStyle.material3()
-        )
+        clipped
+            .hazeGlass(
+                input = HazeInput.Sources(hazeState),
+                style = style
+            )
+            .border(width = 0.75.dp, color = ClearPlayerGlassBorderColor, shape = shape)
     } else {
         clipped
+            .background(
+                color = resolveClearPlayerGlassFallbackColor(isGlassActive = false),
+                shape = shape
+            )
+            .border(width = 1.dp, color = ClearPlayerGlassBorderColor, shape = shape)
     }
 }
 

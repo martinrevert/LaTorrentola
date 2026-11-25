@@ -8,38 +8,60 @@ import org.junit.Test
 class HazeModifiersTest {
 
     @Test
-    fun `resolveHazeAppBarContainerColor returns transparent when glass and API 31 or inspection are active`() {
-        val surface = Color(0xFF121212)
+    fun `isClearPlayerGlassActive returns true when hazeState is present on Android 12 plus or preview`() {
+        assertThat(
+            isClearPlayerGlassActive(
+                hasHazeState = true,
+                isInspectionMode = false,
+                sdkInt = Build.VERSION_CODES.S
+            )
+        ).isTrue()
 
-        val resolved = resolveHazeAppBarContainerColor(
-            hasGlass = true,
-            isApi31OrInspection = true,
-            surfaceColor = surface,
-            fallbackAlpha = 0.90f
-        )
-
-        assertThat(resolved).isEqualTo(Color.Transparent)
+        assertThat(
+            isClearPlayerGlassActive(
+                hasHazeState = true,
+                isInspectionMode = true,
+                sdkInt = Build.VERSION_CODES.R
+            )
+        ).isTrue()
     }
 
     @Test
-    fun `resolveHazeAppBarContainerColor returns translucent surface when glass is disabled or pre-API 31`() {
-        val surface = Color(0xFF121212)
+    fun `isClearPlayerGlassActive returns false when hazeState is null or pre-Android 12 at runtime`() {
+        assertThat(
+            isClearPlayerGlassActive(
+                hasHazeState = false,
+                isInspectionMode = false,
+                sdkInt = Build.VERSION_CODES.S
+            )
+        ).isFalse()
 
-        val withoutGlass = resolveHazeAppBarContainerColor(
-            hasGlass = false,
-            isApi31OrInspection = true,
-            surfaceColor = surface,
-            fallbackAlpha = 0.85f
-        )
-        val preApi31 = resolveHazeAppBarContainerColor(
-            hasGlass = true,
-            isApi31OrInspection = false,
-            surfaceColor = surface,
-            fallbackAlpha = 0.90f
-        )
+        assertThat(
+            isClearPlayerGlassActive(
+                hasHazeState = true,
+                isInspectionMode = false,
+                sdkInt = Build.VERSION_CODES.R
+            )
+        ).isFalse()
+    }
 
-        assertThat(withoutGlass).isEqualTo(surface.copy(alpha = 0.85f))
-        assertThat(preApi31).isEqualTo(surface.copy(alpha = 0.90f))
+    @Test
+    fun `resolveClearPlayerGlassFallbackColor returns transparent when active and dark fallback otherwise`() {
+        val customFallback = Color.Black.copy(alpha = 0.42f)
+
+        assertThat(
+            resolveClearPlayerGlassFallbackColor(
+                isGlassActive = true,
+                fallbackColor = customFallback
+            )
+        ).isEqualTo(Color.Transparent)
+
+        assertThat(
+            resolveClearPlayerGlassFallbackColor(
+                isGlassActive = false,
+                fallbackColor = customFallback
+            )
+        ).isEqualTo(customFallback)
     }
 
     @Test

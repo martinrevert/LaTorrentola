@@ -70,6 +70,7 @@ import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -127,14 +128,9 @@ import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
 import com.martinrevert.latorrentola.ui.theme.hazeSheetBackdropBlur
-import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -178,7 +174,6 @@ fun TvDetailScreen(
         themeMode ?: PreferenceManager(context).getTheme()
     }
     val isTv = remember(context) { context.isTvDevice() }
-    val hazeState = rememberHandheldHazeState(isTv)
 
     var showActorSheet by remember { mutableStateOf(false) }
     val actorSheetState = rememberBottomSheetState(
@@ -236,20 +231,14 @@ fun TvDetailScreen(
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.surface)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
-                        ) {
-                            MovieDetailPlaceholder(
-                                contentPadding = PaddingValues(
-                                    top = topPadding,
-                                    start = 16.dp,
-                                    end = 16.dp,
-                                    bottom = 16.dp + navBarHeight
-                                )
+                        MovieDetailPlaceholder(
+                            contentPadding = PaddingValues(
+                                top = topPadding,
+                                start = 16.dp,
+                                end = 16.dp,
+                                bottom = 16.dp + navBarHeight
                             )
-                        }
+                        )
                         TopAppBar(
                             title = {},
                             navigationIcon = {
@@ -264,10 +253,7 @@ fun TvDetailScreen(
                                     )
                                 }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = hazeAppBarContainerColor(hazeState != null, 0.85f)
-                            ),
-                            modifier = Modifier.hazeAppBarGlass(hazeState)
+                            colors = TopAppBarDefaults.topAppBarColors()
                         )
                     }
                 }
@@ -306,17 +292,11 @@ fun TvDetailScreen(
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.surface)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
-                        ) {
-                            ApiErrorView(
-                                errorMessage = state.message,
-                                onRetry = { viewModel.load(seriesId) },
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
+                        ApiErrorView(
+                            errorMessage = state.message,
+                            onRetry = { viewModel.load(seriesId) },
+                            modifier = Modifier.fillMaxSize()
+                        )
                         TopAppBar(
                             title = {},
                             navigationIcon = {
@@ -331,10 +311,7 @@ fun TvDetailScreen(
                                     )
                                 }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = hazeAppBarContainerColor(hazeState != null, 0.85f)
-                            ),
-                            modifier = Modifier.hazeAppBarGlass(hazeState)
+                            colors = TopAppBarDefaults.topAppBarColors()
                         )
                     }
                 }
@@ -403,7 +380,6 @@ fun TvDetailScreen(
                         seasonState = seasonState,
                         downloadedEpisodes = downloadedEpisodes,
                         watchHistoryMap = watchHistoryMap,
-                        hazeState = hazeState,
                         onWatchTrailer = { showTrailerDialog = true },
                         onSeasonSelected = viewModel::selectSeason,
                         onSeasonLongClick = { selectedSeasonForDialog = it },
@@ -1078,7 +1054,6 @@ private fun HandheldTvSeriesDetailContent(
     seasonState: TvSeasonUiState,
     downloadedEpisodes: List<DownloadedEpisode>,
     watchHistoryMap: Map<String, PlaybackProgress>,
-    hazeState: HazeState? = null,
     onWatchTrailer: () -> Unit,
     onSeasonSelected: (TmdbTvSeason) -> Unit,
     onSeasonLongClick: (TmdbTvSeason) -> Unit,
@@ -1136,17 +1111,16 @@ private fun HandheldTvSeriesDetailContent(
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val scrollState = rememberScrollState()
+    val topBarAlpha by remember(scrollState) {
+        derivedStateOf { (scrollState.value / 160f).coerceIn(0f, 1f) }
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
         // 1. Dynamic TMDB Backdrop with Directional Scrims
         if (!backdropUrl.isNullOrEmpty()) {
             val backdropHeight = if (isWideScreen) 380.dp else 260.dp
@@ -1589,7 +1563,7 @@ private fun HandheldTvSeriesDetailContent(
         }
         }
 
-        // 3. Floating Glass Top Navigation Bar (Back button only; actions relocated to action buttons row)
+        // 3. Floating Top Navigation Bar (Back button only; actions relocated to action buttons row)
         TopAppBar(
             title = {},
             navigationIcon = {
@@ -1605,9 +1579,8 @@ private fun HandheldTvSeriesDetailContent(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = hazeAppBarContainerColor(hazeState != null, 0.85f)
-            ),
-            modifier = Modifier.hazeAppBarGlass(hazeState)
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = topBarAlpha)
+            )
         )
     }
 }

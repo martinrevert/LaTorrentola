@@ -71,10 +71,6 @@ import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import androidx.compose.ui.tooling.preview.Preview
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
-import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
-import dev.chrisbanes.haze.hazeSource
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.tv.material3.Button
 import com.martinrevert.latorrentola.service.storage.StorageLocation
@@ -182,18 +178,16 @@ private fun SettingsScreenContent(
     val configuration = LocalConfiguration.current
     val isWideScreen = configuration.screenWidthDp >= 600 || isTv
     val scrollState = rememberScrollState()
-    val hazeState = rememberHandheldHazeState(isTv)
     val topBarContainerColor = if (isTv) {
         TvMaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
     } else {
-        hazeAppBarContainerColor(hazeState != null, 0.90f)
+        MaterialTheme.colorScheme.surface
     }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
-                modifier = Modifier.hazeAppBarGlass(hazeState),
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = topBarContainerColor),
                 title = {
                     if (isTv) {
@@ -239,7 +233,6 @@ private fun SettingsScreenContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
                 .consumeWindowInsets(padding)
         ) {
         if (isWideScreen) {

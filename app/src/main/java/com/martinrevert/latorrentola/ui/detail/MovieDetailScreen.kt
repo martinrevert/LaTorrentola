@@ -57,12 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
 import com.martinrevert.latorrentola.ui.theme.hazeSheetBackdropBlur
-import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
 import coil3.compose.AsyncImage
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -268,7 +263,6 @@ private fun MovieDetailScreenContent(
     onRetry: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val hazeState = rememberHandheldHazeState(isTv)
     val scrollState = rememberScrollState()
     val insufficientStorageState = remember { mutableStateOf<Pair<Long, Long>?>(null) }
     var torrentToDelete by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -367,13 +361,7 @@ private fun MovieDetailScreenContent(
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.surface)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
-                    ) {
-                        MovieDetailPlaceholder(contentPadding = detailContentPadding)
-                    }
+                    MovieDetailPlaceholder(contentPadding = detailContentPadding)
                     TopAppBar(
                         title = {},
                         navigationIcon = {
@@ -388,10 +376,7 @@ private fun MovieDetailScreenContent(
                                 )
                             }
                         },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = hazeAppBarContainerColor(hazeState != null, 0.85f)
-                        ),
-                        modifier = Modifier.hazeAppBarGlass(hazeState)
+                        colors = TopAppBarDefaults.topAppBarColors()
                     )
                 }
             }
@@ -451,7 +436,6 @@ private fun MovieDetailScreenContent(
                     onInsufficientStorage = { available, required ->
                         insufficientStorageState.value = Pair(available, required)
                     },
-                    hazeState = hazeState,
                     scrollState = scrollState
                 )
             }
@@ -461,17 +445,11 @@ private fun MovieDetailScreenContent(
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.surface)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
-                    ) {
-                        ApiErrorView(
-                            error = uiState.message,
-                            onRetry = onRetry,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
+                    ApiErrorView(
+                        error = uiState.message,
+                        onRetry = onRetry,
+                        modifier = Modifier.fillMaxSize()
+                    )
                     TopAppBar(
                         title = {},
                         navigationIcon = {
@@ -486,10 +464,7 @@ private fun MovieDetailScreenContent(
                                 )
                             }
                         },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = hazeAppBarContainerColor(hazeState != null, 0.85f)
-                        ),
-                        modifier = Modifier.hazeAppBarGlass(hazeState)
+                        colors = TopAppBarDefaults.topAppBarColors()
                     )
                 }
             }
@@ -567,7 +542,6 @@ private fun HandheldMovieDetailContent(
     onAddLanguageToFilter: (String) -> Unit,
     onCastClick: (String) -> Unit,
     onInsufficientStorage: (Long, Long) -> Unit,
-    hazeState: HazeState? = null,
     scrollState: ScrollState = rememberScrollState(),
     modifier: Modifier = Modifier
 ) {
@@ -622,17 +596,16 @@ private fun HandheldMovieDetailContent(
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val isConstrainedWidth = LocalConfiguration.current.screenWidthDp < 360
+    val topBarAlpha by remember(scrollState) {
+        derivedStateOf { (scrollState.value / 160f).coerceIn(0f, 1f) }
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
             // 1. Dynamic TMDB Backdrop with Directional Scrims
         if (!backdropUrl.isNullOrEmpty()) {
             val backdropHeight = if (isWideScreen) 380.dp else 260.dp
@@ -1052,9 +1025,8 @@ private fun HandheldMovieDetailContent(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = hazeAppBarContainerColor(hazeState != null, 0.85f)
-            ),
-            modifier = Modifier.hazeAppBarGlass(hazeState)
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = topBarAlpha)
+            )
         )
 
         // 4. Modal YouTube Trailer Dialog

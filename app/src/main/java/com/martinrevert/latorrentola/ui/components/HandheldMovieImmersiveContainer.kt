@@ -28,8 +28,6 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbMovieResult
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieSummary
 import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.utils.GenreTranslation
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
 import java.util.Locale
 
 /**
@@ -61,7 +59,6 @@ fun HandheldMovieImmersiveContainer(
     isLogoLoading: Boolean,
     onDetailsClick: () -> Unit,
     modifier: Modifier = Modifier,
-    hazeState: HazeState? = null,
     topBar: @Composable (() -> Unit)? = null,
     chips: @Composable (() -> Unit)? = null,
     content: @Composable () -> Unit
@@ -93,11 +90,7 @@ fun HandheldMovieImmersiveContainer(
             val topBarHeightDp = (topBarPlaceables.maxOfOrNull { it.height } ?: 0).toDp()
 
             val scenePlaceables = subcompose("scene") {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
-                ) {
+                Box(modifier = Modifier.fillMaxSize()) {
         // 1. Dynamic high-resolution backdrop with smooth crossfade
         Crossfade(
             targetState = backdropUrl,

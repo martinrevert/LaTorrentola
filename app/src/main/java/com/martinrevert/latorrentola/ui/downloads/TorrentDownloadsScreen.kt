@@ -98,13 +98,9 @@ import com.martinrevert.latorrentola.ui.components.CastBottomSheet
 import com.martinrevert.latorrentola.ui.components.CastCodecWarningObserver
 import com.martinrevert.latorrentola.ui.player.LocalPlayerActivity
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
 import com.martinrevert.latorrentola.ui.theme.hazeSheetBackdropBlur
-import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import com.martinrevert.latorrentola.utils.PlayerIntentUtils
 import com.martinrevert.latorrentola.utils.isTvDevice
-import dev.chrisbanes.haze.hazeSource
 import java.io.File
 
 /**
@@ -122,7 +118,6 @@ fun TorrentDownloadsScreen(
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val isTv = context.isTvDevice()
-    val hazeState = rememberHandheldHazeState(isTv)
     var showCastBottomSheet by remember { mutableStateOf(false) }
 
     // Connect to MediaController to track active playback
@@ -264,14 +259,7 @@ fun TorrentDownloadsScreen(
                         )
                     }
                 },
-                colors = if (isTv) {
-                    TopAppBarDefaults.topAppBarColors()
-                } else {
-                    TopAppBarDefaults.topAppBarColors(
-                        containerColor = hazeAppBarContainerColor(hazeState != null, 0.90f)
-                    )
-                },
-                modifier = Modifier.hazeAppBarGlass(hazeState)
+                colors = TopAppBarDefaults.topAppBarColors()
             )
         }
     ) { padding ->
@@ -279,7 +267,6 @@ fun TorrentDownloadsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .then(if (isTv) Modifier.padding(padding) else Modifier)
-                .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
         ) {
             if (downloads.isEmpty()) {
                 Column(

@@ -12,6 +12,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SliderState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,9 +45,9 @@ val WatchProgressTrackColor = Color(0x33FFFFFF)
 fun WatchProgressBar(
     progressPercent: Int?,
     modifier: Modifier = Modifier,
-    height: Dp = 4.dp
+    height: Dp = 4.dp,
 ) {
-    if (progressPercent != null && progressPercent > 0) {
+    if ((progressPercent != null) && (progressPercent > 0)) {
         val fraction = (progressPercent / 100f).coerceIn(0f, 1f)
         LinearProgressIndicator(
             progress = { fraction },
@@ -76,12 +77,14 @@ fun WatchProgressSlider(
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
     onValueChangeFinished: (() -> Unit)? = null,
-    enabled: Boolean = true
+    enabled: Boolean = true,
 ) {
     val clampedValue = value.coerceIn(0f, 1f)
     val sliderState = remember { SliderState(value = clampedValue) }
-    if (sliderState.value != clampedValue) {
-        sliderState.value = clampedValue
+    SideEffect {
+        if (sliderState.value != clampedValue) {
+            sliderState.value = clampedValue
+        }
     }
     Slider(
         state = sliderState,

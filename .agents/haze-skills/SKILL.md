@@ -29,21 +29,14 @@ Esta guía normativa define los estándares de arquitectura, implementación y r
 Todos los artefactos de Haze deben mantenerse estrictamente en la versión **2.1.0** para asegurar compatibilidad binaria y el soporte estable del efecto **Glass** sin requerir anotaciones experimentales (`@ExperimentalHazeApi`).
 
 ```kotlin
-// build.gradle.kts (Módulo de la Aplicación)
+// build.gradle.kts (Módulo de la Aplicación - Perfil Liviano en LaTorrentola)
 dependencies {
-    // 1. Infraestructura base y Blur para Compose Multiplatform
+    // 1. Infraestructura base y módulo estable de Glass (GlassStyle.clear)
     implementation("dev.chrisbanes.haze:haze:2.1.0")
-    implementation("dev.chrisbanes.haze:haze-blur:2.1.0")
-
-    // 2. Módulo estable de Glass y Fusión de Superficies
     implementation("dev.chrisbanes.haze:haze-glass:2.1.0")
 
-    // 3. Integración mandatoria con Material 3 en Handheld (Mobile/Desktop)
-    implementation("androidx.compose.material3:material3:1.3.1")
-    implementation("dev.chrisbanes.haze:haze-blur-material3:2.1.0")
-    implementation("dev.chrisbanes.haze:haze-glass-material3:2.1.0")
-
-    // 4. Integración mandatoria con Compose Material 3 para Android TV
+    // 2. Integración mandatoria con Material 3 en Handheld y Android TV
+    implementation("androidx.compose.material3:material3:...")
     implementation("androidx.tv:tv-material:1.1.0")
 }
 ```
@@ -255,16 +248,19 @@ En aplicaciones de streaming para TV (que utilicen ExoPlayer o Media3), el video
 
 ---
 
-## 8. Arquitectura Coherente de Cristal en Dos Niveles (`HazeModifiers.kt`: Tier 1 vs. Tier 2)
+## 8. Arquitectura Coherente de Cristal en LaTorrentola (`HazeModifiers.kt`)
 
-Para garantizar consistencia visual, transiciones fluidas y máxima legibilidad (cumplimiento estricto de WCAG AAA) en todas las pantallas Handheld (y aislamiento total en Android TV), toda integración de Haze debe pasar por los helpers centralizados de `ui/theme/HazeModifiers.kt`:
+Para garantizar máxima claridad de contenido, transiciones fluidas y legibilidad estricta (WCAG AAA) en todas las pantallas Handheld (y aislamiento total en Android TV), toda integración de Haze en el proyecto pasa exclusivamente por los helpers centralizados de `ui/theme/HazeModifiers.kt` (usando únicamente los artefactos `dev.chrisbanes.haze:haze:2.1.0` y `dev.chrisbanes.haze:haze-glass:2.1.0`):
 
-### 8.1 Tier 1: Barras de Navegación Edge-to-Edge y Controles Flotantes del Reproductor
-- **Barras de aplicación (`hazeAppBarGlass` + `hazeAppBarContainerColor`)**: Usado en `TopAppBar`, cabeceras y barras de navegación en todas las pantallas Handheld (incluyendo estados Loading, Error y Success). Configura explícitamente `GlassStyle { shape(RoundedCornerShape(0.dp)) }.material3()` para extender el cristal de borde a borde sin heredar el radio por defecto de `GlassDefaults.shape` (16.dp), con `Color.Transparent` en API 31+ / Preview y respaldo translúcido (`surface.copy(alpha = fallbackAlpha)`) en API < 31. `Modifier.hazeSource` debe colocarse estrictamente en el contenedor hermano desplazable/fondo bajo la barra, nunca envolviendo al `TopAppBar`.
-- **Controles flotantes de ExoPlayer (`hazePillGlass`)**: Usado en `LocalPlayerActivity` (Top Bar pill, Center HUD capsule, Bottom Bar card, Quick Seek pill, Double Tap pills) con `surfaceContainerHigh.copy(alpha = 0.48f)` cuando el cristal está activo. `hazePillGlass` acepta `Shape` y sincroniza `.clip(shape)` con `GlassStyle { shape(...) }.material3()`.
-- **Pipeline de Media3**: Para muestrear video en tiempo real sin romper el árbol de renderizado de Compose, `PlayerSurface` debe instanciarse con `surfaceType = SURFACE_TYPE_TEXTURE_VIEW` en Handheld con `Modifier.hazeSource(playerHazeState)`. En Android TV se preserva `SURFACE_TYPE_SURFACE_VIEW` y se desactiva cualquier desenfoque (`rememberHandheldHazeState(isTv)` devuelve `null` y `hazeSheetBackdropBlur` queda `enabled = false`).
+### 8.1 Barras Superiores (`TopAppBar` y cabeceras): SIN Haze
+- Todas las `TopAppBar` y cabeceras secundarias usan colores estándar de Material 3 (`TopAppBarDefaults.topAppBarColors()`, `Color.Transparent` en contenedores inmersivos y `MaterialTheme.colorScheme.surface.copy(alpha = topBarAlpha)` en pantallas de detalle con scroll). No se aplica `hazeGlass` ni `hazeSource` en barras superiores ni cabeceras de navegación.
 
-### 8.2 Tier 2: Modal Bottom Sheets Opacos con Desenfoque Animado de Fondo (`hazeSheetBackdropBlur`)
-- **Componentes**: `ActorDetailBottomSheet`, `GenreBottomSheet`, `CastBottomSheet`, `PlayerMobileBottomSheet` y el panel de opciones de reproducción.
-- **Anti-Patrón Prohibido**: Usar `Color.Transparent` o transparencia parcial (`0.88f`) sobre `hazeSource` parcial en bottom sheets provoca colisiones visuales con cortes del fondo (p. ej. backdrops de 260dp en `MovieDetailScreen`/`TvDetailScreen`) y transiciones abruptas mitad-desenfocadas al abrir o cerrar el panel.
-- **Contrato Normativo**: Todo `ModalBottomSheet` debe usar un contenedor opaco `containerColor = MaterialTheme.colorScheme.surfaceContainerHigh` (sin `hazeGlass` ni parámetro `hazeState`), mientras que la raíz de la pantalla padre aplica `Modifier.hazeSheetBackdropBlur(isSheetVisible = ..., enabled = !isTv)` (`Animatable` simétrico de `0.dp` ↔ `18.dp` en 250ms aplicado en `graphicsLayer` mediante `RenderEffect.createBlurEffect` en Android 12+ para evitar recomposiciones de raíz por fotograma). Esto desenfoca toda la escena subyacente de manera uniforme y garantiza contraste perfecto del texto en todo momento.
+### 8.2 Controles Individuales del Reproductor ExoPlayer (`hazeClearPlayerGlass` con `GlassStyle.clear`)
+- **Cristal Transparente por Objeto (`hazeClearPlayerGlass`)**: Usado en `LocalPlayerActivity` (Handheld únicamente) sobre cada botón circular individual (Atrás, Subtítulos, Cast, Más opciones, Rebobinar, Play/Pausa, Adelantar, Pantalla completa), la cápsula compacta de tiempo y las píldoras de salto rápido/doble toque — **nunca** agrupados en barras o bloques opacos continuos que tapen el video en pantallas estrechas.
+- **Estilo**: `GlassStyle.clear` con desenfoque sutil (`OpticalSizeValue.Fixed(2.dp)`), tinte oscuro mínimo (`Color.Black.copy(alpha = 0.12f)`), borde sutil (`0.75.dp` blanco al `22%`) y sin `.background(...)` opaco apilado encima, dejando pasar el video real detrás y entre cada control. En API < 31 degrada a un relleno oscuro translúcido (`Color.Black.copy(alpha = 0.42f)`) + borde `1.dp`.
+- **Pipeline de Media3**: En Handheld (`!isTv`), `PlayerSurface` usa `surfaceType = SURFACE_TYPE_TEXTURE_VIEW` con `Modifier.hazeSource(playerHazeState)`. En Android TV (`isTv`) se mantiene `SURFACE_TYPE_SURFACE_VIEW` y se desactiva cualquier shader de Haze (`rememberHandheldHazeState(true) == null` y `hazeSheetBackdropBlur(..., enabled = false)`).
+
+### 8.3 Tier 2: Modal Bottom Sheets Opacos con Desenfoque Animado de Fondo (`hazeSheetBackdropBlur`)
+- **Componentes**: `ActorDetailBottomSheet`, `GenreBottomSheet`, `TvGenreBottomSheet`, `CastBottomSheet`, `PlayerMobileBottomSheet` y el panel de opciones del reproductor.
+- **Anti-Patrón Prohibido**: Usar `Color.Transparent` o transparencia parcial (`0.88f`) sobre `hazeSource` parcial en bottom sheets provoca colisiones visuales y transiciones abruptas mitad-desenfocadas al abrir o cerrar el panel.
+- **Contrato Normativo**: Todo `ModalBottomSheet` usa contenedor opaco `containerColor = MaterialTheme.colorScheme.surfaceContainerHigh` (sin `hazeGlass` ni parámetro `hazeState`), mientras la raíz de la pantalla padre aplica `Modifier.hazeSheetBackdropBlur(isSheetVisible = ..., enabled = !isTv)` (`Animatable` simétrico de `0.dp` ↔ `18.dp` en 250ms aplicado en `graphicsLayer` mediante `RenderEffect.createBlurEffect` en Android 12+ para evitar recomposiciones de raíz por fotograma).

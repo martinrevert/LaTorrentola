@@ -158,9 +158,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
@@ -208,7 +212,7 @@ import androidx.media3.ui.compose.state.rememberPresentationState
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
-import com.martinrevert.latorrentola.ui.theme.hazePillGlass
+import com.martinrevert.latorrentola.ui.theme.hazeClearPlayerGlass
 import com.martinrevert.latorrentola.ui.theme.hazeSheetBackdropBlur
 import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import dev.chrisbanes.haze.HazeState
@@ -218,7 +222,10 @@ import androidx.compose.material.icons.filled.CastConnected
 import com.martinrevert.latorrentola.ui.components.CastBottomSheet
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Icon as TvIcon
 import androidx.tv.material3.IconButton as TvIconButton
+import androidx.tv.material3.IconButtonDefaults as TvIconButtonDefaults
+import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 import androidx.tv.material3.Surface as TvSurface
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaMetadata as CastMetadata
@@ -4225,35 +4232,65 @@ fun ControlButton(
     onClick: () -> Unit,
     icon: ImageVector,
     contentDescription: String,
-    tint: Color = MaterialTheme.colorScheme.onSurface,
+    tint: Color? = null,
     enabled: Boolean = true,
     focusRequester: FocusRequester? = null,
     modifier: Modifier = Modifier,
-    iconSize: Dp = 24.dp
+    iconSize: Dp = 24.dp,
+    glassHazeState: HazeState? = null,
+    buttonSize: Dp? = null
 ) {
-    val isTv = LocalContext.current.isTvDevice()
-    var isFocused by remember { mutableStateOf(false) }
-
-    val itemModifier = modifier
-        .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-        .onFocusChanged { isFocused = it.isFocused }
-        .background(if (isFocused) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f) else Color.Transparent, CircleShape)
+    val context = LocalContext.current
+    val isTv = remember(context) { context.isTvDevice() }
 
     if (isTv) {
+        val resolvedTint = tint ?: TvMaterialTheme.colorScheme.onSurface
+        val tvModifier = modifier
+            .then(if (buttonSize != null) Modifier.size(buttonSize) else Modifier)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
         TvIconButton(
             onClick = onClick,
             enabled = enabled,
-            modifier = itemModifier
+            colors = TvIconButtonDefaults.colors(
+                containerColor = Color.Transparent,
+                contentColor = resolvedTint,
+                focusedContainerColor = TvMaterialTheme.colorScheme.onSurface,
+                focusedContentColor = TvMaterialTheme.colorScheme.surface,
+                disabledContainerColor = Color.Transparent,
+                disabledContentColor = TvMaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            ),
+            scale = TvIconButtonDefaults.scale(focusedScale = 1.15f),
+            modifier = tvModifier
         ) {
-            Icon(imageVector = icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(iconSize))
+            TvIcon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                modifier = Modifier.size(iconSize)
+            )
         }
     } else {
+        val resolvedTint = tint ?: MaterialTheme.colorScheme.onSurface
+        val handheldModifier = modifier
+            .then(if (buttonSize != null) Modifier.size(buttonSize) else Modifier)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .then(
+                if (glassHazeState != null) {
+                    Modifier.hazeClearPlayerGlass(glassHazeState, CircleShape)
+                } else {
+                    Modifier
+                }
+            )
         IconButton(
             onClick = onClick,
             enabled = enabled,
-            modifier = itemModifier
+            modifier = handheldModifier
         ) {
-            Icon(imageVector = icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(iconSize))
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = resolvedTint,
+                modifier = Modifier.size(iconSize)
+            )
         }
     }
 }
@@ -4427,6 +4464,8 @@ fun PlayerControlsOverlay(
     var isScrubbing by remember { mutableStateOf(false) }
     var isSliderFocused by remember { mutableStateOf(false) }
     var scrubFraction by remember { mutableFloatStateOf(0f) }
+    var tvScrubPositionMs by remember { mutableStateOf<Long?>(null) }
+    var tvScrubCommitTrigger by remember { mutableLongStateOf(0L) }
 
     var quickSeekDelta by remember { mutableIntStateOf(0) }
     var showQuickSeek by remember { mutableStateOf(false) }
@@ -4436,13 +4475,12 @@ fun PlayerControlsOverlay(
     var doubleTapTriggerTime by remember { mutableLongStateOf(0L) }
 
     val context = LocalContext.current
-    val isTv = context.isTvDevice()
+    val isTv = remember(context) { context.isTvDevice() }
     val configuration = LocalConfiguration.current
     val isOrientationPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
     // YouTube-style vertical layout only applies to handhelds held in portrait (never on Android TV)
     val isPortrait = !isTv && isOrientationPortrait
     val activeHaze = hazeState
-    val useGlass = activeHaze != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val hostActivity = remember(context) { context.findActivity() }
 
     // Release the orientation forced by the fullscreen toggle once the device physically matches it
@@ -4532,8 +4570,11 @@ fun PlayerControlsOverlay(
 
     var isPlaying by remember(controller) { mutableStateOf(controller.isPlaying) }
     var currentPosition by remember(controller) { mutableLongStateOf(controller.currentPosition) }
+    var pendingSeekTargetMs by remember(controller) { mutableStateOf<Long?>(null) }
+    var pendingSeekDeadlineMs by remember(controller) { mutableLongStateOf(0L) }
     var duration by remember(controller) { mutableLongStateOf(controller.duration) }
     var playbackTracks by remember(controller) { mutableStateOf(controller.currentTracks) }
+    var currentMediaId by remember(controller) { mutableStateOf(controller.currentMediaItem?.mediaId) }
     var isCasting by remember(controller) {
         mutableStateOf(controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE)
     }
@@ -4552,6 +4593,16 @@ fun PlayerControlsOverlay(
             override fun onPlaybackStateChanged(state: Int) {
                 duration = controller.duration
             }
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                currentMediaId = mediaItem?.mediaId
+            }
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int
+            ) {
+                pendingSeekTargetMs = null
+            }
         }
         controller.addListener(listener)
         onDispose { controller.removeListener(listener) }
@@ -4559,7 +4610,15 @@ fun PlayerControlsOverlay(
 
     LaunchedEffect(controller, isPlaying) {
         while (true) {
-            currentPosition = controller.currentPosition
+            val reportedPos = controller.currentPosition
+            val pending = pendingSeekTargetMs
+            if (pending == null ||
+                abs(reportedPos - pending) <= 1_500L ||
+                SystemClock.elapsedRealtime() >= pendingSeekDeadlineMs
+            ) {
+                pendingSeekTargetMs = null
+                currentPosition = reportedPos
+            }
             duration = controller.duration
             delay(250.milliseconds)
         }
@@ -4571,13 +4630,40 @@ fun PlayerControlsOverlay(
         }
     }
 
-    // Auto-hide timeout resets whenever user interacts; paused while scrubbing, slider focused, or overflow sheet open
-    LaunchedEffect(controlsVisible, lastInteractionTime, isScrubbing, isSliderFocused, showMoreOptionsSheet) {
-        if (controlsVisible && !isScrubbing && !isSliderFocused && !showMoreOptionsSheet) {
+    // Auto-hide timeout resets whenever user interacts; paused while actively scrubbing or overflow sheet open
+    LaunchedEffect(controlsVisible, lastInteractionTime, isScrubbing, showMoreOptionsSheet) {
+        if (controlsVisible && !isScrubbing && !showMoreOptionsSheet) {
             delay(6.seconds)
-            if (!isScrubbing && !isSliderFocused) {
+            if (!isScrubbing) {
                 controlsVisible = false
             }
+        }
+    }
+
+    val commitTvScrub: () -> Unit = {
+        val targetMs = tvScrubPositionMs
+        if (isTv && isScrubbing && targetMs != null) {
+            pendingSeekTargetMs = targetMs
+            pendingSeekDeadlineMs = SystemClock.elapsedRealtime() + 1_500L
+            controller.seekTo(targetMs)
+            currentPosition = targetMs
+        }
+        tvScrubPositionMs = null
+        isScrubbing = false
+        lastInteractionTime = System.currentTimeMillis()
+    }
+
+    LaunchedEffect(controller, currentMediaId) {
+        tvScrubPositionMs = null
+        isScrubbing = false
+        tvScrubCommitTrigger = 0L
+        pendingSeekTargetMs = null
+    }
+
+    LaunchedEffect(controller, currentMediaId, tvScrubCommitTrigger) {
+        if (isTv && isScrubbing && tvScrubCommitTrigger > 0L) {
+            delay(PlayerTvScrubHelper.DEBOUNCE_COMMIT_MS.milliseconds)
+            commitTvScrub()
         }
     }
 
@@ -4603,6 +4689,8 @@ fun PlayerControlsOverlay(
         if (isTv && controlsVisible) {
             delay(100.milliseconds)
             try { playPauseFocusRequester.requestFocus() } catch (_: Exception) {}
+        } else if (!controlsVisible && isTv && isScrubbing) {
+            commitTvScrub()
         }
     }
 
@@ -4710,27 +4798,25 @@ fun PlayerControlsOverlay(
         } else {
             Modifier.fillMaxSize()
         }
-        val scrimColor = MaterialTheme.colorScheme.scrim
-
         AnimatedVisibility(
             visible = controlsVisible,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = controlsFrameModifier
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
+            val overlayContent: @Composable () -> Unit = {
+                val scrimColor = if (isTv) TvMaterialTheme.colorScheme.scrim else MaterialTheme.colorScheme.scrim
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
                     .then(
-                        if (isPortrait) {
+                        if (!isTv) {
                             Modifier.background(
                                 Brush.verticalGradient(
-                                    listOf(
-                                        scrimColor.copy(alpha = 0.7f),
-                                        scrimColor.copy(alpha = 0.35f),
-                                        scrimColor.copy(alpha = 0.35f),
-                                        scrimColor.copy(alpha = 0.75f)
-                                    )
+                                    0.0f to scrimColor.copy(alpha = 0.38f),
+                                    0.26f to Color.Transparent,
+                                    0.74f to Color.Transparent,
+                                    1.0f to scrimColor.copy(alpha = 0.42f)
                                 )
                             )
                         } else {
@@ -4744,45 +4830,43 @@ fun PlayerControlsOverlay(
                             Modifier
                         }
                     )
-                    .padding(if (isPortrait) PaddingValues(horizontal = 4.dp, vertical = 0.dp) else PaddingValues(24.dp))
+                    .padding(if (isPortrait) PaddingValues(horizontal = 8.dp, vertical = 6.dp) else PaddingValues(24.dp))
             ) {
                 val hasSubtitleTracks = playbackTracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
                 val hasAudioTracks = playbackTracks.groups.any { it.type == C.TRACK_TYPE_AUDIO }
+                val handheldIconTint = Color.White
+                val handheldDisabledTint = Color.White.copy(alpha = 0.38f)
+                val handheldTextShadow = remember {
+                    Shadow(
+                        color = Color.Black.copy(alpha = 0.75f),
+                        offset = Offset(0f, 1.5f),
+                        blurRadius = 6f
+                    )
+                }
 
-                // Top Bar
+                // Top Bar (per-object clear liquid glass buttons on handheld; no joined slab)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .align(Alignment.TopCenter)
-                        .then(
-                            if (activeHaze != null) {
-                                Modifier
-                                    .hazePillGlass(activeHaze, CircleShape)
-                                    .background(
-                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(
-                                            alpha = if (useGlass) 0.45f else 0.78f
-                                        ),
-                                        CircleShape
-                                    )
-                                    .padding(horizontal = if (isPortrait) 8.dp else 16.dp, vertical = 4.dp)
-                            } else {
-                                Modifier
-                            }
-                        ),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                        .align(Alignment.TopCenter),
+                    horizontalArrangement = Arrangement.spacedBy(if (isPortrait) 6.dp else 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (isPortrait) {
-                        // YouTube-style portrait top bar: Back + prominent title + essential actions + overflow
+                        // YouTube-style portrait top bar: individual clear glass buttons + unboxed title
                         ControlButton(
                             onClick = onBack,
                             icon = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back_desc)
+                            contentDescription = stringResource(R.string.back_desc),
+                            tint = handheldIconTint,
+                            iconSize = 20.dp,
+                            glassHazeState = activeHaze,
+                            buttonSize = 38.dp
                         )
                         Text(
                             text = mediaTitle,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            style = MaterialTheme.typography.titleSmall.copy(shadow = handheldTextShadow),
+                            color = Color.White,
                             fontWeight = FontWeight.Bold,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
@@ -4798,7 +4882,10 @@ fun PlayerControlsOverlay(
                             icon = Icons.Default.Subtitles,
                             contentDescription = stringResource(R.string.player_subtitle_tracks),
                             enabled = hasSubtitleTracks,
-                            tint = if (hasSubtitleTracks) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            tint = if (hasSubtitleTracks) handheldIconTint else handheldDisabledTint,
+                            iconSize = 20.dp,
+                            glassHazeState = activeHaze,
+                            buttonSize = 36.dp
                         )
                         ControlButton(
                             onClick = {
@@ -4807,7 +4894,10 @@ fun PlayerControlsOverlay(
                             },
                             icon = if (isCasting) Icons.Default.CastConnected else Icons.Default.Cast,
                             contentDescription = stringResource(R.string.cast_desc),
-                            tint = if (isCasting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            tint = if (isCasting) MaterialTheme.colorScheme.primary else handheldIconTint,
+                            iconSize = 20.dp,
+                            glassHazeState = activeHaze,
+                            buttonSize = 36.dp
                         )
                         ControlButton(
                             onClick = {
@@ -4815,114 +4905,168 @@ fun PlayerControlsOverlay(
                                 onShowMoreOptionsSheetChange(true)
                             },
                             icon = Icons.Default.MoreVert,
-                            contentDescription = stringResource(R.string.player_more_options)
+                            contentDescription = stringResource(R.string.player_more_options),
+                            tint = handheldIconTint,
+                            iconSize = 20.dp,
+                            glassHazeState = activeHaze,
+                            buttonSize = 36.dp
                         )
                     } else {
-                    Text(
-                        text = mediaTitle,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
+                        val actionIconTint = if (isTv) TvMaterialTheme.colorScheme.onSurface else handheldIconTint
+                        val actionDisabledTint = if (isTv) {
+                            TvMaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        } else {
+                            handheldDisabledTint
+                        }
+                        val actionButtonSize = if (isTv) 44.dp else 40.dp
+                        val actionIconSize = if (isTv) 24.dp else 22.dp
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // 1. Subtítulos Incrustados
-                        ControlButton(
-                            onClick = {
-                                lastInteractionTime = System.currentTimeMillis()
-                                onShowSubtitles()
+                        Text(
+                            text = mediaTitle,
+                            style = if (isTv) {
+                                MaterialTheme.typography.titleMedium
+                            } else {
+                                MaterialTheme.typography.titleMedium.copy(shadow = handheldTextShadow)
                             },
-                            icon = Icons.Default.Subtitles,
-                            contentDescription = "Subtitles",
-                            enabled = hasSubtitleTracks,
-                            tint = if (hasSubtitleTracks) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                            focusRequester = subtitlesFocusRequester
+                            color = if (isTv) TvMaterialTheme.colorScheme.onSurface else Color.White,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
-                        // 2. OpenSubtitles
-                        ControlButton(
-                            onClick = {
-                                lastInteractionTime = System.currentTimeMillis()
-                                onSearchSubtitles()
-                            },
-                            icon = Icons.Default.Download,
-                            contentDescription = "Search Subtitles",
-                            focusRequester = searchFocusRequester
-                        )
-                        // 3. Estilos de Subtítulo
-                        ControlButton(
-                            onClick = {
-                                lastInteractionTime = System.currentTimeMillis()
-                                onShowSubtitleStyle()
-                            },
-                            icon = Icons.Default.ColorLens,
-                            contentDescription = "Subtitle Style",
-                            focusRequester = styleFocusRequester
-                        )
-                        // 4. Pistas de Audio
-                        ControlButton(
-                            onClick = {
-                                lastInteractionTime = System.currentTimeMillis()
-                                onShowAudioTracks()
-                            },
-                            icon = Icons.Default.GraphicEq,
-                            contentDescription = "Audio Tracks",
-                            enabled = hasAudioTracks,
-                            tint = if (hasAudioTracks) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                            focusRequester = audioFocusRequester
-                        )
-                        // 5. Stats for Nerds
-                        ControlButton(
-                            onClick = {
-                                lastInteractionTime = System.currentTimeMillis()
-                                onToggleStats()
-                            },
-                            icon = Icons.Default.BugReport,
-                            contentDescription = "Stats",
-                            tint = if (showStats) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                            focusRequester = statsFocusRequester
-                        )
-                        // 6. Cast (Handheld only)
-                        if (!isTv) {
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // 1. Subtítulos Incrustados
                             ControlButton(
                                 onClick = {
                                     lastInteractionTime = System.currentTimeMillis()
-                                    onShowCast()
+                                    onShowSubtitles()
                                 },
-                                icon = if (isCasting) Icons.Default.CastConnected else Icons.Default.Cast,
-                                contentDescription = "Cast",
-                                tint = if (isCasting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                icon = Icons.Default.Subtitles,
+                                contentDescription = "Subtitles",
+                                enabled = hasSubtitleTracks,
+                                tint = if (hasSubtitleTracks) actionIconTint else actionDisabledTint,
+                                focusRequester = subtitlesFocusRequester,
+                                iconSize = actionIconSize,
+                                glassHazeState = activeHaze,
+                                buttonSize = actionButtonSize
                             )
+                            // 2. OpenSubtitles
+                            ControlButton(
+                                onClick = {
+                                    lastInteractionTime = System.currentTimeMillis()
+                                    onSearchSubtitles()
+                                },
+                                icon = Icons.Default.Download,
+                                contentDescription = "Search Subtitles",
+                                tint = actionIconTint,
+                                focusRequester = searchFocusRequester,
+                                iconSize = actionIconSize,
+                                glassHazeState = activeHaze,
+                                buttonSize = actionButtonSize
+                            )
+                            // 3. Estilos de Subtítulo
+                            ControlButton(
+                                onClick = {
+                                    lastInteractionTime = System.currentTimeMillis()
+                                    onShowSubtitleStyle()
+                                },
+                                icon = Icons.Default.ColorLens,
+                                contentDescription = "Subtitle Style",
+                                tint = actionIconTint,
+                                focusRequester = styleFocusRequester,
+                                iconSize = actionIconSize,
+                                glassHazeState = activeHaze,
+                                buttonSize = actionButtonSize
+                            )
+                            // 4. Pistas de Audio
+                            ControlButton(
+                                onClick = {
+                                    lastInteractionTime = System.currentTimeMillis()
+                                    onShowAudioTracks()
+                                },
+                                icon = Icons.Default.GraphicEq,
+                                contentDescription = "Audio Tracks",
+                                enabled = hasAudioTracks,
+                                tint = if (hasAudioTracks) actionIconTint else actionDisabledTint,
+                                focusRequester = audioFocusRequester,
+                                iconSize = actionIconSize,
+                                glassHazeState = activeHaze,
+                                buttonSize = actionButtonSize
+                            )
+                            // 5. Stats for Nerds
+                            ControlButton(
+                                onClick = {
+                                    lastInteractionTime = System.currentTimeMillis()
+                                    onToggleStats()
+                                },
+                                icon = Icons.Default.BugReport,
+                                contentDescription = "Stats",
+                                tint = if (showStats) {
+                                    if (isTv) TvMaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary
+                                } else {
+                                    actionIconTint
+                                },
+                                focusRequester = statsFocusRequester,
+                                iconSize = actionIconSize,
+                                glassHazeState = activeHaze,
+                                buttonSize = actionButtonSize
+                            )
+                            // 6. Cast (Handheld only)
+                            if (!isTv) {
+                                ControlButton(
+                                    onClick = {
+                                        lastInteractionTime = System.currentTimeMillis()
+                                        onShowCast()
+                                    },
+                                    icon = if (isCasting) Icons.Default.CastConnected else Icons.Default.Cast,
+                                    contentDescription = "Cast",
+                                    tint = if (isCasting) MaterialTheme.colorScheme.primary else handheldIconTint,
+                                    iconSize = actionIconSize,
+                                    glassHazeState = activeHaze,
+                                    buttonSize = actionButtonSize
+                                )
+                            }
                         }
-                    }
                     }
                 }
 
-                // Center Bar
+                // Center Transport Controls (3 independent circular clear glass buttons on handheld; no outer capsule)
                 Row(
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .padding(bottom = if (isPortrait) 16.dp else 0.dp)
-                        .then(
-                            if (activeHaze != null) {
-                                Modifier
-                                    .hazePillGlass(activeHaze, CircleShape)
-                                    .background(
-                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(
-                                            alpha = if (useGlass) 0.40f else 0.75f
-                                        ),
-                                        CircleShape
-                                    )
-                                    .padding(horizontal = if (isPortrait) 20.dp else 28.dp, vertical = if (isPortrait) 8.dp else 12.dp)
-                            } else {
-                                Modifier
-                            }
-                        ),
-                    horizontalArrangement = Arrangement.spacedBy(if (isPortrait) 40.dp else 32.dp),
+                        .padding(bottom = if (isPortrait) 10.dp else 0.dp),
+                    horizontalArrangement = Arrangement.spacedBy(
+                        when {
+                            isTv -> 32.dp
+                            isPortrait -> 28.dp
+                            else -> 36.dp
+                        }
+                    ),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val transportTint = if (isTv) TvMaterialTheme.colorScheme.onSurface else handheldIconTint
+                    val secondaryButtonSize = when {
+                        isTv -> 64.dp
+                        isPortrait -> 44.dp
+                        else -> 56.dp
+                    }
+                    val secondaryIconSize = when {
+                        isTv -> 36.dp
+                        isPortrait -> 26.dp
+                        else -> 32.dp
+                    }
+                    val primaryButtonSize = when {
+                        isTv -> 80.dp
+                        isPortrait -> 56.dp
+                        else -> 72.dp
+                    }
+                    val primaryIconSize = when {
+                        isTv -> 48.dp
+                        isPortrait -> 34.dp
+                        else -> 42.dp
+                    }
+
                     ControlButton(
                         onClick = {
                             lastInteractionTime = System.currentTimeMillis()
@@ -4930,8 +5074,11 @@ fun PlayerControlsOverlay(
                         },
                         icon = Icons.Default.FastRewind,
                         contentDescription = "Rewind",
+                        tint = transportTint,
                         focusRequester = rewindFocusRequester,
-                        iconSize = if (isPortrait) 36.dp else 48.dp
+                        iconSize = secondaryIconSize,
+                        glassHazeState = activeHaze,
+                        buttonSize = secondaryButtonSize
                     )
                     ControlButton(
                         onClick = {
@@ -4946,8 +5093,11 @@ fun PlayerControlsOverlay(
                         },
                         icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = "Play/Pause",
+                        tint = transportTint,
                         focusRequester = playPauseFocusRequester,
-                        iconSize = if (isPortrait) 48.dp else 64.dp
+                        iconSize = primaryIconSize,
+                        glassHazeState = activeHaze,
+                        buttonSize = primaryButtonSize
                     )
                     ControlButton(
                         onClick = {
@@ -4956,52 +5106,50 @@ fun PlayerControlsOverlay(
                         },
                         icon = Icons.Default.FastForward,
                         contentDescription = "Forward",
+                        tint = transportTint,
                         focusRequester = forwardFocusRequester,
-                        iconSize = if (isPortrait) 36.dp else 48.dp
+                        iconSize = secondaryIconSize,
+                        glassHazeState = activeHaze,
+                        buttonSize = secondaryButtonSize
                     )
                 }
 
-                // Bottom Bar
+                // Bottom Timeline Area (unboxed scrubber + compact glass timestamp capsule & fullscreen circle on handheld)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
-                        .then(
-                            if (activeHaze != null) {
-                                Modifier
-                                    .hazePillGlass(activeHaze, RoundedCornerShape(20.dp))
-                                    .background(
-                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(
-                                            alpha = if (useGlass) 0.45f else 0.78f
-                                        ),
-                                        RoundedCornerShape(20.dp)
-                                    )
-                                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                            } else {
-                                Modifier
-                            }
-                        )
                 ) {
-                    val dur = duration.coerceAtLeast(1L)
-                    val currentFraction = (currentPosition.coerceAtLeast(0L).toFloat() / dur.toFloat()).coerceIn(0f, 1f)
+                    val dur = duration.coerceAtLeast(0L)
+                    val currentFraction = PlayerTvScrubHelper.positionToFraction(currentPosition, dur)
                     val displayFraction = if (isScrubbing) scrubFraction else currentFraction
-                    val displayPositionMs = if (isScrubbing) (scrubFraction * dur).toLong() else currentPosition.coerceAtLeast(0L)
+                    val displayPositionMs = if (isScrubbing) {
+                        tvScrubPositionMs ?: PlayerTvScrubHelper.fractionToPositionMs(scrubFraction, dur)
+                    } else {
+                        currentPosition.coerceAtLeast(0L)
+                    }
 
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .then(if (isPortrait) Modifier.height(36.dp) else Modifier)
-                            .padding(start = if (isPortrait) 12.dp else 0.dp),
+                            .padding(bottom = if (isPortrait) 2.dp else 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "${formatTime(displayPositionMs)} / ${formatTime(dur)}",
-                            style = if (isPortrait) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.weight(1f)
-                        )
-                        // Handheld only: 1-tap fullscreen toggle (rotates to landscape / back to portrait)
                         if (!isTv) {
+                            Box(
+                                modifier = Modifier
+                                    .hazeClearPlayerGlass(activeHaze, CircleShape)
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "${formatTime(displayPositionMs)} / ${formatTime(dur)}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.White
+                                )
+                            }
+                            Spacer(modifier = Modifier.weight(1f))
+                            // Handheld only: 1-tap fullscreen toggle (rotates to landscape / back to portrait)
                             ControlButton(
                                 onClick = {
                                     lastInteractionTime = System.currentTimeMillis()
@@ -5011,7 +5159,19 @@ fun PlayerControlsOverlay(
                                 icon = if (isOrientationPortrait) Icons.Default.Fullscreen else Icons.Default.FullscreenExit,
                                 contentDescription = stringResource(
                                     if (isOrientationPortrait) R.string.player_enter_fullscreen else R.string.player_exit_fullscreen
-                                )
+                                ),
+                                tint = handheldIconTint,
+                                iconSize = if (isPortrait) 20.dp else 22.dp,
+                                glassHazeState = activeHaze,
+                                buttonSize = if (isPortrait) 36.dp else 40.dp
+                            )
+                        } else {
+                            Text(
+                                text = "${formatTime(displayPositionMs)} / ${formatTime(dur)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = if (isScrubbing) FontWeight.Bold else FontWeight.Normal,
+                                color = TvMaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
                             )
                         }
                     }
@@ -5019,29 +5179,105 @@ fun PlayerControlsOverlay(
                     WatchProgressSlider(
                         value = displayFraction.coerceIn(0f, 1f),
                         onValueChange = { fraction ->
-                            isScrubbing = true
-                            scrubFraction = fraction
-                            lastInteractionTime = System.currentTimeMillis()
+                            if (!isTv && dur > 0L) {
+                                isScrubbing = true
+                                scrubFraction = fraction
+                                lastInteractionTime = System.currentTimeMillis()
+                            }
                         },
                         onValueChangeFinished = {
-                            val targetMs = (scrubFraction * dur).toLong()
-                            controller.seekTo(targetMs)
-                            isScrubbing = false
-                            lastInteractionTime = System.currentTimeMillis()
+                            if (!isTv && isScrubbing) {
+                                if (dur > 0L) {
+                                    val targetMs = PlayerTvScrubHelper.fractionToPositionMs(scrubFraction, dur)
+                                    pendingSeekTargetMs = targetMs
+                                    pendingSeekDeadlineMs = SystemClock.elapsedRealtime() + 1_500L
+                                    controller.seekTo(targetMs)
+                                    currentPosition = targetMs
+                                }
+                                isScrubbing = false
+                                lastInteractionTime = System.currentTimeMillis()
+                            }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(if (isPortrait) Modifier.height(32.dp) else Modifier)
                             .focusRequester(sliderFocusRequester)
                             .focusHighlight(shape = MaterialTheme.shapes.small)
+                            .then(
+                                if (isTv) {
+                                    Modifier.onPreviewKeyEvent { keyEvent ->
+                                        when (keyEvent.key) {
+                                            Key.DirectionLeft, Key.DirectionRight -> {
+                                                when (keyEvent.type) {
+                                                    KeyEventType.KeyDown -> {
+                                                        if (dur <= 0L) return@onPreviewKeyEvent true
+                                                        val direction = if (keyEvent.key == Key.DirectionRight) 1 else -1
+                                                        val basePosMs = tvScrubPositionMs ?: currentPosition.coerceAtLeast(0L)
+                                                        val nextPosMs = PlayerTvScrubHelper.computeNextPositionMs(
+                                                            currentPositionMs = basePosMs,
+                                                            totalDurationMs = dur,
+                                                            direction = direction,
+                                                            repeatCount = keyEvent.nativeKeyEvent.repeatCount
+                                                        )
+                                                        tvScrubPositionMs = nextPosMs
+                                                        scrubFraction = PlayerTvScrubHelper.positionToFraction(nextPosMs, dur)
+                                                        isScrubbing = true
+                                                        tvScrubCommitTrigger++
+                                                        lastInteractionTime = System.currentTimeMillis()
+                                                        true
+                                                    }
+                                                    KeyEventType.KeyUp -> true
+                                                    else -> false
+                                                }
+                                            }
+                                            Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                                                when (keyEvent.type) {
+                                                    KeyEventType.KeyDown -> {
+                                                        if (keyEvent.nativeKeyEvent.repeatCount > 0) return@onPreviewKeyEvent true
+                                                        if (isScrubbing) {
+                                                            commitTvScrub()
+                                                        } else {
+                                                            if (isPlaying) {
+                                                                isPlaying = false
+                                                                controller.pause()
+                                                            } else {
+                                                                isPlaying = true
+                                                                controller.play()
+                                                            }
+                                                            lastInteractionTime = System.currentTimeMillis()
+                                                        }
+                                                        true
+                                                    }
+                                                    KeyEventType.KeyUp -> true
+                                                    else -> false
+                                                }
+                                            }
+                                            else -> false
+                                        }
+                                    }
+                                } else {
+                                    Modifier
+                                }
+                            )
                             .onFocusChanged {
+                                val wasFocused = isSliderFocused
                                 isSliderFocused = it.isFocused
                                 if (it.isFocused) {
                                     lastInteractionTime = System.currentTimeMillis()
+                                } else if (wasFocused && isTv && isScrubbing) {
+                                    commitTvScrub()
                                 }
                             }
                     )
                 }
+            }
+            }
+            if (isTv) {
+                TvLaTorrentolaTheme(themeMode = PreferenceManager.THEME_DARK) {
+                    overlayContent()
+                }
+            } else {
+                overlayContent()
             }
         }
 
@@ -5053,22 +5289,7 @@ fun PlayerControlsOverlay(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 56.dp)
         ) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(
-                    alpha = if (useGlass) 0.70f else 0.95f
-                ),
-                tonalElevation = 6.dp,
-                modifier = Modifier
-                    .widthIn(min = 280.dp, max = 400.dp)
-                    .then(
-                        if (activeHaze != null) {
-                            Modifier.hazePillGlass(activeHaze, RoundedCornerShape(12.dp))
-                        } else {
-                            Modifier
-                        }
-                    )
-            ) {
+            val quickSeekContent: @Composable () -> Unit = {
                 Column(
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
@@ -5080,20 +5301,20 @@ fun PlayerControlsOverlay(
                         Icon(
                             imageVector = if (quickSeekDelta > 0) Icons.Default.FastForward else Icons.Default.FastRewind,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = if (activeHaze != null) Color.White else MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
                         )
                         Text(
                             text = if (quickSeekDelta > 0) "+10s" else "-10s",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = if (activeHaze != null) Color.White else MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "${formatTime(currentPosition)} / ${formatTime(duration)}",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = if (activeHaze != null) Color.White else MaterialTheme.colorScheme.onSurface
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
@@ -5107,6 +5328,24 @@ fun PlayerControlsOverlay(
                     )
                 }
             }
+            if (activeHaze != null) {
+                Box(
+                    modifier = Modifier
+                        .widthIn(min = 280.dp, max = 400.dp)
+                        .hazeClearPlayerGlass(activeHaze, RoundedCornerShape(16.dp))
+                ) {
+                    quickSeekContent()
+                }
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
+                    tonalElevation = 6.dp,
+                    modifier = Modifier.widthIn(min = 280.dp, max = 400.dp)
+                ) {
+                    quickSeekContent()
+                }
+            }
         }
 
         AnimatedVisibility(
@@ -5117,18 +5356,7 @@ fun PlayerControlsOverlay(
                 .align(if (doubleTapSeekDelta > 0) Alignment.CenterEnd else Alignment.CenterStart)
                 .padding(horizontal = 48.dp)
         ) {
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(
-                    alpha = if (useGlass) 0.60f else 0.85f
-                ),
-                tonalElevation = 6.dp,
-                modifier = if (activeHaze != null) {
-                    Modifier.hazePillGlass(activeHaze, CircleShape)
-                } else {
-                    Modifier
-                }
-            ) {
+            val doubleTapContent: @Composable () -> Unit = {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -5137,7 +5365,7 @@ fun PlayerControlsOverlay(
                     Icon(
                         imageVector = if (doubleTapSeekDelta > 0) Icons.Default.FastForward else Icons.Default.FastRewind,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = if (activeHaze != null) Color.White else MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(36.dp)
                     )
                     Spacer(modifier = Modifier.height(4.dp))
@@ -5145,8 +5373,21 @@ fun PlayerControlsOverlay(
                         text = if (doubleTapSeekDelta > 0) "+10s" else "-10s",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = if (activeHaze != null) Color.White else MaterialTheme.colorScheme.onSurface
                     )
+                }
+            }
+            if (activeHaze != null) {
+                Box(modifier = Modifier.hazeClearPlayerGlass(activeHaze, CircleShape)) {
+                    doubleTapContent()
+                }
+            } else {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f),
+                    tonalElevation = 6.dp
+                ) {
+                    doubleTapContent()
                 }
             }
         }
@@ -5739,11 +5980,17 @@ fun RemoteCastCanvas(
                             WatchProgressSlider(
                                 value = sliderProgress,
                                 onValueChange = { fraction ->
-                                    isScrubbing = true
-                                    scrubFraction = fraction
+                                    if (dur > 0L) {
+                                        isScrubbing = true
+                                        scrubFraction = fraction
+                                    }
                                 },
                                 onValueChangeFinished = {
-                                    val targetMs = (scrubFraction * dur).toLong()
+                                    if (!isScrubbing || dur <= 0L) {
+                                        isScrubbing = false
+                                        return@WatchProgressSlider
+                                    }
+                                    val targetMs = PlayerTvScrubHelper.fractionToPositionMs(scrubFraction, dur)
                                     currentPosition = targetMs
                                     controller.seekTo(targetMs)
                                     try {
@@ -5947,11 +6194,17 @@ fun RemoteCastCanvas(
                     WatchProgressSlider(
                         value = sliderProgress,
                         onValueChange = { fraction ->
-                            isScrubbing = true
-                            scrubFraction = fraction
+                            if (dur > 0L) {
+                                isScrubbing = true
+                                scrubFraction = fraction
+                            }
                         },
                         onValueChangeFinished = {
-                            val targetMs = (scrubFraction * dur).toLong()
+                            if (!isScrubbing || dur <= 0L) {
+                                isScrubbing = false
+                                return@WatchProgressSlider
+                            }
+                            val targetMs = PlayerTvScrubHelper.fractionToPositionMs(scrubFraction, dur)
                             currentPosition = targetMs
                             controller.seekTo(targetMs)
                             try {

@@ -34,7 +34,6 @@ import androidx.compose.foundation.text.input.clearText
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -64,9 +63,6 @@ import com.martinrevert.latorrentola.ui.player.LocalPlayerActivity
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
-import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.Lifecycle
@@ -76,7 +72,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.martinrevert.latorrentola.utils.LocalNetworkPermissionHelper
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
-import dev.chrisbanes.haze.hazeSource
 import java.io.File
 import java.util.Locale
 
@@ -584,8 +579,6 @@ private fun MobileExternalMediaContent(
     onDeleteServerClick: (RemoteServerConfig) -> Unit,
     onFileItemClicked: (RemoteFileItem) -> Unit
 ) {
-    val hazeState = rememberHandheldHazeState(isTv = false)
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -627,118 +620,105 @@ private fun MobileExternalMediaContent(
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = hazeAppBarContainerColor(hazeState != null, 0.90f)
-                ),
-                modifier = Modifier.hazeAppBarGlass(hazeState)
+                colors = TopAppBarDefaults.topAppBarColors()
             )
         }
     ) { innerPadding ->
-        SubcomposeLayout(modifier = Modifier.fillMaxSize()) { constraints ->
-            val headerPlaceables = subcompose("header") {
-                Column(
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+            ) {
+                ActiveStorageBanner(
+                    uiState = uiState,
+                    isTv = false,
+                    themeMode = themeMode,
+                    onResetToInternal = { onSetActiveStorage(TorrentStorageResolver.LOCATION_INTERNAL) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(hazeAppBarContainerColor(hazeState != null, 0.90f))
-                        .hazeAppBarGlass(hazeState)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+
+                PrimaryTabRow(
+                    selectedTabIndex = if (uiState.selectedTab == ExternalMediaTab.USB) 0 else 1,
+                    containerColor = MaterialTheme.colorScheme.surface
                 ) {
-                    ActiveStorageBanner(
-                        uiState = uiState,
-                        isTv = false,
-                        themeMode = themeMode,
-                        onResetToInternal = { onSetActiveStorage(TorrentStorageResolver.LOCATION_INTERNAL) },
+                    Tab(
+                        selected = uiState.selectedTab == ExternalMediaTab.USB,
+                        onClick = { onSelectTab(ExternalMediaTab.USB) },
+                        text = { Text(stringResource(R.string.external_media_tab_usb)) },
+                        icon = { Icon(Icons.Default.Usb, contentDescription = null) }
+                    )
+                    Tab(
+                        selected = uiState.selectedTab == ExternalMediaTab.NETWORK,
+                        onClick = { onSelectTab(ExternalMediaTab.NETWORK) },
+                        text = { Text(stringResource(R.string.external_media_tab_network)) },
+                        icon = { Icon(Icons.Default.Dns, contentDescription = null) }
+                    )
+                }
+
+                if (uiState.isLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+
+                uiState.errorMessage?.let { error ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-
-                    PrimaryTabRow(
-                        selectedTabIndex = if (uiState.selectedTab == ExternalMediaTab.USB) 0 else 1,
-                        containerColor = Color.Transparent
+                            .padding(8.dp),
+                        shape = RoundedCornerShape(8.dp)
                     ) {
-                        Tab(
-                            selected = uiState.selectedTab == ExternalMediaTab.USB,
-                            onClick = { onSelectTab(ExternalMediaTab.USB) },
-                            text = { Text(stringResource(R.string.external_media_tab_usb)) },
-                            icon = { Icon(Icons.Default.Usb, contentDescription = null) }
-                        )
-                        Tab(
-                            selected = uiState.selectedTab == ExternalMediaTab.NETWORK,
-                            onClick = { onSelectTab(ExternalMediaTab.NETWORK) },
-                            text = { Text(stringResource(R.string.external_media_tab_network)) },
-                            icon = { Icon(Icons.Default.Dns, contentDescription = null) }
+                        Text(
+                            text = error,
+                            modifier = Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
+                }
+            }
 
-                    if (uiState.isLoading) {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                when (uiState.selectedTab) {
+                    ExternalMediaTab.USB -> {
+                        UsbMediaView(
+                            uiState = uiState,
+                            onSelectLocation = onSelectUsbLocation,
+                            onSetActiveStorage = onSetActiveStorage,
+                            onNavigateUp = onNavigateUpUsb,
+                            onItemClick = onFileItemClicked,
+                            topPadding = 0.dp,
+                            bottomPadding = 0.dp
+                        )
                     }
-
-                    uiState.errorMessage?.let { error ->
-                        Surface(
-                            color = MaterialTheme.colorScheme.errorContainer,
-                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(
-                                text = error,
-                                modifier = Modifier.padding(12.dp),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
+                    ExternalMediaTab.NETWORK -> {
+                        NetworkMediaView(
+                            uiState = uiState,
+                            hasLocalNetworkPermission = hasLocalNetworkPermission,
+                            shouldOpenLocalNetworkSettings = shouldOpenLocalNetworkSettings,
+                            onRequestLocalNetworkPermission = onRequestLocalNetworkPermission,
+                            onSelectServer = onSelectServer,
+                            onNavigateUp = onNavigateUpRemote,
+                            onAddServerClick = onAddServerClick,
+                            onScanNetworkClick = onScanNetworkClick,
+                            onEditServerClick = onEditServerClick,
+                            onDeleteServerClick = onDeleteServerClick,
+                            onItemClick = onFileItemClicked,
+                            topPadding = 0.dp,
+                            bottomPadding = 0.dp
+                        )
                     }
                 }
-            }.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
-
-            val topBarOffsetPx = innerPadding.calculateTopPadding().roundToPx()
-            val headerHeightDp = (headerPlaceables.maxOfOrNull { it.height } ?: 0).toDp()
-            val combinedTopPadding = innerPadding.calculateTopPadding() + headerHeightDp
-
-            val contentPlaceables = subcompose("content") {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .then(if (hazeState != null) Modifier.hazeSource(state = hazeState) else Modifier)
-                ) {
-                    when (uiState.selectedTab) {
-                        ExternalMediaTab.USB -> {
-                            UsbMediaView(
-                                uiState = uiState,
-                                onSelectLocation = onSelectUsbLocation,
-                                onSetActiveStorage = onSetActiveStorage,
-                                onNavigateUp = onNavigateUpUsb,
-                                onItemClick = onFileItemClicked,
-                                topPadding = combinedTopPadding,
-                                bottomPadding = innerPadding.calculateBottomPadding()
-                            )
-                        }
-                        ExternalMediaTab.NETWORK -> {
-                            NetworkMediaView(
-                                uiState = uiState,
-                                hasLocalNetworkPermission = hasLocalNetworkPermission,
-                                shouldOpenLocalNetworkSettings = shouldOpenLocalNetworkSettings,
-                                onRequestLocalNetworkPermission = onRequestLocalNetworkPermission,
-                                onSelectServer = onSelectServer,
-                                onNavigateUp = onNavigateUpRemote,
-                                onAddServerClick = onAddServerClick,
-                                onScanNetworkClick = onScanNetworkClick,
-                                onEditServerClick = onEditServerClick,
-                                onDeleteServerClick = onDeleteServerClick,
-                                onItemClick = onFileItemClicked,
-                                topPadding = combinedTopPadding,
-                                bottomPadding = innerPadding.calculateBottomPadding()
-                            )
-                        }
-                    }
-                }
-            }.map { it.measure(constraints) }
-
-            layout(constraints.maxWidth, constraints.maxHeight) {
-                contentPlaceables.forEach { it.placeRelative(0, 0) }
-                headerPlaceables.forEach { it.placeRelative(0, topBarOffsetPx) }
             }
         }
     }

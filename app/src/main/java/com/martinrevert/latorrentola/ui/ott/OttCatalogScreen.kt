@@ -90,9 +90,6 @@ import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.LightDarkPreviews
 import com.martinrevert.latorrentola.ui.theme.TvLaTorrentolaTheme
 import com.martinrevert.latorrentola.ui.theme.focusHighlight
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarContainerColor
-import com.martinrevert.latorrentola.ui.theme.hazeAppBarGlass
-import com.martinrevert.latorrentola.ui.theme.rememberHandheldHazeState
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import java.util.Locale
@@ -149,7 +146,6 @@ fun OttCatalogScreen(
         val coroutineScope = rememberCoroutineScope()
         val isTvMoviesCatalog = isTv && !isTvMode
         val isHandheldMoviesCatalog = !isTv && !isTvMode
-        val hazeState = rememberHandheldHazeState(isTv)
         val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
         LaunchedEffect(providerId, isTvMode) {
@@ -269,10 +265,8 @@ fun OttCatalogScreen(
                     isLogoLoading = isFocusedMovieLogoLoading,
                     onDetailsClick = { focusedMovie?.let(onMovieClick) },
                     modifier = Modifier.fillMaxSize(),
-                    hazeState = hazeState,
                     topBar = {
                         TopAppBar(
-                            modifier = Modifier.hazeAppBarGlass(hazeState),
                             title = {
                                 Text(
                                     text = providerName,
@@ -288,12 +282,7 @@ fun OttCatalogScreen(
                                     )
                                 }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = hazeAppBarContainerColor(
-                                    hasGlass = hazeState != null,
-                                    fallbackAlpha = 0.85f
-                                )
-                            )
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                         )
                     },
                     chips = {
@@ -493,10 +482,8 @@ fun OttCatalogScreen(
                     isLogoLoading = isFocusedMovieLogoLoading,
                     onDetailsClick = { focusedSeries?.let(onTvSeriesClick) },
                     modifier = Modifier.fillMaxSize(),
-                    hazeState = hazeState,
                     topBar = {
                         TopAppBar(
-                            modifier = Modifier.hazeAppBarGlass(hazeState),
                             title = {
                                 Text(
                                     text = providerName,
@@ -512,12 +499,7 @@ fun OttCatalogScreen(
                                     )
                                 }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = hazeAppBarContainerColor(
-                                    hasGlass = hazeState != null,
-                                    fallbackAlpha = 0.85f
-                                )
-                            )
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                         )
                     },
                     chips = {
