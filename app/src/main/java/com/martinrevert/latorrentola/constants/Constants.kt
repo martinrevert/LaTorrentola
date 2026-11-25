@@ -10,8 +10,8 @@ object Constants {
     /** Alternative Base URL for the YTS movie API. */
     const val YTS_BASE_URL_ALTERNATIVE = "https://yts.gg/api/v2/"
 
-    /** Base URL for the app's Firebase Cloud Messaging backend. */
-    const val FCM_BASE_URL = "https://fcm.martinrevert.com.ar/"
+    /** Base URL for the app's Firebase Cloud Messaging backend supplied by the build configuration. */
+    val FCM_BASE_URL: String = BuildConfig.FCM_BASE_URL.ifBlank { "https://localhost/" }
 
     /** Base URL for The Movie Database API. */
     const val TMDB_BASE_URL = "https://api.themoviedb.org/3/"
@@ -24,6 +24,9 @@ object Constants {
 
     /** Base URL for the OMDb API. */
     const val OMDB_BASE_URL = "https://www.omdbapi.com/"
+
+    /** Public HTTPS endpoint serving the self-hosted release APK manifest supplied by the build configuration. */
+    const val APK_UPDATE_MANIFEST_URL: String = BuildConfig.APK_UPDATE_MANIFEST_URL
 
     /** Default page size requested from paginated movie endpoints. */
     const val PAGE_SIZE = 50

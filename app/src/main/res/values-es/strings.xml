@@ -457,4 +457,17 @@
     <!-- Web API Error Ezekiel Quote -->
     <string name="api_error_title">Ezequiel 25:17</string>
     <string name="api_error_the_lord_quote">El camino del usuario justo está cruzado por errores inesperados. Bendito sea el desarrollador que ya está depurando este valle de la muerte digital. Por favor, reintente en unos minutos. ¡Y sabrás que mi nombre está en el Log cuando caiga mi excepción sobre tu consola!</string>
+
+    <!-- Mandatory In-App APK Update Dialog -->
+    <string name="app_update_required_title">Actualización obligatoria disponible</string>
+    <string name="app_update_required_message">Hay una nueva versión de LaTorrentola (%1$s) disponible. Para continuar utilizando la aplicación es necesario actualizar.</string>
+    <string name="app_update_action_download">Actualizar ahora</string>
+    <string name="app_update_action_install">Instalar actualización</string>
+    <string name="app_update_action_grant_permission">Permitir instalación</string>
+    <string name="app_update_downloading_progress">Descargando actualización… %1$d%% (%2$.1f MB / %3$.1f MB)</string>
+    <string name="app_update_verifying_sha256">Verificando integridad SHA-256…</string>
+    <string name="app_update_permission_required_message">Para instalar la actualización, autoriza a LaTorrentola a instalar aplicaciones desconocidas en la siguiente pantalla.</string>
+    <string name="app_update_ready_to_install_message">Actualización verificada y lista para instalar. Pulsa el botón para abrir el instalador.</string>
+    <string name="app_update_error_checksum">Falló la verificación de integridad SHA-256. El archivo descargado podría estar incompleto o dañado. Reintenta la descarga.</string>
+    <string name="app_update_error_download">No se pudo descargar la actualización. Verifica tu conexión a internet y vuelve a intentarlo.</string>
 </resources>

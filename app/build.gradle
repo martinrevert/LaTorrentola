@@ -147,7 +147,7 @@ android {
     def keystorePropertiesFile = rootProject.file("keystore.properties")
     def keystoreProperties = new Properties()
     if (keystorePropertiesFile.exists()) {
-        keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+        keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
     }
 
     def gitVersionCode = gitVersionCount
@@ -166,13 +166,17 @@ android {
         def localProperties = new Properties()
         def localPropertiesFile = rootProject.file('local.properties')
         if (localPropertiesFile.exists()) {
-            localProperties.load(new FileInputStream(localPropertiesFile))
+            localPropertiesFile.withInputStream { localProperties.load(it) }
         }
+        def deployPublicBaseUrl = localProperties.getProperty('DEPLOY_PUBLIC_BASE_URL', '').trim().replaceAll('/+$', '')
+        def apkUpdateManifestUrl = deployPublicBaseUrl ? "${deployPublicBaseUrl}/manifest.json" : ""
         buildConfigField "String", "WEB_CLIENT_ID", "\"${localProperties.getProperty('FIREBASE_WEB_CLIENT_ID', '')}\""
         buildConfigField "String", "TMDB_API_KEY", "\"${localProperties.getProperty('TMDB_API_KEY', '')}\""
         buildConfigField "String", "OPEN_SUBTITLES_API_KEY", "\"${localProperties.getProperty('OPEN_SUBTITLES_API_KEY', '')}\""
         buildConfigField "String", "OMDB_API_KEY", "\"${localProperties.getProperty('OMDB_API_KEY', '')}\""
         buildConfigField "String", "CAST_APP_ID", "\"${localProperties.getProperty('CAST_APP_ID', '')}\""
+        buildConfigField "String", "FCM_BASE_URL", "\"${localProperties.getProperty('FCM_BASE_URL', '')}\""
+        buildConfigField "String", "APK_UPDATE_MANIFEST_URL", "\"${apkUpdateManifestUrl}\""
         externalNativeBuild {
             cmake {
                 arguments "-DANDROID_STL=c++_shared"

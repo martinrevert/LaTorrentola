@@ -459,4 +459,17 @@
     <!-- Web API Error Ezekiel Quote -->
     <string name="api_error_title">Ezekiel 25:17</string>
     <string name="api_error_the_lord_quote">The path of the righteous user is beset by unexpected errors. Blessed is the developer who is already debugging this digital valley of death. Please retry in a few minutes. And you will know my name is in the Log when my exception strikes your console!</string>
+
+    <!-- Mandatory In-App APK Update Dialog -->
+    <string name="app_update_required_title">Mandatory Update Available</string>
+    <string name="app_update_required_message">A new version of LaTorrentola (%1$s) is available. You must update the app to continue.</string>
+    <string name="app_update_action_download">Update Now</string>
+    <string name="app_update_action_install">Install Update</string>
+    <string name="app_update_action_grant_permission">Allow Installation</string>
+    <string name="app_update_downloading_progress">Downloading update… %1$d%% (%2$.1f MB / %3$.1f MB)</string>
+    <string name="app_update_verifying_sha256">Verifying SHA-256 integrity…</string>
+    <string name="app_update_permission_required_message">To install the update, please allow LaTorrentola to install unknown apps in the next screen.</string>
+    <string name="app_update_ready_to_install_message">Update verified and ready to install. Tap below to launch the installer.</string>
+    <string name="app_update_error_checksum">SHA-256 integrity check failed. The downloaded file may be corrupted. Please retry.</string>
+    <string name="app_update_error_download">Could not download the update. Please check your connection and retry.</string>
 </resources>

@@ -19,17 +19,21 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentSanitizer
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.session.MediaController
 import com.martinrevert.latorrentola.utils.MediaControllerHelper
 import com.google.common.util.concurrent.ListenableFuture
+import com.martinrevert.latorrentola.model.update.AppUpdateManifest
+import com.martinrevert.latorrentola.network.ApkDownloadState
+import com.martinrevert.latorrentola.network.AppUpdateRepository
 import com.martinrevert.latorrentola.network.FirebaseMessagingConfig
 import com.martinrevert.latorrentola.network.FirebaseMessagingInitializer
 import com.martinrevert.latorrentola.network.UserLibraryRepository
-import com.martinrevert.latorrentola.service.PlaybackService
 import com.martinrevert.latorrentola.service.TorrentDownloadService
+import com.martinrevert.latorrentola.ui.components.AppUpdateDialog
+import com.martinrevert.latorrentola.ui.components.FloatingVideoPipOverlay
 import com.martinrevert.latorrentola.ui.navigation.AppNavigation
 import com.martinrevert.latorrentola.ui.player.LocalPlayerActivity
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
@@ -40,7 +44,9 @@ import com.martinrevert.latorrentola.utils.isTvDevice
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
+import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -52,6 +58,10 @@ import javax.inject.Inject
  */
 @AndroidEntryPoint
 class MainActivity : FragmentActivity() {
+
+    companion object {
+        private val IMDB_ID_REGEX = Regex("tt\\d{7,10}", RegexOption.IGNORE_CASE)
+    }
 
     /** Initializes FCM topic subscription after the notification permission flow. */
     @Inject
@@ -65,6 +75,10 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var userLibraryRepository: UserLibraryRepository
 
+    /** Verifies and downloads mandatory release APK updates from the self-hosted server. */
+    @Inject
+    lateinit var appUpdateRepository: AppUpdateRepository
+
     private var streamControllerFuture: ListenableFuture<MediaController>? = null
 
     /** Full movie payload awaiting consumption by [AppNavigation]. */
@@ -73,6 +87,17 @@ class MainActivity : FragmentActivity() {
     private var movieIdToOpen by mutableStateOf<Int?>(null)
     /** Search text, such as an IMDb title identifier, awaiting navigation. */
     private var searchQueryToOpen by mutableStateOf<String?>(null)
+
+    /** Non-null when a newer release APK exists on the self-hosted server and requires installation. */
+    private var mandatoryUpdateManifest by mutableStateOf<AppUpdateManifest?>(null)
+    /** Current progress or verification state of the mandatory APK update download. */
+    private var apkDownloadState by mutableStateOf<ApkDownloadState>(ApkDownloadState.Idle)
+    /** Whether the OS currently allows this app to request package installations. */
+    private var canInstallUnknownApps by mutableStateOf(false)
+    /** True while the user is in system settings granting unknown app installation permission. */
+    private var awaitingInstallPermissionReturn by mutableStateOf(false)
+    private var checkUpdateJob: Job? = null
+    private var downloadApkJob: Job? = null
 
     /** Requests notification permission and updates the default FCM topic subscription. */
     private val requestPermissionLauncher = registerForActivityResult(
@@ -94,11 +119,13 @@ class MainActivity : FragmentActivity() {
         handleIntent(intent)
         
         askNotificationPermission()
+        canInstallUnknownApps = appUpdateRepository.canRequestPackageInstalls()
+        checkForMandatoryUpdateIfNeeded()
 
         enableEdgeToEdge()
         window.isNavigationBarContrastEnforced = false
         setContent {
-            val themeMode by preferenceManager.themeFlow.collectAsState()
+            val themeMode by preferenceManager.themeFlow.collectAsStateWithLifecycle()
             val isTv = isTvDevice()
 
             LaunchedEffect(Unit) {
@@ -143,7 +170,18 @@ class MainActivity : FragmentActivity() {
                         }
                     )
                     if (!isTv) {
-                        com.martinrevert.latorrentola.ui.components.FloatingVideoPipOverlay()
+                        FloatingVideoPipOverlay()
+                    }
+                    mandatoryUpdateManifest?.let { manifest ->
+                        AppUpdateDialog(
+                            manifest = manifest,
+                            downloadState = apkDownloadState,
+                            canInstallPackages = canInstallUnknownApps,
+                            onStartDownload = { startMandatoryUpdateDownload(manifest) },
+                            onInstallApk = { apkFile -> launchApkInstaller(apkFile) },
+                            onRequestInstallPermission = { openManageUnknownAppSourcesSettings() },
+                            themeMode = themeMode
+                        )
                     }
                 }
             }
@@ -160,11 +198,68 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    /** Triggers a throttled watch-history delta sync when returning to the foreground so cross-device progress appears promptly. */
+    /** Triggers a throttled watch-history delta sync and re-evaluates mandatory update state when returning to the foreground. */
     override fun onResume() {
         super.onResume()
+        canInstallUnknownApps = appUpdateRepository.canRequestPackageInstalls()
+        val wasAwaitingPermission = awaitingInstallPermissionReturn
+        awaitingInstallPermissionReturn = false
+        if (wasAwaitingPermission && canInstallUnknownApps) {
+            (apkDownloadState as? ApkDownloadState.ReadyToInstall)?.apkFile?.let { apkFile ->
+                launchApkInstaller(apkFile)
+            }
+        } else if (mandatoryUpdateManifest == null) {
+            checkForMandatoryUpdateIfNeeded()
+        }
         lifecycleScope.launch(Dispatchers.IO) {
             userLibraryRepository.syncWatchHistoryDelta(force = false)
+        }
+    }
+
+    /** Queries the self-hosted APK server for a newer release version when running a release build. */
+    private fun checkForMandatoryUpdateIfNeeded() {
+        if (checkUpdateJob?.isActive == true || mandatoryUpdateManifest != null) return
+        checkUpdateJob = lifecycleScope.launch {
+            val manifest = appUpdateRepository.checkForMandatoryUpdate()
+            if (manifest != null) {
+                mandatoryUpdateManifest = manifest
+            }
+        }
+    }
+
+    /** Streams and verifies the mandatory APK update, launching the installer automatically once ready if permitted. */
+    private fun startMandatoryUpdateDownload(manifest: AppUpdateManifest) {
+        if (downloadApkJob?.isActive == true) return
+        downloadApkJob = lifecycleScope.launch {
+            appUpdateRepository.downloadAndVerifyApk(manifest).collect { state ->
+                apkDownloadState = state
+                if (state is ApkDownloadState.ReadyToInstall) {
+                    canInstallUnknownApps = appUpdateRepository.canRequestPackageInstalls()
+                    if (canInstallUnknownApps) {
+                        launchApkInstaller(state.apkFile)
+                    }
+                }
+            }
+        }
+    }
+
+    /** Opens the system settings screen so the user can authorize unknown app installations for this package. */
+    private fun openManageUnknownAppSourcesSettings() {
+        try {
+            awaitingInstallPermissionReturn = true
+            startActivity(appUpdateRepository.createManageUnknownAppSourcesIntent())
+        } catch (e: Exception) {
+            awaitingInstallPermissionReturn = false
+            AppLogger.e("AppUpdate", "Failed to open unknown app sources settings", e)
+        }
+    }
+
+    /** Launches the native Android package installer for the verified [apkFile]. */
+    private fun launchApkInstaller(apkFile: File) {
+        try {
+            startActivity(appUpdateRepository.createInstallApkIntent(apkFile))
+        } catch (e: Exception) {
+            AppLogger.e("AppUpdate", "Failed to launch APK installer", e)
         }
     }
 
@@ -259,8 +354,7 @@ class MainActivity : FragmentActivity() {
 
     /** Extracts an IMDb title identifier (`tt1234567`) from a string, if present. */
     private fun extractImdbId(input: String): String? {
-        val regex = Regex("tt\\d{7,10}", RegexOption.IGNORE_CASE)
-        return regex.find(input)?.value
+        return IMDB_ID_REGEX.find(input)?.value
     }
 
     /** Requests Android 13+ notification permission when needed, otherwise subscribes to FCM. */

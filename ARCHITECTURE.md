@@ -998,6 +998,39 @@ sequenceDiagram
     end
 ```
 
+### Diagram 15: Private SFTP Release Deployment & Mandatory In-App SHA-256 Auto-Update
+```mermaid
+sequenceDiagram
+    participant DEV as "Gradle (assembleRelease)"
+    participant INIT as "publishReleaseToLocalServer (~/.gradle/init.d)"
+    participant SFTP as "nginx-sftp Container (SFTP :2222 / Nginx :8080)"
+    participant MA as MainActivity
+    participant UREP as AppUpdateRepository
+    participant DLG as AppUpdateDialog
+    participant FP as "FileProvider & PackageInstaller"
+
+    DEV->>INIT: finalizedBy(publishReleaseToLocalServer)
+    INIT->>INIT: Compute APK SHA-256, write .sha256 & manifest.json
+    INIT->>SFTP: SFTP PUT <release>.apk, <release>.apk.sha256, manifest.json
+    INIT->>SFTP: SFTP RM old .apk and .sha256 artifacts
+    MA->>UREP: checkForMandatoryUpdate() (Skipped when BuildConfig.DEBUG == true)
+    UREP->>SFTP: GET manifest.json over HTTPS (CacheControl.FORCE_NETWORK / no-cache)
+    SFTP-->>UREP: AppUpdateManifest (versionCode, apkUrl, sha256)
+    alt manifest.versionCode > BuildConfig.VERSION_CODE
+        UREP-->>MA: Mandatory update required
+        MA->>DLG: Render non-dismissible AppUpdateDialog (Mobile M3 / TV M3)
+        DLG->>UREP: downloadAndVerifyApk(manifest)
+        UREP->>SFTP: Stream APK bytes while computing MessageDigest(SHA-256)
+        UREP-->>DLG: Emit Downloading(0..100%) -> VerifyingChecksum
+        alt SHA-256 matches manifest.sha256
+            UREP-->>DLG: ReadyToInstall(verifiedApkFile)
+            DLG->>FP: Launch ACTION_VIEW (application/vnd.android.package-archive)
+        else SHA-256 mismatch
+            UREP->>UREP: Delete corrupted file & emit Error(CHECKSUM_MISMATCH)
+        end
+    end
+```
+
 ---
 
 ## 7. Architectural Integrity & Guidelines Checklist
