@@ -8,10 +8,19 @@ import com.martinrevert.latorrentola.model.YTS.MovieDetails
 import com.martinrevert.latorrentola.model.date.DateLastVisit
 import com.martinrevert.latorrentola.model.stats.GenreStats
 import com.martinrevert.latorrentola.utils.PreferenceManager
-import kotlinx.coroutines.flow.Flow
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 
 /**
  * Combines YTS API operations with Firestore library and Room statistics access.
@@ -30,29 +39,132 @@ class YtsRepository @Inject constructor(
     private val genreDao: GenreDao,
     private val dateDao: DateDao
 ) {
+    private data class MoviesPageCacheKey(
+        val page: Int,
+        val quality: String?,
+        val ratingKey: String
+    )
 
-    /** Fetches a paginated YTS movie list with rating, quality, and default sorting filters. */
+    private data class CachedMoviesPage(
+        val response: MovieDetails,
+        val fetchedAtMs: Long
+    )
+
+    companion object {
+        /** Short in-memory TTL for home catalog pages (3 minutes) to bridge Login -> Home transitions. */
+        const val HOME_PAGE_CACHE_TTL_MS = 3L * 60L * 1000L
+    }
+
+    private val moviesPageCache = ConcurrentHashMap<MoviesPageCacheKey, CachedMoviesPage>()
+    private val inFlightMoviesRequests = ConcurrentHashMap<MoviesPageCacheKey, CompletableDeferred<MovieDetails>>()
+    private val prefetchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * Fetches a paginated YTS movie list with rating, quality, and default sorting filters.
+     *
+     * Reuses a short-TTL in-memory cache and coalesces concurrent identical requests (e.g. a
+     * speculative prefetch started on the Login screen) unless [forceRefresh] is `true`.
+     */
     suspend fun getMovies(
         page: Int,
         quality: String? = null,
-        minimumRating: Float = PreferenceManager.DEFAULT_MINIMUM_RATING
+        minimumRating: Float = PreferenceManager.DEFAULT_MINIMUM_RATING,
+        forceRefresh: Boolean = false
     ): MovieDetails {
-        val ratingString = if (minimumRating % 1f == 0f) {
+        val ratingString = formatMinimumRating(minimumRating)
+        val cacheKey = MoviesPageCacheKey(page = page, quality = quality, ratingKey = ratingString)
+
+        if (!forceRefresh) {
+            while (true) {
+                val now = System.currentTimeMillis()
+                moviesPageCache[cacheKey]?.let { cached ->
+                    if ((now - cached.fetchedAtMs) < HOME_PAGE_CACHE_TTL_MS) {
+                        return cached.response
+                    }
+                }
+                val newDeferred = CompletableDeferred<MovieDetails>()
+                val existing = inFlightMoviesRequests.putIfAbsent(cacheKey, newDeferred)
+                if (existing != null) {
+                    try {
+                        return existing.await()
+                    } catch (_: CancellationException) {
+                        currentCoroutineContext().ensureActive()
+                        continue
+                    }
+                }
+                return try {
+                    val response = fetchMoviesFromService(page, quality, ratingString)
+                    if (!response.data?.movies.isNullOrEmpty()) {
+                        moviesPageCache[cacheKey] = CachedMoviesPage(response, System.currentTimeMillis())
+                    }
+                    inFlightMoviesRequests.remove(cacheKey, newDeferred)
+                    newDeferred.complete(response)
+                    response
+                } catch (e: Throwable) {
+                    inFlightMoviesRequests.remove(cacheKey, newDeferred)
+                    newDeferred.completeExceptionally(e)
+                    throw e
+                } finally {
+                    inFlightMoviesRequests.remove(cacheKey, newDeferred)
+                }
+            }
+        }
+
+        if (page == 1) {
+            moviesPageCache.clear()
+        } else {
+            moviesPageCache.remove(cacheKey)
+        }
+        val response = fetchMoviesFromService(page, quality, ratingString)
+        if (!response.data?.movies.isNullOrEmpty()) {
+            moviesPageCache[cacheKey] = CachedMoviesPage(response, System.currentTimeMillis())
+        }
+        return response
+    }
+
+    /**
+     * Speculatively prefetches page 1 of the Home movie catalog on an application-scoped coroutine
+     * so navigating away from Login never cancels the in-flight HTTP request.
+     */
+    fun prefetchHomeFirstPage(
+        quality: String? = null,
+        minimumRating: Float = PreferenceManager.DEFAULT_MINIMUM_RATING
+    ) {
+        prefetchScope.launch {
+            try {
+                getMovies(
+                    page = 1,
+                    quality = quality,
+                    minimumRating = minimumRating,
+                    forceRefresh = false
+                )
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+        }
+    }
+
+    private fun formatMinimumRating(minimumRating: Float): String =
+        if (minimumRating % 1f == 0f) {
             minimumRating.toInt().toString()
         } else {
             String.format(Locale.US, "%.1f", minimumRating)
         }
-        return ytsService.getMovieDetails(
-            Constants.PAGE_SIZE,
-            ratingString,
-            page,
-            "true",
-            "true",
-            "year",
-            "desc",
-            quality
-        )
-    }
+
+    private suspend fun fetchMoviesFromService(
+        page: Int,
+        quality: String?,
+        ratingString: String
+    ): MovieDetails = ytsService.getMovieDetails(
+        Constants.PAGE_SIZE,
+        ratingString,
+        page,
+        "true",
+        "true",
+        "year",
+        "desc",
+        quality
+    )
 
     /** Searches YTS movies by text query. */
     suspend fun searchMovies(query: String, page: Int, quality: String? = null): MovieDetails {

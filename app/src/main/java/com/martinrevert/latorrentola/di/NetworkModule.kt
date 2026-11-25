@@ -16,6 +16,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import java.io.File
 import java.net.ProtocolException
+import java.util.concurrent.TimeUnit
 import okhttp3.Cache
 import okhttp3.OkHttpClient
 import okhttp3.brotli.BrotliInterceptor
@@ -30,6 +31,8 @@ import javax.inject.Singleton
 object NetworkModule {
 
     private const val HTTP_CACHE_SIZE_BYTES = 30L * 1024L * 1024L // 30 MB
+    private const val YTS_CONNECT_TIMEOUT_SECONDS = 5L
+    private const val YTS_READ_TIMEOUT_SECONDS = 8L
 
     /** Provides an on-disk HTTP cache for API responses respecting cache headers and 304 Not Modified. */
     @Provides
@@ -66,7 +69,7 @@ object NetworkModule {
             .build()
     }
 
-    /** Creates a Retrofit instance for the YTS API reusing the base OkHttpClient with fallback support. */
+    /** Creates a Retrofit instance for the YTS API reusing the base OkHttpClient with fast failover timeouts and fallback support. */
     @Provides
     @Singleton
     @YtsRetrofit
@@ -74,9 +77,13 @@ object NetworkModule {
         okHttpClient: OkHttpClient,
         fallbackInterceptor: YtsFallbackInterceptor
     ): Retrofit {
-        val ytsClient = okHttpClient.newBuilder().apply {
-            interceptors().add(0, fallbackInterceptor)
-        }.build()
+        val ytsClient = okHttpClient.newBuilder()
+            .connectTimeout(YTS_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(YTS_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .apply {
+                interceptors().add(0, fallbackInterceptor)
+            }
+            .build()
         return Retrofit.Builder()
             .baseUrl(Constants.YTS_BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())

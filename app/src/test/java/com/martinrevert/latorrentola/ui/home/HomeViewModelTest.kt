@@ -15,6 +15,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceTimeBy
@@ -49,7 +50,9 @@ class HomeViewModelTest {
         every { authRepository.authStateFlow } returns MutableStateFlow(null)
         coEvery { repository.getLastVisitDate() } returns null
         // Default to empty list for any page to avoid infinite loops in ViewModel
-        coEvery { repository.getMovies(any(), any(), any()) } returns MovieDetails(data = Data(movies = emptyList()))
+        coEvery { repository.getMovies(any(), any(), any(), any()) } returns MovieDetails(data = Data(movies = emptyList()))
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(emptyList())
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(emptyList())
     }
 
     @Test
@@ -226,5 +229,81 @@ class HomeViewModelTest {
 
         assertThat(viewModel.focusedMovieTmdb.value?.id).isEqualTo(999)
         assertThat(viewModel.focusedMovieBackdrop.value).isEqualTo("https://image.tmdb.org/t/p/w1280/tmdb_backdrop.jpg")
+    }
+
+    @Test
+    fun `refresh emits Page 1 Success progressively without blocking on delayed Page 2`() = runTest {
+        every { preferenceManager.getFilteredLanguages() } returns "es"
+        val page1 = (1..5).map { Movie(id = it, title = "EN $it", language = "en", rating = "7") } +
+            (6..20).map { Movie(id = it, title = "ES $it", language = "es", rating = "7") }
+        val page2Gate = kotlinx.coroutines.CompletableDeferred<MovieDetails>()
+        val page2 = (21..35).map { Movie(id = it, title = "EN $it", language = "en", rating = "7") } +
+            (36..40).map { Movie(id = it, title = "ES $it", language = "es", rating = "7") }
+
+        coEvery { repository.getMovies(1, null, 6f, false) } returns MovieDetails(data = Data(movies = page1))
+        coEvery { repository.getMovies(2, null, 6f, false) } coAnswers { page2Gate.await() }
+
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository, tmdbRepository)
+
+        // Page 1 must be visible immediately while Page 2 is still in-flight
+        val firstSuccess = viewModel.uiState.value
+        assertThat(firstSuccess).isInstanceOf(HomeUiState.Success::class.java)
+        assertThat((firstSuccess as HomeUiState.Success).movies).hasSize(5)
+        assertThat(viewModel.isLoadingMore.value).isTrue()
+
+        page2Gate.complete(MovieDetails(data = Data(movies = page2)))
+        testScheduler.advanceUntilIdle()
+
+        val finalSuccess = viewModel.uiState.value as HomeUiState.Success
+        assertThat(finalSuccess.movies).hasSize(20)
+        assertThat(viewModel.isLoadingMore.value).isFalse()
+    }
+
+    @Test
+    fun `progressive Page 1 emission sets isLoadingMore true across empty filtered Pages 2 to 5 then allows Page 6`() = runTest {
+        every { preferenceManager.getFilteredLanguages() } returns "es"
+        val page1 = (1..5).map { Movie(id = it, title = "EN $it", language = "en", rating = "7") } +
+            (6..20).map { Movie(id = it, title = "ES $it", language = "es", rating = "7") }
+        val allSpanishPage = (100..119).map { Movie(id = it, title = "ES $it", language = "es", rating = "7") }
+        val page6 = listOf(Movie(id = 600, title = "EN Page 6", language = "en", rating = "7"))
+        val page2Gate = CompletableDeferred<MovieDetails>()
+
+        coEvery { repository.getMovies(1, null, 6f, false) } returns MovieDetails(data = Data(movies = page1))
+        coEvery { repository.getMovies(2, null, 6f, false) } coAnswers { page2Gate.await() }
+        coEvery { repository.getMovies(3, null, 6f, false) } returns MovieDetails(data = Data(movies = allSpanishPage))
+        coEvery { repository.getMovies(4, null, 6f, false) } returns MovieDetails(data = Data(movies = allSpanishPage))
+        coEvery { repository.getMovies(5, null, 6f, false) } returns MovieDetails(data = Data(movies = allSpanishPage))
+        coEvery { repository.getMovies(6, null, 6f, false) } returns MovieDetails(data = Data(movies = page6))
+        coEvery { repository.getMovies(more(6), null, 6f, false) } returns MovieDetails(data = Data(movies = emptyList()))
+
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository, tmdbRepository)
+
+        assertThat((viewModel.uiState.value as HomeUiState.Success).movies).hasSize(5)
+        assertThat(viewModel.isLoadingMore.value).isTrue()
+
+        page2Gate.complete(MovieDetails(data = Data(movies = allSpanishPage)))
+        testScheduler.advanceUntilIdle()
+
+        assertThat(viewModel.isLoadingMore.value).isFalse()
+
+        viewModel.loadMovies()
+        testScheduler.advanceUntilIdle()
+
+        val afterLoadMore = viewModel.uiState.value as HomeUiState.Success
+        assertThat(afterLoadMore.movies.map { it.id }).contains(600)
+        assertThat(viewModel.isLoadingMore.value).isFalse()
+    }
+
+    @Test
+    fun `pull to refresh bypasses YTS cache and triggers forced watch history delta sync`() = runTest {
+        val movies = listOf(Movie(id = 1, title = "EN 1", language = "en", rating = "7"))
+        coEvery { repository.getMovies(1, null, 6f, any()) } returns MovieDetails(data = Data(movies = movies))
+
+        viewModel = HomeViewModel(repository, userLibraryRepository, preferenceManager, authRepository, tmdbRepository)
+        viewModel.refresh(force = true, showIndicator = true)
+        testScheduler.advanceUntilIdle()
+
+        coVerify(atLeast = 1) { repository.getMovies(1, null, 6f, true) }
+        coVerify(timeout = 2000L, atLeast = 1) { userLibraryRepository.syncWatchHistoryDelta(force = true) }
     }
 }

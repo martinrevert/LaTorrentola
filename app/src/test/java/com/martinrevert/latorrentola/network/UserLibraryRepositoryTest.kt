@@ -1,9 +1,19 @@
 package com.martinrevert.latorrentola.network
 
 import app.cash.turbine.test
+import com.google.android.gms.tasks.TaskCompletionSource
+import com.google.android.gms.tasks.Tasks
 import com.google.common.truth.Truth.assertThat
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.QuerySnapshot
+import com.martinrevert.latorrentola.database.SyncMetadataDao
+import com.martinrevert.latorrentola.database.SyncMetadataEntity
 import com.martinrevert.latorrentola.database.WatchHistoryDao
 import com.martinrevert.latorrentola.database.WatchHistoryEntity
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
@@ -12,8 +22,12 @@ import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -603,6 +617,295 @@ class UserLibraryRepositoryTest {
                 match { it.hash == "1234_s1_e1" && !it.hash.startsWith("tv_") }
             )
         }
+    }
+
+    @Test
+    fun `syncWatchHistoryDelta queries only newer documents and upserts into Room`() = runTest {
+        val syncMetadataDao: com.martinrevert.latorrentola.database.SyncMetadataDao = mockk(relaxed = true)
+        val mockUser = mockk<com.google.firebase.auth.FirebaseUser>()
+        every { mockUser.uid } returns "user_123"
+        every { auth.currentUser } returns mockUser
+
+        val lastSync = System.currentTimeMillis() - 120_000L // 2 minutes ago (beyond 30s cooldown)
+        coEvery { syncMetadataDao.getLastSyncTimestamp("user_123", UserLibraryRepository.COLLECTION_KEY_WATCH_HISTORY_DELTA) } returns lastSync
+        coEvery { syncMetadataDao.getLastSyncTimestamp("user_123", UserLibraryRepository.COLLECTION_KEY_LIBRARY) } returns lastSync
+        coEvery { watchHistoryDao.get("user_123", "tt0944947_s1_e3") } returns null
+
+        val usersCol = mockk<com.google.firebase.firestore.CollectionReference>()
+        val userDoc = mockk<com.google.firebase.firestore.DocumentReference>()
+        val historyCol = mockk<com.google.firebase.firestore.CollectionReference>()
+        val gtQuery = mockk<com.google.firebase.firestore.Query>()
+        val orderedQuery = mockk<com.google.firebase.firestore.Query>()
+        val limitedQuery = mockk<com.google.firebase.firestore.Query>()
+        val snapshot = mockk<com.google.firebase.firestore.QuerySnapshot>()
+        val remoteDoc = mockk<com.google.firebase.firestore.DocumentSnapshot>()
+        val remoteTimestamp = System.currentTimeMillis() - 1_000L
+
+        every { firestore.collection("users") } returns usersCol
+        every { usersCol.document("user_123") } returns userDoc
+        every { userDoc.collection("watch_history") } returns historyCol
+        every { historyCol.whereGreaterThan("timestamp", lastSync - 5_000L) } returns gtQuery
+        every { gtQuery.orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING) } returns orderedQuery
+        every { orderedQuery.limit(50) } returns limitedQuery
+        every { limitedQuery.get() } returns com.google.android.gms.tasks.Tasks.forResult(snapshot)
+        every { snapshot.documents } returns listOf(remoteDoc)
+
+        every { remoteDoc.exists() } returns true
+        every { remoteDoc.id } returns "tt0944947_s1_e3"
+        every { remoteDoc.toObject(PlaybackProgress::class.java) } returns PlaybackProgress(
+            mediaId = "tt0944947_s1_e3",
+            title = "Game of Thrones - S1E3",
+            positionMs = 1000L,
+            durationMs = 1000L,
+            timestamp = remoteTimestamp,
+            isEpisode = true
+        )
+
+        val repo = UserLibraryRepository(
+            firestore = firestore,
+            auth = auth,
+            watchHistoryDao = watchHistoryDao,
+            syncMetadataDao = syncMetadataDao
+        )
+
+        repo.syncWatchHistoryDelta(force = false)
+
+        io.mockk.coVerify(exactly = 1) {
+            watchHistoryDao.upsert(
+                match {
+                    it.userId == "user_123" &&
+                        it.mediaId == "tt0944947_s1_e3" &&
+                        it.positionMs == 1000L &&
+                        it.durationMs == 1000L &&
+                        it.isEpisode
+                }
+            )
+        }
+        io.mockk.coVerify(exactly = 1) {
+            syncMetadataDao.setLastSyncTimestamp(
+                match {
+                    it.userId == "user_123" &&
+                        it.collectionKey == UserLibraryRepository.COLLECTION_KEY_WATCH_HISTORY_DELTA
+                }
+            )
+        }
+    }
+
+    @Test
+    fun `syncWatchHistoryDelta throttles within 30s cooldown when force is false`() = runTest {
+        val syncMetadataDao: com.martinrevert.latorrentola.database.SyncMetadataDao = mockk(relaxed = true)
+        val mockUser = mockk<com.google.firebase.auth.FirebaseUser>()
+        every { mockUser.uid } returns "user_123"
+        every { auth.currentUser } returns mockUser
+
+        val recentSync = System.currentTimeMillis() - 5_000L // 5s ago (inside 30s cooldown)
+        coEvery { syncMetadataDao.getLastSyncTimestamp("user_123", UserLibraryRepository.COLLECTION_KEY_WATCH_HISTORY_DELTA) } returns recentSync
+        coEvery { syncMetadataDao.getLastSyncTimestamp("user_123", UserLibraryRepository.COLLECTION_KEY_LIBRARY) } returns recentSync
+
+        val repo = UserLibraryRepository(
+            firestore = firestore,
+            auth = auth,
+            watchHistoryDao = watchHistoryDao,
+            syncMetadataDao = syncMetadataDao
+        )
+
+        repo.syncWatchHistoryDelta(force = false)
+
+        io.mockk.verify(exactly = 0) { firestore.collection(any()) }
+    }
+
+    @Test
+    fun `syncWatchHistoryDelta bypasses cooldown when force is true and preserves newer local progress`() = runTest {
+        val syncMetadataDao: com.martinrevert.latorrentola.database.SyncMetadataDao = mockk(relaxed = true)
+        val mockUser = mockk<com.google.firebase.auth.FirebaseUser>()
+        every { mockUser.uid } returns "user_123"
+        every { auth.currentUser } returns mockUser
+
+        val recentSync = System.currentTimeMillis() - 5_000L
+        coEvery { syncMetadataDao.getLastSyncTimestamp("user_123", UserLibraryRepository.COLLECTION_KEY_WATCH_HISTORY_DELTA) } returns recentSync
+        coEvery { syncMetadataDao.getLastSyncTimestamp("user_123", UserLibraryRepository.COLLECTION_KEY_LIBRARY) } returns recentSync
+
+        val newerLocal = WatchHistoryEntity(
+            userId = "user_123",
+            mediaId = "tt0944947_s1_e4",
+            title = "Game of Thrones - S1E4",
+            positionMs = 900L,
+            durationMs = 1000L,
+            timestamp = System.currentTimeMillis(),
+            isEpisode = true
+        )
+        coEvery { watchHistoryDao.get("user_123", "tt0944947_s1_e4") } returns newerLocal
+
+        val usersCol = mockk<com.google.firebase.firestore.CollectionReference>()
+        val userDoc = mockk<com.google.firebase.firestore.DocumentReference>()
+        val historyCol = mockk<com.google.firebase.firestore.CollectionReference>()
+        val gtQuery = mockk<com.google.firebase.firestore.Query>()
+        val orderedQuery = mockk<com.google.firebase.firestore.Query>()
+        val limitedQuery = mockk<com.google.firebase.firestore.Query>()
+        val snapshot = mockk<com.google.firebase.firestore.QuerySnapshot>()
+        val olderRemoteDoc = mockk<com.google.firebase.firestore.DocumentSnapshot>()
+
+        every { firestore.collection("users") } returns usersCol
+        every { usersCol.document("user_123") } returns userDoc
+        every { userDoc.collection("watch_history") } returns historyCol
+        every { historyCol.whereGreaterThan("timestamp", any()) } returns gtQuery
+        every { gtQuery.orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING) } returns orderedQuery
+        every { orderedQuery.limit(50) } returns limitedQuery
+        every { limitedQuery.get() } returns com.google.android.gms.tasks.Tasks.forResult(snapshot)
+        every { snapshot.documents } returns listOf(olderRemoteDoc)
+
+        every { olderRemoteDoc.exists() } returns true
+        every { olderRemoteDoc.id } returns "tt0944947_s1_e4"
+        every { olderRemoteDoc.toObject(PlaybackProgress::class.java) } returns PlaybackProgress(
+            mediaId = "tt0944947_s1_e4",
+            title = "Game of Thrones - S1E4",
+            positionMs = 500L,
+            durationMs = 1000L,
+            timestamp = newerLocal.timestamp - 10_000L,
+            isEpisode = true
+        )
+
+        val repo = UserLibraryRepository(
+            firestore = firestore,
+            auth = auth,
+            watchHistoryDao = watchHistoryDao,
+            syncMetadataDao = syncMetadataDao
+        )
+
+        repo.syncWatchHistoryDelta(force = true)
+
+        io.mockk.verify(exactly = 1) { firestore.collection("users") }
+        io.mockk.coVerify(exactly = 0) { watchHistoryDao.upsert(any()) }
+    }
+
+    @Test
+    fun `syncWatchHistoryDelta clamps remote future-skewed timestamp to local clock`() = runTest {
+        val syncMetadataDao: SyncMetadataDao = mockk(relaxed = true)
+        val mockUser: FirebaseUser = mockk()
+        every { mockUser.uid } returns "user_123"
+        every { auth.currentUser } returns mockUser
+
+        val lastSync = System.currentTimeMillis() - 120_000L
+        coEvery { syncMetadataDao.getLastSyncTimestamp("user_123", UserLibraryRepository.COLLECTION_KEY_WATCH_HISTORY_DELTA) } returns lastSync
+        coEvery { syncMetadataDao.getLastSyncTimestamp("user_123", UserLibraryRepository.COLLECTION_KEY_LIBRARY) } returns lastSync
+        coEvery { watchHistoryDao.get("user_123", "tt0944947_s1_e5") } returns null
+
+        val usersCol: CollectionReference = mockk()
+        val userDoc: DocumentReference = mockk()
+        val historyCol: CollectionReference = mockk()
+        val gtQuery: Query = mockk()
+        val orderedQuery: Query = mockk()
+        val limitedQuery: Query = mockk()
+        val snapshot: QuerySnapshot = mockk()
+        val remoteDoc: DocumentSnapshot = mockk()
+        val futureSkewedTimestamp = System.currentTimeMillis() + 3_600_000L
+
+        every { firestore.collection("users") } returns usersCol
+        every { usersCol.document("user_123") } returns userDoc
+        every { userDoc.collection("watch_history") } returns historyCol
+        every { historyCol.whereGreaterThan("timestamp", any()) } returns gtQuery
+        every { gtQuery.orderBy("timestamp", Query.Direction.DESCENDING) } returns orderedQuery
+        every { orderedQuery.limit(50) } returns limitedQuery
+        every { limitedQuery.get() } returns Tasks.forResult(snapshot)
+        every { snapshot.documents } returns listOf(remoteDoc)
+
+        every { remoteDoc.exists() } returns true
+        every { remoteDoc.id } returns "tt0944947_s1_e5"
+        every { remoteDoc.toObject(PlaybackProgress::class.java) } returns PlaybackProgress(
+            mediaId = "tt0944947_s1_e5",
+            title = "Game of Thrones - S1E5",
+            positionMs = 1000L,
+            durationMs = 1000L,
+            timestamp = futureSkewedTimestamp,
+            isEpisode = true
+        )
+
+        val savedMetadataSlot = slot<SyncMetadataEntity>()
+        coEvery { syncMetadataDao.setLastSyncTimestamp(capture(savedMetadataSlot)) } returns Unit
+
+        val repo = UserLibraryRepository(
+            firestore = firestore,
+            auth = auth,
+            watchHistoryDao = watchHistoryDao,
+            syncMetadataDao = syncMetadataDao
+        )
+
+        val beforeSync = System.currentTimeMillis()
+        repo.syncWatchHistoryDelta(force = false)
+        val afterSync = System.currentTimeMillis()
+
+        assertThat(savedMetadataSlot.isCaptured).isTrue()
+        assertThat(savedMetadataSlot.captured.lastSyncTimestamp).isAtLeast(beforeSync)
+        assertThat(savedMetadataSlot.captured.lastSyncTimestamp).isAtMost(afterSync)
+        assertThat(savedMetadataSlot.captured.lastSyncTimestamp).isLessThan(futureSkewedTimestamp)
+    }
+
+    @Test
+    fun `concurrent syncWatchHistoryDelta bootstrap calls serialize syncFromCloud without duplicate Firestore reads`() = runTest {
+        val syncMetadataDao: SyncMetadataDao = mockk()
+        val metadataStore = mutableMapOf<Pair<String, String>, Long>()
+        coEvery { syncMetadataDao.getLastSyncTimestamp(any(), any()) } answers {
+            metadataStore[firstArg<String>() to secondArg<String>()]
+        }
+        coEvery { syncMetadataDao.setLastSyncTimestamp(any()) } answers {
+            val entity = firstArg<SyncMetadataEntity>()
+            metadataStore[entity.userId to entity.collectionKey] = entity.lastSyncTimestamp
+        }
+
+        val mockUser: FirebaseUser = mockk()
+        every { mockUser.uid } returns "user_123"
+        every { auth.currentUser } returns mockUser
+        coEvery { watchHistoryDao.getAll("user_123") } returns emptyList()
+
+        val usersCol: CollectionReference = mockk()
+        val userDoc: DocumentReference = mockk()
+        val favCol: CollectionReference = mockk()
+        val downloadsCol: CollectionReference = mockk()
+        val tvDownloadsCol: CollectionReference = mockk()
+        val historyCol: CollectionReference = mockk()
+        val orderedHistoryQuery: Query = mockk()
+        val limitedHistoryQuery: Query = mockk()
+        val settingsCol: CollectionReference = mockk()
+        val configDoc: DocumentReference = mockk()
+        val emptySnapshot: QuerySnapshot = mockk { every { documents } returns emptyList() }
+        val emptySettingsSnapshot: DocumentSnapshot = mockk { every { exists() } returns false }
+        val favGate = TaskCompletionSource<QuerySnapshot>()
+
+        every { firestore.collection("users") } returns usersCol
+        every { usersCol.document("user_123") } returns userDoc
+        every { userDoc.collection("favorites") } returns favCol
+        every { userDoc.collection("downloads") } returns downloadsCol
+        every { userDoc.collection("tv_downloads") } returns tvDownloadsCol
+        every { userDoc.collection("watch_history") } returns historyCol
+        every { userDoc.collection("settings") } returns settingsCol
+        every { settingsCol.document("config") } returns configDoc
+        every { favCol.get() } returns favGate.task
+        every { downloadsCol.get() } returns Tasks.forResult(emptySnapshot)
+        every { tvDownloadsCol.get() } returns Tasks.forResult(emptySnapshot)
+        every { historyCol.orderBy("timestamp", Query.Direction.DESCENDING) } returns orderedHistoryQuery
+        every { orderedHistoryQuery.limit(any()) } returns limitedHistoryQuery
+        every { limitedHistoryQuery.get() } returns Tasks.forResult(emptySnapshot)
+        every { configDoc.get() } returns Tasks.forResult(emptySettingsSnapshot)
+
+        val repo = UserLibraryRepository(
+            firestore = firestore,
+            auth = auth,
+            watchHistoryDao = watchHistoryDao,
+            syncMetadataDao = syncMetadataDao
+        )
+
+        val firstCall = async { repo.syncWatchHistoryDelta(force = false) }
+        val secondCall = async { repo.syncWatchHistoryDelta(force = false) }
+        yield()
+
+        favGate.setResult(emptySnapshot)
+        firstCall.await()
+        secondCall.await()
+
+        verify(exactly = 1) { favCol.get() }
+        verify(exactly = 1) { downloadsCol.get() }
+        verify(exactly = 1) { tvDownloadsCol.get() }
+        verify(exactly = 1) { limitedHistoryQuery.get() }
     }
 }
 

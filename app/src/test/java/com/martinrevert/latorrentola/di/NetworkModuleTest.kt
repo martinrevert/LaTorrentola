@@ -81,6 +81,8 @@ class NetworkModuleTest {
         assertThat(hasBrotli).isTrue()
         assertThat(hasFallback).isTrue()
         assertThat(client.interceptors.first()).isSameInstanceAs(fallbackInterceptor)
+        assertThat(client.connectTimeoutMillis).isEqualTo(5_000)
+        assertThat(client.readTimeoutMillis).isEqualTo(8_000)
         assertThat(client.cache).isSameInstanceAs(cache)
         assertThat(retrofit.baseUrl().toString()).isEqualTo(Constants.YTS_BASE_URL)
     }

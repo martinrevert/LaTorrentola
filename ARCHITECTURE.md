@@ -245,7 +245,8 @@ graph TD
   * [Retrofit 3.0](https://square.github.io/retrofit/) with [OkHttp 5](https://square.github.io/okhttp/) and Kotlin Coroutines `Flow`.
   * **Compression & Transport Optimization**: Integrated `okhttp-brotli` (`BrotliInterceptor`) negotiating `Accept-Encoding: br, gzip` across all Retrofit services and OpenSubtitles client. Delivers 15–25% smaller JSON payloads on Brotli-capable CDNs (Cloudflare on TMDB, Torrentio, OpenSubtitles, GitHub) with automatic, transparent fallback to `gzip`.
   * **HTTP Disk Cache**: Dedicated 30 MB on-disk `okhttp3.Cache` resolving `Cache-Control` and HTTP `304 Not Modified` headers for instant UI lookups and zero-byte revalidations.
-  * **Unified Socket & HTTP/2 Multiplexing**: Reuses base `OkHttpClient` (`okHttpClient.newBuilder()`) across YTS fallback interceptors (prepended to capture fallback logs) and Coil 3 `ImageLoader` (`OkHttpNetworkFetcherFactory`), sharing connection pools, TLS sessions, and HTTP/2 multiplexing while isolating image disk storage to Coil's dedicated disk cache (`.cache(null)`).
+  * **Unified Socket & HTTP/2 Multiplexing & Fast YTS Failover**: Reuses base `OkHttpClient` (`okHttpClient.newBuilder()`) across YTS fallback interceptors (prepended at index 0 to capture fallback logs, with tighter `5s` connect / `8s` read failover timeouts so dead mirrors roll over quickly) and Coil 3 `ImageLoader` (`OkHttpNetworkFetcherFactory`), sharing connection pools, TLS sessions, and HTTP/2 multiplexing while isolating image disk storage to Coil's dedicated disk cache (`.cache(null)`).
+  * **Speculative Home Prefetch & In-Flight Request Coalescing (`YtsRepository`)**: Maintains a 3-minute in-memory page cache paired with single-flight `CompletableDeferred` coalescing. `LoginScreen` triggers `YtsRepository.prefetchHomeFirstPage(...)` on a singleton application-scoped `prefetchScope` (surviving `Route.Login` pop), allowing `HomeViewModel` to coalesce onto the in-flight request or consume the warm cache immediately and emit Page 1 progressively (`HomeUiState.Success`) before topping up subsequent pages.
   * [NanoHTTPD](https://github.com/NanoHttpd/nanohttpd) embedded micro-servers for loopback byte-range delivery and Cast LAN streaming.
 * **Cloud & Persistence**:
   * [Room 2.6+](https://developer.android.com/training/data-storage/room) as the fast, reactive Single Source of Truth for local state.
@@ -498,7 +499,7 @@ To guarantee seamless watch history parity and minimal cloud consumption across 
 * **Canonical TV Episode IDs**: Standardized purely and exclusively on the IMDb composite format `"${imdbId}_s${season}_e${episode}"` (e.g. `"tt0944947_s1_e2"` for regular episodes, `"tt0944947_s0_e1"` for Season 0 specials). Legacy `"media_..."` / `"tmdb_..."` candidate formats and defensive cleanup deletions have been fully removed.
   * **Season 0 Specials Canonical Integrity**: Season 0 episodes are parsed, resolved, and stored canonically as `${imdbId}_s0_e${episode}` instead of falling back to raw title strings.
   * **Season 0 Series Progress Exclusion**: Specials possess their own individual status chips in episode detail views, but are strictly excluded from series-level progress percentage calculations and completion state evaluations.
-* **Pure Canonical Single-Key Lookups & Zero Data Loss**: In `AppDatabase` (v14) and Firestore collections (`users/{uid}/watch_history`, `downloads`, `favorites_movies`, `favorites_tv`), items are accessed directly by canonical IMDb key (`tt...`), ensuring maximum performance without candidate multiplexing.
+* **Pure Canonical Single-Key Lookups & Zero Data Loss**: In `AppDatabase` (v15) and Firestore collections (`users/{uid}/watch_history`, `downloads`, `favorites_movies`, `favorites_tv`), items are accessed directly by canonical IMDb key (`tt...`), ensuring maximum performance without candidate multiplexing.
   * **Sentinel Key Defense**: Attempted persistence of invalid or empty keys (`"unknown_movie"`, `"unknown_episode"`, or blank) is strictly intercepted and dropped in `UserLibraryRepository.savePlaybackProgress`, preventing corrupted document creation in Room or Firestore.
 * **Inverse Metadata Resolution (`MediaMetadataResolver`)**: Filenames from NAS or local storage are regex-cleaned and queried against TMDB/YTS asynchronously to resolve both numeric and IMDb IDs before saving watch history.
 * **Delimited Episode Title Matching & Movie Collision Prevention**:
@@ -507,7 +508,7 @@ To guarantee seamless watch history parity and minimal cloud consumption across 
   * When a new season chip exists (e.g. Season 2) but has empty episode counts, has no available torrents, has not yet aired (`airDate > todayIso`), or has no air date announced yet (`airDate.isNullOrBlank()` for season > 1 when earlier seasons have aired), it is ignored in completion checks. If all previous available seasons are completed, the series status remains **"Watched"** until episodes of the new season air and become available.
   * Unreleased series with future air dates and 0 views remain **"Unwatched"**.
   * **Unified SSOT Progress Model**: `isSeriesWatched`, `isSeriesInProgress`, and `isSeriesUnwatched` derive directly from `TvSeriesProgressCalculator.calculateProgressPercent`. Completed series reach 100% without arbitrary caps and never appear in "Watching".
-  * **Asynchronous Room Entity Seasons Enrichment & Placeholder Loading**: Because Room's `FavoriteTvSeriesEntity` preserves lightweight summaries without `seasons`, `SearchViewModel` asynchronously enriches favorites where `seasons.isNullOrEmpty()` via `tmdbRepository.getTvDetails`. When a progress-dependent filter (`IN_PROGRESS`, `WATCHED`, or `UNWATCHED`) is active, `_uiState.value` remains `SearchUiState.Loading` (which displays `MovieListPlaceholder`) until all pending series have resolved their true season counts. This eliminates the "poster shrinking" artifact where completed series temporarily appeared as in-progress under fallback episode estimates before abruptly disappearing.
+  * **Offline-First Room TV Progress Cache (`tv_progress_cache`) & Lightweight Bounded Enrichment**: Because Room's `FavoriteTvSeriesEntity` stores lightweight summaries without `seasons`, `AppDatabase` (v15) adds a standalone device-shared `tv_progress_cache` table (`TvProgressCacheEntity` / `TvProgressCacheDao`) completely decoupled from `favorites_tv` and Firestore sync, with adaptive TTL (**6 hours** for ongoing/in-production series, **7 days** for ended/canceled series). When opening Favorites or Watching TV, `SearchViewModel` skips TMDB enrichment entirely for unwatched series with known IMDb IDs (and when watch history has no episodes), hydrates immediately from Room `tv_progress_cache` (offline-first, zero flicker), refreshes stale entries silently in the background, and fetches true cache misses concurrently (`Semaphore(6)` + `async`/`awaitAll`) via the lightweight `TmdbService.getTvProgressSummary` endpoint (`append_to_response="external_ids"`, ~3 KB instead of 500 KB–2 MB). While true misses are pending under progress-dependent filters (`IN_PROGRESS`, `WATCHED`, `UNWATCHED`), `_uiState.value` remains `SearchUiState.Loading` (`MovieListPlaceholder`), eliminating post-load poster shrinking. `HomeViewModel` also triggers a one-shot low-priority background pre-warm (`Semaphore(4)`) for favorited series with episode progress.
 * **Favorites Filter Ordering & Watching Feeds Contract (`FavoritesFilter`)**:
   * **Favorites Filter Hierarchy**: The `FavoritesFilter` enum is strictly ordered to match user workflow priority: `IN_PROGRESS` (Watching), `UNWATCHED` (Unwatched), `WATCHED` (Watched), `ALL` (All), `MOVIES` (Movies), and `TV_SERIES` (TV Series).
   * **Default Filter**: `SearchViewModel` initializes `selectedFavoritesFilter` to `FavoritesFilter.IN_PROGRESS`, ensuring users instantly resume active media when opening their Favorites library.
@@ -533,7 +534,7 @@ To guarantee seamless watch history parity and minimal cloud consumption across 
 
 ### 5.9 Cloud Library, FCM & Google Identity (Room SSOT & Multi-Account Isolation)
 * **Room as Single Source of Truth (SSOT)**:
-  * In `AppDatabase` (v14), all user library state (favorites, downloads, watch history) lives in local Room tables (`favorites_movies`, `favorites_tv`, `downloaded_movies`, `downloaded_episodes`, `watch_history`).
+  * In `AppDatabase` (v15), all user library state (favorites, downloads, watch history) lives in local Room tables (`favorites_movies`, `favorites_tv`, `downloaded_movies`, `downloaded_episodes`, `watch_history`), alongside the device-shared TMDB season schedule cache (`tv_progress_cache`).
   * The UI and ViewModels observe Room exclusively via reactive Kotlin Flows. Zero real-time `addSnapshotListener` listeners are attached during normal navigation, reducing recurring Firestore read billing by >99.5% and keeping cloud consumption securely inside the Google Cloud Free Tier (50,000 reads/day).
   * **Persistent Disk Cache**: Firestore SDK is initialized with `PersistentCacheSettings` instead of in-memory caching, retaining offline documents across process death and cold boots.
 * **Multi-Account & Shared Device Profile Isolation**:
@@ -548,7 +549,8 @@ To guarantee seamless watch history parity and minimal cloud consumption across 
   * On Android TV (`isTvDevice() == true`), avatars are navigated using standard D-pad spatial focus traversal, instantly activating the profile without biometric prompts.
 * **Controlled Cloud Synchronization**:
   * **Bootstrap Sync**: When signing in on a new device, `syncFromCloud(forceFull = true)` performs a single one-shot batch read (`Source.SERVER`) and populates local Room tables.
-  * **Delta Sync**: Subsequent background synchronizations query only changes modified after `lastSyncTimestamp` (`whereGreaterThan("updatedAt", lastSync)`), throttled to at most once every 15 minutes.
+  * **Full Library Delta Sync**: Background library synchronizations (`syncFromCloud`) query changes modified after `lastSyncTimestamp` (`whereGreaterThan("updatedAt", lastSync)`), throttled to at most once every 15 minutes (delegating to `syncWatchHistoryDelta` when throttled).
+  * **Near-Instant Watch History Delta Sync (`syncWatchHistoryDelta`)**: Dedicated single-field Firestore delta query (`whereGreaterThan("timestamp", lastSync - 5_000L).orderBy("timestamp", DESCENDING).limit(50)`, requiring zero composite indexes), serialized via `watchHistoryDeltaMutex` (with initial bootstrap delegated outside the mutex), tracked under `COLLECTION_KEY_WATCH_HISTORY_DELTA`, and throttled by a **30-second cooldown**. Automatically invoked on `MainActivity.onResume`, Favorites/Watching entry, and bypassed (`force = true`) on Home pull-to-refresh. Delivers ~0–30s cross-device progress convergence (e.g., Android TV → Phone) at minimal read cost while keeping the player's 10-second ticker strictly Room-only (`syncRemote = false`).
   * **Settings Sync**: Remote user settings (`settings/config`) are synchronized on login and saved on demand; individual ViewModels no longer attach duplicate real-time listeners.
 * **Google Credential Manager**: Modern, one-tap identity retrieval via `GetGoogleIdOption` passing ID Tokens directly to Firebase Auth.
 * **Push Notifications**: Managed by `MyFirebaseMessagingService` and `FcmRepository`, registering tokens with the app backend and enabling deep-linking into specific movie or series destinations.
@@ -569,24 +571,25 @@ To guarantee seamless watch history parity and minimal cloud consumption across 
 
 ## 6. Complete Suite of Sequence & Flow Diagrams
 
-### Diagram 1: Movie Discovery & Infinite Pagination
+### Diagram 1: Movie Discovery, Speculative Prefetch & Progressive Pagination
 ```mermaid
 sequenceDiagram
     participant U as User
+    participant LS as LoginScreen
     participant HS as HomeScreen
     participant VM as HomeViewModel
     participant R as YtsRepository
     participant N as YtsService
 
-    U->>HS: Open App / Select Movie Feed
+    LS->>R: prefetchHomeFirstPage (singleton prefetchScope)
+    R->>N: listMovies(page=1) with 5s/8s failover timeouts
+    U->>HS: Select Profile / Open Home
     HS->>VM: Observe uiState (StateFlow)
-    VM->>R: getMovies(page, filters)
-    R->>N: listMovies(page)
-    N-->>R: List of Movie objects
-    R->>R: Apply language & rating filters (MovieFilter)
-    R-->>VM: Flow of List of Movie
-    VM-->>HS: Emit Success state
-    HS-->>U: Render grid with Haze frosted blur
+    VM->>R: getMovies(page=1, filters)
+    R-->>VM: Coalesced / cached Page 1 movies
+    VM-->>HS: Emit progressive Success state immediately
+    HS-->>U: Render Page 1 grid with Haze frosted blur
+    VM->>R: Top up subsequent pages up to TARGET_INITIAL_BATCH
     U->>HS: Scroll to bottom
     HS->>VM: loadMore()
     VM->>R: getMovies(nextPage, filters)

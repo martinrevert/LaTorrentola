@@ -32,7 +32,8 @@ import kotlinx.coroutines.flow.stateIn
 class AuthViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val userLibraryRepository: com.martinrevert.latorrentola.network.UserLibraryRepository,
-    private val preferenceManager: com.martinrevert.latorrentola.utils.PreferenceManager
+    private val preferenceManager: com.martinrevert.latorrentola.utils.PreferenceManager,
+    private val ytsRepository: com.martinrevert.latorrentola.network.YtsRepository? = null
 ) : ViewModel() {
 
     /** Mutable backing state for authentication progress and outcomes. */
@@ -60,6 +61,16 @@ class AuthViewModel @Inject constructor(
     /** Resets the authentication UI state back to [AuthState.Idle]. */
     fun resetAuthState() {
         _authState.value = AuthState.Idle
+    }
+
+    /**
+     * Speculatively warms page 1 of the YTS Home movie catalog while the user is on the Login /
+     * Profile Selector screen so Home opens without waiting on a cold network roundtrip.
+     */
+    fun prefetchHomeCatalog() {
+        ytsRepository?.prefetchHomeFirstPage(
+            minimumRating = preferenceManager.getMinimumRating()
+        )
     }
 
     /** Signs in with Google, syncs the user's library and settings, and publishes the outcome. */

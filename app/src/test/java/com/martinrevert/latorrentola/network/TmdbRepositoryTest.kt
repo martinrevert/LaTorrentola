@@ -2,6 +2,8 @@ package com.martinrevert.latorrentola.network
 
 import com.google.common.truth.Truth.assertThat
 import com.martinrevert.latorrentola.database.TvGenreDao
+import com.martinrevert.latorrentola.database.TvProgressCacheDao
+import com.martinrevert.latorrentola.database.TvProgressCacheEntity
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
 import com.martinrevert.latorrentola.model.TMDB.TmdbCastCredit
 import com.martinrevert.latorrentola.model.TMDB.TmdbCreditsResponse
@@ -12,7 +14,9 @@ import com.martinrevert.latorrentola.model.TMDB.TmdbMoviePage
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieSummary
 import com.martinrevert.latorrentola.model.TMDB.TmdbPersonResult
 import com.martinrevert.latorrentola.model.TMDB.TmdbSearchPersonResponse
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvExternalIds
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvPage
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvSeason
 import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
 import com.martinrevert.latorrentola.model.TMDB.TmdbVideoItem
 import com.martinrevert.latorrentola.model.TMDB.TmdbVideosResponse
@@ -30,10 +34,14 @@ class TmdbRepositoryTest {
     private lateinit var repository: TmdbRepository
     private val tmdbService: TmdbService = mockk()
     private val tvGenreDao: TvGenreDao = mockk(relaxed = true)
+    private val tvProgressCacheDao: TvProgressCacheDao = mockk(relaxed = true)
 
     @Before
     fun setUp() {
-        repository = TmdbRepository(tmdbService, tvGenreDao)
+        coEvery { tvProgressCacheDao.get(any()) } returns null
+        coEvery { tvProgressCacheDao.getByIds(any()) } returns emptyList()
+        coEvery { tvProgressCacheDao.getByImdbIds(any()) } returns emptyList()
+        repository = TmdbRepository(tmdbService, tvGenreDao, tvProgressCacheDao)
     }
 
     @Test
@@ -380,6 +388,148 @@ class TmdbRepositoryTest {
         val castCredits = actor.combinedCredits?.cast.orEmpty()
         assertThat(castCredits.map { it.id }).containsExactly(872585, 157336, 27205).inOrder()
         assertThat(castCredits.map { it.character }).containsExactly("Director", "Director", "Director").inOrder()
+    }
+
+    @Test
+    fun `getTvProgressSummary uses lightweight endpoint caches in memory and persists to Room`() = runTest {
+        val summary = TmdbTvSummary(
+            id = 400,
+            name = "Severance",
+            status = "Returning Series",
+            seasons = listOf(TmdbTvSeason(id = 1, seasonNumber = 1, episodeCount = 9, airDate = "2022-02-18")),
+            externalIds = TmdbTvExternalIds(imdbId = "tt11280740")
+        )
+        coEvery {
+            tmdbService.getTvProgressSummary(
+                seriesId = 400,
+                apiKey = any(),
+                appendToResponse = "external_ids",
+                language = any()
+            )
+        } returns summary
+
+        val first = repository.getTvProgressSummary(400)
+        val second = repository.getTvProgressSummary(400)
+
+        assertThat(first.id).isEqualTo(400)
+        assertThat(second).isEqualTo(first)
+        assertThat(repository.getCachedTvProgressSummary(400)).isEqualTo(first)
+        coVerify(exactly = 1) {
+            tmdbService.getTvProgressSummary(seriesId = 400, apiKey = any(), appendToResponse = "external_ids", language = any())
+        }
+        coVerify(exactly = 0) {
+            tmdbService.getTvDetails(any(), any(), any(), any())
+        }
+        coVerify(exactly = 1) {
+            tvProgressCacheDao.upsert(match { it.seriesId == 400 && it.imdbId == "tt11280740" })
+        }
+    }
+
+    @Test
+    fun `getTvProgressSummary returns fresh persisted Room cache with zero network calls`() = runTest {
+        val persistedSummary = TmdbTvSummary(
+            id = 1399,
+            imdbId = "tt0944947",
+            name = "Game of Thrones",
+            status = "Ended",
+            inProduction = false,
+            seasons = listOf(TmdbTvSeason(id = 1, seasonNumber = 1, episodeCount = 10, airDate = "2011-04-17"))
+        )
+        coEvery { tvProgressCacheDao.get(1399) } returns TvProgressCacheEntity.from(persistedSummary)
+
+        val result = repository.getTvProgressSummary(1399)
+
+        assertThat(result.id).isEqualTo(1399)
+        assertThat(result.seasons).hasSize(1)
+        coVerify(exactly = 0) {
+            tmdbService.getTvProgressSummary(any(), any(), any(), any())
+        }
+    }
+
+    @Test
+    fun `getTvProgressSummary falls back to stale Room record when network refresh fails offline`() = runTest {
+        val staleSummary = TmdbTvSummary(
+            id = 777,
+            imdbId = "tt0777777",
+            name = "Offline Show",
+            status = "Returning Series",
+            inProduction = true,
+            seasons = listOf(TmdbTvSeason(id = 1, seasonNumber = 1, episodeCount = 8, airDate = "2023-01-01"))
+        )
+        val expiredTimestamp = System.currentTimeMillis() - (24L * 60L * 60L * 1000L)
+        coEvery { tvProgressCacheDao.get(777) } returns TvProgressCacheEntity.from(staleSummary, cachedAt = expiredTimestamp)
+        coEvery {
+            tmdbService.getTvProgressSummary(seriesId = 777, apiKey = any(), appendToResponse = any(), language = any())
+        } throws RuntimeException("No internet connection")
+
+        val result = repository.getTvProgressSummary(777)
+
+        assertThat(result.id).isEqualTo(777)
+        assertThat(result.seasons).hasSize(1)
+        assertThat(repository.getCachedTvProgressSummary(777)).isNull()
+
+        val refreshedSummary = staleSummary.copy(
+            seasons = listOf(
+                TmdbTvSeason(id = 1, seasonNumber = 1, episodeCount = 8, airDate = "2023-01-01"),
+                TmdbTvSeason(id = 2, seasonNumber = 2, episodeCount = 10, airDate = "2025-01-01")
+            )
+        )
+        coEvery {
+            tmdbService.getTvProgressSummary(seriesId = 777, apiKey = any(), appendToResponse = any(), language = any())
+        } returns refreshedSummary
+
+        val retryResult = repository.getTvProgressSummary(777)
+
+        assertThat(retryResult.seasons).hasSize(2)
+        assertThat(repository.getCachedTvProgressSummary(777)).isEqualTo(refreshedSummary)
+        coVerify(exactly = 2) {
+            tmdbService.getTvProgressSummary(seriesId = 777, apiKey = any(), appendToResponse = any(), language = any())
+        }
+    }
+
+    @Test
+    fun `getPersistedTvProgressSummaries batch loads Room entries and only caches fresh entries in memory`() = runTest {
+        val now = System.currentTimeMillis()
+        val fresh = TvProgressCacheEntity.from(
+            TmdbTvSummary(id = 10, name = "Fresh", status = "Returning Series"),
+            cachedAt = now
+        )
+        val stale = TvProgressCacheEntity.from(
+            TmdbTvSummary(id = 20, name = "Stale", status = "Returning Series"),
+            cachedAt = now - (10L * 60L * 60L * 1000L)
+        )
+        coEvery { tvProgressCacheDao.getByIds(listOf(10, 20)) } returns listOf(fresh, stale)
+
+        val result = repository.getPersistedTvProgressSummaries(listOf(10, 20))
+
+        assertThat(result).hasSize(2)
+        assertThat(result[10]?.isStale).isFalse()
+        assertThat(result[20]?.isStale).isTrue()
+        assertThat(result[20]?.summary?.name).isEqualTo("Stale")
+        assertThat(repository.getCachedTvProgressSummary(10)?.name).isEqualTo("Fresh")
+        assertThat(repository.getCachedTvProgressSummary(20)).isNull()
+    }
+
+    @Test
+    fun `getPersistedTvProgressSummariesByImdbIds hydrates by IMDb ID and skips RAM caching for stale rows`() = runTest {
+        val now = System.currentTimeMillis()
+        val fresh = TvProgressCacheEntity.from(
+            TmdbTvSummary(id = 30, imdbId = "tt0000030", name = "Fresh By IMDb", status = "Returning Series"),
+            cachedAt = now
+        )
+        val stale = TvProgressCacheEntity.from(
+            TmdbTvSummary(id = 40, imdbId = "tt0000040", name = "Stale By IMDb", status = "Returning Series"),
+            cachedAt = now - (10L * 60L * 60L * 1000L)
+        )
+        coEvery { tvProgressCacheDao.getByImdbIds(listOf("tt0000030", "tt0000040")) } returns listOf(fresh, stale)
+
+        val result = repository.getPersistedTvProgressSummariesByImdbIds(listOf("tt0000030", "tt0000040"))
+
+        assertThat(result).hasSize(2)
+        assertThat(result["tt0000030"]?.isStale).isFalse()
+        assertThat(result["tt0000040"]?.isStale).isTrue()
+        assertThat(repository.getCachedTvProgressSummary(30)?.name).isEqualTo("Fresh By IMDb")
+        assertThat(repository.getCachedTvProgressSummary(40)).isNull()
     }
 }
 

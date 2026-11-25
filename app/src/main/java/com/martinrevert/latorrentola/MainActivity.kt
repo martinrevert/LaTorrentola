@@ -27,6 +27,7 @@ import com.martinrevert.latorrentola.utils.MediaControllerHelper
 import com.google.common.util.concurrent.ListenableFuture
 import com.martinrevert.latorrentola.network.FirebaseMessagingConfig
 import com.martinrevert.latorrentola.network.FirebaseMessagingInitializer
+import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.service.PlaybackService
 import com.martinrevert.latorrentola.service.TorrentDownloadService
 import com.martinrevert.latorrentola.ui.navigation.AppNavigation
@@ -38,6 +39,9 @@ import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -56,6 +60,10 @@ class MainActivity : FragmentActivity() {
     /** Supplies the persisted theme selection to the Compose content. */
     @Inject
     lateinit var preferenceManager: PreferenceManager
+
+    /** Coordinates lightweight cross-device watch-history delta sync on foreground resume. */
+    @Inject
+    lateinit var userLibraryRepository: UserLibraryRepository
 
     private var streamControllerFuture: ListenableFuture<MediaController>? = null
 
@@ -149,6 +157,14 @@ class MainActivity : FragmentActivity() {
                     navigationContent()
                 }
             }
+        }
+    }
+
+    /** Triggers a throttled watch-history delta sync when returning to the foreground so cross-device progress appears promptly. */
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch(Dispatchers.IO) {
+            userLibraryRepository.syncWatchHistoryDelta(force = false)
         }
     }
 

@@ -186,6 +186,18 @@ interface TmdbService {
         @Query("language") language: String = TmdbLanguage.current()
     ): TmdbTvSummary
 
+    /**
+     * Retrieves lightweight TV series metadata (seasons, air schedule, and external IDs)
+     * without heavy aggregate cast or video payloads, optimized for watch-progress computation.
+     */
+    @GET("tv/{series_id}")
+    suspend fun getTvProgressSummary(
+        @Path("series_id") seriesId: Int,
+        @Query("api_key") apiKey: String,
+        @Query("append_to_response") appendToResponse: String = "external_ids",
+        @Query("language") language: String = TmdbLanguage.current()
+    ): TmdbTvSummary
+
     /** Retrieves episode listings and metadata for one season. */
     @GET("tv/{series_id}/season/{season_number}")
     suspend fun getTvSeasonDetails(

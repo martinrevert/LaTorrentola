@@ -2,6 +2,8 @@ package com.martinrevert.latorrentola.network
 
 import com.martinrevert.latorrentola.BuildConfig
 import com.martinrevert.latorrentola.database.TvGenreDao
+import com.martinrevert.latorrentola.database.TvProgressCacheDao
+import com.martinrevert.latorrentola.database.TvProgressCacheEntity
 import com.martinrevert.latorrentola.model.TMDB.TmdbActorDetail
 import com.martinrevert.latorrentola.model.TMDB.TmdbMovieDetails
 import com.martinrevert.latorrentola.model.TMDB.TmdbMoviePage
@@ -24,15 +26,28 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 /**
+ * Persisted offline-first snapshot of a TV series progress summary loaded from Room.
+ *
+ * @property summary Lightweight [TmdbTvSummary] with seasons, air dates, and IMDb ID.
+ * @property isStale Whether the record exceeded its TTL and should be refreshed silently in background.
+ */
+data class PersistedTvProgress(
+    val summary: TmdbTvSummary,
+    val isStale: Boolean
+)
+
+/**
  * Coordinates TMDB requests and converts lookup failures into nullable/result values.
  *
  * @property tmdbService HTTP client for TMDB endpoints.
  * @property tvGenreDao local TV genre usage statistics.
+ * @property tvProgressCacheDao optional Room cache for offline-first TV progress metadata.
  */
 @Singleton
 class TmdbRepository @Inject constructor(
     private val tmdbService: TmdbService,
-    private val tvGenreDao: TvGenreDao
+    private val tvGenreDao: TvGenreDao,
+    private val tvProgressCacheDao: TvProgressCacheDao? = null
 ) {
     /** API key injected through the app build configuration. */
     private val apiKey: String
@@ -47,6 +62,9 @@ class TmdbRepository @Inject constructor(
 
     /** In-memory cache of TMDB TV series details by series ID. */
     private val tvDetailsCache = ConcurrentHashMap<Int, TmdbTvSummary>()
+
+    /** In-memory cache of lightweight TMDB TV progress summaries by series ID. */
+    private val tvProgressSummaryCache = ConcurrentHashMap<Int, TmdbTvSummary>()
 
     /** In-memory cache of TMDB movie lookups keyed by IMDb ID. */
     private val movieResultCache = ConcurrentHashMap<String, TmdbMovieResult>()
@@ -455,8 +473,115 @@ class TmdbRepository @Inject constructor(
     /** Returns cached TV series summary if already fetched into memory. */
     fun getCachedTvDetails(seriesId: Int): TmdbTvSummary? = tvDetailsCache[seriesId]
 
+    /** Returns a cached TV series progress summary from RAM (either full details or lightweight summary). */
+    fun getCachedTvProgressSummary(seriesId: Int): TmdbTvSummary? =
+        tvDetailsCache[seriesId] ?: tvProgressSummaryCache[seriesId]
+
     /**
-     * Loads a series with its seasons and aggregate cast, caching the result in memory.
+     * Batch-loads offline-first persisted TV progress summaries from Room for [seriesIds],
+     * warming the in-memory progress cache only for fresh (non-stale) records.
+     */
+    suspend fun getPersistedTvProgressSummaries(seriesIds: List<Int>): Map<Int, PersistedTvProgress> {
+        val dao = tvProgressCacheDao ?: return emptyMap()
+        if (seriesIds.isEmpty()) return emptyMap()
+        return try {
+            val now = System.currentTimeMillis()
+            dao.getByIds(seriesIds.distinct()).associate { entity ->
+                val summary = entity.toTmdbTvSummary()
+                val isStale = entity.isStale(now)
+                if (!isStale) {
+                    tvProgressSummaryCache.putIfAbsent(entity.seriesId, summary)
+                }
+                entity.seriesId to PersistedTvProgress(
+                    summary = summary,
+                    isStale = isStale
+                )
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            emptyMap()
+        }
+    }
+
+    /**
+     * Batch-loads offline-first persisted TV progress summaries from Room by canonical IMDb IDs,
+     * warming the in-memory progress cache only for fresh (non-stale) records.
+     */
+    suspend fun getPersistedTvProgressSummariesByImdbIds(imdbIds: List<String>): Map<String, PersistedTvProgress> {
+        val dao = tvProgressCacheDao ?: return emptyMap()
+        val distinctImdbIds = imdbIds.mapNotNull { it.trim().takeIf(String::isNotBlank) }.distinct()
+        if (distinctImdbIds.isEmpty()) return emptyMap()
+        return try {
+            val now = System.currentTimeMillis()
+            dao.getByImdbIds(distinctImdbIds).mapNotNull { entity ->
+                val imdb = entity.imdbId.trim().takeIf(String::isNotBlank) ?: return@mapNotNull null
+                val summary = entity.toTmdbTvSummary()
+                val isStale = entity.isStale(now)
+                if (!isStale) {
+                    tvProgressSummaryCache.putIfAbsent(entity.seriesId, summary)
+                }
+                imdb.lowercase(Locale.ROOT) to PersistedTvProgress(
+                    summary = summary,
+                    isStale = isStale
+                )
+            }.toMap()
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            emptyMap()
+        }
+    }
+
+    /**
+     * Loads lightweight TV series metadata (seasons, air schedule, and external IDs) optimized for
+     * watch-progress calculation without fetching heavy aggregate cast or video payloads.
+     *
+     * Checks RAM cache, then offline-first Room `tv_progress_cache`, and falls back to the lightweight
+     * TMDB endpoint (persisting the result to Room). If a stale cached record exists and the network
+     * refresh fails, returns the persisted stale summary without caching it in RAM so subsequent
+     * callers can retry once connectivity recovers.
+     */
+    suspend fun getTvProgressSummary(seriesId: Int, forceRefresh: Boolean = false): TmdbTvSummary {
+        if (!forceRefresh) {
+            tvDetailsCache[seriesId]?.let { return it }
+            tvProgressSummaryCache[seriesId]?.let { return it }
+        }
+
+        val cachedEntity = try {
+            tvProgressCacheDao?.get(seriesId)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            null
+        }
+        val cachedSummary = cachedEntity?.toTmdbTvSummary()
+
+        if (!forceRefresh && cachedEntity != null && !cachedEntity.isStale() && cachedSummary != null) {
+            tvProgressSummaryCache[seriesId] = cachedSummary
+            return cachedSummary
+        }
+
+        return try {
+            requireConfiguredApiKey()
+            val fetched = tmdbService.getTvProgressSummary(seriesId = seriesId, apiKey = apiKey)
+            val normalized = if (fetched.id == seriesId) fetched else fetched.copy(id = seriesId)
+            tvProgressSummaryCache[seriesId] = normalized
+            persistTvProgressSummary(normalized)
+            normalized
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            if (cachedSummary != null) {
+                if (!cachedEntity.isStale()) {
+                    tvProgressSummaryCache[seriesId] = cachedSummary
+                }
+                cachedSummary
+            } else {
+                throw e
+            }
+        }
+    }
+
+    /**
+     * Loads a series with its seasons and aggregate cast, caching the result in memory
+     * and updating the offline-first Room progress cache.
      *
      * @param seriesId TMDB TV series identifier.
      * @return The series detail response.
@@ -466,7 +591,19 @@ class TmdbRepository @Inject constructor(
         tvDetailsCache[seriesId]?.let { return it }
         val fetched = tmdbService.getTvDetails(seriesId = seriesId, apiKey = apiKey)
         tvDetailsCache[seriesId] = fetched
+        tvProgressSummaryCache[seriesId] = fetched
+        persistTvProgressSummary(fetched)
         return fetched
+    }
+
+    private suspend fun persistTvProgressSummary(summary: TmdbTvSummary) {
+        val dao = tvProgressCacheDao ?: return
+        if (summary.id <= 0) return
+        try {
+            dao.upsert(TvProgressCacheEntity.from(summary))
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+        }
     }
 
     /**

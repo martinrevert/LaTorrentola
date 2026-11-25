@@ -95,6 +95,10 @@ fun LoginScreen(
     }
     val isTv = remember(context) { context.isTvDevice() }
 
+    LaunchedEffect(Unit) {
+        viewModel.prefetchHomeCatalog()
+    }
+
     LaunchedEffect(authState) {
         if (authState is AuthState.Success) {
             onLoginSuccess()

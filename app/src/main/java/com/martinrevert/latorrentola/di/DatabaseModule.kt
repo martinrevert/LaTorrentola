@@ -10,6 +10,7 @@ import com.martinrevert.latorrentola.database.SavedAccountDao
 import com.martinrevert.latorrentola.database.SyncMetadataDao
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.database.TvGenreDao
+import com.martinrevert.latorrentola.database.TvProgressCacheDao
 import com.martinrevert.latorrentola.database.WatchHistoryDao
 import dagger.Module
 import dagger.Provides
@@ -82,5 +83,11 @@ object DatabaseModule {
     @Provides
     fun provideSyncMetadataDao(appDatabase: AppDatabase): SyncMetadataDao {
         return appDatabase.syncMetadataDao()
+    }
+
+    /** Provides the offline-first TMDB TV progress cache DAO. */
+    @Provides
+    fun provideTvProgressCacheDao(appDatabase: AppDatabase): TvProgressCacheDao {
+        return appDatabase.tvProgressCacheDao()
     }
 }

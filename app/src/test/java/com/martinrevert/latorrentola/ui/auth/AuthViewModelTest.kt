@@ -209,4 +209,17 @@ class AuthViewModelTest {
             assertThat(awaitItem()).containsExactly(savedProfile)
         }
     }
+
+    @Test
+    fun `prefetchHomeCatalog triggers YtsRepository prefetchHomeFirstPage with user minimum rating`() {
+        val ytsRepository: com.martinrevert.latorrentola.network.YtsRepository = mockk(relaxed = true)
+        every { preferenceManager.getMinimumRating() } returns 7.5f
+
+        val testViewModel = AuthViewModel(authRepository, userLibraryRepository, preferenceManager, ytsRepository)
+        testViewModel.prefetchHomeCatalog()
+
+        io.mockk.verify(exactly = 1) {
+            ytsRepository.prefetchHomeFirstPage(quality = null, minimumRating = 7.5f)
+        }
+    }
 }

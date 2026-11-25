@@ -25,9 +25,10 @@ import com.martinrevert.latorrentola.model.torrent.TorrentDownload
         FavoriteTvSeriesEntity::class,
         DownloadedMovieEntity::class,
         DownloadedEpisodeEntity::class,
-        SyncMetadataEntity::class
+        SyncMetadataEntity::class,
+        TvProgressCacheEntity::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -51,6 +52,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun downloadRecordDao(): DownloadRecordDao
     /** Provides database access to cloud sync metadata. */
     abstract fun syncMetadataDao(): SyncMetadataDao
+    /** Provides database access to offline-first TMDB TV progress cache records. */
+    abstract fun tvProgressCacheDao(): TvProgressCacheDao
 
     companion object {
         /** Lazily initialized process-wide database instance. */
@@ -78,11 +81,27 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_10_11,
                         MIGRATION_11_12,
                         MIGRATION_12_13,
-                        MIGRATION_13_14
+                        MIGRATION_13_14,
+                        MIGRATION_14_15
                     )
                     .build()
                 INSTANCE = instance
                 instance
+            }
+        }
+
+        /** Adds device-shared offline-first TMDB TV progress cache table. */
+        private val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `tv_progress_cache` (" +
+                        "`seriesId` INTEGER NOT NULL, `imdbId` TEXT NOT NULL, `name` TEXT NOT NULL, " +
+                        "`posterPath` TEXT, `backdropPath` TEXT, `firstAirDate` TEXT, " +
+                        "`voteAverage` REAL, `status` TEXT, `inProduction` INTEGER, " +
+                        "`numberOfSeasons` INTEGER, `numberOfEpisodes` INTEGER, " +
+                        "`seasonsJson` TEXT, `lastEpisodeToAirJson` TEXT, `nextEpisodeToAirJson` TEXT, " +
+                        "`cachedAt` INTEGER NOT NULL, PRIMARY KEY(`seriesId`))"
+                )
             }
         }
 

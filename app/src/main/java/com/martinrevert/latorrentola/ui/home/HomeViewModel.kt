@@ -15,6 +15,7 @@ import com.martinrevert.latorrentola.utils.AppLogger
 import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.utils.MovieFilter
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import com.martinrevert.latorrentola.utils.TvSeriesProgressCalculator
 import com.martinrevert.latorrentola.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.Date
@@ -23,9 +24,14 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 /**
  * Loads and filters the home movie feed and exposes associated UI state.
@@ -51,6 +57,7 @@ class HomeViewModel @Inject constructor(
         private const val TARGET_LOAD_MORE_BATCH = 12
         private const val MAX_PAGES_PER_BATCH = 5
         private const val YTS_PAGE_SIZE = 20
+        private const val FAVORITES_PREWARM_CONCURRENCY = 4
     }
 
     /** Mutable backing state for the home feed result. */
@@ -213,6 +220,8 @@ class HomeViewModel @Inject constructor(
     private var movieFetchJob: kotlinx.coroutines.Job? = null
     /** Monotonic generation counter to ignore stale/cancelled coroutine completions. */
     private var requestGeneration = 0L
+    /** Ensures background TV favorites progress pre-warm runs once per HomeViewModel lifetime. */
+    private var hasScheduledFavoritesPrewarm = false
 
     /** Starts observing visit metadata, genres, and preference synchronization. */
     init {
@@ -331,20 +340,29 @@ class HomeViewModel @Inject constructor(
                         minimumRating = preferenceManager.getMinimumRating()
                     )
 
+                    var addedThisPage = 0
                     for (movie in filteredMovies) {
                         if (seenMovieIds.add(movie.id)) {
                             allMovies.add(movie)
                             addedInBatch++
+                            addedThisPage++
+                        }
+                    }
+
+                    // Emit progressively after the first non-empty page instead of holding Loading across multiple pages.
+                    if (addedThisPage > 0) {
+                        _uiState.value = HomeUiState.Success(allMovies.toList())
+                        if (_focusedMovie.value == null && allMovies.isNotEmpty()) {
+                            onMovieFocused(allMovies.first())
+                        }
+                        scheduleFavoritesTvProgressPrewarm()
+                        if (canLoadMore && lastPageWasFull && addedInBatch < targetBatchSize && pagesFetchedInBatch < MAX_PAGES_PER_BATCH) {
+                            _isLoadingMore.value = true
                         }
                     }
                 }
 
-                if (addedInBatch > 0) {
-                    _uiState.value = HomeUiState.Success(allMovies.toList())
-                    if (_focusedMovie.value == null && allMovies.isNotEmpty()) {
-                        onMovieFocused(allMovies.first())
-                    }
-                } else if (allMovies.isEmpty() && !canLoadMore) {
+                if (addedInBatch == 0 && allMovies.isEmpty()) {
                     _uiState.value = HomeUiState.Error(UiText.StringResource(R.string.error_no_movies_filtered))
                 }
             } catch (e: Exception) {
@@ -375,6 +393,17 @@ class HomeViewModel @Inject constructor(
         _isLoadingMore.value = false
         _isRefreshing.value = showIndicator
 
+        if (showIndicator) {
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    userLibraryRepository.syncWatchHistoryDelta(force = true)
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    AppLogger.w("HomeViewModel", "Pull-to-refresh watch history delta sync failed: ${e.message}")
+                }
+            }
+        }
+
         movieFetchJob = viewModelScope.launch {
             try {
                 // reset pagination and current list
@@ -398,9 +427,10 @@ class HomeViewModel @Inject constructor(
                     (addedInBatch == 0 || (lastPageWasFull && addedInBatch < TARGET_INITIAL_BATCH && pagesFetchedInBatch < MAX_PAGES_PER_BATCH))
                 ) {
                     val result = ytsRepository.getMovies(
-                        currentPage,
-                        _selectedQuality.value,
-                        preferenceManager.getMinimumRating()
+                        page = currentPage,
+                        quality = _selectedQuality.value,
+                        minimumRating = preferenceManager.getMinimumRating(),
+                        forceRefresh = showIndicator
                     )
                     if (generation != requestGeneration) return@launch
                     val moviesFromApi = result.data?.movies
@@ -422,20 +452,29 @@ class HomeViewModel @Inject constructor(
                         minimumRating = preferenceManager.getMinimumRating()
                     )
 
+                    var addedThisPage = 0
                     for (movie in filteredMovies) {
                         if (seenMovieIds.add(movie.id)) {
                             allMovies.add(movie)
                             addedInBatch++
+                            addedThisPage++
+                        }
+                    }
+
+                    // Emit progressively after Page 1 arrives so posters appear immediately even while subsequent pages top up the batch.
+                    if (addedThisPage > 0) {
+                        _uiState.value = HomeUiState.Success(allMovies.toList())
+                        if (_focusedMovie.value == null && allMovies.isNotEmpty()) {
+                            onMovieFocused(allMovies.first())
+                        }
+                        scheduleFavoritesTvProgressPrewarm()
+                        if (canLoadMore && lastPageWasFull && addedInBatch < TARGET_INITIAL_BATCH && pagesFetchedInBatch < MAX_PAGES_PER_BATCH) {
+                            _isLoadingMore.value = true
                         }
                     }
                 }
 
-                if (addedInBatch > 0) {
-                    _uiState.value = HomeUiState.Success(allMovies.toList())
-                    if (_focusedMovie.value == null && allMovies.isNotEmpty()) {
-                        onMovieFocused(allMovies.first())
-                    }
-                } else if (allMovies.isEmpty() && !canLoadMore) {
+                if (addedInBatch == 0 && allMovies.isEmpty()) {
                     _uiState.value = HomeUiState.Error(UiText.StringResource(R.string.error_no_movies_filtered))
                 }
             } catch (e: Exception) {
@@ -445,10 +484,63 @@ class HomeViewModel @Inject constructor(
                 }
             } finally {
                 if (generation == requestGeneration) {
-                    _isRefreshing.value = false
-                    _isLoadingMore.value = false
                     isFetching = false
+                    _isLoadingMore.value = false
+                    _isRefreshing.value = false
                 }
+            }
+        }
+    }
+
+    /**
+     * Low-priority one-shot background pre-warm of lightweight TMDB TV progress metadata for
+     * favorited series that actually have watch-history episodes and are missing or stale in Room.
+     */
+    private fun scheduleFavoritesTvProgressPrewarm() {
+        if (hasScheduledFavoritesPrewarm) return
+        hasScheduledFavoritesPrewarm = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val favoriteSeries = userLibraryRepository.getFavoriteTvSeries().first()
+                if (favoriteSeries.isEmpty()) return@launch
+                val watchHistory = userLibraryRepository.getWatchHistory().first()
+                val progressIndex = TvSeriesProgressCalculator.buildEpisodeProgressIndex(watchHistory)
+                if (progressIndex.isEmpty) return@launch
+
+                val candidates = favoriteSeries.filter { series ->
+                    if (!series.seasons.isNullOrEmpty()) return@filter false
+                    val normImdb = MediaIdHelper.normalizeImdbId(series.effectiveImdbId)
+                    normImdb == null || progressIndex.findEpisodesForSeries(normImdb, series.name.orEmpty()).isNotEmpty()
+                }
+                if (candidates.isEmpty()) return@launch
+
+                val persisted = tmdbRepository.getPersistedTvProgressSummaries(candidates.map { it.id })
+                val toFetch = candidates.mapNotNull { series ->
+                    val cached = persisted[series.id]
+                    when {
+                        cached == null -> series.id to false
+                        cached.isStale -> series.id to true
+                        else -> null
+                    }
+                }
+                if (toFetch.isEmpty()) return@launch
+
+                val semaphore = Semaphore(FAVORITES_PREWARM_CONCURRENCY)
+                coroutineScope {
+                    toFetch.map { (seriesId, forceRefresh) ->
+                        async {
+                            semaphore.withPermit {
+                                try {
+                                    tmdbRepository.getTvProgressSummary(seriesId, forceRefresh = forceRefresh)
+                                } catch (e: Exception) {
+                                    if (e is CancellationException) throw e
+                                }
+                            }
+                        }
+                    }.awaitAll()
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
             }
         }
     }

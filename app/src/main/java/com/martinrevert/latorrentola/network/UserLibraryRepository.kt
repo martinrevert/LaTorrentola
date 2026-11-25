@@ -35,8 +35,11 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -59,6 +62,23 @@ class UserLibraryRepository @Inject constructor(
     private val mediaMetadataResolver: dagger.Lazy<MediaMetadataResolver>? = null,
     private val preferenceManager: dagger.Lazy<PreferenceManager>? = null
 ) {
+    companion object {
+        private const val FULL_LIBRARY_SYNC_COOLDOWN_MS = 15L * 60L * 1000L
+        internal const val WATCH_HISTORY_DELTA_COOLDOWN_MS = 30_000L
+        private const val WATCH_HISTORY_CLOCK_SKEW_BUFFER_MS = 5_000L
+        internal const val COLLECTION_KEY_LIBRARY = "library"
+        internal const val COLLECTION_KEY_WATCH_HISTORY_DELTA = "watch_history_delta"
+    }
+
+    /** Serializes concurrent watch-history delta sync triggers to avoid duplicate Firestore queries. */
+    private val watchHistoryDeltaMutex = Mutex()
+
+    /** Serializes full/bootstrap cloud library sync triggers to avoid duplicate multi-collection reads. */
+    private val fullLibrarySyncMutex = Mutex()
+
+    /** Tracks user IDs that already completed a full cloud sync in this process to prevent redundant empty-library retries. */
+    private val completedFullSyncUserIds = ConcurrentHashMap.newKeySet<String>()
+
     /** Authenticated Firebase UID used to scope cloud and local library records. */
     val userId: String? get() = auth.currentUser?.uid
 
@@ -1121,24 +1141,28 @@ class UserLibraryRepository @Inject constructor(
      */
     suspend fun syncFromCloud(forceFull: Boolean = false) {
         val uid = userId ?: return
-        try {
-            watchHistoryDao.claimUnassignedItems(uid)
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            AppLogger.w("UserLibraryRepository", "Error claiming unassigned watch history: ${e.message}")
-        }
-        val metadataDao = syncMetadataDao ?: return
-        val now = System.currentTimeMillis()
+        var shouldRunWatchHistoryDelta = false
+        fullLibrarySyncMutex.withLock {
+            try {
+                watchHistoryDao.claimUnassignedItems(uid)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                AppLogger.w("UserLibraryRepository", "Error claiming unassigned watch history: ${e.message}")
+            }
+            val metadataDao = syncMetadataDao ?: return
+            val now = System.currentTimeMillis()
 
-        val lastSync = metadataDao.getLastSyncTimestamp(uid, "library") ?: 0L
-        val isLocalEmpty = (favoriteDao?.getFavoriteMovies(uid)?.isEmpty() ?: true) &&
-            (watchHistoryDao.getAll(uid).isEmpty())
-        if (!forceFull && !isLocalEmpty && lastSync > 0L && (now - lastSync) < 15 * 60 * 1000L) {
-            // Throttled: synced recently, no need to read Firestore
-            return
-        }
+            val lastSync = metadataDao.getLastSyncTimestamp(uid, COLLECTION_KEY_LIBRARY) ?: 0L
+            val isLocalEmpty = (favoriteDao?.getFavoriteMovies(uid)?.isEmpty() ?: true) &&
+                (watchHistoryDao.getAll(uid).isEmpty())
+            val withinCooldown = lastSync > 0L && (now - lastSync) < FULL_LIBRARY_SYNC_COOLDOWN_MS
+            if (!forceFull && withinCooldown && (!isLocalEmpty || completedFullSyncUserIds.contains(uid))) {
+                // Library sync throttled (15 min), but still allow cheap watch-history delta sync (30 s cooldown)
+                shouldRunWatchHistoryDelta = true
+                return@withLock
+            }
 
-        try {
+            try {
             // 1. Sync Favorites
             val favRef = firestore.collection("users").document(uid).collection("favorites")
             val favQuery = if (lastSync > 0L && !forceFull && !isLocalEmpty) {
@@ -1277,13 +1301,101 @@ class UserLibraryRepository @Inject constructor(
                 AppLogger.w("UserLibraryRepository", "Error syncing remote settings: ${e.message}")
             }
 
-            metadataDao.setLastSyncTimestamp(
-                SyncMetadataEntity(userId = uid, collectionKey = "library", lastSyncTimestamp = now)
-            )
-            Log.i("UserLibraryRepository", "Successfully synced user library from cloud for $uid")
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            AppLogger.e("UserLibraryRepository", "Error syncing library from cloud: ${e.message}", e)
+                metadataDao.setLastSyncTimestamp(
+                    SyncMetadataEntity(userId = uid, collectionKey = COLLECTION_KEY_LIBRARY, lastSyncTimestamp = now)
+                )
+                metadataDao.setLastSyncTimestamp(
+                    SyncMetadataEntity(userId = uid, collectionKey = COLLECTION_KEY_WATCH_HISTORY_DELTA, lastSyncTimestamp = now)
+                )
+                completedFullSyncUserIds.add(uid)
+                Log.i("UserLibraryRepository", "Successfully synced user library from cloud for $uid")
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                AppLogger.e("UserLibraryRepository", "Error syncing library from cloud: ${e.message}", e)
+            }
+        }
+
+        if (shouldRunWatchHistoryDelta) {
+            syncWatchHistoryDelta(force = false)
+        }
+    }
+
+    /**
+     * Performs a lightweight, single-field delta sync of `watch_history` from Firestore into Room.
+     *
+     * Queries only documents with `timestamp > lastSync - 5s` (served by Firestore's automatic
+     * single-field index; zero composite index required). Respects a 30-second cooldown unless
+     * [force] is `true`, and coalesces concurrent triggers via [watchHistoryDeltaMutex].
+     *
+     * Never alters the player's local-only 10-second Room write contract.
+     */
+    suspend fun syncWatchHistoryDelta(force: Boolean = false) {
+        val uid = userId ?: return
+        val metadataDao = syncMetadataDao ?: return
+
+        var needsBootstrap = false
+        watchHistoryDeltaMutex.withLock {
+            val now = System.currentTimeMillis()
+            val lastDeltaSync = metadataDao.getLastSyncTimestamp(uid, COLLECTION_KEY_WATCH_HISTORY_DELTA) ?: 0L
+            val lastLibrarySync = metadataDao.getLastSyncTimestamp(uid, COLLECTION_KEY_LIBRARY) ?: 0L
+            val effectiveLastSync = maxOf(lastDeltaSync, lastLibrarySync)
+
+            if (effectiveLastSync == 0L) {
+                // First sync on this device: defer to full bootstrap sync outside the delta mutex.
+                needsBootstrap = true
+                return@withLock
+            }
+
+            if (!force && (now - effectiveLastSync) < WATCH_HISTORY_DELTA_COOLDOWN_MS) {
+                return@withLock
+            }
+
+            try {
+                val sinceTimestamp = (effectiveLastSync - WATCH_HISTORY_CLOCK_SKEW_BUFFER_MS).coerceAtLeast(0L)
+                val historySnapshot = firestore.collection("users")
+                    .document(uid)
+                    .collection("watch_history")
+                    .whereGreaterThan("timestamp", sinceTimestamp)
+                    .orderBy("timestamp", Query.Direction.DESCENDING)
+                    .limit(50)
+                    .get()
+                    .await()
+
+                for (doc in historySnapshot.documents) {
+                    val progress = parsePlaybackProgress(doc) ?: continue
+                    val local = watchHistoryDao.get(uid, progress.mediaId)
+                    if (local == null || progress.timestamp > local.timestamp) {
+                        watchHistoryDao.upsert(
+                            WatchHistoryEntity(
+                                userId = uid,
+                                mediaId = progress.mediaId,
+                                title = progress.title,
+                                positionMs = progress.positionMs,
+                                durationMs = progress.durationMs,
+                                timestamp = progress.timestamp,
+                                isEpisode = progress.isEpisode
+                            )
+                        )
+                    }
+                }
+
+                // Clamp persisted sync watermark to local wall clock `now` so a remote device
+                // with a future-skewed clock cannot disable cooldowns or hide future updates.
+                metadataDao.setLastSyncTimestamp(
+                    SyncMetadataEntity(
+                        userId = uid,
+                        collectionKey = COLLECTION_KEY_WATCH_HISTORY_DELTA,
+                        lastSyncTimestamp = now
+                    )
+                )
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                AppLogger.w("UserLibraryRepository", "Error during watch history delta sync: ${e.message}")
+            }
+        }
+
+        if (needsBootstrap) {
+            syncFromCloud(forceFull = false)
         }
     }
 }

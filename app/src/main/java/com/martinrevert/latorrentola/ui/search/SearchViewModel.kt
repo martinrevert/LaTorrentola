@@ -20,19 +20,25 @@ import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.utils.MovieFilter
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.TvSeriesProgressCalculator
+import com.martinrevert.latorrentola.utils.TvSeriesProgressIndex
 import com.martinrevert.latorrentola.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 private val IMDB_SEARCH_REGEX = Regex("tt\\d{7,10}", RegexOption.IGNORE_CASE)
 
@@ -79,6 +85,7 @@ class SearchViewModel @Inject constructor(
         private const val TARGET_LOAD_MORE_BATCH = 12
         private const val MAX_PAGES_PER_BATCH = 5
         private const val YTS_PAGE_SIZE = 20
+        private const val TMDB_ENRICHMENT_CONCURRENCY = 6
     }
 
     /** Mutable backing state for the search input text, preserved across Back navigation. */
@@ -424,6 +431,8 @@ class SearchViewModel @Inject constructor(
     private val attemptedSeriesDetailIds = ConcurrentHashMap.newKeySet<Int>()
     private val failedSeriesDetailIds = ConcurrentHashMap.newKeySet<Int>()
     private val attemptedImdbSeriesLookupIds = ConcurrentHashMap.newKeySet<String>()
+    private val staleRefreshScheduledIds = ConcurrentHashMap.newKeySet<Int>()
+    private val tmdbEnrichmentSemaphore = Semaphore(TMDB_ENRICHMENT_CONCURRENCY)
     private val activeTvWatchingFetchesFlow = MutableStateFlow(0)
     private val activeFavoritesFetchesFlow = MutableStateFlow(0)
 
@@ -919,13 +928,84 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Returns `true` only when [series] could potentially have non-zero watch progress under
+     * [progressIndex] and therefore requires TMDB season metadata to classify progress accurately.
+     * Skips TMDB enrichment entirely when no episodes exist in watch history or when a series with
+     * a known canonical IMDb ID has zero watched episodes.
+     */
+    private fun shouldEnrichSeriesForProgress(
+        series: TmdbTvSummary,
+        progressIndex: TvSeriesProgressIndex
+    ): Boolean {
+        if (progressIndex.isEmpty) return false
+        val normImdb = MediaIdHelper.normalizeImdbId(series.effectiveImdbId)
+        if (normImdb == null) return true
+        return progressIndex.findEpisodesForSeries(normImdb, series.name.orEmpty()).isNotEmpty()
+    }
+
+    private fun mergeProgressSummary(base: TmdbTvSummary, cached: TmdbTvSummary): TmdbTvSummary =
+        base.copy(
+            seasons = cached.seasons?.takeIf { it.isNotEmpty() } ?: base.seasons,
+            lastEpisodeToAir = cached.lastEpisodeToAir ?: base.lastEpisodeToAir,
+            nextEpisodeToAir = cached.nextEpisodeToAir ?: base.nextEpisodeToAir,
+            numberOfSeasons = cached.numberOfSeasons?.takeIf { it > 0 } ?: base.numberOfSeasons,
+            numberOfEpisodes = cached.numberOfEpisodes?.takeIf { it > 0 } ?: base.numberOfEpisodes,
+            status = cached.status?.takeIf { it.isNotBlank() } ?: base.status,
+            inProduction = cached.inProduction ?: base.inProduction,
+            imdbId = base.effectiveImdbId ?: cached.effectiveImdbId
+        )
+
+    private fun triggerWatchHistoryDeltaSync(force: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                userLibraryRepository.syncWatchHistoryDelta(force = force)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+        }
+    }
+
+    /**
+     * Silently refreshes stale Room-cached TMDB progress entries in the background without
+     * incrementing active fetch counters, preserving offline-first zero-flicker rendering.
+     */
+    private fun scheduleSilentStaleRefresh(seriesIds: List<Int>) {
+        val toRefresh = seriesIds.filter { staleRefreshScheduledIds.add(it) }
+        if (toRefresh.isEmpty()) return
+        viewModelScope.launch(defaultDispatcher) {
+            val refreshed = ConcurrentHashMap<Int, TmdbTvSummary>()
+            coroutineScope {
+                toRefresh.map { seriesId ->
+                    async {
+                        tmdbEnrichmentSemaphore.withPermit {
+                            try {
+                                val summary = tmdbRepository.getTvProgressSummary(seriesId, forceRefresh = true)
+                                refreshed[seriesId] = if (summary.id == seriesId) summary else summary.copy(id = seriesId)
+                            } catch (e: Exception) {
+                                if (e is CancellationException) throw e
+                                staleRefreshScheduledIds.remove(seriesId)
+                            }
+                        }
+                    }
+                }.awaitAll()
+            }
+            if (refreshed.isNotEmpty()) {
+                seriesDetailsCacheFlow.update { it + refreshed }
+            }
+        }
+    }
+
     /** Loads TV series that the user is currently watching (in-progress and uncompleted). */
     fun showWatchingTvSeries(force: Boolean = false) {
         if (!force && isShowingWatching && _tvUiState.value is SearchTvUiState.Success) return
         if (force) {
             attemptedSeriesDetailIds.clear()
+            failedSeriesDetailIds.clear()
             attemptedImdbSeriesLookupIds.clear()
+            staleRefreshScheduledIds.clear()
         }
+        triggerWatchHistoryDeltaSync(force = force)
         activeTvWatchingFetchesFlow.value = 0
         isShowingWatching = true
         isShowingDownloads = false
@@ -968,9 +1048,36 @@ class SearchViewModel @Inject constructor(
                     }
                 }
 
-                val missingImdbIds = imdbLastWatched.keys.filter { imdbId ->
+                val unmatchedImdbIds = imdbLastWatched.keys.filter { imdbId ->
                     seriesMap.values.none { it.effectiveImdbId.equals(imdbId, ignoreCase = true) } &&
-                        detailsCache.values.none { it.effectiveImdbId.equals(imdbId, ignoreCase = true) } &&
+                        detailsCache.values.none { it.effectiveImdbId.equals(imdbId, ignoreCase = true) }
+                }
+
+                // Hydrate non-favorited watching series offline-first from Room `tv_progress_cache` by IMDb ID.
+                val persistedByImdbMap = if (unmatchedImdbIds.isNotEmpty()) {
+                    tmdbRepository.getPersistedTvProgressSummariesByImdbIds(unmatchedImdbIds)
+                } else {
+                    emptyMap()
+                }
+                persistedByImdbMap.values.forEach { persisted ->
+                    val summary = persisted.summary
+                    val existing = seriesMap[summary.id]
+                    seriesMap[summary.id] = if (existing != null) {
+                        mergeProgressSummary(existing, summary)
+                    } else {
+                        summary
+                    }
+                }
+                val staleByImdbIds = persistedByImdbMap.values
+                    .filter { it.isStale && shouldEnrichSeriesForProgress(it.summary, progressIndex) }
+                    .map { it.summary.id }
+                if (staleByImdbIds.isNotEmpty()) {
+                    scheduleSilentStaleRefresh(staleByImdbIds)
+                }
+
+                val missingImdbIds = unmatchedImdbIds.filter { imdbId ->
+                    !persistedByImdbMap.containsKey(imdbId.lowercase(Locale.ROOT)) &&
+                        seriesMap.values.none { it.effectiveImdbId.equals(imdbId, ignoreCase = true) } &&
                         !attemptedImdbSeriesLookupIds.contains(imdbId)
                 }
 
@@ -979,26 +1086,35 @@ class SearchViewModel @Inject constructor(
                     activeTvWatchingFetchesFlow.update { it + 1 }
                     viewModelScope.launch(defaultDispatcher) {
                         try {
-                            val fetched = mutableMapOf<Int, TmdbTvSummary>()
-                            missingImdbIds.forEach { imdbId ->
-                                try {
-                                    val found = tmdbRepository.findTvSeriesByImdbId(imdbId)
-                                    if (found != null) {
-                                        val fullDetails = if (found.seasons.isNullOrEmpty()) {
-                                        try {
-                                            val details = tmdbRepository.getTvDetails(found.id)
-                                            if (details.id == found.id) details else found
-                                        } catch (_: Exception) {
-                                            found
+                            val fetched = ConcurrentHashMap<Int, TmdbTvSummary>()
+                            coroutineScope {
+                                missingImdbIds.map { imdbId ->
+                                    async {
+                                        tmdbEnrichmentSemaphore.withPermit {
+                                            try {
+                                                val found = tmdbRepository.findTvSeriesByImdbId(imdbId)
+                                                if (found != null) {
+                                                    val fullDetails = if (found.seasons.isNullOrEmpty()) {
+                                                        try {
+                                                            val details = tmdbRepository.getTvProgressSummary(found.id)
+                                                            if (details.id == found.id) details else found
+                                                        } catch (e: Exception) {
+                                                            if (e is CancellationException) throw e
+                                                            found
+                                                        }
+                                                    } else found
+                                                    val canonicalImdbId = fullDetails.effectiveImdbId ?: found.effectiveImdbId ?: imdbId
+                                                    fetched[fullDetails.id] = fullDetails.copy(imdbId = canonicalImdbId)
+                                                }
+                                            } catch (e: CancellationException) {
+                                                attemptedImdbSeriesLookupIds.remove(imdbId)
+                                                throw e
+                                            } catch (e: Exception) {
+                                                AppLogger.w("SearchViewModel", "Error resolving TV series for IMDb $imdbId: ${e.message}")
+                                            }
                                         }
-                                    } else found
-                                        val canonicalImdbId = fullDetails.effectiveImdbId ?: found.effectiveImdbId ?: imdbId
-                                        fetched[fullDetails.id] = fullDetails.copy(imdbId = canonicalImdbId)
                                     }
-                                } catch (e: Exception) {
-                                    if (e is CancellationException) throw e
-                                    attemptedImdbSeriesLookupIds.remove(imdbId)
-                                }
+                                }.awaitAll()
                             }
                             if (fetched.isNotEmpty()) {
                                 seriesDetailsCacheFlow.update { it + fetched }
@@ -1012,39 +1128,60 @@ class SearchViewModel @Inject constructor(
                 detailsCache.values.forEach { cached ->
                     val existing = seriesMap[cached.id]
                     seriesMap[cached.id] = if (existing != null) {
-                        existing.copy(
-                            seasons = cached.seasons?.takeIf { it.isNotEmpty() } ?: existing.seasons,
-                            lastEpisodeToAir = cached.lastEpisodeToAir ?: existing.lastEpisodeToAir,
-                            nextEpisodeToAir = cached.nextEpisodeToAir ?: existing.nextEpisodeToAir,
-                            numberOfSeasons = cached.numberOfSeasons?.takeIf { it > 0 } ?: existing.numberOfSeasons,
-                            numberOfEpisodes = cached.numberOfEpisodes?.takeIf { it > 0 } ?: existing.numberOfEpisodes,
-                            status = cached.status?.takeIf { it.isNotBlank() } ?: existing.status,
-                            inProduction = cached.inProduction ?: existing.inProduction,
-                            imdbId = existing.effectiveImdbId ?: cached.effectiveImdbId
-                        )
+                        mergeProgressSummary(existing, cached)
                     } else cached
                 }
 
-                val missingSeasons = seriesMap.values.filter {
+                val seasonCandidates = seriesMap.values.filter {
                     it.seasons.isNullOrEmpty() &&
                         !detailsCache.containsKey(it.id) &&
-                        !attemptedSeriesDetailIds.contains(it.id)
-                }.map { it.id }
+                        tmdbRepository.getCachedTvProgressSummary(it.id) == null &&
+                        shouldEnrichSeriesForProgress(it, progressIndex)
+                }
+                val persistedMap = if (seasonCandidates.isNotEmpty()) {
+                    tmdbRepository.getPersistedTvProgressSummaries(seasonCandidates.map { it.id })
+                } else {
+                    emptyMap()
+                }
+                val staleIds = persistedMap.filter { (_, persisted) ->
+                    persisted.isStale && shouldEnrichSeriesForProgress(persisted.summary, progressIndex)
+                }.keys.toList()
+                if (staleIds.isNotEmpty()) {
+                    scheduleSilentStaleRefresh(staleIds)
+                }
+
+                val missingSeasons = seasonCandidates
+                    .filter {
+                        !persistedMap.containsKey(it.id) &&
+                            !attemptedSeriesDetailIds.contains(it.id) &&
+                            !failedSeriesDetailIds.contains(it.id)
+                    }
+                    .map { it.id }
 
                 if (missingSeasons.isNotEmpty()) {
                     attemptedSeriesDetailIds.addAll(missingSeasons)
                     activeTvWatchingFetchesFlow.update { it + 1 }
                     viewModelScope.launch(defaultDispatcher) {
                         try {
-                            val fetched = mutableMapOf<Int, TmdbTvSummary>()
-                            missingSeasons.forEach { seriesId ->
-                                try {
-                                    val details = tmdbRepository.getTvDetails(seriesId)
-                                    fetched[seriesId] = details
-                                } catch (e: Exception) {
-                                    if (e is CancellationException) throw e
-                                    attemptedSeriesDetailIds.remove(seriesId)
-                                }
+                            val fetched = ConcurrentHashMap<Int, TmdbTvSummary>()
+                            coroutineScope {
+                                missingSeasons.map { seriesId ->
+                                    async {
+                                        tmdbEnrichmentSemaphore.withPermit {
+                                            try {
+                                                val details = tmdbRepository.getTvProgressSummary(seriesId)
+                                                fetched[seriesId] = if (details.id == seriesId) details else details.copy(id = seriesId)
+                                            } catch (e: CancellationException) {
+                                                attemptedSeriesDetailIds.remove(seriesId)
+                                                throw e
+                                            } catch (e: Exception) {
+                                                AppLogger.w("SearchViewModel", "Error enriching watching TV series $seriesId: ${e.message}")
+                                                failedSeriesDetailIds.add(seriesId)
+                                                attemptedSeriesDetailIds.remove(seriesId)
+                                            }
+                                        }
+                                    }
+                                }.awaitAll()
                             }
                             if (fetched.isNotEmpty()) {
                                 seriesDetailsCacheFlow.update { it + fetched }
@@ -1056,18 +1193,10 @@ class SearchViewModel @Inject constructor(
                 }
 
                 val inProgressSeries = seriesMap.values.filter { series ->
-                    val enriched = detailsCache[series.id]?.let { cached ->
-                        series.copy(
-                            seasons = cached.seasons?.takeIf { it.isNotEmpty() } ?: series.seasons,
-                            lastEpisodeToAir = cached.lastEpisodeToAir ?: series.lastEpisodeToAir,
-                            nextEpisodeToAir = cached.nextEpisodeToAir ?: series.nextEpisodeToAir,
-                            numberOfSeasons = cached.numberOfSeasons?.takeIf { it > 0 } ?: series.numberOfSeasons,
-                            numberOfEpisodes = cached.numberOfEpisodes?.takeIf { it > 0 } ?: series.numberOfEpisodes,
-                            status = cached.status?.takeIf { it.isNotBlank() } ?: series.status,
-                            inProduction = cached.inProduction ?: series.inProduction,
-                            imdbId = series.effectiveImdbId ?: cached.effectiveImdbId
-                        )
-                    } ?: series
+                    val cached = detailsCache[series.id]
+                        ?: tmdbRepository.getCachedTvProgressSummary(series.id)
+                        ?: persistedMap[series.id]?.summary
+                    val enriched = if (cached != null) mergeProgressSummary(series, cached) else series
                     TvSeriesProgressCalculator.isSeriesInProgress(enriched, progressIndex)
                 }.sortedByDescending { series ->
                     val normImdb = MediaIdHelper.normalizeImdbId(series.effectiveImdbId)
@@ -1207,7 +1336,9 @@ class SearchViewModel @Inject constructor(
             attemptedSeriesDetailIds.clear()
             attemptedImdbSeriesLookupIds.clear()
             failedSeriesDetailIds.clear()
+            staleRefreshScheduledIds.clear()
         }
+        triggerWatchHistoryDeltaSync(force = force)
         activeFavoritesFetchesFlow.value = 0
         isShowingFavorites = true
         isShowingDownloads = false
@@ -1240,30 +1371,57 @@ class SearchViewModel @Inject constructor(
                 val watchMap = MediaIdHelper.buildWatchHistoryMap(watchHistory)
                 val progressIndex = TvSeriesProgressCalculator.buildEpisodeProgressIndex(watchHistory)
 
-                val missingSeriesIds = series.filter {
+                val candidateSeries = series.filter {
                     it.seasons.isNullOrEmpty() &&
                         !detailsCache.containsKey(it.id) &&
-                        tmdbRepository.getCachedTvDetails(it.id) == null &&
-                        !attemptedSeriesDetailIds.contains(it.id) &&
-                        !failedSeriesDetailIds.contains(it.id)
-                }.map { it.id }
+                        tmdbRepository.getCachedTvProgressSummary(it.id) == null &&
+                        shouldEnrichSeriesForProgress(it, progressIndex)
+                }
+
+                // Offline-first hydration from Room `tv_progress_cache` before touching network.
+                val persistedMap = if (candidateSeries.isNotEmpty()) {
+                    tmdbRepository.getPersistedTvProgressSummaries(candidateSeries.map { it.id })
+                } else {
+                    emptyMap()
+                }
+
+                val staleIds = persistedMap.filter { (_, persisted) ->
+                    persisted.isStale && shouldEnrichSeriesForProgress(persisted.summary, progressIndex)
+                }.keys.toList()
+                if (staleIds.isNotEmpty()) {
+                    scheduleSilentStaleRefresh(staleIds)
+                }
+
+                val missingSeriesIds = candidateSeries
+                    .filter {
+                        !persistedMap.containsKey(it.id) &&
+                            !attemptedSeriesDetailIds.contains(it.id) &&
+                            !failedSeriesDetailIds.contains(it.id)
+                    }
+                    .map { it.id }
 
                 if (missingSeriesIds.isNotEmpty()) {
                     attemptedSeriesDetailIds.addAll(missingSeriesIds)
                     activeFavoritesFetchesFlow.update { it + 1 }
                     viewModelScope.launch(defaultDispatcher) {
                         try {
-                            val fetched = mutableMapOf<Int, TmdbTvSummary>()
-                            missingSeriesIds.forEach { seriesId ->
-                                try {
-                                    val details = tmdbRepository.getTvDetails(seriesId)
-                                    fetched[seriesId] = if (details.id == seriesId) details else details.copy(id = seriesId)
-                                } catch (e: Exception) {
-                                    if (e is CancellationException) throw e
-                                    AppLogger.w("SearchViewModel", "Failed enriching series $seriesId: ${e.message}")
-                                    failedSeriesDetailIds.add(seriesId)
-                                    attemptedSeriesDetailIds.remove(seriesId)
-                                }
+                            val fetched = ConcurrentHashMap<Int, TmdbTvSummary>()
+                            coroutineScope {
+                                missingSeriesIds.map { seriesId ->
+                                    async {
+                                        tmdbEnrichmentSemaphore.withPermit {
+                                            try {
+                                                val details = tmdbRepository.getTvProgressSummary(seriesId)
+                                                fetched[seriesId] = if (details.id == seriesId) details else details.copy(id = seriesId)
+                                            } catch (e: Exception) {
+                                                if (e is CancellationException) throw e
+                                                AppLogger.w("SearchViewModel", "Failed enriching series $seriesId: ${e.message}")
+                                                failedSeriesDetailIds.add(seriesId)
+                                                attemptedSeriesDetailIds.remove(seriesId)
+                                            }
+                                        }
+                                    }
+                                }.awaitAll()
                             }
                             if (fetched.isNotEmpty()) {
                                 seriesDetailsCacheFlow.update { it + fetched }
@@ -1275,19 +1433,10 @@ class SearchViewModel @Inject constructor(
                 }
 
                 val enrichedSeries = series.map { s ->
-                    val cached = detailsCache[s.id] ?: tmdbRepository.getCachedTvDetails(s.id)
-                    if (cached != null) {
-                        s.copy(
-                            seasons = cached.seasons?.takeIf { it.isNotEmpty() } ?: s.seasons,
-                            lastEpisodeToAir = cached.lastEpisodeToAir ?: s.lastEpisodeToAir,
-                            nextEpisodeToAir = cached.nextEpisodeToAir ?: s.nextEpisodeToAir,
-                            numberOfSeasons = cached.numberOfSeasons?.takeIf { it > 0 } ?: s.numberOfSeasons,
-                            numberOfEpisodes = cached.numberOfEpisodes?.takeIf { it > 0 } ?: s.numberOfEpisodes,
-                            status = cached.status?.takeIf { it.isNotBlank() } ?: s.status,
-                            inProduction = cached.inProduction ?: s.inProduction,
-                            imdbId = s.effectiveImdbId ?: cached.effectiveImdbId
-                        )
-                    } else s
+                    val cached = detailsCache[s.id]
+                        ?: tmdbRepository.getCachedTvProgressSummary(s.id)
+                        ?: persistedMap[s.id]?.summary
+                    if (cached != null) mergeProgressSummary(s, cached) else s
                 }
 
                 val isFilterProgressDependent = filter == FavoritesFilter.WATCHED ||
@@ -1563,6 +1712,7 @@ class SearchViewModel @Inject constructor(
             watchingMoviesCache.clear()
             attemptedWatchingMovieImdbIds.clear()
         }
+        triggerWatchHistoryDeltaSync(force = force)
         isShowingWatching = true
         isShowingFavorites = false
         isShowingDownloads = false

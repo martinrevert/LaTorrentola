@@ -14,6 +14,7 @@ import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.YTS.MovieDetails
 import com.martinrevert.latorrentola.model.YTS.Torrent
 import com.martinrevert.latorrentola.model.user.PlaybackProgress
+import com.martinrevert.latorrentola.network.PersistedTvProgress
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.TmdbTvFeed
 import com.martinrevert.latorrentola.network.UserLibraryRepository
@@ -51,7 +52,11 @@ class SearchViewModelTest {
         every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(emptyList())
         every { userLibraryRepository.getWatchHistory() } returns flowOf(emptyList())
         every { tmdbRepository.getCachedTvDetails(any()) } returns null
+        every { tmdbRepository.getCachedTvProgressSummary(any()) } returns null
+        coEvery { tmdbRepository.getPersistedTvProgressSummaries(any()) } returns emptyMap()
+        coEvery { tmdbRepository.getPersistedTvProgressSummariesByImdbIds(any()) } returns emptyMap()
         coEvery { tmdbRepository.getTvDetails(any()) } answers { TmdbTvSummary(id = firstArg()) }
+        coEvery { tmdbRepository.getTvProgressSummary(any(), any()) } answers { TmdbTvSummary(id = firstArg()) }
         every { preferenceManager.getFilteredLanguages() } returns ""
         every { preferenceManager.filteredLanguagesFlow } returns MutableStateFlow("")
         every { preferenceManager.getMinimumRating() } returns 6f
@@ -131,12 +136,20 @@ class SearchViewModelTest {
     @Test
     fun `showFavorites should enrich series without resetting to Loading or double flickering`() = runTest {
         val movie = Movie(id = 1, title = "Fav Movie", rating = "8")
-        val unenrichedSeries = TmdbTvSummary(id = 50, name = "Unenriched Series", numberOfEpisodes = null)
-        val enrichedSeries = TmdbTvSummary(id = 50, name = "Unenriched Series", numberOfSeasons = 3, numberOfEpisodes = 30)
+        val unenrichedSeries = TmdbTvSummary(id = 50, imdbId = "tt0050000", name = "Unenriched Series", numberOfEpisodes = null)
+        val enrichedSeries = TmdbTvSummary(id = 50, imdbId = "tt0050000", name = "Unenriched Series", numberOfSeasons = 3, numberOfEpisodes = 30)
+        val episodeProgress = PlaybackProgress(
+            mediaId = "tt0050000_s1_e1",
+            title = "Unenriched Series - S01E01",
+            positionMs = 500L,
+            durationMs = 1000L,
+            isEpisode = true
+        )
 
         every { repository.getFavoriteMovies() } returns flowOf(listOf(movie))
         every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(unenrichedSeries))
-        coEvery { tmdbRepository.getTvDetails(50) } returns enrichedSeries
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(episodeProgress))
+        coEvery { tmdbRepository.getTvProgressSummary(50, any()) } returns enrichedSeries
 
         viewModel.setFavoritesFilter(FavoritesFilter.ALL)
         viewModel.showFavorites()
@@ -147,7 +160,7 @@ class SearchViewModelTest {
         assertThat(state.favoriteSeries.single().numberOfEpisodes).isEqualTo(30)
         // Must only subscribe to getFavoriteMovies once (no recursive showFavorites(force = true) restart)
         coVerify(exactly = 1) { repository.getFavoriteMovies() }
-        coVerify(exactly = 1) { tmdbRepository.getTvDetails(50) }
+        coVerify(exactly = 1) { tmdbRepository.getTvProgressSummary(50, false) }
     }
 
     @Test
@@ -177,7 +190,7 @@ class SearchViewModelTest {
         every { repository.getFavoriteMovies() } returns flowOf(emptyList())
         every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(unenrichedSeries))
         every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(inProgressEpisode))
-        coEvery { tmdbRepository.getTvDetails(50) } returns enrichedSeries
+        coEvery { tmdbRepository.getTvProgressSummary(50, any()) } returns enrichedSeries
 
         viewModel.setFavoritesFilter(FavoritesFilter.IN_PROGRESS)
         viewModel.showFavorites()
@@ -210,7 +223,7 @@ class SearchViewModelTest {
         every { repository.getFavoriteMovies() } returns flowOf(emptyList())
         every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(unenrichedSeries))
         every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(inProgressEpisode))
-        coEvery { tmdbRepository.getTvDetails(51) } throws java.io.IOException("Network down")
+        coEvery { tmdbRepository.getTvProgressSummary(51, any()) } throws java.io.IOException("Network down")
 
         viewModel.setFavoritesFilter(FavoritesFilter.IN_PROGRESS)
         viewModel.showFavorites()
@@ -227,7 +240,7 @@ class SearchViewModelTest {
             numberOfSeasons = 1,
             numberOfEpisodes = 10
         )
-        coEvery { tmdbRepository.getTvDetails(51) } returns recoveredSeries
+        coEvery { tmdbRepository.getTvProgressSummary(51, any()) } returns recoveredSeries
 
         viewModel.showFavorites(force = true)
 
@@ -561,7 +574,7 @@ class SearchViewModelTest {
         )
         every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(emptyList())
         every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(episodeProgress))
-        coEvery { tmdbRepository.getTvDetails(99) } returns series99
+        coEvery { tmdbRepository.getTvProgressSummary(99, any()) } returns series99
 
         coEvery { tmdbRepository.findTvSeriesByImdbId("tt0000099") } coAnswers {
             kotlinx.coroutines.delay(1000)
@@ -605,7 +618,7 @@ class SearchViewModelTest {
         every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(emptyList())
         every { userLibraryRepository.getWatchHistory() } returns flowOf(listOf(episodeProgress))
         coEvery { tmdbRepository.findTvSeriesByImdbId("tt0000055") } returns tmdbResultWithoutImdb
-        coEvery { tmdbRepository.getTvDetails(55) } returns tmdbResultWithoutImdb
+        coEvery { tmdbRepository.getTvProgressSummary(55, any()) } returns tmdbResultWithoutImdb
 
         val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
         vm.showWatchingTvSeries()
@@ -680,7 +693,7 @@ class SearchViewModelTest {
             seasons = listOf(TmdbTvSeason(id = 3, seasonNumber = 1, episodeCount = 10))
         )
         coEvery { tmdbRepository.findTvSeriesByImdbId("tt0000088") } returns series
-        coEvery { tmdbRepository.getTvDetails(88) } returns series
+        coEvery { tmdbRepository.getTvProgressSummary(88, any()) } returns series
 
         vm.showWatchingTvSeries(force = true)
         testScheduler.advanceUntilIdle()
@@ -702,6 +715,7 @@ class SearchViewModelTest {
 
         assertThat(vm.tvUiState.value).isEqualTo(SearchTvUiState.Empty)
         coVerify(exactly = 0) { tmdbRepository.getTvDetails(10) }
+        coVerify(exactly = 0) { tmdbRepository.getTvProgressSummary(10, any()) }
     }
 
     @Test
@@ -1002,7 +1016,7 @@ class SearchViewModelTest {
         every { repository.getFavoriteMovies() } returns flowOf(emptyList())
         every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(roomSeries))
         every { userLibraryRepository.getWatchHistory() } returns flowOf(watchHistory)
-        coEvery { tmdbRepository.getTvDetails(400) } returns tmdbDetails
+        coEvery { tmdbRepository.getTvProgressSummary(400, any()) } returns tmdbDetails
 
         val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
         vm.setFavoritesFilter(FavoritesFilter.WATCHED)
@@ -1011,6 +1025,7 @@ class SearchViewModelTest {
 
         val watchedState = vm.uiState.value as SearchUiState.Success
         assertThat(watchedState.favoriteSeries.map { it.id }).containsExactly(400)
+        coVerify(exactly = 0) { tmdbRepository.getTvDetails(400) }
 
         // Must NOT appear in IN_PROGRESS
         vm.setFavoritesFilter(FavoritesFilter.IN_PROGRESS)
@@ -1090,5 +1105,195 @@ class SearchViewModelTest {
         assertThat(state).isInstanceOf(SearchUiState.Error::class.java)
         val errorState = state as SearchUiState.Error
         assertThat((errorState.message as UiText.DynamicString).value).contains("HTTP 521")
+    }
+
+    @Test
+    fun `showFavorites skips TMDB enrichment for unwatched series with known imdbId`() = runTest {
+        val watchedSeries = TmdbTvSummary(id = 401, imdbId = "tt0000401", name = "Watched Show", seasons = null)
+        val unwatchedSeries = TmdbTvSummary(id = 402, imdbId = "tt0000402", name = "Unwatched Show", seasons = null)
+        val watchedSummary = watchedSeries.copy(
+            seasons = listOf(TmdbTvSeason(id = 1, seasonNumber = 1, episodeCount = 10, airDate = "2023-01-01"))
+        )
+        val history = listOf(
+            PlaybackProgress(
+                mediaId = MediaIdHelper.forEpisode("tt0000401", 1, 1),
+                title = "Watched Show - S01E01",
+                positionMs = 500L,
+                durationMs = 1000L,
+                isEpisode = true
+            )
+        )
+
+        every { repository.getFavoriteMovies() } returns flowOf(emptyList())
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(watchedSeries, unwatchedSeries))
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(history)
+        coEvery { tmdbRepository.getPersistedTvProgressSummaries(any()) } returns emptyMap()
+        coEvery { tmdbRepository.getTvProgressSummary(401, any()) } returns watchedSummary
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
+        vm.setFavoritesFilter(FavoritesFilter.IN_PROGRESS)
+        vm.showFavorites()
+        testScheduler.advanceUntilIdle()
+
+        val state = vm.uiState.value as SearchUiState.Success
+        assertThat(state.favoriteSeries.map { it.id }).containsExactly(401)
+        coVerify(exactly = 1) { tmdbRepository.getTvProgressSummary(401, false) }
+        coVerify(exactly = 0) { tmdbRepository.getTvProgressSummary(402, any()) }
+        coVerify(exactly = 0) { tmdbRepository.getTvDetails(any()) }
+    }
+
+    @Test
+    fun `showFavorites hydrates offline-first from Room persisted cache without blocking on network`() = runTest {
+        val roomSeries = TmdbTvSummary(id = 501, imdbId = "tt0000501", name = "Offline Cached Show", seasons = null)
+        val cachedSummary = roomSeries.copy(
+            seasons = listOf(TmdbTvSeason(id = 1, seasonNumber = 1, episodeCount = 8, airDate = "2023-01-01"))
+        )
+        val history = listOf(
+            PlaybackProgress(
+                mediaId = MediaIdHelper.forEpisode("tt0000501", 1, 1),
+                title = "Offline Cached Show - S01E01",
+                positionMs = 500L,
+                durationMs = 1000L,
+                isEpisode = true
+            )
+        )
+
+        every { repository.getFavoriteMovies() } returns flowOf(emptyList())
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(roomSeries))
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(history)
+        coEvery { tmdbRepository.getPersistedTvProgressSummaries(listOf(501)) } returns mapOf(
+            501 to com.martinrevert.latorrentola.network.PersistedTvProgress(summary = cachedSummary, isStale = false)
+        )
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
+        vm.setFavoritesFilter(FavoritesFilter.IN_PROGRESS)
+        vm.showFavorites()
+        testScheduler.advanceUntilIdle()
+
+        val state = vm.uiState.value as SearchUiState.Success
+        assertThat(state.favoriteSeries.map { it.id }).containsExactly(501)
+        coVerify(exactly = 0) { tmdbRepository.getTvProgressSummary(501, any()) }
+        coVerify(exactly = 0) { tmdbRepository.getTvDetails(any()) }
+    }
+
+    @Test
+    fun `showWatchingTvSeries does not loop infinitely when getTvProgressSummary fails`() = runTest {
+        val roomSeries = TmdbTvSummary(id = 701, imdbId = "tt0000701", name = "Failing Show", seasons = null)
+        val history = listOf(
+            PlaybackProgress(
+                mediaId = MediaIdHelper.forEpisode("tt0000701", 1, 1),
+                title = "Failing Show - S01E01",
+                positionMs = 500L,
+                durationMs = 1000L,
+                isEpisode = true
+            )
+        )
+
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(roomSeries))
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(history)
+        coEvery { tmdbRepository.getPersistedTvProgressSummaries(any()) } returns emptyMap()
+        coEvery { tmdbRepository.getTvProgressSummary(701, any()) } throws RuntimeException("TMDB offline")
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
+        vm.showWatchingTvSeries()
+        testScheduler.advanceUntilIdle()
+
+        assertThat(vm.tvUiState.value).isNotInstanceOf(SearchTvUiState.Loading::class.java)
+        coVerify(exactly = 1) { tmdbRepository.getTvProgressSummary(701, false) }
+    }
+
+    @Test
+    fun `showWatchingTvSeries does not loop infinitely when findTvSeriesByImdbId fails`() = runTest {
+        val history = listOf(
+            PlaybackProgress(
+                mediaId = MediaIdHelper.forEpisode("tt9999999", 1, 1),
+                title = "Unknown Show - S01E01",
+                positionMs = 500L,
+                durationMs = 1000L,
+                isEpisode = true
+            )
+        )
+
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(emptyList())
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(history)
+        coEvery { tmdbRepository.getPersistedTvProgressSummariesByImdbIds(any()) } returns emptyMap()
+        coEvery { tmdbRepository.findTvSeriesByImdbId("tt9999999") } throws RuntimeException("Network error")
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
+        vm.showWatchingTvSeries()
+        testScheduler.advanceUntilIdle()
+
+        assertThat(vm.tvUiState.value).isEqualTo(SearchTvUiState.Empty)
+        coVerify(exactly = 1) { tmdbRepository.findTvSeriesByImdbId("tt9999999") }
+    }
+
+    @Test
+    fun `showWatchingTvSeries hydrates non-favorited series offline from Room by imdbId without network lookup`() = runTest {
+        val cachedNonFavorite = TmdbTvSummary(
+            id = 1399,
+            imdbId = "tt0944947",
+            name = "Game of Thrones",
+            seasons = listOf(TmdbTvSeason(id = 1, seasonNumber = 1, episodeCount = 10, airDate = "2011-04-17"))
+        )
+        val history = listOf(
+            PlaybackProgress(
+                mediaId = MediaIdHelper.forEpisode("tt0944947", 1, 1),
+                title = "Game of Thrones - S01E01",
+                positionMs = 500L,
+                durationMs = 1000L,
+                isEpisode = true
+            )
+        )
+
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(emptyList())
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(history)
+        coEvery { tmdbRepository.getPersistedTvProgressSummariesByImdbIds(listOf("tt0944947")) } returns mapOf(
+            "tt0944947" to PersistedTvProgress(summary = cachedNonFavorite, isStale = false)
+        )
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
+        vm.showWatchingTvSeries()
+        testScheduler.advanceUntilIdle()
+
+        val state = vm.tvUiState.value as SearchTvUiState.Success
+        assertThat(state.series.map { it.id }).containsExactly(1399)
+        coVerify(exactly = 0) { tmdbRepository.findTvSeriesByImdbId(any()) }
+        coVerify(exactly = 0) { tmdbRepository.getTvProgressSummary(1399, any()) }
+    }
+
+    @Test
+    fun `showFavorites skips stale refresh for unwatched legacy favorite hydrated from Room`() = runTest {
+        val legacyUnwatched = TmdbTvSummary(id = 601, imdbId = null, name = "Legacy Unwatched", seasons = null)
+        val hydratedUnwatched = TmdbTvSummary(
+            id = 601,
+            imdbId = "tt0000601",
+            name = "Legacy Unwatched",
+            seasons = listOf(TmdbTvSeason(id = 1, seasonNumber = 1, episodeCount = 10, airDate = "2022-01-01"))
+        )
+        val otherWatchedHistory = listOf(
+            PlaybackProgress(
+                mediaId = MediaIdHelper.forEpisode("tt0000999", 1, 1),
+                title = "Other Show - S01E01",
+                positionMs = 500L,
+                durationMs = 1000L,
+                isEpisode = true
+            )
+        )
+
+        every { repository.getFavoriteMovies() } returns flowOf(emptyList())
+        every { userLibraryRepository.getFavoriteTvSeries() } returns flowOf(listOf(legacyUnwatched))
+        every { userLibraryRepository.getWatchHistory() } returns flowOf(otherWatchedHistory)
+        coEvery { tmdbRepository.getPersistedTvProgressSummaries(listOf(601)) } returns mapOf(
+            601 to PersistedTvProgress(summary = hydratedUnwatched, isStale = true)
+        )
+
+        val vm = SearchViewModel(repository, tmdbRepository, userLibraryRepository, preferenceManager, mainDispatcherRule.testDispatcher)
+        vm.setFavoritesFilter(FavoritesFilter.UNWATCHED)
+        vm.showFavorites()
+        testScheduler.advanceUntilIdle()
+
+        val state = vm.uiState.value as SearchUiState.Success
+        assertThat(state.favoriteSeries.map { it.id }).containsExactly(601)
+        coVerify(exactly = 0) { tmdbRepository.getTvProgressSummary(601, any()) }
     }
 }
