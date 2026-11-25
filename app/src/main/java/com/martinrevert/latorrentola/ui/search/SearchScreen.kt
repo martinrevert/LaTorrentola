@@ -385,11 +385,10 @@ private fun SearchScreenContent(
                     modifier = Modifier.focusProperties {
                         down = if (hasTopChips) qualityChipsFocusRequester else resultsFocusRequester
                     },
-                    colors = if (isTv) {
-                        TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-                    } else {
-                        TopAppBarDefaults.topAppBarColors()
-                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent
+                    ),
                     title = {
                         if (isShowingFavorites) {
                             if (selectedFavoriteIds.isNotEmpty()) {
@@ -472,7 +471,10 @@ private fun SearchScreenContent(
                     topBar = {
                         TopAppBar(
                             modifier = Modifier.focusProperties { down = qualityChipsFocusRequester },
-                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = Color.Transparent,
+                                scrolledContainerColor = Color.Transparent
+                            ),
                             title = {
                                 if (isShowingDownloads) {
                                     Text(stringResource(R.string.already_seen))
@@ -745,7 +747,10 @@ private fun SearchScreenContent(
                 modifier = Modifier.fillMaxSize(),
                 topBar = {
                     TopAppBar(
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            scrolledContainerColor = Color.Transparent
+                        ),
                         title = {
                             if (isShowingDownloads) {
                                 Text(stringResource(R.string.already_seen))

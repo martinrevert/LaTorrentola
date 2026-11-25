@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -26,11 +27,60 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.glass.GlassStyle
 import dev.chrisbanes.haze.glass.OpticalSizeValue
 import dev.chrisbanes.haze.glass.hazeGlass
+import dev.chrisbanes.haze.glass.material3.material3
 import dev.chrisbanes.haze.rememberHazeState
 
-private val ClearPlayerGlassTint = Color.Black.copy(alpha = 0.12f)
-private val ClearPlayerGlassBorderColor = Color.White.copy(alpha = 0.22f)
-private val ClearPlayerGlassFallbackColor = Color.Black.copy(alpha = 0.42f)
+private const val ClearPlayerGlassContainerAlpha = 0.14f
+private const val ClearPlayerGlassTintAlpha = 0.12f
+private const val ClearPlayerGlassBorderAlpha = 0.35f
+private const val ClearPlayerGlassFallbackAlpha = 0.42f
+private const val ClearPlayerGlassSpecularIntensity = 0.42f
+private const val ClearPlayerGlassEdgeShadowAlpha = 0.25f
+private const val ClearPlayerGlassAmbientResponse = 0.22f
+private const val ClearPlayerGlassContrast = 0.12f
+private const val ClearPlayerGlassWhitePoint = -0.18f
+private const val ClearPlayerGlassChromaMultiplier = 1f
+
+internal data class ClearPlayerGlassColors(
+    val containerColor: Color,
+    val tintColor: Color,
+    val borderColor: Color,
+    val fallbackColor: Color
+)
+
+internal data class ClearPlayerGlassOptics(
+    val specularIntensity: Float,
+    val edgeShadowColor: Color,
+    val ambientResponse: Float,
+    val contrast: Float,
+    val whitePoint: Float,
+    val chromaMultiplier: Float
+)
+
+internal fun resolveClearPlayerGlassColors(
+    scrimColor: Color,
+    rimColor: Color
+): ClearPlayerGlassColors {
+    return ClearPlayerGlassColors(
+        containerColor = scrimColor.copy(alpha = ClearPlayerGlassContainerAlpha),
+        tintColor = scrimColor.copy(alpha = ClearPlayerGlassTintAlpha),
+        borderColor = rimColor.copy(alpha = ClearPlayerGlassBorderAlpha),
+        fallbackColor = scrimColor.copy(alpha = ClearPlayerGlassFallbackAlpha)
+    )
+}
+
+internal fun resolveClearPlayerGlassOptics(
+    scrimColor: Color
+): ClearPlayerGlassOptics {
+    return ClearPlayerGlassOptics(
+        specularIntensity = ClearPlayerGlassSpecularIntensity,
+        edgeShadowColor = scrimColor.copy(alpha = ClearPlayerGlassEdgeShadowAlpha),
+        ambientResponse = ClearPlayerGlassAmbientResponse,
+        contrast = ClearPlayerGlassContrast,
+        whitePoint = ClearPlayerGlassWhitePoint,
+        chromaMultiplier = ClearPlayerGlassChromaMultiplier
+    )
+}
 
 internal fun isClearPlayerGlassActive(
     hasHazeState: Boolean,
@@ -38,13 +88,6 @@ internal fun isClearPlayerGlassActive(
     sdkInt: Int
 ): Boolean {
     return hasHazeState && (isInspectionMode || sdkInt >= Build.VERSION_CODES.S)
-}
-
-internal fun resolveClearPlayerGlassFallbackColor(
-    isGlassActive: Boolean,
-    fallbackColor: Color = ClearPlayerGlassFallbackColor
-): Color {
-    return if (isGlassActive) Color.Transparent else fallbackColor
 }
 
 internal fun shouldEnableSheetBackdropBlur(
@@ -73,13 +116,14 @@ fun rememberHandheldHazeState(isTv: Boolean): HazeState? {
 }
 
 /**
- * Applies Haze 2.1 Clear Liquid Glass (`GlassStyle.clear`) per individual player control object
- * over live handheld video (`TextureView` + `hazeSource`).
+ * Applies Haze 2.1 Clear Liquid Glass (`GlassStyle.clear.material3(...)`) per individual player
+ * control object over live handheld video (`TextureView` + `hazeSource`), bound to Material 3
+ * color scheme tokens via `haze-glass-material3`.
  *
  * - On Android 12+ (API 31+) and Compose Preview: applies shallow 2.dp blur + edge refraction
- *   with an ultra-light tint and NO opaque stacked background so video remains clearly visible.
- * - On pre-Android 12 or when `hazeState` is null: falls back to a clean translucent dark fill
- *   and subtle 1.dp rim stroke.
+ *   with Material 3 scrim/tint tokens and NO opaque stacked background so video remains clearly visible.
+ * - On pre-Android 12 or when `hazeState` is null: falls back to a clean translucent scrim fill
+ *   and subtle 1.dp rim stroke derived from Material 3 tokens.
  */
 @Composable
 fun Modifier.hazeClearPlayerGlass(
@@ -91,32 +135,47 @@ fun Modifier.hazeClearPlayerGlass(
         isInspectionMode = LocalInspectionMode.current,
         sdkInt = Build.VERSION.SDK_INT
     )
+    val colorScheme = MaterialTheme.colorScheme
+    val glassColors = resolveClearPlayerGlassColors(
+        scrimColor = colorScheme.scrim,
+        rimColor = colorScheme.outline
+    )
+    val glassOptics = resolveClearPlayerGlassOptics(scrimColor = colorScheme.scrim)
     val clipped = this.clip(shape)
     return if (glassActive && hazeState != null) {
-        val style = remember(shape) {
+        val baseStyle = remember(shape, glassOptics) {
             GlassStyle.clear.then {
                 if (shape is RoundedCornerShape) {
                     shape(shape)
                 }
-                tint(ClearPlayerGlassTint)
+                specularIntensity(glassOptics.specularIntensity)
+                edgeShadow(glassOptics.edgeShadowColor)
+                ambientResponse(glassOptics.ambientResponse)
+                contrast(glassOptics.contrast)
+                whitePoint(glassOptics.whitePoint)
+                chromaMultiplier(glassOptics.chromaMultiplier)
                 optics {
                     copy(blurRadius = OpticalSizeValue.Fixed(2.dp))
                 }
             }
         }
+        val style = baseStyle.material3(
+            containerColor = glassColors.containerColor,
+            tint = glassColors.tintColor
+        )
         clipped
             .hazeGlass(
                 input = HazeInput.Sources(hazeState),
                 style = style
             )
-            .border(width = 0.75.dp, color = ClearPlayerGlassBorderColor, shape = shape)
+            .border(width = 0.75.dp, color = glassColors.borderColor, shape = shape)
     } else {
         clipped
             .background(
-                color = resolveClearPlayerGlassFallbackColor(isGlassActive = false),
+                color = glassColors.fallbackColor,
                 shape = shape
             )
-            .border(width = 1.dp, color = ClearPlayerGlassBorderColor, shape = shape)
+            .border(width = 1.dp, color = glassColors.borderColor, shape = shape)
     }
 }
 

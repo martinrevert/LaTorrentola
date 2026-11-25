@@ -70,7 +70,6 @@ import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -253,7 +252,10 @@ fun TvDetailScreen(
                                     )
                                 }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors()
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = Color.Transparent,
+                                scrolledContainerColor = Color.Transparent
+                            )
                         )
                     }
                 }
@@ -311,7 +313,10 @@ fun TvDetailScreen(
                                     )
                                 }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors()
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = Color.Transparent,
+                                scrolledContainerColor = Color.Transparent
+                            )
                         )
                     }
                 }
@@ -1111,9 +1116,6 @@ private fun HandheldTvSeriesDetailContent(
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val scrollState = rememberScrollState()
-    val topBarAlpha by remember(scrollState) {
-        derivedStateOf { (scrollState.value / 160f).coerceIn(0f, 1f) }
-    }
 
     Box(
         modifier = modifier
@@ -1569,7 +1571,9 @@ private fun HandheldTvSeriesDetailContent(
             navigationIcon = {
                 IconButton(
                     onClick = onBackClick,
-                    modifier = Modifier.padding(start = 8.dp)
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -1579,7 +1583,8 @@ private fun HandheldTvSeriesDetailContent(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = topBarAlpha)
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent
             )
         )
     }

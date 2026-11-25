@@ -376,7 +376,10 @@ private fun MovieDetailScreenContent(
                                 )
                             }
                         },
-                        colors = TopAppBarDefaults.topAppBarColors()
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            scrolledContainerColor = Color.Transparent
+                        )
                     )
                 }
             }
@@ -464,7 +467,10 @@ private fun MovieDetailScreenContent(
                                 )
                             }
                         },
-                        colors = TopAppBarDefaults.topAppBarColors()
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            scrolledContainerColor = Color.Transparent
+                        )
                     )
                 }
             }
@@ -596,9 +602,6 @@ private fun HandheldMovieDetailContent(
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val isConstrainedWidth = LocalConfiguration.current.screenWidthDp < 360
-    val topBarAlpha by remember(scrollState) {
-        derivedStateOf { (scrollState.value / 160f).coerceIn(0f, 1f) }
-    }
 
     Box(
         modifier = modifier
@@ -984,13 +987,15 @@ private fun HandheldMovieDetailContent(
         }
         }
 
-        // 3. Floating Glass Top Navigation Bar with Actions
+        // 3. Floating Transparent Top Navigation Bar with Actions
         TopAppBar(
             title = {},
             navigationIcon = {
                 IconButton(
                     onClick = onBackClick,
-                    modifier = Modifier.padding(start = 8.dp)
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -1005,7 +1010,11 @@ private fun HandheldMovieDetailContent(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     IconButton(
-                        onClick = onShareClick
+                        onClick = onShareClick,
+                        modifier = Modifier.background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                            CircleShape
+                        )
                     ) {
                         Icon(
                             imageVector = Icons.Default.Share,
@@ -1014,7 +1023,11 @@ private fun HandheldMovieDetailContent(
                         )
                     }
                     IconButton(
-                        onClick = onFavoriteToggle
+                        onClick = onFavoriteToggle,
+                        modifier = Modifier.background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                            CircleShape
+                        )
                     ) {
                         Icon(
                             imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -1025,7 +1038,8 @@ private fun HandheldMovieDetailContent(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = topBarAlpha)
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent
             )
         )
 

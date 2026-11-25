@@ -51,6 +51,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -137,7 +138,10 @@ fun OttProvidersScreen(
                             )
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors()
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent
+                    )
                 )
             }
         ) { innerPadding ->
@@ -204,14 +208,16 @@ fun OttProvidersScreen(
                             columns = GridCells.Adaptive(minSize = if (isTv) 180.dp else 140.dp),
                             state = gridState,
                             contentPadding = PaddingValues(
-                                top = innerPadding.calculateTopPadding() + 16.dp,
+                                top = 16.dp,
                                 bottom = innerPadding.calculateBottomPadding() + 24.dp,
                                 start = 16.dp,
                                 end = 16.dp
                             ),
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(top = innerPadding.calculateTopPadding())
                         ) {
                             items(state.providers, key = { it.providerId }) { provider ->
                                 val isFirstItem = state.providers.firstOrNull()?.providerId == provider.providerId

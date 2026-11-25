@@ -297,7 +297,6 @@ private fun HomeScreenContent(
                                 onMoviesClick = { selectMediaMode(false) },
                                 onTvClick = { selectMediaMode(true) },
                                 focusDownRequester = homeControlsFocusRequester,
-                                containerColor = Color.Transparent,
                                 isTv = true
                             )
                         },
@@ -373,7 +372,6 @@ private fun HomeScreenContent(
                                 onMoviesClick = { selectMediaMode(false) },
                                 onTvClick = { selectMediaMode(true) },
                                 focusDownRequester = homeControlsFocusRequester,
-                                containerColor = Color.Transparent,
                                 isTv = true
                             )
                         },
@@ -443,7 +441,6 @@ private fun HomeScreenContent(
                             onMoviesClick = { selectMediaMode(false) },
                             onTvClick = { selectMediaMode(true) },
                             focusDownRequester = homeControlsFocusRequester,
-                            containerColor = Color.Transparent,
                             isTv = false
                         )
                     },
@@ -530,7 +527,6 @@ private fun HomeScreenContent(
                             onMoviesClick = { selectMediaMode(false) },
                             onTvClick = { selectMediaMode(true) },
                             focusDownRequester = homeControlsFocusRequester,
-                            containerColor = Color.Transparent,
                             isTv = false
                         )
                     },
@@ -704,7 +700,6 @@ private fun HomeTopAppBar(
     onFavoritesClick: () -> Unit,
     onSettingsClick: () -> Unit,
     focusDownRequester: FocusRequester,
-    containerColor: Color,
     isTv: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -713,7 +708,10 @@ private fun HomeTopAppBar(
 
     TopAppBar(
         modifier = modifier,
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = containerColor),
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = Color.Transparent,
+            scrolledContainerColor = Color.Transparent
+        ),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(

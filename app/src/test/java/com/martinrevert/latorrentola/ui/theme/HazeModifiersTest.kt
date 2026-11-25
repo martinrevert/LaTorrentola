@@ -46,22 +46,33 @@ class HazeModifiersTest {
     }
 
     @Test
-    fun `resolveClearPlayerGlassFallbackColor returns transparent when active and dark fallback otherwise`() {
-        val customFallback = Color.Black.copy(alpha = 0.42f)
+    fun `resolveClearPlayerGlassColors derives container, tint, border, and fallback from Material 3 tokens`() {
+        val scrim = Color(0xFF000000)
+        val rim = Color(0xFF86957D)
 
-        assertThat(
-            resolveClearPlayerGlassFallbackColor(
-                isGlassActive = true,
-                fallbackColor = customFallback
-            )
-        ).isEqualTo(Color.Transparent)
+        val resolved = resolveClearPlayerGlassColors(
+            scrimColor = scrim,
+            rimColor = rim
+        )
 
-        assertThat(
-            resolveClearPlayerGlassFallbackColor(
-                isGlassActive = false,
-                fallbackColor = customFallback
-            )
-        ).isEqualTo(customFallback)
+        assertThat(resolved.containerColor).isEqualTo(scrim.copy(alpha = 0.14f))
+        assertThat(resolved.tintColor).isEqualTo(scrim.copy(alpha = 0.12f))
+        assertThat(resolved.borderColor).isEqualTo(rim.copy(alpha = 0.35f))
+        assertThat(resolved.fallbackColor).isEqualTo(scrim.copy(alpha = 0.42f))
+    }
+
+    @Test
+    fun `resolveClearPlayerGlassOptics pins dark-calibrated parameters regardless of OS UI mode`() {
+        val scrim = Color(0xFF000000)
+
+        val optics = resolveClearPlayerGlassOptics(scrimColor = scrim)
+
+        assertThat(optics.specularIntensity).isEqualTo(0.42f)
+        assertThat(optics.edgeShadowColor).isEqualTo(scrim.copy(alpha = 0.25f))
+        assertThat(optics.ambientResponse).isEqualTo(0.22f)
+        assertThat(optics.contrast).isEqualTo(0.12f)
+        assertThat(optics.whitePoint).isEqualTo(-0.18f)
+        assertThat(optics.chromaMultiplier).isEqualTo(1f)
     }
 
     @Test

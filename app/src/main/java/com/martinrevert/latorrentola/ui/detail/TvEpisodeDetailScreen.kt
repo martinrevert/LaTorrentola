@@ -226,7 +226,10 @@ fun TvEpisodeDetailScreen(
                                         )
                                     }
                                 },
-                                colors = TopAppBarDefaults.topAppBarColors()
+                                colors = TopAppBarDefaults.topAppBarColors(
+                                    containerColor = Color.Transparent,
+                                    scrolledContainerColor = Color.Transparent
+                                )
                             )
                         }
                     }
@@ -299,7 +302,10 @@ fun TvEpisodeDetailScreen(
                                     )
                                 }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors()
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = Color.Transparent,
+                                scrolledContainerColor = Color.Transparent
+                            )
                         )
                     }
                 }
@@ -498,9 +504,6 @@ private fun EpisodeDetailContent(
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val heroHeight = if (isTv) 340.dp else if (isWideScreen) 300.dp else 240.dp
     val scrollState = rememberScrollState()
-    val topBarAlpha by remember(scrollState) {
-        androidx.compose.runtime.derivedStateOf { (scrollState.value / 160f).coerceIn(0f, 1f) }
-    }
 
     LaunchedEffect(Unit) {
         if (isTv) {
@@ -858,7 +861,9 @@ private fun EpisodeDetailContent(
             navigationIcon = {
                 IconButton(
                     onClick = onBackClick,
-                    modifier = Modifier.padding(start = 8.dp)
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), CircleShape)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -868,7 +873,8 @@ private fun EpisodeDetailContent(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = topBarAlpha)
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent
             )
         )
     }

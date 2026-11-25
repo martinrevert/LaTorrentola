@@ -185,7 +185,10 @@ fun OttCatalogScreen(
                                     )
                                 }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = Color.Transparent,
+                                scrolledContainerColor = Color.Transparent
+                            )
                         )
                     },
                     chips = {
@@ -282,7 +285,10 @@ fun OttCatalogScreen(
                                     )
                                 }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = Color.Transparent,
+                                scrolledContainerColor = Color.Transparent
+                            )
                         )
                     },
                     chips = {
@@ -400,7 +406,10 @@ fun OttCatalogScreen(
                                     )
                                 }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = Color.Transparent,
+                                scrolledContainerColor = Color.Transparent
+                            )
                         )
                     },
                     chips = {
@@ -499,7 +508,10 @@ fun OttCatalogScreen(
                                     )
                                 }
                             },
-                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = Color.Transparent,
+                                scrolledContainerColor = Color.Transparent
+                            )
                         )
                     },
                     chips = {

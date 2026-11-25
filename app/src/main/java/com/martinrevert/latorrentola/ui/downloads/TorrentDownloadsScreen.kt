@@ -64,6 +64,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -259,7 +260,10 @@ fun TorrentDownloadsScreen(
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors()
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent
+                )
             )
         }
     ) { padding ->
@@ -287,12 +291,15 @@ fun TorrentDownloadsScreen(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .then(if (isTv) Modifier.padding(horizontal = 48.dp) else Modifier),
+                        .then(
+                            if (isTv) Modifier.padding(horizontal = 48.dp)
+                            else Modifier.padding(top = padding.calculateTopPadding())
+                        ),
                     contentPadding = if (!isTv) {
                         PaddingValues(
                             start = 16.dp,
                             end = 16.dp,
-                            top = padding.calculateTopPadding() + 8.dp,
+                            top = 8.dp,
                             bottom = padding.calculateBottomPadding() + 16.dp
                         )
                     } else {
