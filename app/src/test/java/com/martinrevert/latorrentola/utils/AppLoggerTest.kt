@@ -3,6 +3,12 @@ package com.martinrevert.latorrentola.utils
 import com.martinrevert.latorrentola.network.CrashlyticsManager
 import io.mockk.mockk
 import io.mockk.verify
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -52,6 +58,36 @@ class AppLoggerTest {
         val exception = IllegalStateException("Critical crash")
         AppLogger.e("TestTag", "Critical error", exception)
         verify { crashlyticsManager.logError("TestTag", "Critical error", exception) }
+    }
+
+    @Test
+    fun `e downgrades UnknownHostException to warning breadcrumb without recording non-fatal`() {
+        val exception = UnknownHostException("Unable to resolve host \"torrentio.strem.fun\"")
+        AppLogger.e("TorrentioRepository", "Error fetching streams", exception)
+        verify(exactly = 0) { crashlyticsManager.logError(any(), any(), any()) }
+        verify { crashlyticsManager.log(match { it.startsWith("[TorrentioRepository] WARN: Error fetching streams") }) }
+    }
+
+    @Test
+    fun `e downgrades wrapped timeout and connect failures`() {
+        AppLogger.e("Tag", "timeout", SocketTimeoutException("timeout"))
+        AppLogger.e("Tag", "connect", ConnectException("refused"))
+        AppLogger.e("Tag", "route", NoRouteToHostException("no route"))
+        AppLogger.e("Tag", "wrapped", RuntimeException("outer", UnknownHostException("dns")))
+        verify(exactly = 0) { crashlyticsManager.logError(any(), any(), any()) }
+    }
+
+    @Test
+    fun `recordException downgrades UnknownHostException`() {
+        AppLogger.recordException(UnknownHostException("dns"), "Tag", "msg")
+        verify(exactly = 0) { crashlyticsManager.logError(any(), any(), any()) }
+    }
+
+    @Test
+    fun `isTransientNetworkError is false for non-network and null throwables`() {
+        assertFalse(AppLogger.isTransientNetworkError(null))
+        assertFalse(AppLogger.isTransientNetworkError(IllegalStateException("boom")))
+        assertTrue(AppLogger.isTransientNetworkError(UnknownHostException("dns")))
     }
 
     @Test

@@ -5,8 +5,11 @@ import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
 import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
 
 import android.util.Log
+import android.view.Surface
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.video.MediaCodecVideoDecoderException
+import com.martinrevert.latorrentola.ui.components.isObsoleteSurfaceError
 import com.martinrevert.latorrentola.ui.components.isStuckPlayerError
 import com.martinrevert.latorrentola.ui.components.resolvePlaybackDecodingError
 import com.martinrevert.latorrentola.ui.components.resolvePlaybackStallError
@@ -881,7 +884,7 @@ class LocalPlayerActivityTest {
     }
 
     @Test
-    fun `resolveRecoveryPlaybackPositionMs falls back to lastKnownPlaybackPositionMs when controller position resets to zero`() {
+    fun `resolveRecoveryPlaybackPositionMs prefers positive controller position and falls back when reset to zero`() {
         assertThat(
             LocalPlayerActivity.resolveRecoveryPlaybackPositionMs(
                 controllerPositionMs = 0L,
@@ -896,12 +899,171 @@ class LocalPlayerActivityTest {
             )
         ).isEqualTo(130_000L)
 
+        // Preserves user backward seek instead of snapping forward to stale lastKnownPositionMs
+        assertThat(
+            LocalPlayerActivity.resolveRecoveryPlaybackPositionMs(
+                controllerPositionMs = 12_000L,
+                lastKnownPositionMs = 125_000L
+            )
+        ).isEqualTo(12_000L)
+
         assertThat(
             LocalPlayerActivity.resolveRecoveryPlaybackPositionMs(
                 controllerPositionMs = -1L,
                 lastKnownPositionMs = 0L
             )
         ).isEqualTo(0L)
+
+        assertThat(
+            LocalPlayerActivity.resolveRecoveryPlaybackPositionMs(
+                controllerPositionMs = -1L,
+                lastKnownPositionMs = -5_000L
+            )
+        ).isEqualTo(0L)
+    }
+
+    @Test
+    fun `isObsoleteSurfaceError detects obsolete surface MediaCodec failures in cause chain`() {
+        val codecFailure = IllegalStateException("rendering to non-initialized(obsolete) surface")
+        val decoderFailure = RuntimeException("Decoder failed: c2.qti.hevc.decoder", codecFailure)
+        val rendererFailure = RuntimeException("MediaCodecVideoRenderer error, index=0", decoderFailure)
+
+        assertThat(isObsoleteSurfaceError(rendererFailure)).isTrue()
+        assertThat(isObsoleteSurfaceError(codecFailure)).isTrue()
+        assertThat(isObsoleteSurfaceError(IllegalStateException("surface was abandoned"))).isTrue()
+        assertThat(isObsoleteSurfaceError(IllegalStateException("Surface has been abandoned"))).isTrue()
+        assertThat(isObsoleteSurfaceError(IllegalStateException("Surface has been released"))).isTrue()
+    }
+
+    @Test
+    fun `isObsoleteSurfaceError checks MediaCodecVideoDecoderException isSurfaceValid`() {
+        val invalidSurface = mockk<Surface> {
+            every { isValid } returns false
+        }
+        val validSurface = mockk<Surface> {
+            every { isValid } returns true
+        }
+        val invalidSurfaceException = MediaCodecVideoDecoderException(
+            IllegalStateException("generic codec failure"),
+            null,
+            invalidSurface
+        )
+        val validSurfaceException = MediaCodecVideoDecoderException(
+            IllegalStateException("generic codec failure"),
+            null,
+            validSurface
+        )
+
+        assertThat(isObsoleteSurfaceError(invalidSurfaceException)).isTrue()
+        assertThat(isObsoleteSurfaceError(validSurfaceException)).isFalse()
+    }
+
+    @Test
+    fun `isObsoleteSurfaceError ignores non-surface messages, genuine decoder failures, and null`() {
+        val genuine = RuntimeException(
+            "MediaCodecVideoRenderer error, index=0",
+            RuntimeException("Decoder failed: c2.qti.hevc.decoder", IllegalStateException("codec exploded"))
+        )
+
+        assertThat(isObsoleteSurfaceError(genuine)).isFalse()
+        assertThat(isObsoleteSurfaceError(IllegalStateException("AudioTrack non-initialized"))).isFalse()
+        assertThat(isObsoleteSurfaceError(IllegalStateException("obsolete DRM key"))).isFalse()
+        assertThat(isObsoleteSurfaceError(null)).isFalse()
+    }
+
+    @Test
+    fun `nextSurfaceRecoveryAttempt increments within window and resets outside or on clock rollback`() {
+        assertThat(LocalPlayerActivity.nextSurfaceRecoveryAttempt(0, 0L, 1_000L)).isEqualTo(1)
+        assertThat(LocalPlayerActivity.nextSurfaceRecoveryAttempt(1, 1_000L, 5_000L)).isEqualTo(2)
+        assertThat(LocalPlayerActivity.nextSurfaceRecoveryAttempt(2, 5_000L, 8_000L)).isEqualTo(3)
+        assertThat(LocalPlayerActivity.nextSurfaceRecoveryAttempt(3, 8_000L, 100_000L)).isEqualTo(1)
+        assertThat(LocalPlayerActivity.nextSurfaceRecoveryAttempt(2, 10_000L, 5_000L)).isEqualTo(1)
+        assertThat(LocalPlayerActivity.MAX_SURFACE_RECOVERY_ATTEMPTS).isEqualTo(2)
+    }
+
+    @Test
+    fun `shouldRunObsoleteSurfaceRecovery requires foreground started state and active activity`() {
+        assertThat(
+            LocalPlayerActivity.shouldRunObsoleteSurfaceRecovery(
+                isFinishing = false,
+                isDestroyed = false,
+                isDeletingMedia = false,
+                isStarted = true
+            )
+        ).isTrue()
+        assertThat(
+            LocalPlayerActivity.shouldRunObsoleteSurfaceRecovery(
+                isFinishing = false,
+                isDestroyed = false,
+                isDeletingMedia = false,
+                isStarted = false
+            )
+        ).isFalse()
+        assertThat(
+            LocalPlayerActivity.shouldRunObsoleteSurfaceRecovery(
+                isFinishing = true,
+                isDestroyed = false,
+                isDeletingMedia = false,
+                isStarted = true
+            )
+        ).isFalse()
+        assertThat(
+            LocalPlayerActivity.shouldRunObsoleteSurfaceRecovery(
+                isFinishing = false,
+                isDestroyed = true,
+                isDeletingMedia = false,
+                isStarted = true
+            )
+        ).isFalse()
+        assertThat(
+            LocalPlayerActivity.shouldRunObsoleteSurfaceRecovery(
+                isFinishing = false,
+                isDestroyed = false,
+                isDeletingMedia = true,
+                isStarted = true
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `shouldAutoRecoverExistingLocalError matches only obsolete surface playback errors`() {
+        val obsoleteError = PlaybackException(
+            "MediaCodecVideoRenderer error",
+            IllegalStateException("rendering to non-initialized(obsolete) surface"),
+            PlaybackException.ERROR_CODE_DECODING_FAILED
+        )
+        val decoderError = PlaybackException(
+            "Decoder init failed",
+            null,
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
+        )
+
+        assertThat(LocalPlayerActivity.shouldAutoRecoverExistingLocalError(obsoleteError)).isTrue()
+        assertThat(LocalPlayerActivity.shouldAutoRecoverExistingLocalError(decoderError)).isFalse()
+        assertThat(LocalPlayerActivity.shouldAutoRecoverExistingLocalError(null)).isFalse()
+    }
+
+    @Test
+    fun `resolveExhaustedSurfaceRecoveryError returns decoder error or retryable stall fallback`() {
+        val decoderError = PlaybackException(
+            "MediaCodecVideoRenderer error, format=Format(1, null, video/x-matroska, video/hevc, hvc1.2.4.L93.90)",
+            IllegalStateException("rendering to non-initialized(obsolete) surface"),
+            PlaybackException.ERROR_CODE_DECODING_FAILED
+        )
+        val resolvedDecoder = LocalPlayerActivity.resolveExhaustedSurfaceRecoveryError(decoderError)
+        assertThat(resolvedDecoder.isAudioError).isFalse()
+        assertThat(resolvedDecoder.isStallError).isFalse()
+        assertThat(resolvedDecoder.codecSummary).isEqualTo("HEVC / H.265 10-bit")
+
+        val unspecifiedError = PlaybackException(
+            "rendering to non-initialized(obsolete) surface",
+            null,
+            PlaybackException.ERROR_CODE_UNSPECIFIED
+        )
+        val resolvedFallback = LocalPlayerActivity.resolveExhaustedSurfaceRecoveryError(unspecifiedError)
+        assertThat(resolvedFallback.isAudioError).isFalse()
+        assertThat(resolvedFallback.isStallError).isTrue()
+        assertThat(resolvedFallback.codecSummary).isNull()
     }
 }
 

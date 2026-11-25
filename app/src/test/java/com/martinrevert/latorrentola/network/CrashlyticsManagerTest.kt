@@ -8,6 +8,8 @@ import io.mockk.mockkStatic
 import io.mockk.slot
 import io.mockk.unmockkStatic
 import io.mockk.verify
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -58,6 +60,36 @@ class CrashlyticsManagerTest {
         val exception = RuntimeException("Test error")
         crashlyticsManager.recordException(exception)
         verify { firebaseCrashlytics.recordException(exception) }
+    }
+
+    @Test
+    fun `recordException ignores transient network failures and logs matched cause`() {
+        crashlyticsManager.recordException(SocketTimeoutException("timeout"))
+        crashlyticsManager.recordException(UnknownHostException("torrentio.strem.fun"))
+        crashlyticsManager.recordException(RuntimeException("wrapper", SocketTimeoutException("timeout")))
+
+        verify(exactly = 0) { firebaseCrashlytics.recordException(any()) }
+        verify(exactly = 2) {
+            firebaseCrashlytics.log("WARN: transient network failure ignored (SocketTimeoutException)")
+        }
+        verify(exactly = 1) {
+            firebaseCrashlytics.log("WARN: transient network failure ignored (UnknownHostException)")
+        }
+    }
+
+    @Test
+    fun `logError ignores transient network failures with a single breadcrumb for matched cause`() {
+        crashlyticsManager.logError(
+            "TestTag",
+            "timed out",
+            RuntimeException("wrapper", SocketTimeoutException("timeout"))
+        )
+
+        verify(exactly = 0) { firebaseCrashlytics.recordException(any()) }
+        verify(exactly = 1) {
+            firebaseCrashlytics.log("[TestTag] WARN: timed out (SocketTimeoutException)")
+        }
+        verify(exactly = 1) { firebaseCrashlytics.log(any()) }
     }
 
     @Test

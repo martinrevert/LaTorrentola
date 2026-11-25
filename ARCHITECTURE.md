@@ -567,6 +567,13 @@ To guarantee seamless watch history parity and minimal cloud consumption across 
   * Kotlinx Serialization: `-keep,allowoptimization @kotlinx.serialization.Serializable class * { *; }`.
 * **Reflection & JNI Entry Points**: Targeted constructor keeps for `AppCastOptionsProvider` and explicit JNI preservation for `libtorrent_jni` and `LibNfsNative`.
 
+### 5.12 Crashlytics Error Reporting & Transient Network Dampening
+* **Single Gateway**: Non-fatal reporting flows through `AppLogger.e` / `AppLogger.recordException` -> `CrashlyticsManager.logError` -> `recordException`.
+* **Transient Network Dampening**: `CrashlyticsManager.findTransientNetworkCause(throwable)` / `isTransientNetworkError(throwable)` (delegated by `AppLogger.isTransientNetworkError` with no cyclic dependency) walks the cause chain (max depth 6) and matches `UnknownHostException`, `ConnectException`, `NoRouteToHostException`, and `SocketTimeoutException`. These are device-side conditions (offline, DNS failure, captive portal, flaky Wi-Fi), so they are downgraded to `AppLogger.w` (logcat plus a Crashlytics breadcrumb) and are never recorded as non-fatal issues.
+* **Final Gate**: `CrashlyticsManager.recordException` and `logError` apply the same `findTransientNetworkCause` check, emitting a single `WARN` breadcrumb naming the matched transient cause without recording a non-fatal, so any code path reaching Crashlytics directly (including OkHttp HTTP/2 `SocketTimeoutException: timeout` from async calls) is also filtered.
+* **Graceful Degradation**: Repositories (`TorrentioRepository`, `EztvRepository`, etc.) keep returning empty results on these failures, so the UI is unaffected.
+* **Obsolete Video Surface Recovery**: `MediaCodecVideoRenderer` failures caused by invalid/obsolete surfaces (`MediaCodecVideoDecoderException.isSurfaceValid == false` or surface-scoped `obsolete`/`non-initialized`/`abandoned`/`released` messages) are detected by `isObsoleteSurfaceError` in both `LocalPlayerActivity.handlePlayerError` and `setupControllerMedia` (`handleExistingLocalPlayerError`). They are logged as warnings, counted with monotonic `SystemClock.elapsedRealtime()` (reset on `STATE_READY`, active playback, or stream changes), rebound via `surfaceRebindKey++`, and re-prepared after a tracked, foreground-gated (`Lifecycle.State.STARTED`) 500 ms delay that preserves `playWhenReady` and backward seeks (`resolveRecoveryPlaybackPositionMs`), before falling back to `PlaybackErrorDialog` (with a retryable stall fallback when `resolvePlaybackDecodingError` returns `null`) after `MAX_SURFACE_RECOVERY_ATTEMPTS` (2) within 30 s.
+
 ---
 
 ## 6. Complete Suite of Sequence & Flow Diagrams

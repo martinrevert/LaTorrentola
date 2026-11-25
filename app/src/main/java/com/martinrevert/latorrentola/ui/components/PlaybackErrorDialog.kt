@@ -44,6 +44,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlaybackException
+import androidx.media3.exoplayer.video.MediaCodecVideoDecoderException
 import androidx.tv.material3.Button as TvButton
 import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 import androidx.tv.material3.Surface as TvSurface
@@ -214,6 +215,40 @@ fun isStuckPlayerError(error: PlaybackException): Boolean {
         causeMessage.contains("stuck buffering", ignoreCase = true) ||
         causeMessage.contains("stuck playing", ignoreCase = true)
 }
+
+/**
+ * Returns true when a video renderer failure was caused by MediaCodec rendering into a surface that
+ * was already released or replaced (`rendering to non-initialized(obsolete) surface`). This is a
+ * surface-lifecycle race (PiP handoff, rotation, activity stop/start, TextureView recreation) and
+ * not a genuine decoder defect, so it is recoverable by re-preparing and rebinding the surface.
+ *
+ * The cause chain is inspected up to [MAX_ERROR_CAUSE_DEPTH] levels; messages of reconstructed
+ * (Bundle-deserialized) causes are honored as well.
+ */
+fun isObsoleteSurfaceError(error: Throwable?): Boolean {
+    var current = error
+    var depth = 0
+    while (current != null && depth < MAX_ERROR_CAUSE_DEPTH) {
+        if (current is MediaCodecVideoDecoderException && !current.isSurfaceValid) {
+            return true
+        }
+        val message = current.message.orEmpty()
+        if (message.contains("surface", ignoreCase = true) && (
+                message.contains("obsolete", ignoreCase = true) ||
+                message.contains("non-initialized", ignoreCase = true) ||
+                message.contains("abandoned", ignoreCase = true) ||
+                message.contains("released", ignoreCase = true)
+            )
+        ) {
+            return true
+        }
+        current = current.cause
+        depth++
+    }
+    return false
+}
+
+private const val MAX_ERROR_CAUSE_DEPTH = 6
 
 /**
  * Inspects a [PlaybackException] and returns a [PlaybackDecodingError] configured with `isStallError = true`

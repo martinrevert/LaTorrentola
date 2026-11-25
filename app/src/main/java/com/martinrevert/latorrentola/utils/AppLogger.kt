@@ -95,6 +95,11 @@ object AppLogger {
      * exception to Firebase Crashlytics for production monitoring.
      */
     fun e(tag: String, message: String, throwable: Throwable? = null) {
+        if (isTransientNetworkError(throwable)) {
+            // Device-side connectivity failures (offline, DNS, timeout) are not app defects.
+            w(tag, message, throwable)
+            return
+        }
         if (throwable != null) {
             Log.e(tag, message, throwable)
         } else {
@@ -105,11 +110,24 @@ object AppLogger {
 
     /**
      * Directly reports an uncaught or caught exception to Crashlytics with an optional contextual message.
+     * Transient device-side network failures are downgraded to warning breadcrumbs.
      */
     fun recordException(throwable: Throwable, tag: String? = null, message: String? = null) {
         val effectiveTag = tag ?: "AppLogger"
         val effectiveMessage = message ?: throwable.message ?: throwable.javaClass.simpleName
+        if (isTransientNetworkError(throwable)) {
+            w(effectiveTag, effectiveMessage, throwable)
+            return
+        }
         Log.e(effectiveTag, effectiveMessage, throwable)
         crashlyticsManager?.logError(effectiveTag, effectiveMessage, throwable)
     }
+
+    /**
+     * Returns `true` when [throwable] (or any cause in its chain) is a transient, client-environment
+     * network failure (DNS resolution, connect/route failure, or socket timeout).
+     * These must never be reported as Crashlytics non-fatal issues.
+     */
+    fun isTransientNetworkError(throwable: Throwable?): Boolean =
+        CrashlyticsManager.isTransientNetworkError(throwable)
 }

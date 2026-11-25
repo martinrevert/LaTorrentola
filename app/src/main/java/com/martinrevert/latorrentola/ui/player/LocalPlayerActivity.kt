@@ -22,6 +22,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import com.martinrevert.latorrentola.utils.AppLogger
 import android.view.WindowManager
@@ -252,6 +253,7 @@ import com.martinrevert.latorrentola.ui.components.PlaybackErrorDialog
 import com.martinrevert.latorrentola.ui.components.WatchProgressBar
 import com.martinrevert.latorrentola.ui.components.WatchProgressSlider
 import com.martinrevert.latorrentola.ui.components.isStuckPlayerError
+import com.martinrevert.latorrentola.ui.components.isObsoleteSurfaceError
 import com.martinrevert.latorrentola.ui.components.resolvePlaybackDecodingError
 import com.martinrevert.latorrentola.ui.components.resolvePlaybackStallError
 import com.martinrevert.latorrentola.ui.theme.LaTorrentolaTheme
@@ -468,6 +470,9 @@ class LocalPlayerActivity : FragmentActivity() {
     private var lastKnownPlaybackPositionMs = 0L
     private var lastStreamRecoveryAttemptMillis = 0L
     private var localStreamRecoveryAttempts = 0
+    private var surfaceRecoveryAttempts = 0
+    private var lastSurfaceRecoveryAtMs = 0L
+    private var surfaceRecoveryJob: Job? = null
     private var hasClearedVideoSurfaceForExit = false
 
     private fun buildEnrichedMediaMetadata(
@@ -1239,6 +1244,8 @@ class LocalPlayerActivity : FragmentActivity() {
         setIntent(intent)
         metadataRecoveryJob?.cancel()
         metadataRecoveryJob = null
+        surfaceRecoveryJob?.cancel()
+        surfaceRecoveryJob = null
         showNextEpisodeDialog = false
         playbackDecodingError = null
         val previousInfoHash = torrentInfoHash
@@ -1253,6 +1260,8 @@ class LocalPlayerActivity : FragmentActivity() {
             )
         ) {
             localStreamRecoveryAttempts = 0
+            surfaceRecoveryAttempts = 0
+            lastSurfaceRecoveryAtMs = 0L
         }
         val controller = mediaController
         if (controller != null) {
@@ -1764,6 +1773,8 @@ class LocalPlayerActivity : FragmentActivity() {
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         if (isPlaying) {
                             localStreamRecoveryAttempts = 0
+                            surfaceRecoveryAttempts = 0
+                            lastSurfaceRecoveryAtMs = 0L
                             startProgressTicker(controller)
                         } else {
                             saveCurrentProgress(controller)
@@ -1773,6 +1784,8 @@ class LocalPlayerActivity : FragmentActivity() {
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_READY) {
                             localStreamRecoveryAttempts = 0
+                            surfaceRecoveryAttempts = 0
+                            lastSurfaceRecoveryAtMs = 0L
                             if (playbackDecodingError?.isDtsHdError != true) {
                                 playbackDecodingError = null
                             }
@@ -1787,6 +1800,7 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
                 mediaControllerListener = pipListener
                 controller.addListener(pipListener)
+                handleExistingLocalPlayerError(controller)
                 return@launch
             }
 
@@ -1808,6 +1822,10 @@ class LocalPlayerActivity : FragmentActivity() {
             if (isNewMedia) {
                 lastKnownPlaybackPositionMs = 0L
                 nextEpisodeTriggered = false
+                surfaceRecoveryAttempts = 0
+                lastSurfaceRecoveryAtMs = 0L
+                surfaceRecoveryJob?.cancel()
+                surfaceRecoveryJob = null
                 if (activeItem != null) {
                     saveCurrentProgress(controller)
                 }
@@ -2031,14 +2049,7 @@ class LocalPlayerActivity : FragmentActivity() {
                 startProgressTicker(controller)
                 updateCachedAudioTracks(controller.currentTracks)
                 prepareSubtitleTrackIfNeeded(controller.currentTracks)
-                if (controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_LOCAL) {
-                    controller.playerError?.let { existingError ->
-                        val decodingError = resolvePlaybackDecodingError(existingError) ?: resolvePlaybackStallError(existingError)
-                        if (decodingError != null) {
-                            playbackDecodingError = decodingError
-                        }
-                    }
-                }
+                handleExistingLocalPlayerError(controller)
             } else if (pendingMediaUri == null) {
                 finish()
                 return@launch
@@ -2058,6 +2069,8 @@ class LocalPlayerActivity : FragmentActivity() {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     if (isPlaying) {
                         localStreamRecoveryAttempts = 0
+                        surfaceRecoveryAttempts = 0
+                        lastSurfaceRecoveryAtMs = 0L
                     } else {
                         saveCurrentProgress(controller)
                     }
@@ -2066,6 +2079,8 @@ class LocalPlayerActivity : FragmentActivity() {
                 override fun onPlaybackStateChanged(state: Int) {
                     if (state == Player.STATE_READY) {
                         localStreamRecoveryAttempts = 0
+                        surfaceRecoveryAttempts = 0
+                        lastSurfaceRecoveryAtMs = 0L
                         if (playbackDecodingError?.isDtsHdError != true) {
                             playbackDecodingError = null
                         }
@@ -2093,6 +2108,10 @@ class LocalPlayerActivity : FragmentActivity() {
         }
 
         val isLocalStream = localStreamUrl.contains("127.0.0.1") || localStreamUrl.contains("localhost")
+        if (isObsoleteSurfaceError(error) && controller.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_LOCAL) {
+            handleObsoleteSurfaceError(controller, error)
+            return
+        }
         val isStuck = isStuckPlayerError(error)
         val isTransientIoError = isTransientIoPlaybackError(error.errorCode)
         val isLocalConnectionFailure = isLocalStream && (
@@ -2131,6 +2150,7 @@ class LocalPlayerActivity : FragmentActivity() {
                 }
                 lifecycleScope.launch {
                     delay(1500.milliseconds)
+                    if (isFinishing || isDestroyed || isDeletingMedia) return@launch
                     if (controller.playbackState == Player.STATE_IDLE) {
                         val currentPos = resolveRecoveryPlaybackPositionMs(
                             controllerPositionMs = controller.currentPosition,
@@ -2174,8 +2194,17 @@ class LocalPlayerActivity : FragmentActivity() {
 
             lifecycleScope.launch {
                 delay(1500.milliseconds)
+                if (isFinishing || isDestroyed || isDeletingMedia) return@launch
                 if (controller.playbackState == Player.STATE_IDLE) {
                     Log.i(TAG, "Attempting auto-recovery for transient playback error")
+                    val currentPos = resolveRecoveryPlaybackPositionMs(
+                        controllerPositionMs = controller.currentPosition,
+                        lastKnownPositionMs = lastKnownPlaybackPositionMs
+                    )
+                    val currentItem = controller.currentMediaItem
+                    if (currentItem != null) {
+                        controller.setMediaItem(currentItem, currentPos)
+                    }
                     controller.prepare()
                     controller.playWhenReady = true
                 }
@@ -2184,6 +2213,80 @@ class LocalPlayerActivity : FragmentActivity() {
             val decodingError = resolvePlaybackDecodingError(error) ?: resolvePlaybackStallError(error)
             if (decodingError != null) {
                 playbackDecodingError = decodingError
+            }
+        }
+    }
+
+    private fun handleExistingLocalPlayerError(controller: MediaController) {
+        if (controller.deviceInfo.playbackType != DeviceInfo.PLAYBACK_TYPE_LOCAL) return
+        val existingError = controller.playerError ?: return
+        if (shouldAutoRecoverExistingLocalError(existingError)) {
+            handleObsoleteSurfaceError(controller, existingError)
+            return
+        }
+        val decodingError = resolvePlaybackDecodingError(existingError) ?: resolvePlaybackStallError(existingError)
+        if (decodingError != null) {
+            playbackDecodingError = decodingError
+        }
+    }
+
+    /**
+     * Recovers from `MediaCodec` rendering into an obsolete (released/replaced) surface, a lifecycle
+     * race rather than a decoder defect. Logs a warning (never a Crashlytics non-fatal), rebinds the
+     * video surface and re-prepares playback at the last known position. After
+     * [MAX_SURFACE_RECOVERY_ATTEMPTS] consecutive failures the regular decoder error dialog is shown.
+     */
+    private fun handleObsoleteSurfaceError(controller: MediaController, error: PlaybackException) {
+        val now = SystemClock.elapsedRealtime()
+        surfaceRecoveryAttempts = nextSurfaceRecoveryAttempt(surfaceRecoveryAttempts, lastSurfaceRecoveryAtMs, now)
+        lastSurfaceRecoveryAtMs = now
+
+        if (controller.currentPosition > 5000L) {
+            lastKnownPlaybackPositionMs = controller.currentPosition
+        }
+
+        if (surfaceRecoveryAttempts > MAX_SURFACE_RECOVERY_ATTEMPTS) {
+            surfaceRecoveryJob?.cancel()
+            surfaceRecoveryJob = null
+            AppLogger.w(
+                TAG,
+                "Video surface recovery attempts exhausted ($surfaceRecoveryAttempts): ${error.errorCodeName} (${error.errorCode})",
+                error
+            )
+            playbackDecodingError = resolveExhaustedSurfaceRecoveryError(error)
+            return
+        }
+
+        AppLogger.w(
+            TAG,
+            "Video surface became obsolete while rendering (attempt $surfaceRecoveryAttempts/$MAX_SURFACE_RECOVERY_ATTEMPTS): ${error.errorCodeName} (${error.errorCode})",
+            error
+        )
+
+        val shouldResumePlayback = controller.playWhenReady
+        surfaceRebindKey++
+        surfaceRecoveryJob?.cancel()
+        surfaceRecoveryJob = lifecycleScope.launch {
+            delay(500.milliseconds)
+            if (!shouldRunObsoleteSurfaceRecovery(
+                    isFinishing = isFinishing,
+                    isDestroyed = isDestroyed,
+                    isDeletingMedia = isDeletingMedia,
+                    isStarted = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                )
+            ) {
+                return@launch
+            }
+            if (controller.playbackState == Player.STATE_IDLE) {
+                val resumePos = resolveRecoveryPlaybackPositionMs(
+                    controllerPositionMs = controller.currentPosition,
+                    lastKnownPositionMs = lastKnownPlaybackPositionMs
+                )
+                controller.currentMediaItem?.let { item ->
+                    controller.setMediaItem(item, resumePos)
+                    controller.prepare()
+                    controller.playWhenReady = shouldResumePlayback
+                }
             }
         }
     }
@@ -3314,6 +3417,8 @@ class LocalPlayerActivity : FragmentActivity() {
             } catch (_: Exception) {}
         }
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        surfaceRecoveryJob?.cancel()
+        surfaceRecoveryJob = null
         releaseVideoSurfaceForPipHandoff()
         dtsHdStallWatchdogJob = cancelDtsHdStallWatchdog(dtsHdStallWatchdogJob)
         saveCurrentProgress(mediaController)
@@ -3646,6 +3751,8 @@ class LocalPlayerActivity : FragmentActivity() {
     override fun onDestroy() {
         metadataRecoveryJob?.cancel()
         metadataRecoveryJob = null
+        surfaceRecoveryJob?.cancel()
+        surfaceRecoveryJob = null
         mediaControllerListener?.let { mediaController?.removeListener(it) }
         mediaControllerListener = null
         playbackCompletionListener?.let { mediaController?.removeListener(it) }
@@ -3691,6 +3798,48 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     companion object {
+        /** Maximum automatic recoveries for an obsolete-surface MediaCodec failure before showing the dialog. */
+        internal const val MAX_SURFACE_RECOVERY_ATTEMPTS = 2
+        private const val SURFACE_RECOVERY_WINDOW_MS = 30_000L
+
+        @VisibleForTesting
+        internal fun nextSurfaceRecoveryAttempt(
+            previousAttempts: Int,
+            lastAttemptAtMs: Long,
+            nowMs: Long,
+            windowMs: Long = SURFACE_RECOVERY_WINDOW_MS
+        ): Int {
+            return if (lastAttemptAtMs > 0L && (nowMs - lastAttemptAtMs) in 0L..windowMs) {
+                previousAttempts + 1
+            } else {
+                1
+            }
+        }
+
+        @VisibleForTesting
+        internal fun shouldRunObsoleteSurfaceRecovery(
+            isFinishing: Boolean,
+            isDestroyed: Boolean,
+            isDeletingMedia: Boolean,
+            isStarted: Boolean
+        ): Boolean {
+            return !isFinishing && !isDestroyed && !isDeletingMedia && isStarted
+        }
+
+        @VisibleForTesting
+        internal fun shouldAutoRecoverExistingLocalError(error: PlaybackException?): Boolean {
+            return error != null && isObsoleteSurfaceError(error)
+        }
+
+        @VisibleForTesting
+        internal fun resolveExhaustedSurfaceRecoveryError(error: PlaybackException): PlaybackDecodingError {
+            return resolvePlaybackDecodingError(error) ?: PlaybackDecodingError(
+                isAudioError = false,
+                codecSummary = null,
+                isStallError = true
+            )
+        }
+
         @VisibleForTesting
         internal fun resolvePlayerAnySheetVisible(
             hasController: Boolean,
@@ -3770,7 +3919,11 @@ class LocalPlayerActivity : FragmentActivity() {
             controllerPositionMs: Long,
             lastKnownPositionMs: Long
         ): Long {
-            return maxOf(controllerPositionMs, lastKnownPositionMs).coerceAtLeast(0L)
+            return if (controllerPositionMs > 0L) {
+                controllerPositionMs
+            } else {
+                lastKnownPositionMs.coerceAtLeast(0L)
+            }
         }
 
         @VisibleForTesting
