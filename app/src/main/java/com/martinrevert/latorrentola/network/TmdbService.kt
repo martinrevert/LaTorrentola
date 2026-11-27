@@ -39,6 +39,16 @@ interface TmdbService {
         @Query("language") language: String = TmdbLanguage.current()
     ): TmdbTvPage
 
+    /** Searches TMDB for movies matching [query], optionally filtered by release [year]. */
+    @GET("search/movie")
+    suspend fun searchMovies(
+        @Query("api_key") apiKey: String,
+        @Query("query") query: String,
+        @Query("year") year: Int? = null,
+        @Query("page") page: Int = 1,
+        @Query("language") language: String = TmdbLanguage.current()
+    ): TmdbMoviePage
+
     /** Retrieves a person's details and requested appended response data. */
     @GET("person/{person_id}")
     suspend fun getPersonDetail(

@@ -235,6 +235,8 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.model.YTS.Movie
 import com.martinrevert.latorrentola.model.user.DownloadedEpisode
 import com.martinrevert.latorrentola.model.torrent.TorrentRelease
 import com.martinrevert.latorrentola.model.torrent.VideoQualityGroup
@@ -245,6 +247,7 @@ import com.martinrevert.latorrentola.network.DownloadedSubtitle
 import com.martinrevert.latorrentola.network.OpenSubtitleRepository
 import com.martinrevert.latorrentola.network.OpenSubtitleResult
 import com.martinrevert.latorrentola.network.OpenSubtitlesException
+import com.martinrevert.latorrentola.network.OpenSubtitlesRepository
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.UserLibraryRepository
 import com.martinrevert.latorrentola.network.YtsRepository
@@ -614,7 +617,12 @@ class LocalPlayerActivity : FragmentActivity() {
         } else {
             mediaUri
         }
-        val updatedItem = buildPendingMediaItem(effectiveUri, file) ?: return
+        val baseItem = buildPendingMediaItem(effectiveUri, file) ?: return
+        val updatedItem = preserveSubtitleConfigurations(
+            updatedItem = baseItem,
+            activeControllerItem = mediaController?.currentMediaItem,
+            currentItem = currentMediaItem
+        )
         val oldMediaId = currentMediaItem?.mediaId ?: pendingMediaItem?.mediaId
         pendingMediaItem = updatedItem
         currentMediaItem = updatedItem
@@ -1373,6 +1381,23 @@ class LocalPlayerActivity : FragmentActivity() {
             }
         }
 
+        val isFromPip = intent.getBooleanExtra(EXTRA_FROM_PIP, false)
+        if (shouldResetPerMediaMetadataOnIntent(isFromPip)) {
+            mediaTitle = ""
+            posterUrl = null
+            currentSeriesId = 0
+            currentSeasonNumber = 0
+            currentEpisodeNumber = 0
+            currentMovieId = 0
+            currentImdbId = null
+            hasNextEpisodeInfo = false
+            nextEpisodeSeriesId = 0
+            nextEpisodeSeriesName = ""
+            nextEpisodeSeasonNumber = 0
+            nextEpisodeEpisodeNumber = 0
+            nextEpisodeEpisodeName = ""
+        }
+
         val titleExtra = intent.getStringExtra(EXTRA_TITLE)
             ?: intent.getStringExtra(TorrentDownloadService.EXTRA_TITLE)
         if (!titleExtra.isNullOrBlank()) {
@@ -1495,7 +1520,7 @@ class LocalPlayerActivity : FragmentActivity() {
                         val resolved = if (currentSeriesId > 0) {
                             tmdbRepository.getTvImdbId(currentSeriesId)
                         } else {
-                            tmdbRepository.getMovieImdbId(currentMovieId)
+                            ytsRepository.getMovieSummary(currentMovieId).data?.movie?.imdbCode
                         }
                         val norm = MediaIdHelper.normalizeImdbId(resolved)
                         if (!norm.isNullOrBlank()) {
@@ -1862,6 +1887,11 @@ class LocalPlayerActivity : FragmentActivity() {
                     currentSeriesId = resolved.seriesId
                     currentSeasonNumber = resolved.seasonNumber
                     currentEpisodeNumber = resolved.episodeNumber
+                    val normalizedResolvedImdb = MediaIdHelper.normalizeImdbId(resolved.imdbId)
+                    if (currentImdbId.isNullOrBlank() && !normalizedResolvedImdb.isNullOrBlank()) {
+                        currentImdbId = normalizedResolvedImdb
+                        intent.putExtra(EXTRA_IMDB_ID, normalizedResolvedImdb)
+                    }
                     if (posterUrl.isNullOrBlank() && !resolved.posterUrl.isNullOrBlank()) {
                         posterUrl = resolved.posterUrl
                     }
@@ -3052,17 +3082,19 @@ class LocalPlayerActivity : FragmentActivity() {
                 val fileName = filePath?.let { File(it).name }
 
                 // 1. Recover season and episode numbers if not provided in Intent
-                if (effectiveSeason <= 0 || effectiveEpisode <= 0) {
+                if (effectiveEpisode <= 0) {
                     val (extractedSeason, extractedEpisode) = extractSeasonAndEpisode(mediaTitle, fileName)
-                    if (effectiveSeason <= 0) effectiveSeason = extractedSeason
-                    if (effectiveEpisode <= 0) effectiveEpisode = extractedEpisode
+                    if (extractedEpisode > 0) {
+                        if (effectiveSeason <= 0) effectiveSeason = extractedSeason
+                        effectiveEpisode = extractedEpisode
+                    }
                 }
 
-                val isEpisode = (effectiveSeason > 0 && effectiveEpisode > 0) ||
+                val isEpisode = effectiveSeriesId > 0 ||
+                        (effectiveSeason >= 0 && effectiveEpisode > 0) ||
                         EPISODE_PATTERN.containsMatchIn(mediaTitle) ||
                         (fileName != null && EPISODE_PATTERN.containsMatchIn(fileName)) ||
                         currentSeasonNumber > 0
-                val mediaType = if (isEpisode) "episode" else "movie"
 
                 // 2. Recover IDs from Room DB if not present in Intent
                 if (torrentInfoHash.isNotBlank()) {
@@ -3084,141 +3116,144 @@ class LocalPlayerActivity : FragmentActivity() {
                     }
                 }
 
-                // 3. PRIORITY #1: Resolve IMDb ID
-                var resolvedImdbId: String? = null
+                // 3. Resolve IMDb ID strictly before querying OpenSubtitles
+                // 3a. Reuse any already-known canonical IMDb ID (Intent, Room, MediaItem, title/filename)
+                var resolvedImdbId: String? = resolveKnownImdbId(
+                    currentImdbId = currentImdbId,
+                    intentImdbId = intent.getStringExtra(EXTRA_IMDB_ID),
+                    serviceImdbId = intent.getStringExtra(TorrentDownloadService.EXTRA_IMDB_ID),
+                    dbImdbId = dbRecord?.imdbId,
+                    mediaItemId = currentMediaItem?.mediaId ?: mediaController?.currentMediaItem?.mediaId,
+                    mediaTitle = mediaTitle,
+                    fileName = fileName
+                )
 
-                // 3a. Direct 'tt' identifier in title or filename/path
-                val ttMatch = Regex("""\btt\d{7,8}\b""", RegexOption.IGNORE_CASE).find(mediaTitle)
-                    ?: fileName?.let { Regex("""\btt\d{7,8}\b""", RegexOption.IGNORE_CASE).find(it) }
-                if (ttMatch != null) {
-                    resolvedImdbId = ttMatch.value
-                }
-
-                // 3b. Fetch IMDb ID from known TMDB ID
+                // 3b. Fetch IMDb ID from known catalog ID (TMDB seriesId for TV, YTS movieId for movies)
                 if (resolvedImdbId.isNullOrBlank()) {
                     try {
                         if (effectiveSeriesId > 0 && isEpisode) {
-                            resolvedImdbId = tmdbRepository.getTvImdbId(effectiveSeriesId)
-                        } else if (effectiveMovieId > 0) {
-                            resolvedImdbId = tmdbRepository.getMovieImdbId(effectiveMovieId)
+                            resolvedImdbId = MediaIdHelper.normalizeImdbId(
+                                tmdbRepository.getTvImdbId(effectiveSeriesId)
+                            )
+                        } else if (!isEpisode && effectiveMovieId > 0) {
+                            resolvedImdbId = MediaIdHelper.normalizeImdbId(
+                                ytsRepository.getMovieSummary(effectiveMovieId).data?.movie?.imdbCode
+                            )
                         }
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
-                        Log.w(TAG, "Failed to fetch IMDb ID from TMDB repository: ${e.message}")
+                        Log.w(TAG, "Failed to fetch IMDb ID from catalog repository: ${e.message}")
                     }
                 }
 
-                // 3c. Search TMDB/YTS by clean title to find the IMDb ID if still unknown
+                // 3c. Deduce IMDb ID for local / USB / NAS files without catalog metadata
                 if (resolvedImdbId.isNullOrBlank()) {
                     val searchCandidates = extractCleanSearchTitles(mediaTitle).ifEmpty {
                         fileName?.let { extractCleanSearchTitles(it) }.orEmpty()
                     }
+                    val expectedYear = extractYearFromRelease(mediaTitle)
+                        ?: fileName?.let(::extractYearFromRelease)
                     for (candidate in searchCandidates) {
                         if (isEpisode) {
                             try {
                                 val tvPage = tmdbRepository.searchTvSeries(candidate)
-                                val firstTv = tvPage.results?.firstOrNull()
-                                if (firstTv != null && firstTv.id > 0) {
-                                    val imdb = tmdbRepository.getTvImdbId(firstTv.id)
+                                val matchedTv = selectBestTvCandidate(
+                                    seriesList = tvPage.results.orEmpty(),
+                                    candidateTitle = candidate,
+                                    expectedYear = expectedYear
+                                )
+                                if (matchedTv != null && matchedTv.id > 0) {
+                                    val imdb = MediaIdHelper.normalizeImdbId(
+                                        tmdbRepository.getTvImdbId(matchedTv.id)
+                                    )
                                     if (!imdb.isNullOrBlank()) {
                                         resolvedImdbId = imdb
-                                        if (effectiveSeriesId <= 0) effectiveSeriesId = firstTv.id
-                                        Log.i(TAG, "Resolved TV IMDb ID $resolvedImdbId from TMDB for '$candidate'")
+                                        if (effectiveSeriesId <= 0) effectiveSeriesId = matchedTv.id
+                                        Log.i(TAG, "Deduced TV IMDb ID $resolvedImdbId from TMDB for '$candidate'")
                                         break
                                     }
                                 }
                             } catch (e: Exception) {
                                 if (e is CancellationException) throw e
-                                Log.w(TAG, "Failed to resolve TV IMDb ID via TMDB for '$candidate': ${e.message}")
+                                Log.w(TAG, "Failed to deduce TV IMDb ID via TMDB for '$candidate': ${e.message}")
                             }
                         } else {
                             try {
                                 val movieSearch = ytsRepository.searchMovies(candidate, 1)
-                                val firstMovie = movieSearch.data?.movies?.firstOrNull()
-                                val imdb = firstMovie?.imdbCode
+                                val matchedMovie = selectBestMovieCandidate(
+                                    movies = movieSearch.data?.movies.orEmpty(),
+                                    candidateTitle = candidate,
+                                    expectedYear = expectedYear
+                                )
+                                val imdb = MediaIdHelper.normalizeImdbId(matchedMovie?.imdbCode)
                                 if (!imdb.isNullOrBlank()) {
                                     resolvedImdbId = imdb
-                                    if (effectiveMovieId <= 0) effectiveMovieId = firstMovie.id
-                                    Log.i(TAG, "Resolved Movie IMDb ID $resolvedImdbId from YTS for '$candidate'")
+                                    if (effectiveMovieId <= 0 && (matchedMovie?.id ?: 0) > 0) {
+                                        effectiveMovieId = matchedMovie?.id ?: 0
+                                    }
+                                    Log.i(TAG, "Deduced Movie IMDb ID $resolvedImdbId from YTS for '$candidate' (year=$expectedYear)")
                                     break
                                 }
                             } catch (e: Exception) {
                                 if (e is CancellationException) throw e
-                                Log.w(TAG, "Failed to resolve Movie IMDb ID via YTS for '$candidate': ${e.message}")
+                                Log.w(TAG, "Failed to deduce Movie IMDb ID via YTS for '$candidate': ${e.message}")
+                            }
+
+                            // Fallback to TMDB movie search (title + year -> genuine TMDB movieId -> IMDb ID)
+                            // for local / USB / NAS movies not indexed by YTS.
+                            if (resolvedImdbId.isNullOrBlank()) {
+                                try {
+                                    val initialTmdb = tmdbRepository.searchMovies(
+                                        query = candidate,
+                                        year = expectedYear
+                                    ).results.orEmpty()
+                                    val tmdbCandidates = if (initialTmdb.isEmpty() && expectedYear != null) {
+                                        tmdbRepository.searchMovies(query = candidate, year = null).results.orEmpty()
+                                    } else {
+                                        initialTmdb
+                                    }
+                                    val matchedTmdb = MediaMetadataResolver.selectBestTmdbMovieCandidate(
+                                        movies = tmdbCandidates,
+                                        candidateTitle = candidate,
+                                        expectedYear = expectedYear
+                                    )
+                                    if (matchedTmdb != null && matchedTmdb.id > 0) {
+                                        val imdb = MediaIdHelper.normalizeImdbId(
+                                            tmdbRepository.getMovieImdbId(matchedTmdb.id)
+                                        )
+                                        if (!imdb.isNullOrBlank()) {
+                                            resolvedImdbId = imdb
+                                            Log.i(TAG, "Deduced Movie IMDb ID $resolvedImdbId from TMDB for '$candidate' (year=$expectedYear)")
+                                            break
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    if (e is CancellationException) throw e
+                                    Log.w(TAG, "Failed to deduce Movie IMDb ID via TMDB for '$candidate': ${e.message}")
+                                }
                             }
                         }
                     }
                 }
 
-                // 4. Perform OpenSubtitles search PRIORITIZING IMDb ID FIRST
-                var imdbResults: List<OpenSubtitleResult>? = null
+                // 4. Perform OpenSubtitles search STRICTLY by IMDb ID (no text-query fallback)
                 if (!resolvedImdbId.isNullOrBlank()) {
+                    if (currentImdbId.isNullOrBlank()) {
+                        currentImdbId = resolvedImdbId
+                    }
                     Log.i(TAG, "Searching OpenSubtitles by IMDb ID: $resolvedImdbId (isEpisode=$isEpisode, S=$effectiveSeason, E=$effectiveEpisode)")
-                    try {
-                        imdbResults = if (isEpisode && effectiveSeason > 0 && effectiveEpisode > 0) {
-                            openSubtitlesRepository.searchByImdbId(
-                                imdbId = resolvedImdbId,
-                                seasonNumber = effectiveSeason,
-                                episodeNumber = effectiveEpisode
-                            )
-                        } else {
-                            openSubtitlesRepository.searchByImdbId(imdbId = resolvedImdbId)
-                        }
-                    } catch (e: Exception) {
-                        if (e is CancellationException) throw e
-                        Log.w(TAG, "OpenSubtitles searchByImdbId failed: ${e.message}")
+                    results = if (isEpisode && effectiveSeason >= 0 && effectiveEpisode > 0) {
+                        openSubtitlesRepository.searchByImdbId(
+                            imdbId = resolvedImdbId,
+                            seasonNumber = effectiveSeason,
+                            episodeNumber = effectiveEpisode
+                        )
+                    } else {
+                        openSubtitlesRepository.searchByImdbId(imdbId = resolvedImdbId)
                     }
-
-                    // If episode-specific search returned nothing, try parent show IMDb ID search as secondary attempt
-                    if (imdbResults.isNullOrEmpty() && isEpisode && effectiveSeason > 0 && effectiveEpisode > 0) {
-                        try {
-                            Log.i(TAG, "No episode-specific subtitles returned. Retrying parent IMDb ID without season filter: $resolvedImdbId")
-                            val parentResults = openSubtitlesRepository.searchByImdbId(imdbId = resolvedImdbId)
-                            if (parentResults.isNotEmpty()) {
-                                imdbResults = filterFallbackResults(
-                                    rawResults = parentResults,
-                                    expectedTitle = "",
-                                    expectedYear = null,
-                                    expectedSeason = effectiveSeason,
-                                    expectedEpisode = effectiveEpisode
-                                ).ifEmpty { parentResults }
-                            }
-                        } catch (e: Exception) {
-                            if (e is CancellationException) throw e
-                            Log.w(TAG, "Parent IMDb ID search retry failed: ${e.message}")
-                        }
-                    }
-                }
-
-                // 5. String query search ONLY as a last resort
-                if (!imdbResults.isNullOrEmpty()) {
-                    results = imdbResults
                 } else {
-                    Log.w(TAG, "No IMDb ID results found. Falling back to text query search for: $mediaTitle")
-                    val yearMatch = Regex("""\b(19\d\d|20\d\d)\b""").find(mediaTitle)
-                    val expectedYear = yearMatch?.value?.toIntOrNull()
-                    val cleanTitles = extractCleanSearchTitles(mediaTitle)
-                    val primaryQuery = cleanTitles.firstOrNull() ?: mediaTitle
-                        .replace(Regex("""\b(19\d\d|20\d\d)\b"""), "")
-                        .replace(Regex("""[()\[\]]"""), "")
-                        .replace(EPISODE_PATTERN, "")
-                        .trim()
-                        .ifBlank { mediaTitle }
-
-                    val rawResults = openSubtitlesRepository.search(
-                        query = primaryQuery,
-                        seasonNumber = effectiveSeason.takeIf { it > 0 },
-                        episodeNumber = effectiveEpisode.takeIf { it > 0 },
-                        type = mediaType
-                    )
-
-                    results = filterFallbackResults(
-                        rawResults = rawResults,
-                        expectedTitle = primaryQuery,
-                        expectedYear = expectedYear,
-                        expectedSeason = effectiveSeason.takeIf { it > 0 },
-                        expectedEpisode = effectiveEpisode.takeIf { it > 0 }
-                    )
+                    Log.w(TAG, "Could not resolve IMDb ID for OpenSubtitles search: $mediaTitle")
+                    results = emptyList()
                 }
 
                 if (results.isEmpty()) {
@@ -3242,13 +3277,7 @@ class LocalPlayerActivity : FragmentActivity() {
                     ?: mediaTitle
 
                 val deviceLang = Locale.getDefault().language.lowercase(Locale.ROOT)
-                val sortedResults = results.sortedByDescending { result ->
-                    val lang = result.language.lowercase(Locale.ROOT)
-                    lang == deviceLang ||
-                            (deviceLang == "es" && lang == "spa") ||
-                            (deviceLang == "en" && lang == "eng") ||
-                            (deviceLang == "pt" && (lang == "por" || lang == "pob"))
-                }
+                val sortedResults = sortSubtitleResultsForDevice(results, deviceLang)
 
                 playerBottomSheetState = PlayerBottomSheetState.SubtitleResults(
                     results = sortedResults,
@@ -4086,143 +4115,177 @@ class LocalPlayerActivity : FragmentActivity() {
             }
         }
 
+        private val TT_IMDB_PATTERN = Regex("""\btt\d{5,10}\b""", RegexOption.IGNORE_CASE)
+        private val YEAR_EXTRACT_PATTERN = Regex("""\b(19\d\d|20\d\d)\b""")
+
         fun extractSeasonAndEpisode(vararg candidates: String?): Pair<Int, Int> {
-            for (candidate in candidates) {
-                if (candidate.isNullOrBlank()) continue
-                val sMatch = Regex("""\bS(\d{1,2})[\s.]?E(\d{1,2})\b""", RegexOption.IGNORE_CASE).find(candidate)
-                    ?: Regex("""\b(\d{1,2})x(\d{1,2})\b""", RegexOption.IGNORE_CASE).find(candidate)
-                if (sMatch != null) {
-                    val season = sMatch.groupValues[1].toIntOrNull() ?: 0
-                    val episode = sMatch.groupValues[2].toIntOrNull() ?: 0
-                    if (season >= 0 && episode > 0) {
-                        return Pair(season, episode)
-                    }
-                }
-            }
-            return Pair(0, 0)
+            return MediaMetadataResolver.extractSeasonAndEpisode(*candidates)
         }
 
         fun extractCleanSearchTitles(rawTitle: String): List<String> {
-            if (rawTitle.isBlank()) return emptyList()
-
-            // 1. Strip video extensions
-            var text = rawTitle.replace(Regex("""\.(mp4|mkv|avi|mov|wmv|webm|ts|m4v)$""", RegexOption.IGNORE_CASE), "")
-
-            // 2. Strip quality, codec, release tags and everything that follows them
-            text = text.replace(
-                Regex(
-                    """\b(1080p|720p|480p|2160p|4k|uhd|bluray|blu-ray|web-dl|webrip|web|dvdrip|dvd|hdtv|h264|x264|h265|x265|hevc|avc|10bit|aac|ac3|dts|ddp5\.?1|cakes|eztv|yts|yify|rarbg|ettv|galaxytv|tgx)\b.*$""",
-                    RegexOption.IGNORE_CASE
-                ),
-                ""
-            )
-
-            // 3. Strip bracketed release tags
-            text = text.replace(Regex("""\[.*?\]|\(.*?\)|[\{\}]"""), " ")
-
-            // 4. Split by episode tags (e.g. S38E01, 38x01) or major title separators (- or /)
-            val chunks = text.split(Regex("""\bS\d{1,2}[\s.]?E\d{1,2}\b|\b\d{1,2}x\d{1,2}\b|[-/]""", RegexOption.IGNORE_CASE))
-
-            val results = mutableListOf<String>()
-            for (chunk in chunks) {
-                val cleanChunk = chunk
-                    .replace(Regex("""\b(19\d\d|20\d\d)\b.*$"""), "")
-                    .replace(Regex("""[._]"""), " ")
-                    .replace(Regex("""\s+"""), " ")
-                    .trim()
-                if (cleanChunk.length >= 2 && !results.contains(cleanChunk)) {
-                    results.add(cleanChunk)
-                }
-            }
-
-            // Also include the full string without episode tags if not already present
-            val fullClean = text
-                .replace(Regex("""\bS\d{1,2}[\s.]?E\d{1,2}\b|\b\d{1,2}x\d{1,2}\b""", RegexOption.IGNORE_CASE), " ")
-                .replace(Regex("""[._]"""), " ")
-                .replace(Regex("""\s+"""), " ")
-                .trim()
-            if (fullClean.length >= 2 && !results.contains(fullClean)) {
-                results.add(fullClean)
-            }
-
-            return results
+            return MediaMetadataResolver.extractCleanSearchTitles(rawTitle)
         }
 
         fun normalizeTitleForComparison(title: String): String {
-            return title
-                .lowercase(Locale.ROOT)
-                .replace(Regex("""\b(19\d\d|20\d\d)\b"""), " ")
-                .replace(Regex("""[^a-z0-9]"""), " ")
-                .replace(Regex("""\s+"""), " ")
-                .trim()
+            return MediaMetadataResolver.normalizeTitle(title)
         }
 
         fun extractYearFromRelease(release: String): Int? {
-            return Regex("""\b(19\d\d|20\d\d)\b""").find(release)?.value?.toIntOrNull()
+            return YEAR_EXTRACT_PATTERN.find(release)?.value?.toIntOrNull()
         }
 
-        fun extractTitleFromRelease(release: String): String {
-            val yearMatch = Regex("""\b(19\d\d|20\d\d)\b""").find(release)
-            if (yearMatch != null) {
-                return release.substring(0, yearMatch.range.first)
+        /**
+         * Resolves any already-known canonical IMDb identifier (`tt...`) from active playback
+         * state, Intent extras, Room download records, canonical MediaItem IDs, or title/filename
+         * tokens without performing network requests.
+         */
+        fun resolveKnownImdbId(
+            currentImdbId: String?,
+            intentImdbId: String?,
+            serviceImdbId: String?,
+            dbImdbId: String?,
+            mediaItemId: String?,
+            mediaTitle: String?,
+            fileName: String?
+        ): String? {
+            MediaIdHelper.normalizeImdbId(currentImdbId)?.let { return it }
+            MediaIdHelper.normalizeImdbId(intentImdbId)?.let { return it }
+            MediaIdHelper.normalizeImdbId(serviceImdbId)?.let { return it }
+            MediaIdHelper.normalizeImdbId(dbImdbId)?.let { return it }
+            if (!mediaItemId.isNullOrBlank()) {
+                MediaIdHelper.normalizeImdbId(mediaItemId)?.let { return it }
+                MediaIdHelper.parseCanonicalEpisode(mediaItemId)?.imdbId?.let {
+                    MediaIdHelper.normalizeImdbId(it)?.let { norm -> return norm }
+                }
             }
-            val qualityMatch = Regex("""\b(1080p|720p|480p|2160p|4k|bluray|web-dl|webrip|dvdrip|h264|x264|hevc|x265)\b""", RegexOption.IGNORE_CASE).find(release)
-            if (qualityMatch != null) {
-                return release.substring(0, qualityMatch.range.first)
-            }
-            return release.substringBeforeLast('.')
+            val directMatch = mediaTitle?.let { TT_IMDB_PATTERN.find(it)?.value }
+                ?: fileName?.let { TT_IMDB_PATTERN.find(it)?.value }
+            return MediaIdHelper.normalizeImdbId(directMatch)
         }
 
-        fun filterFallbackResults(
-            rawResults: List<OpenSubtitleResult>,
-            expectedTitle: String,
-            expectedYear: Int?,
-            expectedSeason: Int? = null,
-            expectedEpisode: Int? = null
+        /**
+         * Determines whether per-media metadata fields (`currentImdbId`, `currentSeriesId`,
+         * `currentMovieId`, etc.) should be reset when handling a new intent.
+         */
+        fun shouldResetPerMediaMetadataOnIntent(isFromPip: Boolean): Boolean = !isFromPip
+
+        /**
+         * Preserves any existing subtitle configurations attached to the active or pending
+         * [MediaItem] when rebuilding the item after asynchronous metadata enrichment.
+         */
+        fun preserveSubtitleConfigurations(
+            updatedItem: MediaItem,
+            activeControllerItem: MediaItem?,
+            currentItem: MediaItem?
+        ): MediaItem {
+            val existingSubtitles = activeControllerItem
+                ?.localConfiguration
+                ?.subtitleConfigurations
+                .orEmpty()
+                .ifEmpty {
+                    currentItem
+                        ?.localConfiguration
+                        ?.subtitleConfigurations
+                        .orEmpty()
+                }
+            return if (existingSubtitles.isNotEmpty()) {
+                updatedItem.buildUpon()
+                    .setSubtitleConfigurations(existingSubtitles)
+                    .build()
+            } else {
+                updatedItem
+            }
+        }
+
+        /**
+         * Selects the best matching YTS movie candidate when deducing an IMDb ID for a local/NAS
+         * file, prioritizing exact normalized title + release year over generic first results.
+         */
+        fun selectBestMovieCandidate(
+            movies: List<Movie>,
+            candidateTitle: String,
+            expectedYear: Int?
+        ): Movie? {
+            if (movies.isEmpty()) return null
+            val normalizedCandidate = normalizeTitleForComparison(candidateTitle)
+            if (expectedYear != null) {
+                movies.firstOrNull { movie ->
+                    movie.year == expectedYear &&
+                        normalizeTitleForComparison(movie.title.orEmpty()) == normalizedCandidate
+                }?.let { return it }
+                movies.firstOrNull { movie ->
+                    val y = movie.year
+                    y != null && abs(y - expectedYear) <= 1 &&
+                        normalizeTitleForComparison(movie.title.orEmpty()) == normalizedCandidate
+                }?.let { return it }
+            }
+            if (normalizedCandidate.isNotBlank()) {
+                movies.firstOrNull { movie ->
+                    normalizeTitleForComparison(movie.title.orEmpty()) == normalizedCandidate
+                }?.let { return it }
+            }
+            if (expectedYear != null) {
+                movies.firstOrNull { movie -> movie.year == expectedYear }?.let { return it }
+            }
+            return movies.firstOrNull()
+        }
+
+        /**
+         * Selects the best matching TMDB TV series candidate when deducing an IMDb ID for a
+         * local/NAS episode, prioritizing exact normalized title + first air year.
+         */
+        fun selectBestTvCandidate(
+            seriesList: List<TmdbTvSummary>,
+            candidateTitle: String,
+            expectedYear: Int?
+        ): TmdbTvSummary? {
+            if (seriesList.isEmpty()) return null
+            val normalizedCandidate = normalizeTitleForComparison(candidateTitle)
+            if (expectedYear != null) {
+                seriesList.firstOrNull { tv ->
+                    val airYear = tv.firstAirDate?.take(4)?.toIntOrNull()
+                    airYear == expectedYear &&
+                        (normalizeTitleForComparison(tv.name.orEmpty()) == normalizedCandidate ||
+                            normalizeTitleForComparison(tv.originalName.orEmpty()) == normalizedCandidate)
+                }?.let { return it }
+            }
+            if (normalizedCandidate.isNotBlank()) {
+                seriesList.firstOrNull { tv ->
+                    normalizeTitleForComparison(tv.name.orEmpty()) == normalizedCandidate ||
+                        normalizeTitleForComparison(tv.originalName.orEmpty()) == normalizedCandidate
+                }?.let { return it }
+            }
+            if (expectedYear != null) {
+                seriesList.firstOrNull { tv ->
+                    tv.firstAirDate?.take(4)?.toIntOrNull() == expectedYear
+                }?.let { return it }
+            }
+            return seriesList.firstOrNull()
+        }
+
+        /**
+         * Orders OpenSubtitles results so the user's device language family (including all three
+         * Spanish codes `es`, `ea`, `sp`) appears first, preserving download-count descending
+         * order within each group.
+         */
+        fun sortSubtitleResultsForDevice(
+            results: List<OpenSubtitleResult>,
+            deviceLanguage: String
         ): List<OpenSubtitleResult> {
-            if (rawResults.isEmpty()) return emptyList()
-
-            val normalizedExpectedTitle = normalizeTitleForComparison(expectedTitle)
-
-            return rawResults.filter { result ->
-                val rawResultTitle = result.featureTitle
-                    ?: extractTitleFromRelease(result.release.ifBlank { result.fileName })
-                val normalizedResultTitle = normalizeTitleForComparison(rawResultTitle)
-
-                if (normalizedExpectedTitle.isNotBlank()) {
-                    val isTitleMatch = normalizedResultTitle == normalizedExpectedTitle ||
-                            normalizedResultTitle.contains(normalizedExpectedTitle) ||
-                            normalizedExpectedTitle.contains(normalizedResultTitle)
-                    if (!isTitleMatch) {
-                        Log.d(TAG, "Fallback subtitle search filtered out result: title '$normalizedResultTitle' != '$normalizedExpectedTitle'")
-                        return@filter false
+            val normalizedDevice = deviceLanguage.trim().lowercase(Locale.ROOT)
+                .substringBefore('-')
+                .substringBefore('_')
+            return results.sortedWith(
+                compareByDescending<OpenSubtitleResult> { result ->
+                    val lang = result.language.trim().lowercase(Locale.ROOT)
+                    when (normalizedDevice) {
+                        "es" -> OpenSubtitlesRepository.isSpanishLanguageCode(lang)
+                        "en" -> OpenSubtitlesRepository.isEnglishLanguageCode(lang)
+                        "pt" -> lang.startsWith("pt") || lang == "por" || lang == "pob"
+                        else -> lang == normalizedDevice
                     }
-                }
-
-                if (expectedSeason != null && expectedEpisode != null) {
-                    val fullReleaseText = "${result.release} ${result.fileName} ${result.featureTitle.orEmpty()}"
-                    val sMatch = Regex("""\bS(\d{1,2})[\s.]?E(\d{1,2})\b""", RegexOption.IGNORE_CASE).find(fullReleaseText)
-                        ?: Regex("""\b(\d{1,2})x(\d{1,2})\b""", RegexOption.IGNORE_CASE).find(fullReleaseText)
-                    if (sMatch != null) {
-                        val s = sMatch.groupValues[1].toIntOrNull()
-                        val e = sMatch.groupValues[2].toIntOrNull()
-                        if (s != null && e != null && (s != expectedSeason || e != expectedEpisode)) {
-                            Log.d(TAG, "Fallback subtitle search filtered out result: episode S${s}E${e} != S${expectedSeason}E${expectedEpisode}")
-                            return@filter false
-                        }
-                    }
-                }
-
-                val resultYear = result.featureYear
-                    ?: extractYearFromRelease(result.release.ifBlank { result.fileName })
-
-                if (resultYear != null && expectedYear != null && kotlin.math.abs(resultYear - expectedYear) > 1) {
-                    Log.d(TAG, "Fallback subtitle search filtered out result: year $resultYear != $expectedYear")
-                    return@filter false
-                }
-
-                true
-            }
+                }.thenByDescending { it.downloadCount }
+            )
         }
     }
 }
@@ -6931,30 +6994,48 @@ fun getLanguageFlag(langCode: String?, textToScan: String? = null): String {
     val cleanText = textToScan?.lowercase(Locale.ROOT).orEmpty()
     val combined = "$cleanLang $cleanText"
 
-    // 1. Spanish: Latin American (🇦🇷) vs Plain / Spain (🇪🇸)
-    val isSpanish = cleanLang.startsWith("es") || cleanLang == "spa" || cleanLang == "spanish" ||
-            combined.contains("esp") || combined.contains("spa") || combined.contains("castellano") || combined.contains("latino")
+    // 0. OpenSubtitles explicit regional Spanish codes (must be checked before text heuristics)
+    if (cleanLang == "ea") return "🇦🇷"
+    if (cleanLang == "sp") return "🇪🇸"
 
-    if (isSpanish) {
+    // 1. Explicit language code checks first (prevents English titles containing "esp"/"spa" from being misflagged)
+    val isExplicitSpanish = cleanLang.startsWith("es") || cleanLang == "spa" || cleanLang == "spanish"
+    if (isExplicitSpanish) {
         val isLatinAmerican = cleanLang.contains("419") || cleanLang.contains("ar") || cleanLang.contains("mx") ||
                 cleanLang.contains("cl") || cleanLang.contains("co") || cleanLang.contains("pe") || cleanLang.contains("ve") ||
                 cleanLang.contains("lat") || combined.contains("latino") || combined.contains("latin") ||
                 combined.contains("latam") || combined.contains("hispanoamerica") || combined.contains("es-419")
-
         return if (isLatinAmerican) "🇦🇷" else "🇪🇸"
     }
 
-    // 2. Portuguese: Brazil (🇧🇷) vs Portugal / Plain (🇵🇹)
-    val isPortuguese = cleanLang.startsWith("pt") || cleanLang == "por" || cleanLang == "pob" || cleanLang == "portuguese" || combined.contains("portu")
-    if (isPortuguese) {
+    val isExplicitEnglish = cleanLang.startsWith("en") || cleanLang == "eng" || cleanLang == "english"
+    if (isExplicitEnglish) {
+        val isUk = cleanLang.contains("gb") || cleanLang.contains("uk") || combined.contains("british")
+        return if (isUk) "🇬🇧" else "🇺🇸"
+    }
+
+    val isExplicitPortuguese = cleanLang.startsWith("pt") || cleanLang == "por" || cleanLang == "pob" || cleanLang == "portuguese"
+    if (isExplicitPortuguese) {
         val isBrazil = cleanLang.contains("br") || cleanLang == "pob" || combined.contains("brazil") || combined.contains("brasil")
         return if (isBrazil) "🇧🇷" else "🇵🇹"
     }
 
-    // 3. English: UK (🇬🇧) vs US / Plain (🇺🇸)
-    val isEnglish = cleanLang.startsWith("en") || cleanLang == "eng" || cleanLang == "english" || combined.contains("ingl")
-    if (isEnglish) {
-        val isUk = cleanLang.contains("gb") || cleanLang.contains("uk") || combined.contains("british")
+    // 2. Fallback text heuristics when language code is missing/undetermined
+    val isHeuristicSpanish = (cleanLang.isEmpty() || cleanLang == "und") &&
+            (combined.contains("esp") || combined.contains("spa") || combined.contains("castellano") || combined.contains("latino"))
+    if (isHeuristicSpanish) {
+        val isLatinAmerican = combined.contains("latino") || combined.contains("latin") ||
+                combined.contains("latam") || combined.contains("hispanoamerica") || combined.contains("es-419")
+        return if (isLatinAmerican) "🇦🇷" else "🇪🇸"
+    }
+
+    if ((cleanLang.isEmpty() || cleanLang == "und") && combined.contains("portu")) {
+        val isBrazil = combined.contains("brazil") || combined.contains("brasil")
+        return if (isBrazil) "🇧🇷" else "🇵🇹"
+    }
+
+    if ((cleanLang.isEmpty() || cleanLang == "und") && combined.contains("ingl")) {
+        val isUk = combined.contains("british")
         return if (isUk) "🇬🇧" else "🇺🇸"
     }
 

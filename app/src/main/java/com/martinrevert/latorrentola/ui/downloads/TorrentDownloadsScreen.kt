@@ -373,6 +373,7 @@ fun TorrentDownloadsScreen(
                                         if (effSeason != null) putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, effSeason)
                                         if (effEpisode != null) putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, effEpisode)
                                         if (download.movieId != null) putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, download.movieId)
+                                        if (!download.imdbId.isNullOrBlank()) putExtra(LocalPlayerActivity.EXTRA_IMDB_ID, download.imdbId)
                                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                     }
                                     context.startActivity(launchIntent)
@@ -387,6 +388,7 @@ fun TorrentDownloadsScreen(
                                         if (effSeason != null) putExtra(LocalPlayerActivity.EXTRA_SEASON_NUMBER, effSeason)
                                         if (effEpisode != null) putExtra(LocalPlayerActivity.EXTRA_EPISODE_NUMBER, effEpisode)
                                         if (download.movieId != null) putExtra(LocalPlayerActivity.EXTRA_MOVIE_ID, download.movieId)
+                                        if (!download.imdbId.isNullOrBlank()) putExtra(LocalPlayerActivity.EXTRA_IMDB_ID, download.imdbId)
                                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                     }
                                     context.startActivity(launchIntent)
@@ -403,6 +405,7 @@ fun TorrentDownloadsScreen(
                                         if (effSeason != null) putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, effSeason)
                                         if (effEpisode != null) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, effEpisode)
                                         if (download.movieId != null) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, download.movieId)
+                                        if (!download.imdbId.isNullOrBlank()) putExtra(TorrentDownloadService.EXTRA_IMDB_ID, download.imdbId)
                                         if (!download.posterUrl.isNullOrBlank()) {
                                             putExtra(TorrentDownloadService.EXTRA_POSTER_URL, download.posterUrl)
                                         }
@@ -451,6 +454,7 @@ fun TorrentDownloadsScreen(
                                         if (effSeason != null) putExtra(TorrentDownloadService.EXTRA_SEASON_NUMBER, effSeason)
                                         if (effEpisode != null) putExtra(TorrentDownloadService.EXTRA_EPISODE_NUMBER, effEpisode)
                                         if (download.movieId != null) putExtra(TorrentDownloadService.EXTRA_MOVIE_ID, download.movieId)
+                                        if (!download.imdbId.isNullOrBlank()) putExtra(TorrentDownloadService.EXTRA_IMDB_ID, download.imdbId)
                                         if (!download.posterUrl.isNullOrBlank()) {
                                             putExtra(TorrentDownloadService.EXTRA_POSTER_URL, download.posterUrl)
                                         }

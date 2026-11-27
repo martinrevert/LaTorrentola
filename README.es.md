@@ -76,7 +76,7 @@ Elige en los **Ajustes** de la app el modo que mejor se adapte a tu manera de ve
 * La app detecta el almacenamiento automáticamente, te permite elegir dónde guardar tus descargas y reproducir cualquier película guardada en el disco.
 
 ### 7. 💬 Subtítulos a Medida y Audio de Cine
-* **Subtítulos Integrados y en Línea**: Utiliza los subtítulos incluidos en el archivo de vídeo o busca y descarga subtítulos en tu idioma al instante gracias a OpenSubtitles.
+* **Subtítulos Integrados y en Línea (Precisión por IMDb ID)**: Utiliza los subtítulos incluidos en el archivo de vídeo o busca y descarga subtítulos al instante vía OpenSubtitles. Las búsquedas se ejecutan estrictamente por identificador canónico IMDb cubriendo las tres variantes de español (**Español**, **Español Latinoamericano** y **Español de España**) junto con **Inglés** en paralelo —evitando que los subtítulos en inglés oculten los de español—, y deducen automáticamente el IMDb ID en archivos locales, USB y NAS.
 * **Personalización Total**: Ajusta el tamaño de la letra, el color del texto, el fondo oscuro y la sincronización del tiempo si el audio va desfasado.
 * **Sonido Envolvente Inteligente**:
   * Disfruta de pistas de audio en varios idiomas y canales (5.1 y 7.1).

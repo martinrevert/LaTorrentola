@@ -2,12 +2,14 @@ package com.martinrevert.latorrentola.utils
 
 import android.util.Log
 import com.martinrevert.latorrentola.database.TorrentDownloadDao
+import com.martinrevert.latorrentola.model.TMDB.TmdbMovieSummary
 import com.martinrevert.latorrentola.network.TmdbRepository
 import com.martinrevert.latorrentola.network.YtsRepository
 import kotlinx.coroutines.CancellationException
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.abs
 
 /**
  * Resolved canonical media information decoupling reverse lookup, title cleaning,
@@ -149,6 +151,44 @@ class MediaMetadataResolver @Inject constructor(
                 .replace(MULTI_SPACE_REGEX, " ")
                 .trim()
         }
+
+        /**
+         * Selects the best matching [TmdbMovieSummary] candidate for a local/NAS movie title,
+         * preferring exact normalized title (or original title) plus matching release year.
+         */
+        fun selectBestTmdbMovieCandidate(
+            movies: List<TmdbMovieSummary>,
+            candidateTitle: String,
+            expectedYear: Int?
+        ): TmdbMovieSummary? {
+            if (movies.isEmpty()) return null
+            val normalizedCandidate = normalizeTitle(candidateTitle)
+            if (expectedYear != null) {
+                movies.firstOrNull { movie ->
+                    movie.releaseYear.toIntOrNull() == expectedYear &&
+                        (normalizeTitle(movie.title.orEmpty()) == normalizedCandidate ||
+                            normalizeTitle(movie.originalTitle.orEmpty()) == normalizedCandidate)
+                }?.let { return it }
+                movies.firstOrNull { movie ->
+                    val y = movie.releaseYear.toIntOrNull()
+                    y != null && abs(y - expectedYear) <= 1 &&
+                        (normalizeTitle(movie.title.orEmpty()) == normalizedCandidate ||
+                            normalizeTitle(movie.originalTitle.orEmpty()) == normalizedCandidate)
+                }?.let { return it }
+            }
+            if (normalizedCandidate.isNotBlank()) {
+                movies.firstOrNull { movie ->
+                    normalizeTitle(movie.title.orEmpty()) == normalizedCandidate ||
+                        normalizeTitle(movie.originalTitle.orEmpty()) == normalizedCandidate
+                }?.let { return it }
+            }
+            if (expectedYear != null) {
+                movies.firstOrNull { movie ->
+                    movie.releaseYear.toIntOrNull() == expectedYear
+                }?.let { return it }
+            }
+            return movies.firstOrNull()
+        }
     }
 
     /**
@@ -173,9 +213,10 @@ class MediaMetadataResolver @Inject constructor(
         var posterUrl = existingPosterUrl
         var seriesName: String? = null
         var episodeName: String? = null
+        var knownImdbId: String? = null
 
         // 1. Recover known metadata from local Room database if an infoHash is present
-        if (!infoHash.isNullOrBlank() && (movieId <= 0 && seriesId <= 0)) {
+        if (!infoHash.isNullOrBlank()) {
             try {
                 val dbRecord = torrentDownloadDao.get(infoHash.trim())
                 if (dbRecord != null) {
@@ -186,6 +227,12 @@ class MediaMetadataResolver @Inject constructor(
                         seriesId = dbRecord.seriesId ?: 0
                         if (seasonNumber <= 0) seasonNumber = dbRecord.seasonNumber ?: 0
                         if (episodeNumber <= 0) episodeNumber = dbRecord.episodeNumber ?: 0
+                    }
+                    if (!dbRecord.imdbId.isNullOrBlank()) {
+                        knownImdbId = MediaIdHelper.normalizeImdbId(dbRecord.imdbId)
+                    }
+                    if (posterUrl.isNullOrBlank() && !dbRecord.posterUrl.isNullOrBlank()) {
+                        posterUrl = dbRecord.posterUrl
                     }
                 }
             } catch (e: Exception) {
@@ -226,7 +273,7 @@ class MediaMetadataResolver @Inject constructor(
                 }
             }
 
-            val seriesImdbId = if (seriesId > 0) {
+            val seriesImdbId = knownImdbId ?: if (seriesId > 0) {
                 try { tmdbRepository.getTvImdbId(seriesId) } catch (_: Exception) { null }
             } else null
 
@@ -260,15 +307,20 @@ class MediaMetadataResolver @Inject constructor(
         }
 
         // 4. Handle Movie resolution
-        var movieImdbId: String? = null
-        if (primaryCleanTitle.isNotBlank()) {
+        var movieImdbId: String? = knownImdbId
+        if (movieImdbId.isNullOrBlank() && primaryCleanTitle.isNotBlank()) {
             try {
                 val ytsSearch = ytsRepository.searchMovies(primaryCleanTitle, 1)
                 val movies = ytsSearch.data?.movies.orEmpty()
+                val normalizedPrimary = normalizeTitle(primaryCleanTitle)
                 val matched = if (detectedYear != null) {
-                    movies.firstOrNull { it.year == detectedYear } ?: movies.firstOrNull()
+                    movies.firstOrNull {
+                        it.year == detectedYear && normalizeTitle(it.title.orEmpty()) == normalizedPrimary
+                    } ?: movies.firstOrNull { it.year == detectedYear }
+                        ?: movies.firstOrNull()
                 } else {
-                    movies.firstOrNull()
+                    movies.firstOrNull { normalizeTitle(it.title.orEmpty()) == normalizedPrimary }
+                        ?: movies.firstOrNull()
                 }
 
                 if (matched != null && matched.id > 0) {
@@ -285,14 +337,47 @@ class MediaMetadataResolver @Inject constructor(
                 Log.w(TAG, "YTS movie search failed for '$primaryCleanTitle': ${e.message}")
             }
 
-            // Fallback to TMDB movie IMDb ID lookup if movieId is known or was matched
+            // Fallback to YTS movie summary lookup when a YTS movieId is known (never pass YTS ID to TMDB)
             if (movieImdbId.isNullOrBlank() && movieId > 0) {
                 try {
-                    val resolved = tmdbRepository.getMovieImdbId(movieId)
+                    val resolved = ytsRepository.getMovieSummary(movieId).data?.movie?.imdbCode
                     if (!resolved.isNullOrBlank()) {
                         movieImdbId = resolved
                     }
                 } catch (_: Exception) {}
+            }
+
+            // Fallback to TMDB movie search (title + year -> genuine TMDB movieId -> IMDb ID)
+            // for local / NAS / USB movies absent from YTS (e.g. non-English, indie, or recent releases).
+            if (movieImdbId.isNullOrBlank()) {
+                try {
+                    val initialResults = tmdbRepository.searchMovies(
+                        query = primaryCleanTitle,
+                        year = detectedYear
+                    ).results.orEmpty()
+                    val tmdbCandidates = if (initialResults.isEmpty() && detectedYear != null) {
+                        tmdbRepository.searchMovies(query = primaryCleanTitle, year = null).results.orEmpty()
+                    } else {
+                        initialResults
+                    }
+                    val matchedTmdb = selectBestTmdbMovieCandidate(
+                        movies = tmdbCandidates,
+                        candidateTitle = primaryCleanTitle,
+                        expectedYear = detectedYear
+                    )
+                    if (matchedTmdb != null && matchedTmdb.id > 0) {
+                        val resolvedImdb = tmdbRepository.getMovieImdbId(matchedTmdb.id)
+                        if (!resolvedImdb.isNullOrBlank()) {
+                            movieImdbId = resolvedImdb
+                        }
+                        if (posterUrl.isNullOrBlank() && !matchedTmdb.fullPosterUrl.isNullOrBlank()) {
+                            posterUrl = matchedTmdb.fullPosterUrl
+                        }
+                    }
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    Log.w(TAG, "TMDB movie search fallback failed for '$primaryCleanTitle': ${e.message}")
+                }
             }
         }
 

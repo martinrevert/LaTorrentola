@@ -50,21 +50,21 @@ interface OpenSubtitlesService {
      * @return HTTP response containing typed subtitle results on success.
      */
     @Headers("Accept: application/json")
-    @GET("subtitles/")
+    @GET("subtitles")
     suspend fun searchSubtitles(
         @Header("Api-Key") apiKey: String,
         @Header("User-Agent") userAgent: String,
         @Header("Authorization") authorization: String,
-        @Query("query") query: String? = null,
-        @Query("imdb_id") imdbId: String? = null,
-        @Query("parent_imdb_id") parentImdbId: String? = null,
-        @Query("season_number") seasonNumber: Int? = null,
         @Query("episode_number") episodeNumber: Int? = null,
+        @Query("imdb_id") imdbId: String? = null,
         @Query("languages") languages: String? = null,
-        @Query("type") type: String? = null,
         @Query("order_by") orderBy: String = "download_count",
         @Query("order_direction") orderDirection: String = "desc",
-        @Query("page") page: Int = 1
+        @Query("page") page: Int? = null,
+        @Query("parent_imdb_id") parentImdbId: String? = null,
+        @Query("query") query: String? = null,
+        @Query("season_number") seasonNumber: Int? = null,
+        @Query("type") type: String? = null
     ): Response<OpenSubtitlesSearchResponse>
 
     /**

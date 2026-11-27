@@ -1,18 +1,23 @@
 package com.martinrevert.latorrentola.ui.player
 
-import com.google.common.truth.Truth.assertThat
-import com.martinrevert.latorrentola.model.torrent.TorrentHandlingMode
-import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
-
+import android.net.Uri
 import android.util.Log
 import android.view.Surface
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.video.MediaCodecVideoDecoderException
+import com.google.common.truth.Truth.assertThat
+import com.martinrevert.latorrentola.model.TMDB.TmdbTvSummary
+import com.martinrevert.latorrentola.model.YTS.Movie
+import com.martinrevert.latorrentola.network.OpenSubtitleResult
 import com.martinrevert.latorrentola.ui.components.isObsoleteSurfaceError
 import com.martinrevert.latorrentola.ui.components.isStuckPlayerError
 import com.martinrevert.latorrentola.ui.components.resolvePlaybackDecodingError
 import com.martinrevert.latorrentola.ui.components.resolvePlaybackStallError
+import com.martinrevert.latorrentola.utils.AutoPlayQualitySelectionMethod
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
@@ -84,36 +89,256 @@ class LocalPlayerActivityTest {
     }
 
     @Test
-    fun `filterFallbackResults filters out wrong season or episode when expected coordinates are provided`() {
-        val wrongEpisode = com.martinrevert.latorrentola.network.OpenSubtitleResult(
-            id = "1",
-            fileId = 101L,
-            language = "es",
-            release = "the.simpsons.s18e16.homerazzi.hdtv",
-            downloadCount = 10L,
-            fileName = "the.simpsons.s18e16.srt",
-            featureTitle = "The Simpsons - S18E16 - Homerazzi"
+    fun `resolveKnownImdbId prioritizes active state, intent, room record, canonical mediaId, and title token`() {
+        assertThat(
+            LocalPlayerActivity.resolveKnownImdbId(
+                currentImdbId = "tt1099212",
+                intentImdbId = "tt9999999",
+                serviceImdbId = null,
+                dbImdbId = null,
+                mediaItemId = null,
+                mediaTitle = "Twilight",
+                fileName = null
+            )
+        ).isEqualTo("tt1099212")
+
+        assertThat(
+            LocalPlayerActivity.resolveKnownImdbId(
+                currentImdbId = null,
+                intentImdbId = null,
+                serviceImdbId = null,
+                dbImdbId = "tt0111161",
+                mediaItemId = null,
+                mediaTitle = "The Shawshank Redemption",
+                fileName = null
+            )
+        ).isEqualTo("tt0111161")
+
+        assertThat(
+            LocalPlayerActivity.resolveKnownImdbId(
+                currentImdbId = null,
+                intentImdbId = null,
+                serviceImdbId = null,
+                dbImdbId = null,
+                mediaItemId = "tt0944947_s1_e2",
+                mediaTitle = "Game of Thrones S01E02",
+                fileName = null
+            )
+        ).isEqualTo("tt0944947")
+
+        assertThat(
+            LocalPlayerActivity.resolveKnownImdbId(
+                currentImdbId = null,
+                intentImdbId = null,
+                serviceImdbId = null,
+                dbImdbId = null,
+                mediaItemId = "unknown_movie",
+                mediaTitle = "Twilight",
+                fileName = "Twilight.2008.tt1099212.1080p.mkv"
+            )
+        ).isEqualTo("tt1099212")
+    }
+
+    @Test
+    fun `shouldResetPerMediaMetadataOnIntent resets on new non-PiP intents and preserves state on PiP expansion`() {
+        assertThat(LocalPlayerActivity.shouldResetPerMediaMetadataOnIntent(isFromPip = false)).isTrue()
+        assertThat(LocalPlayerActivity.shouldResetPerMediaMetadataOnIntent(isFromPip = true)).isFalse()
+
+        // After resetting currentImdbId on a new local/NAS intent without extras, resolveKnownImdbId returns null
+        // so searchSubtitles deduces the new file's IMDb ID instead of leaking the previous session's IMDb ID.
+        var latchedImdbId: String? = "tt0944947"
+        if (LocalPlayerActivity.shouldResetPerMediaMetadataOnIntent(isFromPip = false)) {
+            latchedImdbId = null
+        }
+        assertThat(
+            LocalPlayerActivity.resolveKnownImdbId(
+                currentImdbId = latchedImdbId,
+                intentImdbId = null,
+                serviceImdbId = null,
+                dbImdbId = null,
+                mediaItemId = "unknown_movie",
+                mediaTitle = "Twilight.2008.1080p.mkv",
+                fileName = "Twilight.2008.1080p.mkv"
+            )
+        ).isNull()
+    }
+
+    @Test
+    fun `preserveSubtitleConfigurations retains active or pending subtitle tracks across MediaItem refresh`() {
+        val subtitleUri = mockk<Uri>(relaxed = true)
+        val mediaUri = mockk<Uri>(relaxed = true)
+        val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(subtitleUri)
+            .setMimeType(MimeTypes.APPLICATION_SUBRIP)
+            .setLanguage("es")
+            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+            .build()
+
+        val activeItemWithSubs = MediaItem.Builder()
+            .setMediaId("unknown_movie")
+            .setUri(mediaUri)
+            .setSubtitleConfigurations(listOf(subtitleConfig))
+            .build()
+
+        val refreshedItemWithoutSubs = MediaItem.Builder()
+            .setMediaId("tt1099212")
+            .setUri(mediaUri)
+            .build()
+
+        val mergedFromController = LocalPlayerActivity.preserveSubtitleConfigurations(
+            updatedItem = refreshedItemWithoutSubs,
+            activeControllerItem = activeItemWithSubs,
+            currentItem = null
         )
-        val matchingEpisode = com.martinrevert.latorrentola.network.OpenSubtitleResult(
-            id = "2",
-            fileId = 102L,
-            language = "es",
-            release = "the.simpsons.s38e01.1080p.web.h264-cakes",
-            downloadCount = 20L,
-            fileName = "the.simpsons.s38e01.srt",
-            featureTitle = "The Simpsons - S38E01 - The Children's Book Job"
+        assertThat(mergedFromController.mediaId).isEqualTo("tt1099212")
+        assertThat(mergedFromController.localConfiguration?.subtitleConfigurations)
+            .containsExactly(subtitleConfig)
+
+        val mergedFromPending = LocalPlayerActivity.preserveSubtitleConfigurations(
+            updatedItem = refreshedItemWithoutSubs,
+            activeControllerItem = null,
+            currentItem = activeItemWithSubs
+        )
+        assertThat(mergedFromPending.localConfiguration?.subtitleConfigurations)
+            .containsExactly(subtitleConfig)
+    }
+
+    @Test
+    fun `selectBestMovieCandidate matches exact title and year for Twilight 2008 over 1998 and sequels`() {
+        val twilight1998 = Movie(
+            id = 10,
+            imdbCode = "tt0119594",
+            title = "Twilight",
+            year = 1998
+        )
+        val newMoon = Movie(
+            id = 11,
+            imdbCode = "tt1259571",
+            title = "The Twilight Saga: New Moon",
+            year = 2009
+        )
+        val twilight2008 = Movie(
+            id = 12,
+            imdbCode = "tt1099212",
+            title = "Twilight",
+            year = 2008
         )
 
-        val results = LocalPlayerActivity.filterFallbackResults(
-            rawResults = listOf(wrongEpisode, matchingEpisode),
-            expectedTitle = "The Simpsons",
-            expectedYear = null,
-            expectedSeason = 38,
-            expectedEpisode = 1
+        val matched = LocalPlayerActivity.selectBestMovieCandidate(
+            movies = listOf(twilight1998, newMoon, twilight2008),
+            candidateTitle = "Twilight",
+            expectedYear = 2008
         )
 
-        assertThat(results).hasSize(1)
-        assertThat(results.first().id).isEqualTo("2")
+        assertThat(matched?.imdbCode).isEqualTo("tt1099212")
+    }
+
+    @Test
+    fun `selectBestMovieCandidate prefers exact title with plus or minus 1 year tolerance over non-matching title with exact year`() {
+        val unrelatedSameYear = Movie(
+            id = 20,
+            imdbCode = "tt9999991",
+            title = "Whiplash: Behind the Scenes",
+            year = 2015
+        )
+        val exactTitleOneYearOff = Movie(
+            id = 21,
+            imdbCode = "tt2582802",
+            title = "Whiplash",
+            year = 2014
+        )
+
+        val matched = LocalPlayerActivity.selectBestMovieCandidate(
+            movies = listOf(unrelatedSameYear, exactTitleOneYearOff),
+            candidateTitle = "Whiplash",
+            expectedYear = 2015
+        )
+
+        assertThat(matched?.imdbCode).isEqualTo("tt2582802")
+    }
+
+    @Test
+    fun `selectBestTvCandidate prioritizes exact series title over unrelated series matching episode broadcast year`() {
+        val unrelatedSeriesPremiereInBroadcastYear = TmdbTvSummary(
+            id = 9001,
+            name = "The Simpsons: Family Guy Crossover Special",
+            originalName = "The Simpsons: Family Guy Crossover Special",
+            firstAirDate = "2024-09-29"
+        )
+        val exactSeriesMatch = TmdbTvSummary(
+            id = 456,
+            name = "The Simpsons",
+            originalName = "The Simpsons",
+            firstAirDate = "1989-12-17"
+        )
+
+        val matched = LocalPlayerActivity.selectBestTvCandidate(
+            seriesList = listOf(unrelatedSeriesPremiereInBroadcastYear, exactSeriesMatch),
+            candidateTitle = "The Simpsons",
+            expectedYear = 2024
+        )
+
+        assertThat(matched?.id).isEqualTo(456)
+    }
+
+    @Test
+    fun `sortSubtitleResultsForDevice groups es, ea, and sp ahead of en for Spanish locale`() {
+        val enTop = OpenSubtitleResult(
+            id = "en",
+            fileId = 1L,
+            language = "en",
+            release = "Twilight.2008.EN",
+            downloadCount = 200_000L,
+            fileName = "twilight.en.srt",
+            featureTitle = "Twilight"
+        )
+        val eaSub = OpenSubtitleResult(
+            id = "ea",
+            fileId = 2L,
+            language = "ea",
+            release = "Twilight.2008.LA",
+            downloadCount = 12_000L,
+            fileName = "twilight.ea.srt",
+            featureTitle = "Twilight"
+        )
+        val spSub = OpenSubtitleResult(
+            id = "sp",
+            fileId = 3L,
+            language = "sp",
+            release = "Twilight.2008.EU",
+            downloadCount = 9_000L,
+            fileName = "twilight.sp.srt",
+            featureTitle = "Twilight"
+        )
+        val esSub = OpenSubtitleResult(
+            id = "es",
+            fileId = 4L,
+            language = "es",
+            release = "Twilight.2008.ES",
+            downloadCount = 15_000L,
+            fileName = "twilight.es.srt",
+            featureTitle = "Twilight"
+        )
+
+        val sortedEs = LocalPlayerActivity.sortSubtitleResultsForDevice(
+            results = listOf(enTop, spSub, eaSub, esSub),
+            deviceLanguage = "es"
+        )
+        assertThat(sortedEs.map { it.language }).containsExactly("es", "ea", "sp", "en").inOrder()
+
+        val sortedEn = LocalPlayerActivity.sortSubtitleResultsForDevice(
+            results = listOf(spSub, eaSub, esSub, enTop),
+            deviceLanguage = "en"
+        )
+        assertThat(sortedEn.map { it.language }).containsExactly("en", "es", "ea", "sp").inOrder()
+    }
+
+    @Test
+    fun `getLanguageFlag maps OpenSubtitles Spanish codes ea and sp accurately without misflagging English`() {
+        assertThat(getLanguageFlag("ea", "Twilight.2008")).isEqualTo("🇦🇷")
+        assertThat(getLanguageFlag("sp", "Twilight.2008")).isEqualTo("🇪🇸")
+        assertThat(getLanguageFlag("es", "Twilight.2008")).isEqualTo("🇪🇸")
+        assertThat(getLanguageFlag("es", "Twilight.2008.Latino")).isEqualTo("🇦🇷")
+        assertThat(getLanguageFlag("en", "Despicable.Me.2010.Respect")).isEqualTo("🇺🇸")
     }
 
     @Test

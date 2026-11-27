@@ -76,7 +76,7 @@ Have a personal movie collection stored on your computer or home server? La Torr
 * The app automatically detects removable volumes, lets you choose where to save torrent downloads, and plays media files directly from the drive.
 
 ### 7. 💬 Tailored Subtitles & Cinema Audio
-* **Integrated & Online Subtitles**: Use embedded subtitle tracks (MKV/MP4) or search and download matching subtitles in your language on the fly via OpenSubtitles.
+* **Integrated & Online Subtitles (IMDb-Accurate)**: Use embedded subtitle tracks (MKV/MP4) or search and download matching subtitles on the fly via OpenSubtitles. Searches run strictly by canonical IMDb ID across all three Spanish variants (**Spanish**, **Spanish LA**, and **Spanish EU**) plus **English** in parallel—preventing high-volume English uploads from hiding Spanish subtitles—and automatically deduce the IMDb ID for local, USB, and NAS files.
 * **Full Subtitle Styling**: Customize font size, text color, dark background contrast, and time offset synchronization.
 * **Smart Surround Audio**:
   * Enjoy multi-channel audio tracks in multiple languages (5.1 and 7.1).

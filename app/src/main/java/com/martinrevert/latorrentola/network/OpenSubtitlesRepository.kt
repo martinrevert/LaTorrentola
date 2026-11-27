@@ -12,6 +12,9 @@ import com.martinrevert.latorrentola.utils.OpenSubtitlesCredentials
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -227,12 +230,12 @@ class OpenSubtitlesRepository @Inject constructor(
                 apiKey = apiKey(),
                 userAgent = userAgent(),
                 authorization = authorization,
-                query = query?.takeIf { it.isNotBlank() },
-                imdbId = imdbId?.takeIf { it.isNotBlank() }?.removePrefix("tt"),
-                parentImdbId = parentImdbId?.takeIf { it.isNotBlank() }?.removePrefix("tt"),
-                seasonNumber = seasonNumber,
                 episodeNumber = episodeNumber,
+                imdbId = normalizeImdbIdForApi(imdbId),
                 languages = requestedLanguages(language),
+                parentImdbId = normalizeImdbIdForApi(parentImdbId),
+                query = query?.takeIf { it.isNotBlank() },
+                seasonNumber = seasonNumber,
                 type = type?.takeIf(String::isNotBlank)
             )
         }
@@ -249,10 +252,14 @@ class OpenSubtitlesRepository @Inject constructor(
      * Episode searches use the series identifier together with [seasonNumber] and [episodeNumber].
      * Movie searches use the same identifier as the feature IMDb ID.
      *
-     * @param imdbId IMDb identifier, with or without its `tt` prefix.
+     * When [language] is not restricted to a single language family, Spanish (`ea,es,sp`) and
+     * English (`en`) are queried in parallel so popular English uploads never crowd Spanish
+     * subtitles off page 1.
+     *
+     * @param imdbId IMDb identifier, with or without its `tt` prefix or leading zeros.
      * @param seasonNumber TV season number; supply together with [episodeNumber].
      * @param episodeNumber TV episode number; supply together with [seasonNumber].
-     * @param language Optional preferred language; only English and Spanish are returned.
+     * @param language Optional preferred language; only English and Spanish variants are returned.
      * @return Matching subtitles ordered by download count.
      */
     suspend fun searchByImdbId(
@@ -261,13 +268,11 @@ class OpenSubtitlesRepository @Inject constructor(
         episodeNumber: Int? = null,
         language: String? = null
     ): List<OpenSubtitleResult> = withContext(Dispatchers.IO) {
-        val normalizedImdbId = imdbId.trim().removePrefix("tt")
-        if (normalizedImdbId.isEmpty() || normalizedImdbId.any { it !in '0'..'9' }) {
-            throw OpenSubtitlesException(
+        val normalizedImdbId = normalizeImdbIdForApi(imdbId)
+            ?: throw OpenSubtitlesException(
                 OpenSubtitlesErrorCode.INVALID_SEARCH,
                 "A valid IMDb identifier is required to search subtitles"
             )
-        }
         if ((seasonNumber == null) != (episodeNumber == null) ||
             seasonNumber != null && seasonNumber < 0 ||
             episodeNumber != null && episodeNumber < 1
@@ -280,23 +285,73 @@ class OpenSubtitlesRepository @Inject constructor(
 
         val isEpisodeSearch = seasonNumber != null
         val credentials = loadCredentials()
-        val response = authorizedRequest(credentials, "IMDb subtitle search") { authorization ->
-            openSubtitlesService.searchSubtitles(
-                apiKey = apiKey(),
-                userAgent = userAgent(),
-                authorization = authorization,
-                imdbId = normalizedImdbId.takeUnless { isEpisodeSearch },
-                parentImdbId = normalizedImdbId.takeIf { isEpisodeSearch },
-                seasonNumber = seasonNumber,
-                episodeNumber = episodeNumber,
-                languages = requestedLanguages(language),
-                type = if (isEpisodeSearch) "episode" else "movie"
-            )
+        val languageBatches = requestedLanguageBatches(language)
+
+        val combinedEntries: List<OpenSubtitlesSearchEntry> = if (languageBatches.size == 1) {
+            val langParam = languageBatches.first()
+            val response = authorizedRequest(credentials, "IMDb subtitle search ($langParam)") { authorization ->
+                openSubtitlesService.searchSubtitles(
+                    apiKey = apiKey(),
+                    userAgent = userAgent(),
+                    authorization = authorization,
+                    episodeNumber = episodeNumber,
+                    imdbId = normalizedImdbId.takeUnless { isEpisodeSearch },
+                    languages = langParam,
+                    parentImdbId = normalizedImdbId.takeIf { isEpisodeSearch },
+                    seasonNumber = seasonNumber,
+                    type = if (isEpisodeSearch) "episode" else "movie"
+                )
+            }
+            response.data.orEmpty()
+        } else {
+            // Ensure a valid session token once before dispatching parallel language queries.
+            authenticatedToken(credentials)
+            val batchOutcomes = coroutineScope {
+                languageBatches.map { langParam ->
+                    async {
+                        try {
+                            val response = authorizedRequest(
+                                credentials,
+                                "IMDb subtitle search ($langParam)"
+                            ) { authorization ->
+                                openSubtitlesService.searchSubtitles(
+                                    apiKey = apiKey(),
+                                    userAgent = userAgent(),
+                                    authorization = authorization,
+                                    episodeNumber = episodeNumber,
+                                    imdbId = normalizedImdbId.takeUnless { isEpisodeSearch },
+                                    languages = langParam,
+                                    parentImdbId = normalizedImdbId.takeIf { isEpisodeSearch },
+                                    seasonNumber = seasonNumber,
+                                    type = if (isEpisodeSearch) "episode" else "movie"
+                                )
+                            }
+                            Result.success(response.data.orEmpty())
+                        } catch (error: OpenSubtitlesException) {
+                            if (error.code == OpenSubtitlesErrorCode.LOGIN_FAILED ||
+                                error.code == OpenSubtitlesErrorCode.AUTHENTICATION_EXPIRED
+                            ) {
+                                throw error
+                            }
+                            Log.w(TAG, "IMDb subtitle search ($langParam) failed: ${error.message}")
+                            Result.failure(error)
+                        }
+                    }
+                }.awaitAll()
+            }
+            val succeeded = batchOutcomes.filter { it.isSuccess }
+            if (succeeded.isEmpty()) {
+                throw batchOutcomes.firstNotNullOf { it.exceptionOrNull() }
+            }
+            succeeded.flatMap { it.getOrDefault(emptyList()) }
         }
-        val mappedResults = response.data.orEmpty()
+
+        val mappedResults = combinedEntries
             .mapNotNull(::mapSearchResult)
             .filter { it.language.isEnglishOrSpanish() }
-        Log.i(TAG, "IMDb subtitle search completed: returned=${response.data?.size ?: 0}, usable=${mappedResults.size}")
+            .distinctBy { it.fileId }
+            .sortedByDescending { it.downloadCount }
+        Log.i(TAG, "IMDb subtitle search completed: returned=${combinedEntries.size}, usable=${mappedResults.size}")
         mappedResults
     }
 
@@ -712,35 +767,39 @@ class OpenSubtitlesRepository @Inject constructor(
     }
 
     /**
-     * Builds the API language filter, constraining results to English and Spanish.
+     * Builds the API language filter, constraining results to English and all Spanish variants
+     * (`es` generic Spanish, `ea` Spanish LA, and `sp` Spanish EU).
      *
      * @param preferredLanguage Optional requested language.
      * @return Comma-separated supported language codes for the API query.
      */
     private fun requestedLanguages(preferredLanguage: String?): String {
-        val requestedCode = preferredLanguage
-            ?.trim()
-            ?.lowercase(Locale.ROOT)
-            ?.substringBefore('-')
-            ?.substringBefore('_')
-        return when (requestedCode) {
-            "en", "eng" -> "en"
-            "es", "spa" -> "es"
+        return when {
+            isEnglishLanguageCode(preferredLanguage) -> ENGLISH_LANGUAGE_CODE
+            isSpanishLanguageCode(preferredLanguage) -> SPANISH_LANGUAGE_CODES
             else -> SUPPORTED_LANGUAGE_CODES
         }
     }
 
     /**
-     * Checks whether an OpenSubtitles result uses English or Spanish.
-     *
-     * @return `true` for English and Spanish ISO language codes.
+     * Splits an unrestricted search into separate Spanish (`ea,es,sp`) and English (`en`) queries
+     * so high-volume English uploads cannot push Spanish subtitles off page 1.
      */
-    private fun String.isEnglishOrSpanish(): Boolean = when (
-        lowercase(Locale.ROOT).substringBefore('-').substringBefore('_')
-    ) {
-        "en", "eng", "es", "spa" -> true
-        else -> false
+    private fun requestedLanguageBatches(preferredLanguage: String?): List<String> {
+        return when {
+            isEnglishLanguageCode(preferredLanguage) -> listOf(ENGLISH_LANGUAGE_CODE)
+            isSpanishLanguageCode(preferredLanguage) -> listOf(SPANISH_LANGUAGE_CODES)
+            else -> listOf(SPANISH_LANGUAGE_CODES, ENGLISH_LANGUAGE_CODE)
+        }
     }
+
+    /**
+     * Checks whether an OpenSubtitles result uses English or any Spanish variant (`es`, `ea`, `sp`).
+     *
+     * @return `true` for English and Spanish OpenSubtitles language codes.
+     */
+    private fun String.isEnglishOrSpanish(): Boolean =
+        isEnglishLanguageCode(this) || isSpanishLanguageCode(this)
 
     /**
      * Validates an API-supplied temporary link before making an unauthenticated file request.
@@ -974,55 +1033,99 @@ class OpenSubtitlesRepository @Inject constructor(
         val token: String
     )
 
-    private companion object {
+    companion object {
+        /** OpenSubtitles API v1 language codes for Spanish: LA (`ea`), generic (`es`), and EU (`sp`). */
+        const val SPANISH_LANGUAGE_CODES = "ea,es,sp"
+        /** OpenSubtitles API v1 language code for English. */
+        const val ENGLISH_LANGUAGE_CODE = "en"
+        /** Combined canonical (alphabetical) OpenSubtitles language filter for Spanish and English. */
+        const val SUPPORTED_LANGUAGE_CODES = "ea,en,es,sp"
+
+        /**
+         * Normalizes an IMDb identifier for OpenSubtitles API v1 query parameters by removing
+         * any `tt` prefix and stripping leading zeros (e.g. `tt0111161` -> `111161`) to match
+         * OpenSubtitles' canonical CDN cache keys without triggering 301 redirects.
+         */
+        fun normalizeImdbIdForApi(raw: String?): String? {
+            if (raw.isNullOrBlank()) return null
+            val trimmed = raw.trim()
+            val digits = if (trimmed.startsWith("tt", ignoreCase = true)) {
+                trimmed.substring(2)
+            } else {
+                trimmed
+            }
+            if (digits.isEmpty() || digits.any { it !in '0'..'9' }) return null
+            return digits.trimStart('0').ifEmpty { null }
+        }
+
+        /** Returns `true` when [code] represents Spanish (`es`, `spa`, `ea` LA, or `sp` EU). */
+        fun isSpanishLanguageCode(code: String?): Boolean {
+            val base = code
+                ?.trim()
+                ?.lowercase(Locale.ROOT)
+                ?.substringBefore('-')
+                ?.substringBefore('_')
+                ?: return false
+            return base == "es" || base == "spa" || base == "ea" || base == "sp"
+        }
+
+        /** Returns `true` when [code] represents English (`en` or `eng`). */
+        fun isEnglishLanguageCode(code: String?): Boolean {
+            val base = code
+                ?.trim()
+                ?.lowercase(Locale.ROOT)
+                ?.substringBefore('-')
+                ?.substringBefore('_')
+                ?: return false
+            return base == "en" || base == "eng"
+        }
+
         /** OpenSubtitles API v1 base host. */
-        const val API_HOST = "api.opensubtitles.com"
+        private const val API_HOST = "api.opensubtitles.com"
         /** Android log tag for redacted OpenSubtitles request diagnostics. */
-        const val TAG = "OpenSubtitles"
+        private const val TAG = "OpenSubtitles"
         /** HTTPS default port. */
-        const val HTTPS_PORT = 443
+        private const val HTTPS_PORT = 443
         /** Unauthorized response status. */
-        const val HTTP_UNAUTHORIZED = 401
+        private const val HTTP_UNAUTHORIZED = 401
         /** Forbidden response status. */
-        const val HTTP_FORBIDDEN = 403
+        private const val HTTP_FORBIDDEN = 403
         /** Maximum compressed or uncompressed subtitle data accepted. */
-        const val MAX_SUBTITLE_BYTES = 16 * 1024 * 1024
+        private const val MAX_SUBTITLE_BYTES = 16 * 1024 * 1024
         /** Maximum server-provided error detail shown alongside an HTTP status. */
-        const val MAX_API_ERROR_MESSAGE_LENGTH = 200
+        private const val MAX_API_ERROR_MESSAGE_LENGTH = 200
         /** Maximum server-provided field length included in diagnostic logs. */
-        const val MAX_LOG_VALUE_LENGTH = 200
+        private const val MAX_LOG_VALUE_LENGTH = 200
         /** Initial delay before retrying transient request failures. */
-        const val INITIAL_RETRY_DELAY_MS = 500L
+        private const val INITIAL_RETRY_DELAY_MS = 500L
         /** Maximum delay between retries while the service remains unavailable. */
-        const val MAX_RETRY_DELAY_MS = 30_000L
+        private const val MAX_RETRY_DELAY_MS = 30_000L
         /** Nanoseconds per millisecond when reporting request durations. */
-        const val NANOS_PER_MILLISECOND = 1_000_000L
+        private const val NANOS_PER_MILLISECOND = 1_000_000L
         /** Private app cache subdirectory for downloaded subtitles. */
-        const val SUBTITLE_DIRECTORY = "opensubtitles"
+        private const val SUBTITLE_DIRECTORY = "opensubtitles"
         /** Extension of converted cached subtitle files. */
-        const val SUBTITLE_EXTENSION = "vtt"
+        private const val SUBTITLE_EXTENSION = "vtt"
         /** Language marker used when cached subtitle language metadata is unavailable. */
-        const val UNKNOWN_LANGUAGE = "und"
+        private const val UNKNOWN_LANGUAGE = "und"
         /** App-private directory removed with its corresponding managed torrent. */
-        const val TORRENT_DIRECTORY = "torrent_downloads"
+        private const val TORRENT_DIRECTORY = "torrent_downloads"
         /** Exact OpenSubtitles hosts allowed to serve temporary subtitle files. */
-        val TRUSTED_DOWNLOAD_HOSTS = setOf(API_HOST, "www.opensubtitles.com", "opensubtitles.com")
+        private val TRUSTED_DOWNLOAD_HOSTS = setOf(API_HOST, "www.opensubtitles.com", "opensubtitles.com")
         /** URL pattern used to redact signed URL contents from server-provided log messages. */
-        val URL_PATTERN = Regex("""https?://[^\s"'<>]+""", RegexOption.IGNORE_CASE)
-        /** OpenSubtitles language filter covering both languages supported in the result list. */
-        const val SUPPORTED_LANGUAGE_CODES = "en,es"
+        private val URL_PATTERN = Regex("""https?://[^\s"'<>]+""", RegexOption.IGNORE_CASE)
         /** Expected hexadecimal SHA-1 info-hash format used to scope subtitle files. */
-        val TORRENT_INFO_HASH_PATTERN = Regex("[a-f0-9]{40}")
+        private val TORRENT_INFO_HASH_PATTERN = Regex("[a-f0-9]{40}")
         /** Magnet URI BTIH extraction pattern for raw or prefixed magnet links. */
-        val MAGNET_BTIH_PATTERN = Regex("""(?:xt=urn:btih:|urn:btih:)([a-f0-9]{40})""", RegexOption.IGNORE_CASE)
+        private val MAGNET_BTIH_PATTERN = Regex("""(?:xt=urn:btih:|urn:btih:)([a-f0-9]{40})""", RegexOption.IGNORE_CASE)
         /** Minimum ZIP signature length inspected in a response. */
-        const val ZIP_SIGNATURE_SIZE = 2
+        private const val ZIP_SIGNATURE_SIZE = 2
         /** First byte of a ZIP local-file signature. */
-        const val ZIP_SIGNATURE_FIRST: Byte = 0x50
+        private const val ZIP_SIGNATURE_FIRST: Byte = 0x50
         /** Second byte of a ZIP local-file signature. */
-        const val ZIP_SIGNATURE_SECOND: Byte = 0x4b
+        private const val ZIP_SIGNATURE_SECOND: Byte = 0x4b
         /** Supported file extensions extracted from OpenSubtitles archives. */
-        val SUPPORTED_SUBTITLE_EXTENSIONS = setOf("srt", "vtt")
+        private val SUPPORTED_SUBTITLE_EXTENSIONS = setOf("srt", "vtt")
     }
 }
 

@@ -191,4 +191,213 @@ class OpenSubtitlesRepositoryTest {
         assertThat(downloadedSubtitle.file.parentFile?.name).isEqualTo("opensubtitles")
         assertThat(downloadedSubtitle.file.parentFile?.parentFile?.name).isEqualTo(validHash)
     }
+
+    @Test
+    fun `normalizeImdbIdForApi strips tt prefix and leading zeros`() {
+        assertThat(OpenSubtitlesRepository.normalizeImdbIdForApi("tt1099212")).isEqualTo("1099212")
+        assertThat(OpenSubtitlesRepository.normalizeImdbIdForApi("tt0111161")).isEqualTo("111161")
+        assertThat(OpenSubtitlesRepository.normalizeImdbIdForApi("TT00133093")).isEqualTo("133093")
+        assertThat(OpenSubtitlesRepository.normalizeImdbIdForApi("0944947")).isEqualTo("944947")
+        assertThat(OpenSubtitlesRepository.normalizeImdbIdForApi("tt0000000")).isNull()
+        assertThat(OpenSubtitlesRepository.normalizeImdbIdForApi("invalid")).isNull()
+        assertThat(OpenSubtitlesRepository.normalizeImdbIdForApi("")).isNull()
+    }
+
+    @Test
+    fun `isSpanishLanguageCode recognizes generic es, Latin American ea, and European sp`() {
+        assertThat(OpenSubtitlesRepository.isSpanishLanguageCode("es")).isTrue()
+        assertThat(OpenSubtitlesRepository.isSpanishLanguageCode("ea")).isTrue()
+        assertThat(OpenSubtitlesRepository.isSpanishLanguageCode("sp")).isTrue()
+        assertThat(OpenSubtitlesRepository.isSpanishLanguageCode("spa")).isTrue()
+        assertThat(OpenSubtitlesRepository.isSpanishLanguageCode("es-419")).isTrue()
+        assertThat(OpenSubtitlesRepository.isSpanishLanguageCode("en")).isFalse()
+        assertThat(OpenSubtitlesRepository.isSpanishLanguageCode("fr")).isFalse()
+    }
+
+    @Test
+    fun `searchByImdbId queries Spanish ea-es-sp and English en in parallel so English never crowds out Spanish`() = runTest {
+        val spanishEntries = listOf(
+            OpenSubtitlesSearchEntry(
+                id = "es-1",
+                attributes = OpenSubtitlesAttributes(
+                    language = "es",
+                    release = "Twilight.2008.1080p.BluRay",
+                    downloadCount = 8_000L,
+                    files = listOf(OpenSubtitlesFile(fileId = 101L, fileName = "twilight.es.srt")),
+                    featureDetails = OpenSubtitlesFeatureDetails(title = null, movieName = "Twilight", year = 2008)
+                )
+            ),
+            OpenSubtitlesSearchEntry(
+                id = "ea-1",
+                attributes = OpenSubtitlesAttributes(
+                    language = "ea",
+                    release = "Twilight.2008.1080p.Latam",
+                    downloadCount = 5_000L,
+                    files = listOf(OpenSubtitlesFile(fileId = 102L, fileName = "twilight.ea.srt")),
+                    featureDetails = OpenSubtitlesFeatureDetails(title = null, movieName = "Twilight", year = 2008)
+                )
+            ),
+            OpenSubtitlesSearchEntry(
+                id = "sp-1",
+                attributes = OpenSubtitlesAttributes(
+                    language = "sp",
+                    release = "Twilight.2008.1080p.Castellano",
+                    downloadCount = 4_000L,
+                    files = listOf(OpenSubtitlesFile(fileId = 103L, fileName = "twilight.sp.srt")),
+                    featureDetails = OpenSubtitlesFeatureDetails(title = null, movieName = "Twilight", year = 2008)
+                )
+            )
+        )
+        val englishEntries = listOf(
+            OpenSubtitlesSearchEntry(
+                id = "en-1",
+                attributes = OpenSubtitlesAttributes(
+                    language = "en",
+                    release = "Twilight.2008.1080p.YIFY",
+                    downloadCount = 150_000L,
+                    files = listOf(OpenSubtitlesFile(fileId = 201L, fileName = "twilight.en.srt")),
+                    featureDetails = OpenSubtitlesFeatureDetails(title = null, movieName = "Twilight", year = 2008)
+                )
+            )
+        )
+
+        coEvery {
+            openSubtitlesService.searchSubtitles(
+                apiKey = any(),
+                userAgent = any(),
+                authorization = "Bearer test_token",
+                episodeNumber = null,
+                imdbId = "1099212",
+                languages = "ea,es,sp",
+                orderBy = any(),
+                orderDirection = any(),
+                page = any(),
+                parentImdbId = null,
+                query = null,
+                seasonNumber = null,
+                type = "movie"
+            )
+        } returns Response.success(OpenSubtitlesSearchResponse(data = spanishEntries))
+
+        coEvery {
+            openSubtitlesService.searchSubtitles(
+                apiKey = any(),
+                userAgent = any(),
+                authorization = "Bearer test_token",
+                episodeNumber = null,
+                imdbId = "1099212",
+                languages = "en",
+                orderBy = any(),
+                orderDirection = any(),
+                page = any(),
+                parentImdbId = null,
+                query = null,
+                seasonNumber = null,
+                type = "movie"
+            )
+        } returns Response.success(OpenSubtitlesSearchResponse(data = englishEntries))
+
+        val results = repository.searchByImdbId("tt1099212")
+
+        assertThat(results.map { it.language }).containsExactly("en", "es", "ea", "sp").inOrder()
+        assertThat(results.map { it.fileId }).containsExactly(201L, 101L, 102L, 103L).inOrder()
+    }
+
+    @Test
+    fun `searchByImdbId strips leading zeros for episodes and passes parentImdbId`() = runTest {
+        val episodeEntry = OpenSubtitlesSearchEntry(
+            id = "ep-ea",
+            attributes = OpenSubtitlesAttributes(
+                language = "ea",
+                release = "Game.of.Thrones.S01E02",
+                downloadCount = 12_000L,
+                files = listOf(OpenSubtitlesFile(fileId = 301L, fileName = "got.s01e02.srt")),
+                featureDetails = OpenSubtitlesFeatureDetails(title = "The Kingsroad", movieName = null, year = 2011)
+            )
+        )
+
+        coEvery {
+            openSubtitlesService.searchSubtitles(
+                apiKey = any(),
+                userAgent = any(),
+                authorization = "Bearer test_token",
+                episodeNumber = 2,
+                imdbId = null,
+                languages = "ea,es,sp",
+                orderBy = any(),
+                orderDirection = any(),
+                page = any(),
+                parentImdbId = "944947",
+                query = null,
+                seasonNumber = 1,
+                type = "episode"
+            )
+        } returns Response.success(OpenSubtitlesSearchResponse(data = listOf(episodeEntry)))
+
+        val results = repository.searchByImdbId(
+            imdbId = "tt0944947",
+            seasonNumber = 1,
+            episodeNumber = 2,
+            language = "es"
+        )
+
+        assertThat(results).hasSize(1)
+        assertThat(results.first().language).isEqualTo("ea")
+        assertThat(results.first().fileId).isEqualTo(301L)
+    }
+
+    @Test
+    fun `searchByImdbId returns surviving batch when one parallel language request fails`() = runTest {
+        val spanishEntry = OpenSubtitlesSearchEntry(
+            id = "es-1",
+            attributes = OpenSubtitlesAttributes(
+                language = "es",
+                release = "Twilight.2008.1080p",
+                downloadCount = 8_000L,
+                files = listOf(OpenSubtitlesFile(fileId = 101L, fileName = "twilight.es.srt")),
+                featureDetails = OpenSubtitlesFeatureDetails(title = null, movieName = "Twilight", year = 2008)
+            )
+        )
+
+        coEvery {
+            openSubtitlesService.searchSubtitles(
+                apiKey = any(),
+                userAgent = any(),
+                authorization = "Bearer test_token",
+                episodeNumber = null,
+                imdbId = "1099212",
+                languages = "ea,es,sp",
+                orderBy = any(),
+                orderDirection = any(),
+                page = any(),
+                parentImdbId = null,
+                query = null,
+                seasonNumber = null,
+                type = "movie"
+            )
+        } returns Response.success(OpenSubtitlesSearchResponse(data = listOf(spanishEntry)))
+
+        coEvery {
+            openSubtitlesService.searchSubtitles(
+                apiKey = any(),
+                userAgent = any(),
+                authorization = "Bearer test_token",
+                episodeNumber = null,
+                imdbId = "1099212",
+                languages = "en",
+                orderBy = any(),
+                orderDirection = any(),
+                page = any(),
+                parentImdbId = null,
+                query = null,
+                seasonNumber = null,
+                type = "movie"
+            )
+        } returns Response.error(503, """{"message":"Service busy"}""".toResponseBody())
+
+        val results = repository.searchByImdbId("tt1099212")
+
+        assertThat(results).hasSize(1)
+        assertThat(results.first().fileId).isEqualTo(101L)
+    }
 }

@@ -531,5 +531,45 @@ class TmdbRepositoryTest {
         assertThat(repository.getCachedTvProgressSummary(30)?.name).isEqualTo("Fresh By IMDb")
         assertThat(repository.getCachedTvProgressSummary(40)).isNull()
     }
+
+    @Test
+    fun `searchMovies forwards query and optional release year to TmdbService`() = runTest {
+        val expected = TmdbMoviePage(
+            page = 1,
+            totalPages = 1,
+            totalResults = 1,
+            results = listOf(
+                TmdbMovieSummary(
+                    id = 8966,
+                    title = "Twilight",
+                    originalTitle = "Twilight",
+                    releaseDate = "2008-11-20"
+                )
+            )
+        )
+        coEvery {
+            tmdbService.searchMovies(
+                apiKey = any(),
+                query = "Twilight",
+                year = 2008,
+                page = 1,
+                language = any()
+            )
+        } returns expected
+
+        val page = repository.searchMovies(query = "Twilight", year = 2008)
+
+        assertThat(page.results).hasSize(1)
+        assertThat(page.results?.first()?.id).isEqualTo(8966)
+        coVerify(exactly = 1) {
+            tmdbService.searchMovies(
+                apiKey = any(),
+                query = "Twilight",
+                year = 2008,
+                page = 1,
+                language = any()
+            )
+        }
+    }
 }
 

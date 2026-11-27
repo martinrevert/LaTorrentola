@@ -371,6 +371,24 @@ class TmdbRepository @Inject constructor(
     }
 
     /**
+     * Searches TMDB for movies matching [query], optionally narrowing by release [year].
+     *
+     * @param query Movie title query text.
+     * @param year Optional four-digit release year.
+     * @param page Page number to retrieve.
+     * @return Matching page of TMDB movie summaries.
+     */
+    suspend fun searchMovies(query: String, year: Int? = null, page: Int = 1): TmdbMoviePage {
+        requireConfiguredApiKey()
+        return tmdbService.searchMovies(
+            apiKey = apiKey,
+            query = query,
+            year = year,
+            page = page
+        )
+    }
+
+    /**
      * Loads one sorted page of series matching a TV genre.
      *
      * @param genreId TMDB TV genre identifier.
