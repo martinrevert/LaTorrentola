@@ -95,6 +95,11 @@ object AppLogger {
      * exception to Firebase Crashlytics for production monitoring.
      */
     fun e(tag: String, message: String, throwable: Throwable? = null) {
+        if (isCancellationError(throwable)) {
+            // Normal coroutine/future cancellations are lifecycle control flow, not app defects.
+            d(tag, "$message (${throwable?.javaClass?.simpleName})")
+            return
+        }
         if (isTransientNetworkError(throwable)) {
             // Device-side connectivity failures (offline, DNS, timeout) are not app defects.
             w(tag, message, throwable)
@@ -110,11 +115,16 @@ object AppLogger {
 
     /**
      * Directly reports an uncaught or caught exception to Crashlytics with an optional contextual message.
-     * Transient device-side network failures are downgraded to warning breadcrumbs.
+     * Normal cancellations are ignored, and transient device-side network failures are downgraded to
+     * warning breadcrumbs.
      */
     fun recordException(throwable: Throwable, tag: String? = null, message: String? = null) {
         val effectiveTag = tag ?: "AppLogger"
         val effectiveMessage = message ?: throwable.message ?: throwable.javaClass.simpleName
+        if (isCancellationError(throwable)) {
+            d(effectiveTag, "$effectiveMessage (${throwable.javaClass.simpleName})")
+            return
+        }
         if (isTransientNetworkError(throwable)) {
             w(effectiveTag, effectiveMessage, throwable)
             return
@@ -122,6 +132,13 @@ object AppLogger {
         Log.e(effectiveTag, effectiveMessage, throwable)
         crashlyticsManager?.logError(effectiveTag, effectiveMessage, throwable)
     }
+
+    /**
+     * Returns `true` when [throwable] (or any cause in its chain) represents a coroutine or
+     * future cancellation that must never be reported as a Crashlytics non-fatal issue.
+     */
+    fun isCancellationError(throwable: Throwable?): Boolean =
+        CrashlyticsManager.isCancellationError(throwable)
 
     /**
      * Returns `true` when [throwable] (or any cause in its chain) is a transient, client-environment

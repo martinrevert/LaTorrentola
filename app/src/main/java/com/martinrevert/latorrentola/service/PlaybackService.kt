@@ -30,6 +30,7 @@ import com.martinrevert.latorrentola.utils.MediaIdHelper
 import com.martinrevert.latorrentola.utils.PreferenceManager
 import com.martinrevert.latorrentola.utils.isTvDevice
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -772,6 +773,7 @@ class PlaybackService : MediaSessionService() {
             try {
                 userLibraryRepository.savePlaybackProgress(progress, syncRemote = syncRemote)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 AppLogger.e(TAG, "Error saving playback progress", e)
             }
         }
@@ -810,6 +812,7 @@ class PlaybackService : MediaSessionService() {
                 userLibraryRepository.savePlaybackProgress(progress, syncRemote = true)
                 Log.i(TAG, "Explicitly saved progress: $finalPos / $dur ms for $mediaId")
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 AppLogger.e(TAG, "Error explicitly saving playback progress", e)
             }
         }

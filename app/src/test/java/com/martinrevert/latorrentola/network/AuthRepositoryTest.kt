@@ -24,6 +24,7 @@ import io.mockk.mockkStatic
 import io.mockk.slot
 import io.mockk.unmockkStatic
 import io.mockk.verify
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -226,6 +227,40 @@ class AuthRepositoryTest {
             assertThat(awaitItem()).isEmpty()
             assertThat(repoWithDao.authStateFlow.value).isNull()
             cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test(expected = CancellationException::class)
+    fun `signOut rethrows CancellationException from credentialManager`() = runTest {
+        coEvery {
+            credentialManager.clearCredentialState(any<ClearCredentialStateRequest>())
+        } throws CancellationException("Job was cancelled")
+
+        repository.signOut()
+    }
+
+    @Test
+    fun `signInWithGoogle rethrows CancellationException without triggering fallback credential request`() = runTest {
+        coEvery {
+            credentialManager.getCredential(
+                request = any<GetCredentialRequest>(),
+                context = any<Context>()
+            )
+        } throws CancellationException("Coroutine cancelled during sign-in")
+
+        var caught: CancellationException? = null
+        try {
+            repository.signInWithGoogle(activity)
+        } catch (e: CancellationException) {
+            caught = e
+        }
+
+        assertThat(caught).isNotNull()
+        coVerify(exactly = 1) {
+            credentialManager.getCredential(
+                request = any<GetCredentialRequest>(),
+                context = any<Context>()
+            )
         }
     }
 }

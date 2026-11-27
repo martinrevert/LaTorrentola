@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola.network
 import android.util.Log
 import com.martinrevert.latorrentola.utils.AppLogger
 import com.martinrevert.latorrentola.utils.PreferenceManager
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,6 +32,7 @@ class FcmRepository @Inject constructor(
                 false
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             AppLogger.e(TAG, "Error subscribing to local FCM database", e)
             false
         }
@@ -49,6 +51,7 @@ class FcmRepository @Inject constructor(
                 false
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             AppLogger.e(TAG, "Error unsubscribing from local FCM database", e)
             false
         }

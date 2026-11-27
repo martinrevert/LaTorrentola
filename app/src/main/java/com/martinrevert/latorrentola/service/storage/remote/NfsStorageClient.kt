@@ -2,6 +2,7 @@ package com.martinrevert.latorrentola.service.storage.remote
 
 import android.util.Log
 import com.martinrevert.latorrentola.utils.AppLogger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -237,6 +238,7 @@ class NfsStorageClient @Inject constructor() : RemoteStorageClient {
                 LibNfsNative.nativeWriteFile(session.ctxPtr, cleanPath, vttContent.toByteArray(Charsets.UTF_8))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             try { AppLogger.e(TAG, "Failed to write subtitle to NFS export: ${e.message}", e) } catch (_: Throwable) {}
             false
         }
@@ -251,6 +253,7 @@ class NfsStorageClient @Inject constructor() : RemoteStorageClient {
                 }
                 rootEntries != null
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 val export = if (config.shareOrExport.startsWith("/")) config.shareOrExport else "/${config.shareOrExport}"
                 val cacheKey = "${config.host}:${config.port}/$export"
                 sessionCache.remove(cacheKey)?.let { oldSession ->

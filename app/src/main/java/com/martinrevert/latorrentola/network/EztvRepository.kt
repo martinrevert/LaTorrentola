@@ -3,6 +3,7 @@ package com.martinrevert.latorrentola.network
 import com.martinrevert.latorrentola.model.EZTV.EztvTorrent
 import com.martinrevert.latorrentola.model.EZTV.matchesEpisode
 import com.martinrevert.latorrentola.utils.AppLogger
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -44,6 +45,7 @@ class EztvRepository @Inject constructor(
                 torrent.matchesEpisode(seasonNumber, episodeNumber)
             }.sortedByDescending { it.seeds }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             AppLogger.e("EztvRepository", "Error fetching EZTV torrents for IMDb ID $cleanImdbId: ${e.message}", e)
             emptyList()
         }

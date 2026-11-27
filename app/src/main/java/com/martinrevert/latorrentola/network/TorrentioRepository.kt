@@ -10,6 +10,7 @@ import com.martinrevert.latorrentola.model.torrentio.TorrentioStream
 import com.martinrevert.latorrentola.utils.DevicePlaybackCapabilities
 import com.martinrevert.latorrentola.utils.TorrentLaunchHelper
 import com.martinrevert.latorrentola.utils.TorrentioMetadataParser
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -45,6 +46,7 @@ class TorrentioRepository @Inject constructor(
                 .filter { !it.infoHash.isNullOrBlank() }
                 .map { stream -> mapStreamToRelease(stream) }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             AppLogger.e(TAG, "Error fetching Torrentio movie streams for $cleanId: ${e.message}", e)
             emptyList()
         }
@@ -80,6 +82,7 @@ class TorrentioRepository @Inject constructor(
                 .filter { TorrentioMetadataParser.matchesEpisode(it.title, it.behaviorHints?.filename, seasonNumber, episodeNumber) }
                 .map { stream -> mapStreamToRelease(stream) }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             AppLogger.e(TAG, "Error fetching Torrentio series streams for $seriesParam: ${e.message}", e)
             emptyList()
         }

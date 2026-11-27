@@ -11,6 +11,7 @@ import com.hierynomus.smbj.SMBClient
 import com.hierynomus.smbj.SmbConfig
 import com.hierynomus.smbj.auth.AuthenticationContext
 import com.hierynomus.smbj.share.DiskShare
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.InputStream
@@ -225,6 +226,7 @@ class SmbStorageClient @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.w(TAG, "Failed to open $cleanPath on cached SMB share, retrying with fresh connection: ${e.message}")
                 sessionCache.remove(cacheKey)?.closeSilently()
                 smbSession = getOrCreateShare(config)
@@ -291,6 +293,7 @@ class SmbStorageClient @Inject constructor(
                 true
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             AppLogger.e(TAG, "Failed to write subtitle to SMB share: ${e.message}", e)
             false
         }
@@ -303,6 +306,7 @@ class SmbStorageClient @Inject constructor(
                     true
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.w(TAG, "SMB connection test failed for ${config.host}: ${e.message}")
                 false
             }
@@ -315,6 +319,7 @@ class SmbStorageClient @Inject constructor(
                 block(smbSession.share)
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             val cleanShare = config.shareOrExport.trim().trim('/', '\\')
             val cacheKey = "${config.id}:${config.host}:${config.port}/$cleanShare"
             sessionCache.remove(cacheKey)?.closeSilently()

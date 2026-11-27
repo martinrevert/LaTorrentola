@@ -10,6 +10,7 @@ import com.martinrevert.latorrentola.R
 import com.martinrevert.latorrentola.network.AuthRepository
 import com.martinrevert.latorrentola.utils.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -88,6 +89,7 @@ class AuthViewModel @Inject constructor(
                             preferenceManager.setFilteredLanguages(remoteFiltered)
                         }
                     } catch (e: Exception) {
+                        if (e is CancellationException) throw e
                         AppLogger.e("AuthViewModel", "Failed syncing cloud data post-login: ${e.message}", e)
                     }
                 }
@@ -124,6 +126,7 @@ class AuthViewModel @Inject constructor(
                     try {
                         userLibraryRepository.syncFromCloud(forceFull = false)
                     } catch (e: Exception) {
+                        if (e is CancellationException) throw e
                         AppLogger.w("AuthViewModel", "Delta sync failed on account select: ${e.message}")
                     }
                 }
@@ -143,6 +146,7 @@ class AuthViewModel @Inject constructor(
                 try {
                     authRepository.signOut()
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     AppLogger.w("AuthViewModel", "Sign out on deleteAccount error: ${e.message}")
                 }
             }

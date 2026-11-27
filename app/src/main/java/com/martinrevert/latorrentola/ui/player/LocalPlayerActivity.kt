@@ -1716,18 +1716,28 @@ class LocalPlayerActivity : FragmentActivity() {
     }
 
     private fun connectToMediaSession() {
-        controllerFuture = MediaControllerHelper.buildControllerAsync(this)
-        controllerFuture?.addListener({
+        val future = MediaControllerHelper.buildControllerAsync(this)
+        controllerFuture = future
+        future.addListener({
             try {
-                if (isFinishing || isDestroyed || isDeletingMedia) return@addListener
-                val controller = controllerFuture?.get()
+                if (isFinishing || isDestroyed || isDeletingMedia) {
+                    MediaController.releaseFuture(future)
+                    return@addListener
+                }
+                val controller = future.get()
                 mediaController = controller
                 if (controller != null) {
                     setupControllerMedia(controller)
                 } else if (pendingMediaUri == null && !intent.getBooleanExtra(EXTRA_FROM_PIP, false)) {
                     finish()
                 }
+            } catch (_: CancellationException) {
+                Log.d(TAG, "MediaController connection cancelled")
             } catch (e: Exception) {
+                if (AppLogger.isCancellationError(e)) {
+                    Log.d(TAG, "MediaController connection cancelled")
+                    return@addListener
+                }
                 AppLogger.e(TAG, "Failed to connect MediaController", e)
                 if (pendingMediaUri == null && !intent.getBooleanExtra(EXTRA_FROM_PIP, false)) {
                     finish()

@@ -7,6 +7,7 @@ import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.After
@@ -88,6 +89,31 @@ class AppLoggerTest {
         assertFalse(AppLogger.isTransientNetworkError(null))
         assertFalse(AppLogger.isTransientNetworkError(IllegalStateException("boom")))
         assertTrue(AppLogger.isTransientNetworkError(UnknownHostException("dns")))
+    }
+
+    @Test
+    fun `e ignores CancellationException without reporting to Crashlytics`() {
+        val cancellation = CancellationException("Job was cancelled")
+        AppLogger.e("TorrentioRepository", "Cancelled fetch", cancellation)
+        AppLogger.e("TorrentioRepository", "Wrapped cancel", RuntimeException("outer", cancellation))
+
+        verify(exactly = 0) { crashlyticsManager.logError(any(), any(), any()) }
+        verify(exactly = 0) { crashlyticsManager.log(any()) }
+    }
+
+    @Test
+    fun `recordException ignores CancellationException`() {
+        AppLogger.recordException(CancellationException("Job was cancelled"), "Tag", "msg")
+
+        verify(exactly = 0) { crashlyticsManager.logError(any(), any(), any()) }
+        verify(exactly = 0) { crashlyticsManager.log(any()) }
+    }
+
+    @Test
+    fun `isCancellationError detects CancellationException and returns false otherwise`() {
+        assertFalse(AppLogger.isCancellationError(null))
+        assertFalse(AppLogger.isCancellationError(IllegalStateException("boom")))
+        assertTrue(AppLogger.isCancellationError(CancellationException("Job was cancelled")))
     }
 
     @Test

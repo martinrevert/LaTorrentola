@@ -24,6 +24,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -65,6 +66,7 @@ class AuthRepository internal constructor(
 
     /** Mutable backing stream updated whenever Firebase authentication changes. */
     private val _currentUserFlow = MutableStateFlow(firebaseAuth.currentUser)
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     /** Observable Firebase user state. */
     val authStateFlow: StateFlow<FirebaseUser?> = _currentUserFlow.asStateFlow()
 
@@ -91,7 +93,7 @@ class AuthRepository internal constructor(
             _currentUserFlow.value = user
             if (user != null) {
                 crashlyticsManager.setUserId(user.uid)
-                CoroutineScope(Dispatchers.IO).launch {
+                ioScope.launch {
                     try {
                         savedAccountDao?.upsert(
                             SavedAccountEntity(
@@ -103,6 +105,7 @@ class AuthRepository internal constructor(
                             )
                         )
                     } catch (e: Exception) {
+                        if (e is CancellationException) throw e
                         AppLogger.w("AuthRepository", "Failed saving local account profile: ${e.message}")
                     }
                 }
@@ -151,6 +154,7 @@ class AuthRepository internal constructor(
                 // User explicitly dismissed or cancelled the account picker; do not trigger fallback
                 throw e
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.w("AuthRepository", "GetSignInWithGoogleOption failed, attempting fallback to GetGoogleIdOption", e)
                 val googleIdOption = GetGoogleIdOption.Builder()
                     .setFilterByAuthorizedAccounts(false)
@@ -201,6 +205,7 @@ class AuthRepository internal constructor(
         try {
             credentialManager.clearCredentialState(ClearCredentialStateRequest())
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             AppLogger.e("AuthRepository", "Error clearing credential state: ${e.message}", e)
         }
     }

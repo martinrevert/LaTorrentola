@@ -5,6 +5,7 @@ import android.util.Log
 import com.martinrevert.latorrentola.utils.AppLogger
 import com.martinrevert.latorrentola.service.storage.TorrentStorageResolver
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -162,6 +163,7 @@ class RemoteStorageManager @Inject constructor(
                 }
                 true
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 AppLogger.e(TAG, "Failed to save local USB subtitle: ${e.message}", e)
                 false
             }

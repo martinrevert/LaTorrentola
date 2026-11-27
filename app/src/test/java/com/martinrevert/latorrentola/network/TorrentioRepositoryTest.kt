@@ -11,6 +11,7 @@ import com.martinrevert.latorrentola.utils.DevicePlaybackCapabilities
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -133,5 +134,19 @@ class TorrentioRepositoryTest {
         assertEquals("DDP 5.1", release.audioCodec)
         assertEquals(VideoQualityGroup.FHD_1080P, release.qualityGroup)
         assertEquals(75, release.seeds)
+    }
+
+    @Test(expected = CancellationException::class)
+    fun getMovieTorrents_rethrowsCancellationException() = runTest {
+        coEvery { torrentioService.getMovieStreams("tt1375666") } throws CancellationException("Job was cancelled")
+
+        repository.getMovieTorrents("tt1375666")
+    }
+
+    @Test(expected = CancellationException::class)
+    fun getSeriesTorrents_rethrowsCancellationException() = runTest {
+        coEvery { torrentioService.getSeriesStreams("tt0903747:1:1") } throws CancellationException("Job was cancelled")
+
+        repository.getSeriesTorrents("tt0903747", 1, 1)
     }
 }

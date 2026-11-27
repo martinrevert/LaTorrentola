@@ -10,6 +10,8 @@ import io.mockk.unmockkStatic
 import io.mockk.verify
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.concurrent.CancellationException as ConcurrentCancellationException
+import kotlinx.coroutines.CancellationException
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -90,6 +92,40 @@ class CrashlyticsManagerTest {
             firebaseCrashlytics.log("[TestTag] WARN: timed out (SocketTimeoutException)")
         }
         verify(exactly = 1) { firebaseCrashlytics.log(any()) }
+    }
+
+    @Test
+    fun `recordException ignores coroutine and concurrent CancellationException without breadcrumbs`() {
+        crashlyticsManager.recordException(CancellationException("Job was cancelled"))
+        crashlyticsManager.recordException(ConcurrentCancellationException("Future cancelled"))
+        crashlyticsManager.recordException(RuntimeException("wrapper", CancellationException("Job was cancelled")))
+
+        verify(exactly = 0) { firebaseCrashlytics.recordException(any()) }
+        verify(exactly = 0) { firebaseCrashlytics.log(any()) }
+    }
+
+    @Test
+    fun `logError ignores CancellationException without breadcrumbs or non-fatal`() {
+        crashlyticsManager.logError(
+            "TorrentioRepository",
+            "cancelled",
+            RuntimeException("wrapper", CancellationException("Job was cancelled"))
+        )
+
+        verify(exactly = 0) { firebaseCrashlytics.recordException(any()) }
+        verify(exactly = 0) { firebaseCrashlytics.log(any()) }
+    }
+
+    @Test
+    fun `isCancellationError detects direct and wrapped cancellations only`() {
+        assertThat(CrashlyticsManager.isCancellationError(null)).isFalse()
+        assertThat(CrashlyticsManager.isCancellationError(IllegalStateException("boom"))).isFalse()
+        assertThat(CrashlyticsManager.isCancellationError(CancellationException("Job was cancelled"))).isTrue()
+        assertThat(
+            CrashlyticsManager.isCancellationError(
+                RuntimeException("outer", ConcurrentCancellationException("cancelled"))
+            )
+        ).isTrue()
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.martinrevert.latorrentola.model.omdb.MovieRatings
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -77,6 +78,7 @@ class OmdbRepository(
                 null
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             null
         }
     }

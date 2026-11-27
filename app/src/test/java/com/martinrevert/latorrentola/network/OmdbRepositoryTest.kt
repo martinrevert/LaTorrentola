@@ -6,6 +6,7 @@ import com.martinrevert.latorrentola.model.omdb.OmdbRating
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Test
@@ -104,5 +105,12 @@ class OmdbRepositoryTest {
         assertThat(result?.imdbRating).isNull()
         assertThat(result?.rottenTomatoesRating).isNull()
         assertThat(result?.metacriticRating).isNull()
+    }
+
+    @Test(expected = CancellationException::class)
+    fun `getRatingsByImdbId rethrows CancellationException`() = runTest {
+        coEvery { omdbService.getMovieByImdbId(any(), "tt1375666") } throws CancellationException("Job was cancelled")
+
+        repository.getRatingsByImdbId("tt1375666")
     }
 }

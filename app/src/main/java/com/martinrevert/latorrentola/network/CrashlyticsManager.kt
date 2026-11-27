@@ -6,6 +6,7 @@ import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.concurrent.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -62,10 +63,16 @@ class CrashlyticsManager @Inject constructor() {
     /**
      * Records a handled or caught non-fatal exception.
      *
-     * Final gate: transient device-side network failures (DNS, connect, timeout) are never
-     * reported as non-fatal issues, regardless of which caller reaches this point.
+     * Final gate: coroutine/future cancellations ([CancellationException]) and transient
+     * device-side network failures (DNS, connect, timeout) are never reported as non-fatal
+     * issues, regardless of which caller reaches this point.
      */
     fun recordException(throwable: Throwable) {
+        val cancellationCause = findCancellationCause(throwable)
+        if (cancellationCause != null) {
+            Log.d(TAG, "Cancellation ignored (${cancellationCause.javaClass.simpleName})")
+            return
+        }
         val transientCause = findTransientNetworkCause(throwable)
         if (transientCause != null) {
             log("WARN: transient network failure ignored (${transientCause.javaClass.simpleName})")
@@ -93,6 +100,11 @@ class CrashlyticsManager @Inject constructor() {
      * Records an error message as a breadcrumb and reports the associated non-fatal exception.
      */
     fun logError(tag: String, message: String, throwable: Throwable? = null) {
+        val cancellationCause = findCancellationCause(throwable)
+        if (cancellationCause != null) {
+            Log.d(TAG, "[$tag] Cancellation ignored: $message (${cancellationCause.javaClass.simpleName})")
+            return
+        }
         val transientCause = findTransientNetworkCause(throwable)
         if (transientCause != null) {
             log("[$tag] WARN: $message (${transientCause.javaClass.simpleName})")
@@ -135,6 +147,32 @@ class CrashlyticsManager @Inject constructor() {
             }
             return null
         }
+
+        /**
+         * Walks the cause chain of [throwable] (up to [MAX_CAUSE_DEPTH] levels) and returns the
+         * first [CancellationException] (covering both `kotlinx.coroutines.CancellationException`
+         * / `JobCancellationException` and `java.util.concurrent.CancellationException`), or
+         * `null` if none is present.
+         */
+        fun findCancellationCause(throwable: Throwable?): Throwable? {
+            var current = throwable
+            var depth = 0
+            while (current != null && depth < MAX_CAUSE_DEPTH) {
+                if (current is CancellationException) {
+                    return current
+                }
+                current = current.cause
+                depth++
+            }
+            return null
+        }
+
+        /**
+         * Returns `true` when [throwable] (or any cause in its chain) represents a normal
+         * coroutine or future cancellation that must never be reported to Crashlytics.
+         */
+        fun isCancellationError(throwable: Throwable?): Boolean =
+            findCancellationCause(throwable) != null
 
         /**
          * Returns `true` when [throwable] (or any cause in its chain) is a transient device-side

@@ -8,6 +8,7 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Test
@@ -64,5 +65,12 @@ class EztvRepositoryTest {
         val result = repository.getTorrentsForEpisode("0944947", seasonNumber = 1, episodeNumber = 1)
 
         assertThat(result).isEmpty()
+    }
+
+    @Test(expected = CancellationException::class)
+    fun `getTorrentsForEpisode should rethrow CancellationException`() = runTest {
+        coEvery { eztvService.getTorrents(any(), any(), any()) } throws CancellationException("Job was cancelled")
+
+        repository.getTorrentsForEpisode("0944947", seasonNumber = 1, episodeNumber = 1)
     }
 }
